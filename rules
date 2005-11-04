@@ -108,6 +108,14 @@ else
   CCACHE=
 endif
 
+# distcc (not yet tested)
+ifdef DISTCC_HOSTS
+  # Build projects in parallel?
+  PARALLEL=-P2
+
+  CC="distcc $(CC)"
+  CXX="distcc $(CXX)"
+endif
 
 # Because of the stampdir magic, when you actually want to run a rule
 # over, you would have to remove the stamp manually.  Now, just do
@@ -126,14 +134,28 @@ endif
 # for testing.
 # test_rules=1
 
-clean: source.clean
+# Since the final stages use up a large amount of diskspace, provide targets to
+# remove them without needing a full rebuild
+
+# Clean up the package directories (about 830M) 
+clean-debdir:
+	dh_testdir
+	rm -f $(STAMP_DIR)/setup
+	dh_clean
+
+# Clean up the installation sets and package directories (about 2.5 Gb!)
+clean-instsetoo: clean-debdir
+	dh_testdir
+	rm -f $(STAMP_DIR)/instsetoo
+	# Remove all installation sets
+	rm -rf $(SOURCE_TREE)/instsetoo/$(ARCHBUILDDIR)
+	
+clean: source.clean clean-debdir
 	dh_testdir
 	rm -rf $(STAMP_DIR) $(DEBTREEDIR)
-	rm -f debian/*.postinst debian/*.postrm debian/*.preinst debian/*.prerm
 	rm -rf debian/local/stlport-home
 	# Regenerate control file if necessary
 	$(MAKE) -f debian/rules control
-	dh_clean
 #Making important script executable
 	chmod 755 debian/local/openoffice-dpack-lang  
 	chmod 755 debian/local/openoffice-xlate-lang 
@@ -200,7 +222,7 @@ endif
 
 	#If using compiler cache, place links to ccache on the path before the compilers
 	if [ -n "$(CCACHE)" ];then \
-	  for I in gcc gcc-3.0 gcc-3.1 g++ g++-3.0 g++-3.1 ; \
+	  for I in gcc gcc-3.0 gcc-3.1 gcc-3.2 g++ g++-3.0 g++-3.1 g++-3.2 ; \
 	  do ln -sf "`which ccache`" $(SOURCE_TREE)/solenv/bin/$$I;done;\
 	fi
 
@@ -306,13 +328,12 @@ $(STAMP_DIR)/build: $(STAMP_DIR)/dmake
 
 	# there is a problem that uno_writerdb.rdb does not exist, so setup does not work.
 	# This is a workaround
-	# TODO: file an issue about this
-	cp $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/bin/setup_services.rdb \
-	   $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/bin/uno_writerdb.rdb
-	zip -j -5 "f0_061" $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/bin/uno_writerdb.rdb
-	mv f0_061.zip $(SOURCE_TREE)/instsetoo/$(ARCHBUILDDIR)/$(BUILDLANG)/normal
+	#cp $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/bin/setup_services.rdb \
+	#   $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/bin/uno_writerdb.rdb
+	#zip -j -5 "f0_061" $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/bin/uno_writerdb.rdb
+	#mv f0_061.zip $(SOURCE_TREE)/instsetoo/$(ARCHBUILDDIR)/$(BUILDLANG)/normal
 
-	# generate maintainer scripts
+	# generate maintainer scripts from *.in
 	for FILE in debian/*.postinst.in debian/*.postrm.in debian/*.preinst.in debian/*.prerm.in; do \
 	  if [ -e "$$FILE" ]; then \
 	    MAINTSCRIPT=$$(echo $$FILE | sed 's/.in$$//'); \
@@ -500,6 +521,9 @@ binary-common:
 
 	for pkg in `dh_listpackages` ; do \
 	  rm -f debian/$$pkg.*.debhelper;\
+	  rm -rf debian/$$pkg/DEBIAN;\
+	  mkdir -p -m755 debian/$$pkg/usr/share/bug/$$pkg ;\
+	  echo "Submit-As: openoffice.org" > debian/$$pkg/usr/share/bug/$$pkg/control ;\
 	done
 
 	dh_installdocs
