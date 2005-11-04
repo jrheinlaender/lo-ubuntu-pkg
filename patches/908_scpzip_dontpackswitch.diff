@@ -1,0 +1,86 @@
+Index: oo_cvs_641/scptools/source/linker/scpzip.cxx
+===================================================================
+RCS file: /cvs/installation/scptools/source/linker/scpzip.cxx,v
+retrieving revision 1.23
+diff -u -3 -p -r1.23 scpzip.cxx
+--- oo_cvs_641/scptools/source/linker/scpzip.cxx	5 Dec 2001 13:12:02 -0000	1.23
++++ oo_cvs_641/scptools/source/linker/scpzip.cxx	30 Jan 2003 18:50:32 -0000
+@@ -125,6 +125,7 @@ ByteString		aMergeFilename;
+ ByteString		aHTMLFilename;
+ 
+ BOOL			bTestOnly			= FALSE;
++BOOL			bDontPack			= FALSE;
+ BOOL			bOldSetupZIPStyle	= FALSE;
+ BOOL			bWebScript 			= FALSE;
+ BOOL			bStripBinaries		= FALSE;
+@@ -153,6 +154,7 @@ void PrintZipUsage()
+ 	fprintf( stderr, "usage:\n" );
+ 	fprintf( stderr, "\t-<1..9> compression (default is 5)\n" );
+ 	fprintf( stderr, "\t-o test only\n" );
++	fprintf( stderr, "\t-O don't pack files\n" );
+ 	fprintf( stderr, "\t-l <langcode,...> (first langcode is default language)\n" );
+ 	fprintf( stderr, "\t-h <INTEL | SPARC> (INTEL)\n" );
+ 	fprintf( stderr, "\t-t <WNT | OS2 | UNX> (default WNT)\n" );
+@@ -190,6 +192,8 @@ void __EnumFilesCallBack( char *pFile, U
+ 
+ void _rawZip( ByteString& aSource, SiDirEntry& aDestination )
+ {
++	if(bDontPack) return;
++
+ 	ByteString aCompressionParam( '-' );
+ 	aCompressionParam += ByteString::CreateFromInt32( nCompression );
+ 
+@@ -1148,6 +1152,9 @@ int __LOADONCALLAPI main( int argv, char
+ 						  break;
+ 
+ 				case 'o': bTestOnly = TRUE;
++						  break;
++
++				case 'O': bDontPack = TRUE;
+ 						  break;
+ 
+ 				case 'h': {
+Index: oo_cvs_641/scptools/source/linker/lzip.cxx
+===================================================================
+RCS file: /cvs/installation/scptools/source/linker/lzip.cxx,v
+retrieving revision 1.7.6.3
+diff -u -3 -p -r1.7.6.3 lzip.cxx
+--- oo_cvs_641/scptools/source/linker/lzip.cxx	15 Aug 2002 16:04:16 -0000	1.7.6.3
++++ oo_cvs_641/scptools/source/linker/lzip.cxx	30 Jan 2003 18:50:32 -0000
+@@ -108,6 +108,7 @@ ByteString					m_aZipLst;
+ 
+ BOOL 						m_bPrintCommandline = FALSE;
+ BOOL 						m_bTestOnly = FALSE;
++BOOL 						m_bDontPack  = FALSE;
+ BOOL 						m_bBuildWeb = FALSE;
+ BOOL 						m_bStripBinaries = FALSE;
+ 
+@@ -146,6 +147,7 @@ void PrintUsage()
+ 	fprintf( stderr, "\t-z <size | MASTERCONFIG>\n" );
+ 	fprintf( stderr, "\t-e <filename> (write a non HTML log)\n" );
+ 	fprintf( stderr, "\t-o test only mode\n" );
++	fprintf( stderr, "\t-O don't pack files\n" );
+ 	fprintf( stderr, "\t-c print scpzip commandline\n" );
+ 	fprintf( stderr, "\t-w generate a webinstall script\n" );
+ 	fprintf( stderr, "\t-S strip binaries\n" );
+@@ -316,6 +318,10 @@ BOOL StartJob()
+ 	if( m_bTestOnly )
+ 		AddCmd( "-o" );
+ 
++	// === Don't pack ===================
++	if( m_bDontPack )
++		AddCmd( "-O" );
++
+ 	// === compression =================
+ 	AddCmd( "-5" );
+ 
+@@ -565,6 +571,9 @@ int __LOADONCALLAPI main( int argc, char
+ 							break;
+ 
+ 				case 'o':	m_bTestOnly = TRUE;
++							break;
++
++				case 'O':	m_bDontPack = TRUE;
+ 							break;
+ 
+ 				case 'w':	m_bBuildWeb = TRUE;

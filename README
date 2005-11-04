@@ -17,24 +17,33 @@ Changing the build behaviour with DEB_BUILD_OPTIONS
 ---------------------------------------------------
 These options are supported:
 
-  debug - enable debug build.  See the buildprj target for instructions about
-          building individual modules with debug.
+  debug     - enable debug build.  See the buildprj target for instructions
+              about building individual modules with debug.
 
-  nostrip - do not strip debugging symbols from the binaries before building the .deb.
+  nostrip   - do not strip debugging symbols from the binaries before building
+              the .deb.
 
-  ccache - enable the use of ccache during the build.  This is highly
-	   recommended if you plan on building the package more than once, or
-	   doing any development on the packages.  A typical speedup is from 11
-	   hours to 3 hours on the second build (PIII 800Mhz).
-	   Be aware that you need EXTRAPACKAGES="ccache" in /etc/pbuilderrc
-	   when trying to build openoffice.org with ccache in $DEB_BUILD_OPTIONS
-	   under pbuilder (this has no effect on speed, though because the
-	   cache does not persist in pbuilder)
+  ccache    - enable the use of ccache during the build.  This is highly
+	      recommended if you plan on building the package more than once,
+	      or doing any development on the packages.  A typical speedup is
+	      from 11 hours to 3 hours on the second build (PIII 800Mhz).  Be
+	      aware that you need EXTRAPACKAGES="ccache" in /etc/pbuilderrc
+	      when trying to build openoffice.org with ccache in
+	      $DEB_BUILD_OPTIONS under pbuilder (this has no effect on speed,
+	      though because the cache does not persist in pbuilder)
 
-  -Pn    - run n processes in parallel in dmake -equivalent to MAKEFLAGS=-jn.  Not yet fully tested.
-  -PPn   - enable n projects to be built in parallel.  Not yet fully tested.
+  -Pn       - run n processes in parallel in dmake -equivalent to MAKEFLAGS=-jn.  Not yet fully tested.
+  -PPn      - enable n projects to be built in parallel.  Not yet fully tested.
 
-  build= - pass arbitary command line parameters to build.pl.  If unspecified, -all will be used.  
+  build=    - pass arbitary command line parameters to build.pl.  If
+              unspecified, -all will be used.  
+
+  deloutput - delete the contents of each project once it has been built and
+	      delivered.  This reduces the amount of disk space needed to build
+	      the packages, but slows down rebuilds.  You can get a good
+	      compromise by using 'ccache' and 'delobj' together - this will
+	      cache the object files using ccache (needs about 200mb in total)
+	      but remove all other files.
 
   jdkhome=/absolute/path/to/jdk - use the JDK installed in this path.  
 
@@ -46,7 +55,7 @@ OpenOffice.org still needs a non-free JDK.  You can find a suitable JDK here:
  deb http://ftp.gwdg.de/pub/languages/java/linux/debian unstable main non-free
 
 -s390-
- ?
+ https://www6.software.ibm.com/dl/lxdk/lxdk-p (unpack tarball under /usr/local)
 
 If you a building on a machine without a JDK and have no root access to install
 one, you can install the JDK to your home directory and specify the path using
@@ -57,16 +66,24 @@ Hint: use dpkg-buildpackage -d to skip the build dependencies check.
 We are working on adding support for other JDKs to OOo.  See this issue for progress:
     http://www.openoffice.org/issues/show_bug.cgi?id=10477
 
-Installing moz zips for powerpc
--------------------------------
+Installing moz zips for powerpc and s390
+----------------------------------------
 If you are building for powerpc, you need to manually get some precompiled
 files for mozilla.  Jan has compiled these with gcc 3.2.1 and you can find them here:
 
  http://sevdalia.hajvan.net/~palic/debian/OpenOffice.org/mozlibs/
 
- mkdir mozlibs; cdmozlibs
+ mkdir mozlibs; cd mozlibs
  wget -l2 -L -np --accept "*.zip" -nd -nH -m http://sevdalia.hajvan.net/~palic/debian/OpenOffice.org/mozlibs/
 
+If you are building for s390, you need to manually get some precompiled
+files for mozilla.  Gerhard has compiled these with gcc 3.2.2 and you can find
+them here:
+
+ http://people.debian.org/~gt/mozlibs/
+
+ mkdir mozlibs; cd mozlibs
+ wget -l2 -L -np --accept "*.zip" -nd -nH -m http://people.debian.org/~gt/mozlibs/
 
 The targets that are built during the package build
 ---------------------------------------------------
@@ -88,8 +105,15 @@ configure     - Run configure in config_office.  This creates the settings file
 bootstrap     - Bootstrap the solver environment, by building these projects:
                 dmake, external, xml2cmp, sal, vos, soltools.
 
-instsetoo     - The main build process, which builds installation sets in instsetoo
-                once all projects have been built.
+buildall      - The main build process.  All projects are built except for the
+		installation sets
+
+instsetoo     - Build a complete installation set for the language BUILDLANG.
+		This is the install set that is distributed by upstream in
+		tar.gz format.
+
+setupins      - For all other languages, build just the 'setup.ins', which is used to
+		generate language packs by our scripts.
 
 setup    - Run OOo network install from the instsetoo directory,
            installing to debian/tmp
@@ -99,9 +123,9 @@ install  - Copy files from tmp into the correct locations for the
            debian/openoffice.org-bin, and make adjustments to file paths,
            desktop files etc.
 
-langpack - Extract language-specific files from the language instsetoo
-           directories and move into the langpack directories
-           debian/openoffice.org-l10n-XX
+langpack - Extract language-specific files from the 'solver'
+	   directories and link/unzip into the langpack directories
+	   debian/openoffice.org-l10n-XX
 
 binary-arch  - Build openoffice.org-bin package
 
@@ -134,6 +158,11 @@ clean-objectdirs   - Clean compilation results, but leave solver (cleans about
                      preinstalled solver tree.
 
 - other targets -
+
+buildprj	   - Build up to a particular project.  Set PRJ to the name of
+		     the project.  For example, to build localize and the tools
+		     needed for translation in the transex3 project, execute:
+		       debian/rules buildprj PRJ=transex3
 
 downloadpatch      - During the runup to a release, Chris is generating patches
                      that patch the current source to the next release from CVS.  

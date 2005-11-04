@@ -1,6 +1,7 @@
 #! /usr/bin/perl
 
 use strict;
+use File::Copy;
 
 #- Define full path to unzip command
 my $UnzipCommand = "/usr/bin/unzip";
@@ -14,10 +15,16 @@ my $SetupDir = ".";
 #- Define destination directory
 my $DestDir = "/usr/lib/openoffice";
 
+#- Define solver directory
+my $SolverDir = "solver";
+
 while ( $ARGV[0] =~ /^-/ ) {
 	$_ = shift;
 	if (m/^-d=(\S+)/) {
 		$DestDir=$1;
+	}
+	elsif (m/^-s=(\S+)/) {
+		$SolverDir=$1;
 	}
 	elsif (m/^-z=(\S+)/) {
 		$UnzipCommand=$1;
@@ -124,17 +131,46 @@ die "$UnzipCommand not found, please set the full path to the unzip command\n" i
 
 while (my ($key, $value) = each (%{$setup->{File}})) {
     if ($value->{PackedName}) {
-		my $zipfile = "$SetupDir/$value->{PackedName}";
-		die "$0: zip file $zipfile not accessible" if
-			( ! -r "$zipfile" );
+		#my $zipfile = "$SetupDir/$value->{PackedName}";
+		#die "$0: zip file $zipfile not accessible" if
+		#	( ! -r "$zipfile" );
 		
 		# Find language-specific candidates
 		if (($key =~ /_Lang$/) || ($value->{Name} =~ /\.res$/)) {
-			print "Unpacking $zipfile... \n";
 			# Prefer NetDir path over simple Dir
 			my $outpath = GetFullPath \%{$setup->{Directory}}, $value->{NetDir} ? $value->{NetDir} : $value->{Dir};
+			my $action = "None";
 			-d $outpath or mkpath($outpath);
-			system("$UnzipCommand -qq -o $zipfile -d $outpath");
+			if ($value->{Styles} =~ /PACKED/) {
+				my $fileToCopy = $SolverDir . '/bin/' . $value->{Name};
+				my $destFile = $outpath . '/' . $value->{Name};
+
+				if( -f $destFile ) {
+					unlink $destFile or die "Can't delete $destFile";
+				}
+
+				# Try to link file first
+				if(link($fileToCopy,$destFile)) {
+					$action = "Link";
+				}
+				else {
+					copy($fileToCopy,$outpath) or die "Can't copy $fileToCopy to $outpath";
+					$action = "Copy";
+				}
+			}
+			else {
+				my $fileToUnzip = $SolverDir . '/pck/' . $value->{Name};
+				if( -r $fileToUnzip ) {
+					$action = "Unzip";
+					system("$UnzipCommand -qq -o $fileToUnzip -d $outpath");
+				}
+				else {
+					$action = "Skip";
+				}
+			}	
+			print "$action $value->{PackedName} - $value->{Name} $value->{Styles} $value->{NetDir} $value->{Dir} \n";
+
+			#system("$UnzipCommand -qq -o $zipfile -d $outpath");
 		}
     }
 }

@@ -69,22 +69,10 @@ include debian/scripts/vars.$(ARCH)
 
 # include variable -- where is Java? ;)
 ifneq (jdkhome=,$(findstring jdkhome=,$(DEB_BUILD_OPTIONS)))
-  JDK_HOME := $(shell debian/scripts/detect_java.sh)
+  JDK_HOME := $(shell /bin/sh debian/scripts/detect_java.sh)
 else
   JDK_HOME:=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*jdkhome=\([^,]*\),.*/\1/p')
 endif
-
-# if nolangpacks is specified in DEB_BUILD_OPTIONS, the OOo build will be configured not
-# to generate any extra language sets.  This saves a lot of disk space.
-# Only works if building binary-arch.
-ifeq (debug,$(findstring nolangpacks,$(DEB_BUILD_OPTIONS)))
-   BUILD_PL_FLAGS+= debug=yes
-   CREATE_LANGPACKS=n
-else
-   CONFIGURE_LANG=--with-lang=ALL
-   CREATE_LANGPACKS=y
-endif
-
 
 # This is where the upstream install rules will put their stuff.
 DEBTREEDIR:=$(CURDIR)/debian/tmp
@@ -94,34 +82,41 @@ PKGOPENOFFICEDIR:=$(DEBTREEDIR)/$(OPENOFFICEDIR)
 # Package install directory
 MAINPKGDIR:=$(CURDIR)/debian/openoffice.org
 
-ifeq "$(GCC3VER)" ""
+# check that default compiler is not gcc 2.x (as it is on Woody)
+ifneq (gcc-2.9,$(findstring gcc-2.9,$(shell readlink /usr/bin/gcc)))
   _CC=gcc
   CXX=g++
+  USE_SYSTEM_LIBS=y
+  STLPORTHOME=--with-stlport4-home=$(CURDIR)/stlport-home
 else
-  # use specific compiler version
-  _CC=gcc-$(GCC3VER)
-  CXX=g++-$(GCC3VER)
+  # use latest gcc-3.x compiler version
+  _CC=$(shell cd /usr/bin; ls gcc-3.* | tail -1)
+  CXX=$(subst gcc,g++,$(_CC))
+  STLPORTHOME=
+
+  # Don't use system libstlport
+  USE_SYSTEM_LIBS=n
 endif
 
 # Default build.pl flags
 
 ifeq (build=,$(findstring build=,$(DEB_BUILD_OPTIONS)))
-  BUILD_PL_FLAGS=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*build=\([^,]*\),.*/\1/p')
+  BUILDFLAGS=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*build=\([^,]*\),.*/\1/p')
 else
-  BUILD_PL_FLAGS=-all
+  BUILDFLAGS=
 endif
 
-BUILD_PL_DMAKEFLAGS=
 PARALLEL=
 
 #if debug is set into DEB_BUILD_OPTIONS, debug=yes will added to buildprj, so you can
 #build single projects with debugging symbols
 ifeq (debug,$(findstring debug,$(DEB_BUILD_OPTIONS)))
-   BUILD_PL_FLAGS+= debug=yes
+   BUILDFLAGS+= debug=yes
 endif
 
 # Extract -PP or -P options from command line
 PARALLEL:=$(shell echo $(DEB_BUILD_OPTIONS) | tr ',' '\n' | grep "^-PP\?[0-9]\+$$" | tr '\n' ' ')
+BUILDFLAGS+= $(PARALLEL)
 
 # distcc will be used if DISTCC_HOSTS is set
 # The number of processes (-PP) will be set to the number of DISTCC_HOSTS, unless you
@@ -148,15 +143,26 @@ else
   CCACHE=
 endif
 
+# Delete each project output tree once it has been delivered to the solver?  DEB_BUILD_OPTIONS=deloutput
+ifeq (deloutput,$(findstring deloutput,$(DEB_BUILD_OPTIONS)))
+  BUILDFLAGS+= -dlv link deloutput
+else
+  BUILDFLAGS+= -dlv link
+endif
+  
+
+#
+# Add parallel build flags and always hard link into the solver
+
 #command to use to build OOo
-BUILDCMD:=$(CURDIR)/$(SOURCE_TREE)/solenv/bin/build.pl $(BUILD_PL_FLAGS) $(PARALLEL) $(BUILD_PL_DMAKEFLAGS)
+BUILDCMD:=$(CURDIR)/$(SOURCE_TREE)/solenv/bin/build.pl
 
 # Because of the stampdir magic, when you actually want to run a rule
 # over, you would have to remove the stamp manually.  Now, just do
 # 'debian/rules <target> <target> ... FORCE=1', and the stamp files
 # that match the given targets will be removed automagically.
-stampdir_targets=build.prepare configure bootstrap instsetoo build 
-stampdir_targets+=setup install binary-arch binary-indep
+stampdir_targets=build.prepare configure bootstrap buildall instsetoo build 
+stampdir_targets+=setupins setup install langpacks binary-common binary-arch binary-indep
 stampdir_targets+=source.make patchapply
 stampdir_targets+=source.build source.unpack fix.source.patch source.patch
 stampdir_targets+=unfix.source.patch
@@ -192,8 +198,8 @@ clean-objectdirs: clean-instsetoo
 	
 clean: source.clean clean-debdir
 	dh_testdir
-	rm -rf $(STAMP_DIR) $(DEBTREEDIR)
-	rm -rf debian/local/stlport-home
+	rm -rf $(STAMP_DIR) $(DEBTREEDIR) stlport-home
+	rm -f debian/MANIFEST.*.new
 	chmod a+x debian/local/openoffice-*-lang debian/scripts/*.sh
 	$(MAKE) -f debian/rules control
 
@@ -236,12 +242,14 @@ $(STAMP_DIR)/build.prepare: $(STAMP_DIR)/source.make
 
 	#rm -rf $(SOURCE_TREE)/external/gpc
 
+ifeq "$(USE_SYSTEM_LIBS)" "y"
 	# making stlport home
-#	if [ ! -d debian/local/stlport-home ]; then \
-#	  mkdir debian/local/stlport-home ;\
-#	  ln -s /usr/include debian/local/stlport-home/include ;\
-#	  ln -s /usr/lib debian/local/stlport-home/lib ;\
-#	fi
+	if [ ! -d stlport-home ]; then \
+	  mkdir stlport-home ;\
+	  ln -s /usr/include stlport-home/include ;\
+	  ln -s /usr/lib stlport-home/lib ;\
+	fi
+endif
 
 	# WorkArounds to fix the buildbugs
 
@@ -269,8 +277,8 @@ endif
 	#fi
 
 	# Bison-1.875 has problems, so use bison-1.35 if installed 
-	if [ -x /usr/bin/bison-1.35 ]; then ln -sf "`which bison-1.35`" \
-		$(SOURCE_TREE)/solenv/bin/bison; fi
+	#if [ -x /usr/bin/bison-1.35 ]; then ln -sf "`which bison-1.35`" \
+	#	$(SOURCE_TREE)/solenv/bin/bison; fi
 	
 	# In the 1.0.1 tarball, some scripts are not executable
 	chmod ugo+x $(SOURCE_TREE)/solenv/bin/*.pl
@@ -279,23 +287,27 @@ endif
 
 # Build step 2 - configure
 configure: $(STAMP_DIR)/configure
-$(STAMP_DIR)/configure: $(STAMP_DIR)/build.prepare
+$(STAMP_DIR)/configure: $(STAMP_DIR)/build.prepare 
 	dh_testdir
+	$(MAKE) -f debian/rules environment
 
 	# Make sure we have a valid JDK.  If this test fails, please install the JDK
 	# package (j2sdk1.3), or add the path to debian/scripts/detect_java.sh,
 	# or specify a JDK location with DEB_BUILD_OPTIONS=jdkhome=/absolute/path/to/jdk
 	test -x /$(JDK_HOME)/bin/javac
 
+	# Make sure we have /proc mounted - otherwise idlc will fail later.
+	test -r /proc/version
+
 	# Remove config.cache so we always generate config again
 	rm -f $(SOURCE_TREE)/config_office/config.cache
 
 	cd $(SOURCE_TREE)/config_office && autoconf && \
 	  CC="$(_CC)" CXX="$(CXX)" sh ./configure \
-            $(CONFIGURE_LANG) \
+            --with-lang=ALL \
 	    --with-jdk-home=$(JDK_HOME) \
+	    $(STLPORTHOME)
 	    < /dev/null
-#	    --with-stlport4-home=$(CURDIR)/debian/local/stlport-home 
 	touch $@
 	
 
@@ -315,15 +327,31 @@ $(STAMP_DIR)/bootstrap: $(STAMP_DIR)/configure
 
 	touch $@
 
-# Build step 4 - instsetoo (build complete project and installation sets)
-instsetoo: $(STAMP_DIR)/instsetoo
-$(STAMP_DIR)/instsetoo: $(STAMP_DIR)/bootstrap
+# Build step . - build all projects needed for installation sets but do not yet create instsets
+buildall: $(STAMP_DIR)/buildall
+$(STAMP_DIR)/buildall: $(STAMP_DIR)/bootstrap
 	dh_testdir
+	. $(SOURCE_TREE)/$(ENVFILE); cd $(SOURCE_TREE)/instsetoo && $(BUILDCMD) -all instsetext= $(BUILDFLAGS)
 
-	rm -rf $(SOURCE_TREE)/instsetoo/$(ARCHBUILDDIR)
+	touch $@
 
-	#echo DISTCC_HOSTS:$(DISTCC_HOSTS)
-	. $(SOURCE_TREE)/$(ENVFILE); cd $(SOURCE_TREE)/instsetoo && $(BUILDCMD)
+# Build step . - build full installation set for BUILDLANG language
+instsetoo: $(STAMP_DIR)/instsetoo
+$(STAMP_DIR)/instsetoo: $(STAMP_DIR)/buildall
+	dh_testdir
+	. $(SOURCE_TREE)/$(ENVFILE); cd $(SOURCE_TREE)/instsetoo && $(BUILDCMD) -from instsetoo instsetext="$(BUILDLANG)" $(BUILDFLAGS)
+
+	touch $@
+
+# Build step . - build insetsetoo installation scrips for langpacks
+setupins: $(STAMP_DIR)/setupins
+$(STAMP_DIR)/setupins: $(STAMP_DIR)/buildall
+	dh_testdir
+	# we don't want to build $(BUILDLANG) so remove it from the list
+
+	. $(SOURCE_TREE)/$(ENVFILE); cd $(SOURCE_TREE)/instsetoo && LZIPFLAGS=-O \
+	instsetext="`cd util;dmake instsetext= | sed -n '/alllangext:/ s/alllangext:\(.*\) 01 \(.*\)/\1 \2/p'`" \
+	$(BUILDCMD) -from instsetoo $(BUILDFLAGS)
 
 	touch $@
 
@@ -341,14 +369,14 @@ buildprj: $(STAMP_DIR)/bootstrap
 
 	# run dmake with xfvb-run
 	. $(SOURCE_TREE)/$(ENVFILE); \
-	  cd $(SOURCE_TREE)/$(PRJ) && $(XVFB) $(BUILDCMD)
+	  cd $(SOURCE_TREE)/$(PRJ) && $(XVFB) $(BUILDCMD) $(BUILDFLAGS)
 
 	-echo Project $(PRJ) build successful
 
 #
 # Build step 5 - generate maintainer scripts
-build: $(STAMP_DIR)/build
-$(STAMP_DIR)/build: $(STAMP_DIR)/instsetoo
+maintscripts: $(STAMP_DIR)/maintscripts
+$(STAMP_DIR)/maintscripts: debian/shell-lib.sh debian/control
 	dh_testdir
 
 	# there is a problem that uno_writerdb.rdb does not exist, so setup does not work.
@@ -379,11 +407,10 @@ $(STAMP_DIR)/build: $(STAMP_DIR)/instsetoo
 
 # Run openoffice setup for net install
 setup: $(STAMP_DIR)/setup
-$(STAMP_DIR)/setup: $(STAMP_DIR)/build
+$(STAMP_DIR)/setup: $(STAMP_DIR)/instsetoo
 	dh_testdir
 	dh_testroot
 	umask 022
-	dh_clean -k
 
 	# Packagers - if you are working on improving the .debs, you can
 	# run setup and rebuild over and over like this:
@@ -402,6 +429,9 @@ $(STAMP_DIR)/setup: $(STAMP_DIR)/build
 				-R:$(CURDIR)/debian/local/rsfile.txt
 
 	rm -f debian/local/rsfile.txt
+
+	# Remove copy of libstdc++ since we do not use it
+	rm -f $(PKGOPENOFFICEDIR)/program/libstdc++*
 
 	touch $@
 
@@ -448,7 +478,9 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/setup
 	done
 
 	# convert program/icon paths in desktop shortcuts
-	for I in debian/openoffice.org/usr/share/applnk/*/*.desktop debian/openoffice.org/usr/share/gnome/apps/net/*.desktop ;do \
+	for I in debian/openoffice.org/usr/share/applnk/*/*.desktop \
+		 debian/openoffice.org/usr/share/gnome/apps/net/*.desktop \
+		 debian/openoffice.org/usr/share/gnome/apps/net/.directory ;do \
 	    sed -e 's,Exec="\?/.*\(/usr/lib/openoffice/program/setup\)"\?,Exec=\1,' \
 	        -e 's,Exec="\?/.*/usr/lib/openoffice/program/s\([^"]*\)"\?,Exec=/usr/bin/oo\1,' \
 	        -e 's,Icon=.*/\([^/]*\.png\),Icon=/usr/lib/openoffice/share/icons/\1,' \
@@ -459,6 +491,12 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/setup
 ifeq "$(ARCH)" "i386"
 	cp -rf $(PKGOPENOFFICEDIR)/program/libmozab2.so $(CURDIR)/debian/openoffice.org-bin/usr/lib/openoffice/program/libmozab2.so
 	cp -rf $(PKGOPENOFFICEDIR)/program/libmozabdrv2.so $(CURDIR)/debian/openoffice.org-bin/usr/lib/openoffice/program/libmozabdrv2.so
+endif
+
+ifneq "$(USE_SYSTEM_LIBS)" "y"
+	# Copy libstlport if we are using the internal library
+	cp -f $(PKGOPENOFFICEDIR)/program/libstlport_gcc.so \
+		$(CURDIR)/debian/openoffice.org-bin/usr/lib/openoffice/program
 endif
 
 	# Remove packaging prefix from configuration files
@@ -483,12 +521,15 @@ endif
 	# install regcomp utilility
 	install -m755 $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/bin/regcomp \
 		debian/openoffice.org-bin/$(OPENOFFICEDIR)/program
+	
+	# install openoffice-xlate-lang
+	install -m755 debian/local/openoffice-xlate-lang debian/openoffice.org/usr/share/openoffice/bin
 
 	touch $@
 
 # Install files generated by setup into package directories
 langpacks: $(STAMP_DIR)/langpacks
-$(STAMP_DIR)/langpacks: $(STAMP_DIR)/setup
+$(STAMP_DIR)/langpacks: $(STAMP_DIR)/setupins
 	for ext in `debian/local/openoffice-xlate-lang -i all|tr A-Z a-z` ; do \
 	  rm -rf debian/openoffice.org-l10n-$$ext;\
 	  rm -rf debian/openoffice.org-l10n-$$ext.*.debhelper;\
@@ -499,12 +540,13 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/setup
           echo "Unpack "`debian/local/openoffice-xlate-lang -l $$prefix`" l10n..."; \
           langiso=`debian/local/openoffice-xlate-lang -i $$prefix|tr A-Z a-z`;      \
 	  debian/local/openoffice-dpack-lang                                        \
-                -d="debian/openoffice.org-l10n-$$langiso/$(OPENOFFICEDIR)"                     \
+                -d="debian/openoffice.org-l10n-$$langiso$(OPENOFFICEDIR)"                     \
                 -i=$(SOURCE_TREE)/instsetoo/$(ARCHBUILDDIR)/$$prefix/normal/setup.ins \
-	        >/dev/null;                                                           \
-	  rm -rf debian/openoffice.org-l10n-$$langiso/$(OPENOFFICEDIR)/help/main_transform.xsl;\
+                -s=$(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR) \
+	        ;                                                           \
+	  rm -rf debian/openoffice.org-l10n-$$langiso$(OPENOFFICEDIR)/help/main_transform.xsl;\
 	  ln -s ooo$(BUILDNUM)$$prefix.res \
-	        debian/openoffice.org-l10n-$$langiso/$(OPENOFFICEDIR)/program/resource/iso$(BUILDNUM)$$prefix.res ;\
+	        debian/openoffice.org-l10n-$$langiso$(OPENOFFICEDIR)/program/resource/iso$(BUILDNUM)$$prefix.res ;\
 	done
 
 	# move the help and templates to the extra package
@@ -573,21 +615,21 @@ binary-common:
 	dh_builddeb
 
 # Build architecture independant packages using the common target.
-binary-indep: $(STAMP_DIR)/binary-indep control
-$(STAMP_DIR)/binary-indep: $(STAMP_DIR)/install $(STAMP_DIR)/langpacks
+binary-indep: $(STAMP_DIR)/binary-indep
+$(STAMP_DIR)/binary-indep: $(STAMP_DIR)/install $(STAMP_DIR)/langpacks debian/control $(STAMP_DIR)/maintscripts
 	$(MAKE) -f debian/rules DH_OPTIONS=-i binary-common
 
 	touch $@
 
 # Build architecture dependant packages using the common target.
-binary-arch: $(STAMP_DIR)/binary-arch control
-$(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install
+binary-arch: $(STAMP_DIR)/binary-arch
+$(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install debian/control $(STAMP_DIR)/maintscripts
 	$(MAKE) -f debian/rules DH_OPTIONS=-a binary-common
 	touch $@
 
 # Any other binary targets build just one binary package at a time.
-binary-%: $(STAMP_DIR)/install
-	make -f debian/rules binary-common DH_OPTIONS=-p$*
+binary-%: $(STAMP_DIR)/install $(STAMP_DIR)/langpacks $(STAMP_DIR)/maintscripts
+	$(MAKE) -f debian/rules binary-common DH_OPTIONS=-p$*
 
 binary: binary-arch binary-indep
 
@@ -598,9 +640,18 @@ environment:
 	@echo 'Package build environment (not all variables may be set):'
 	@echo '$$(ARCH)' is "$(ARCH)"
 	@echo '$$(DEB_HOST_ARCH)' is "$(DEB_HOST_ARCH)"
-	@echo '$$(BUILD_ARCH)' is "$(BUILD_ARCH)"
 	@echo '$$(CURDIR)' is "$(CURDIR)"
+	@echo '$$(SOURCE_VERSION)' is "$(SOURCE_VERSION)"
+	@echo '$$(JDK_HOME)' is "$(JDK_HOME)"
+	@echo '$$(_CC)' is "$(_CC)"
+	@echo '$$(CXX)' is "$(CXX)"
+	@echo '$$(BUILDCMD)' is "$(BUILDCMD)"
+	@echo '$$(BUILDFLAGS)' is "$(BUILDFLAGS)"
+
 	@echo 'See debian/control for build dependencies.'
+
+# -------------------------------------------------------
+# Miscellaneous targets used to do a few useful operations
 
 # Get latest patch files from Chris' repository
 PATCHNAME=000_pre102_stolen_from_STABLE1
@@ -617,7 +668,17 @@ rsyncpatch:
 	   debian/patches
 	wget -O - $(PATCHURL)/$(PATCHNAME)-binaries.diff.uu.bz2 | bunzip2 -c > debian/patches/$(PATCHNAME)-binaries.diff.uu
 
-.PHONY: default build install clean-debian clean binary-arch binary-indep binary
-.PHONY: default environment checksource control instsetoo downloadpatch rsyncpatch
+# Take a tarfile of all the non-stripped binaries in solver, for generating backtraces
+# from coredumps.
+makebinariestar:
+	cd $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR) && \
+	  find bin lib | xargs file | sed -n '/LSB \(executable\|shared object\),.* not stripped/ s/:.*$$//p' | \
+	  tar -T - -jcvf $(CURDIR)/../openoffice-binaries.$(SOURCE_VERSION).tar.bz2
+
+# -------------------------------------------------------
+
+.PHONY: environment checksource control downloadpatch rsyncpatch makebinariestar
+.PHONY: clean-debdir clean-instsetoo clean-objectdirs clean default
+.PHONY: $(stampdir_targets)
 
 # vim:set noet ai sts=8 sw=8 tw=0:
