@@ -1,5 +1,10 @@
 #!/usr/bin/make -f
-# Debian rules file for openoffice source package
+###################################################################################
+# OpenOffice.org source package rules flie
+#
+# Please see debian/README for detailed documentation about the build system, and
+# how to build OpenOffice.org.
+###################################################################################
 # Originally by Stephen Early <sde1000@debian.org>
 # Modified by Mark W. Eichin <eichin@kitten.gen.ma.us>
 # Modified by Adam Heath <doogie@debian.org>
@@ -7,10 +12,12 @@
 # Modified by Peter Novodvorsky <nidd@debian.org>
 # Modified by Filip Van Raemdonck <mechanix@debian.org>
 # Modified by Jan-Hendrik Palic <jan.palic@linux-debian.de>
-# Copyright 1996-2001 Software in the Public Interest, Inc.
+# Modified by Chris Halls <chris.halls@gmx.de>
+# Copyright 1996-2001,2002 Software in the Public Interest, Inc.
 # Licensed under the GNU General Public License, version 2.  See the file
 # /usr/share/common-licenses/GPL or <http://www.gnu.org/copyleft/gpl.txt>.
 # Acknowlegements to Branden Robinson, Stephen Early, Mark Eichin, and Manoj Srivastava.
+###################################################################################
 
 # Read in important variables.
 include debian/scripts/vars
@@ -57,6 +64,7 @@ SOURCE_VERSION:=$(shell head -1 debian/changelog | cut -d\( -f2 | cut -d\) -f1)
 BUILD_ARCH:=$(shell dpkg --print-gnu-build-architecture)
 # Work around some old-time dpkg braindamage.
 BUILD_ARCH:=$(subst i486,i386,$(BUILD_ARCH))
+BUILD_ARCH:=$(subst -none,,$(BUILD_ARCH))
 # The DEB_HOST_ARCH variable may be set per the Debian cross-compilation policy.
 ifdef DEB_HOST_ARCH
  ARCH:=$(DEB_HOST_ARCH)
@@ -99,23 +107,48 @@ else
   export CC CXX
 endif
 
-# Use compiler cache?  Include ccache in DEB_BUILD_OPTIONS for fun :)
+# Default build.pl flags
+BUILD_PL_FLAGS=-all
+BUILD_PL_DMAKEFLAGS=product=full
+PARALLEL=
+
+#if debug is set into DEB_BUILD_OPTIONS, debug=yes will added to buildprj, so you can
+#build single projects with debugging symbols
+ifeq (debug,$(findstring debug,$(DEB_BUILD_OPTIONS)))
+   BUILD_PL_FLAGS+= debug=yes
+endif
+
+# distcc will be used if DISTCC_HOSTS is set
+# The number of processes (-PP) will be set to the number of DISTCC_HOSTS, unless you
+# override it with -PPn in DEB_BUILD_OPTIONS
+ifdef DISTCC_HOSTS
+  # Set number of parallel processes to run (can override with -PPn in DEB_BUILD_OPTIONS)
+  PARALLEL:=-PP$(strip $(shell echo $(DISTCC_HOSTS) | wc -w))
+
+  CC:=distcc $(CC)
+  CXX:=distcc $(CXX)
+endif
+
+# Use compiler cache?  Include ccache in DEB_BUILD_OPTIONS for much faster rebuild times
+# A complete build uses about 200Mb of compiler cache.
 ifeq (ccache,$(findstring ccache,$(DEB_BUILD_OPTIONS)))
   CCACHE=ccache
   CCACHE_LOGFILE=$(STAMP_DIR)/ccache.log
+  CC:=ccache $(CC)
+  CXX:=ccache $(CXX)
   export CCACHE_LOGFILE
 else
   CCACHE=
 endif
 
-# distcc (not yet tested)
-ifdef DISTCC_HOSTS
-  # Build projects in parallel?
-  PARALLEL=-P2
 
-  CC="distcc $(CC)"
-  CXX="distcc $(CXX)"
+# Pararell build - add -PPn into DEB_BUILD_OPTIONS, where n is the number of processes
+ifeq (-PP,$(findstring -PP,$(DEB_BUILD_OPTIONS)))
+  PARALLEL:=$(shell echo $(DEB_BUILD_OPTIONS) | sed -e 's/.*\(-PP[0-9]\+\).*/\1/')
 endif
+
+#command to use to build OOo
+BUILDCMD:=$(CURDIR)/$(SOURCE_TREE)/solenv/bin/build.pl $(BUILD_PL_FLAGS) $(PARALLEL) $(BUILD_PL_DMAKEFLAGS)
 
 # Because of the stampdir magic, when you actually want to run a rule
 # over, you would have to remove the stamp manually.  Now, just do
@@ -149,12 +182,16 @@ clean-instsetoo: clean-debdir
 	rm -f $(STAMP_DIR)/instsetoo
 	# Remove all installation sets
 	rm -rf $(SOURCE_TREE)/instsetoo/$(ARCHBUILDDIR)
+
+# Clean compilation results, but leave solver (about 600Mb in addition to instsetoo)
+clean-objectdirs: clean-instsetoo
+	dh_testdir
+	find $(SOURCE_TREE) -maxdepth 2 -name $(ARCHBUILDDIR) -type d -exec rm -rf {} \;
 	
 clean: source.clean clean-debdir
 	dh_testdir
 	rm -rf $(STAMP_DIR) $(DEBTREEDIR)
 	rm -rf debian/local/stlport-home
-	# Regenerate control file if necessary
 	$(MAKE) -f debian/rules control
 #Making important script executable
 	chmod 755 debian/local/openoffice-dpack-lang  
@@ -193,20 +230,23 @@ build.prepare: $(STAMP_DIR)/build.prepare
 $(STAMP_DIR)/build.prepare: $(STAMP_DIR)/source.make
 	dh_testdir
 
+	$(MAKE) -f debian/rules control
+
 	#rm -rf $(SOURCE_TREE)/external/gpc
 
 	# making stlport home
-
-	mkdir debian/local/stlport-home
-	ln -s /usr/include debian/local/stlport-home/include
-	ln -s /usr/lib debian/local/stlport-home/lib
+	if [ ! -d debian/local/stlport-home ]; then \
+	  mkdir debian/local/stlport-home ;\
+	  ln -s /usr/include debian/local/stlport-home/include ;\
+	  ln -s /usr/lib debian/local/stlport-home/lib ;\
+	fi
 
 	# WorkArounds to fix the buildbugs
 
 	#Workaround for buildbug in 641c
 	#mkdir -p $(SOURCE_TREE)/solver/$(BUILDNUM)/unxl
-	#mkdir -p $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/inc
-	#touch $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/inc/minormkchanged.flg
+	mkdir -p $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/inc
+	touch $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/inc/minormkchanged.flg
 
 	#Workaround for builder on PPC belongs to mozilla codes
 ifeq "$(ARCH)" "powerpc"
@@ -221,10 +261,10 @@ endif
 	cp -r debian/local/office $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/
 
 	#If using compiler cache, place links to ccache on the path before the compilers
-	if [ -n "$(CCACHE)" ];then \
-	  for I in gcc gcc-3.0 gcc-3.1 gcc-3.2 g++ g++-3.0 g++-3.1 g++-3.2 ; \
-	  do ln -sf "`which ccache`" $(SOURCE_TREE)/solenv/bin/$$I;done;\
-	fi
+	#if [ -n "$(CCACHE)" ];then \
+	#  for I in gcc gcc-3.0 gcc-3.1 gcc-3.2 g++ g++-3.0 g++-3.1 g++-3.2 ; \
+	#  do ln -sf "`which ccache`" $(SOURCE_TREE)/solenv/bin/$$I;done;\
+	#fi
 
 	# In the 1.0.1 tarball, some scripts are not executable
 	chmod ugo+x $(SOURCE_TREE)/solenv/bin/*.pl
@@ -262,16 +302,16 @@ $(STAMP_DIR)/bootstrap: $(STAMP_DIR)/configure
 
 # Build step 4 - dmake (build complete project)
 dmake: $(STAMP_DIR)/dmake
-$(STAMP_DIR)/dmake: $(STAMP_DIR)/bootstrap	
-	dh_testdir
+$(STAMP_DIR)/dmake: $(STAMP_DIR)/bootstrap $(STAMP_DIR)/instsetoo
+#	dh_testdir
 
-	set -e
+#	set -e
 	# Start Xvfb and run dmake
-	cd $(SOURCE_TREE) && \
-	    tcsh -c 'source $(ENVFILE); $(XVFB) dmake'
+#	cd $(SOURCE_TREE) && \
+#	    tcsh -c 'source $(ENVFILE); $(XVFB) dmake'
 	 
 	# This target also created the installation set
-	touch $(STAMP_DIR)/instsetoo
+#	touch $(STAMP_DIR)/instsetoo
 	touch $@
 	
 # Build step 4a - project (build individual project)
@@ -282,25 +322,13 @@ $(STAMP_DIR)/dmake: $(STAMP_DIR)/bootstrap
 #   debian/rules buildprj PRJ=<module>
 PRJ=unknown-project
 # See http://tools.openoffice.org/modules.html for a list of modules that can be built.
-#
-# Warning - the command to run the solver may change, and the following line would have to be updated:
  
-#if debug is set into DEB_BUILD_OPTIONS, debug=yes will added to buildprj, so you can
-#build single projects with debugging symbols
- 
-ifeq (debug,$(findstring debug,$(DEB_BUILD_OPTIONS)))
-   DMAKEDEBUG="debug=yes"
-endif
-
-#set the solver
-SOLVER=$(CURDIR)/$(SOURCE_TREE)/solenv/bin/build.pl product=full $(DMAKEDEBUG)
-
 buildprj: $(STAMP_DIR)/bootstrap
 	dh_testdir
 
 	# run dmake with xfvb-run
 	cd $(SOURCE_TREE) && \
-	    tcsh -c 'source $(ENVFILE); cd $(PRJ) &&	$(XVFB) $(SOLVER)'
+	    tcsh -c 'source $(ENVFILE); cd $(PRJ) &&	$(XVFB) $(BUILDCMD)'
 	
 	-echo Project $(PRJ) build successful
 
@@ -311,14 +339,15 @@ instsetoo: $(STAMP_DIR)/instsetoo
 $(STAMP_DIR)/instsetoo: $(SOURCE_TREE)/instsetoo/$(ARCHBUILDDIR)/$(BUILDLANG)/normal/setup.ins
 	touch $@
 
-$(SOURCE_TREE)/instsetoo/$(ARCHBUILDDIR)/$(BUILDLANG)/normal/setup.ins: $(STAMP_DIR)/dmake
+$(SOURCE_TREE)/instsetoo/$(ARCHBUILDDIR)/$(BUILDLANG)/normal/setup.ins: $(STAMP_DIR)/bootstrap
 	dh_testdir
 
 	# Remove all installation sets
 	rm -rf $(SOURCE_TREE)/instsetoo/$(ARCHBUILDDIR)
 
+	echo DISTCC_HOSTS:$(DISTCC_HOSTS)
 	cd $(SOURCE_TREE) && \
-	    tcsh -c 'source $(ENVFILE); cd instsetoo &&	$(SOLVER)'
+	    tcsh -c 'source $(ENVFILE); cd instsetoo &&	$(BUILDCMD)'
 
 #
 # Build step 5 - generate maintainer scripts
