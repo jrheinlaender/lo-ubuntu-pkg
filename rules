@@ -22,38 +22,13 @@
 
 # Read in important variables.
 include debian/scripts/vars
-BUILD_DIR=$(SOURCE_DIR)/$(TAR_DIR)
-
 
 # default rule to keep things from going nuts by accident
 default: environment
 
-checksource: source.make
-	$(checksource_command)
-
-define checksource_command
-	# make sure all the patches applied cleanly
-	@if grep -v '^patch' debian/stampdir/patches/*.log; then echo "Some patches did not apply cleanly.  Please investigate." >&2; exit 1; fi
-	# yes, they did
-endef
-
-# Include Adam Heath's source archive/patch handling system.
-include debian/doogie-build-system
-
-# oh my God, this is a gross hack
-ELSE:=else
-
 # This is a horrendous kludge to ensure that some scripts we need are executable.
 DUMMY:=$(shell if [ ! -x debian/setperms ]; then chmod 755 debian/setperms; fi)
 DUMMY:=$(shell debian/setperms)
-
-#XDISPLAY:=$(shell debian/local/scripts/find-free-display)
-#export DISPLAY=$(XDISPLAY)
-export XAUTHORITY=
-
-# hacked xvfb-run automatically finds a display
-# and checks that Xvfb didn't die
-XVFB=$(CURDIR)/debian/local/scripts/oo-xvfb-run -a -w 5
 
 # debhelper
 export DH_OPTIONS
@@ -63,9 +38,6 @@ export DH_ALWAYS_EXCLUDE=CVS
 SOURCE_VERSION:=$(shell head -1 debian/changelog | cut -d\( -f2 | cut -d\) -f1)
 # Determine our architecture.
 ARCH := $(shell dpkg-architecture -qDEB_HOST_ARCH)
-
-# Version suffix to allow multiple versions (ie 1.0 and 1.1) to co-exist.  Blank for stable release.
-VER=
 
 # Read in architecture-specific variables of importance.
 include debian/scripts/vars.$(ARCH)
@@ -93,24 +65,24 @@ PKGOPENOFFICEDIR:=$(DEBTREEDIR)/$(OPENOFFICEDIR)
 # Package install directory
 MAINPKGDIR:=$(CURDIR)/debian/openoffice.org$(VER)
 
+CONFIGURE_FLAGS=
+
 # automatic configuration for woody backports
 # check that default compiler is not gcc 2.x (as it is on Woody)
 ifneq (gcc-2.9,$(findstring gcc-2.9,$(shell readlink /usr/bin/gcc)))
   _CC=gcc
   CXX=g++
-  USE_SYSTEM_LIBS=y
-  STLPORTHOME=--with-stlport4-home=$(CURDIR)/stlport-home
+  #USE_SYSTEM_LIBS=y
+  USE_SYSTEM_LIBS=n
+  #CONFIGURE_FLAGS+= --with-stlport4-home=$(CURDIR)/stlport-home
 else
   # use latest gcc-3.x compiler version
   _CC=$(shell cd /usr/bin; ls gcc-3.* | tail -1)
   CXX=$(subst gcc,g++,$(_CC))
-  STLPORTHOME=
 
   # Don't use system libstlport
   USE_SYSTEM_LIBS=n
 endif
-STLPORTHOME=
-USE_SYSTEM_LIBS=n
 
 # gcc version can be overriden by setting GCCVER in scripts/vars[.arch]
 ifneq "$(GCCVER)" ""
@@ -118,11 +90,21 @@ ifneq "$(GCCVER)" ""
   CXX=g++-$(GCCVER)
 endif
 
+ifeq "$_CC" "gcc-3.0"
+  # gcc 3.0 Backport - disable mozilla and MANIFEST check
+  IGNORE_MANIFEST_CHANGES=1
+  export IGNORE_MANIFEST_CHANGES
+else
+  ifneq "$(MOZILLA)" "n"
+    CONFIGURE_FLAGS+= --enable-mozilla 
+  endif
+endif
+
 # Packages compiled with libfreetype on Woody do not work properly with
 # libfreetype from Sarge or Sid, so enforce that with a shlibs override
-ifeq (libfreetype.so.6.3.0,$(shell readlink /usr/lib/libfreetype.so))
-  SHLIBS_OVERRIDE=-- -Ldebian/shlibs.woody.local
-endif
+#ifeq (libfreetype.so.6.3.0,$(shell readlink /usr/lib/libfreetype.so))
+#  SHLIBS_OVERRIDE=-- -Ldebian/shlibs.woody.local
+#endif
 
 # do we have po-debconf available?
 ifeq (,$(wildcard /usr/bin/po2debconf))
@@ -140,25 +122,36 @@ else
   BUILDFLAGS:=
 endif
 
-# If startfrom=<prj> is specified, resume build from this project
-ifeq (startfrom=,$(findstring startfrom=,$(DEB_BUILD_OPTIONS)))
-  STARTFROM:=-from_opt $(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*startfrom=\([^,]*\),.*/\1/p')
+# Default dmake flags
+ifeq (dmake=,$(findstring dmake=,$(DEB_BUILD_OPTIONS)))
+  DMAKEFLAGS:=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*dmake=\([^,]*\),.*/\1/p')
 else
-  STARTFROM:=-all
+  DMAKEFLAGS:=
 endif
 
-
-PARALLEL=
+# If startfrom=<prj> is specified, resume build from this project
+ifeq (startfrom=,$(findstring startfrom=,$(DEB_BUILD_OPTIONS)))
+  STARTFROM:=--from $(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*startfrom=\([^,]*\),.*/\1/p')
+else
+  STARTFROM:=--all
+endif
 
 #if debug is set into DEB_BUILD_OPTIONS, debug=yes will added to buildprj, so you can
 #build single projects with debugging symbols
 ifeq (debug,$(findstring debug,$(DEB_BUILD_OPTIONS)))
-   BUILDFLAGS+= debug=yes
+   DMAKEFLAGS+= debug=yes
 endif
 
-# Extract -PP or -P options from command line
-PARALLEL:=$(shell echo $(DEB_BUILD_OPTIONS) | tr ',' '\n' | grep "^-PP\?[0-9]\+$$" | tr '\n' ' ')
-BUILDFLAGS+= $(PARALLEL)
+# Setting MAXPROCESS for dmake for parallel builds.  There are some problems, see IZ#9443
+# Extract -Pn from DEB_BUILD_OPTIONS for dmake option
+DMAKEPARALLEL:=$(shell echo $(DEB_BUILD_OPTIONS) | sed -n 's/^\(.*,\)\?-P\([0-9]\+\)\(,.*\)\?$$/-P\2/p')
+
+# Building n projects in parallel.  This doesn't seem to work properly with perl 5.8
+# Extract -PPn from DEB_BUILD_OPTIONS as -Pn for build.pl option
+BUILDPARALLEL:=$(shell echo $(DEB_BUILD_OPTIONS) | sed -n 's/^\(.*,\)\?-PP\([0-9]\+\)\(,.*\)\?$$/-P\2/p')
+
+BUILDFLAGS+= $(BUILDPARALLEL)
+DMAKEFLAGS+= $(DMAKEPARALLEL)
 
 # distcc will be used if DISTCC_HOSTS is set
 # The number of processes (-PP) will be set to the number of DISTCC_HOSTS, unless you
@@ -209,9 +202,9 @@ endif
 
 # Delete each project output tree once it has been delivered to the solver?  DEB_BUILD_OPTIONS=deloutput
 ifeq (deloutput,$(findstring deloutput,$(DEB_BUILD_OPTIONS)))
-  BUILDFLAGS+= -dlv link deloutput
+  BUILDFLAGS+= --dlv_switch link deloutput
 else
-  BUILDFLAGS+= -dlv link
+  BUILDFLAGS+= --dlv_switch link
 endif
   
 
@@ -219,8 +212,8 @@ endif
 # Add parallel build flags and always hard link into the solver
 
 #command to use to build OOo
-BUILDCMD:=XCLASSPATH=$$XCLASSPATH::/usr/share/java/crimson.jar:/usr/share/java/xalan.jar:/usr/share/java/xml-apis.jar:/usr/share/java/xalan2.jar \
-          $(XVFB) $(CURDIR)/$(SOURCE_TREE)/solenv/bin/build.pl
+BUILDCMD:=XCLASSPATH=$$XCLASSPATH::/usr/share/java/crimson.jar:/usr/share/java/xalan.jar:/usr/share/java/xml-apis.jar:/usr/share/java/xalan2.jar PRODUCT="FULL" \
+          $(CURDIR)/$(SOURCE_TREE)/solenv/bin/build.pl
 
 # Because of the stampdir magic, when you actually want to run a rule
 # over, you would have to remove the stamp manually.  Now, just do
@@ -260,10 +253,9 @@ clean-instsetoo: clean-debdir
 clean-objectdirs: clean-instsetoo
 	dh_testdir
 	find $(SOURCE_TREE) -maxdepth 2 -name $(ARCHBUILDDIR) -type d -exec rm -rf {} \;
-	
-clean: source.clean clean-debdir
-	dh_testdir
-	rm -rf $(STAMP_DIR) $(DEBTREEDIR) stlport-home
+
+clean: $(STAMP_DIR)/patch.unapply
+	dh_testdir config_office/configure.in
 	rm -f debian/MANIFEST.*.new
 ifeq ($(PO2DEBCONF),yes)
 	# Hack for woody compatibility. This makes sure that the
@@ -273,9 +265,52 @@ ifeq ($(PO2DEBCONF),yes)
 	# 4.1.16) depends on it), the binary-arch target will generate a
 	# better version for sarge.
 	echo 1 > debian/po/output
-	po2debconf debian/openoffice.org-bin.templates.master > debian/openoffice.org-bin.templates
+	po2debconf $(MAINPKGDIR)-bin.templates.master \
+		> $(MAINPKGDIR)-bin.templates
 	rm -f debian/po/output
 endif
+	#cd $(SOURCE_TREE)/dmake && \
+	# [ -f configure.orig ] && \
+	#  mv -f configure.orig configure
+	#
+
+	# we do not need them and they make problem with dpkg-source....
+	rm -f $(TOOLS_DIR)/desktop/*.png $(TOOLS_DIR)/src/*tar.gz \
+		$(TOOLS_DIR)/www/*.png
+	
+	# Clean rule, if we had a system dmake..
+	#if [ -f $(SOURCE_TREE)/$(ENVFILE) ]; then \
+	#    cd $(SOURCE_TREE) && . ./$(ENVFILE) && \
+	#    dmake distclean; \
+	#fi
+	cd $(SOURCE_TREE)/config_office && \
+	  rm -f config.cache config.log \
+              config.status config.parms \
+	      warn set_soenv && \
+	  rm -rf autom4te.cache
+
+	rm -rf $(SOURCE_TREE)/*/$(ARCHBUILDDIR) \
+	       $(SOURCE_TREE)/solver \
+	       $(SOURCE_TREE)/dmake/autom4te.cache
+
+	# Restore modified files
+	if cd $(SOURCE_TREE)/modified_files; then \
+	  find . -type f -exec cp -v -p {} ../{} \; ;\
+	fi
+
+	rm -rf $(SOURCE_TREE)/modified_files
+	  
+	# Delete files in dmake
+	if [ -f dmake/Makefile ];then $(MAKE) -C dmake distclean; fi
+	rm -f dmake/dmakeroot.h
+	find dmake/startup -name Makefile -exec rm {} \;
+
+	dh_clean delzip
+
+	rm -rf $(STAMP_DIR) $(DEBTREEDIR) stlport-home
+	rm -f makefile.mk $(ENVFILE) $(subst Env.Set.sh,Env.Set,$(ENVFILE)) \
+	      bootstrap
+
 	$(MAKE) -f debian/rules control
 
 
@@ -299,6 +334,9 @@ debian/control: debian/control.in debian/control.lang.in debian/local/openoffice
 build: build-arch build-indep
 build-arch: $(STAMP_DIR)/instsetoo
 build-indep: $(STAMP_DIR)/solver
+#
+# apply ximian patches and install new icons
+debian/stampdir/source.patch: debian/stampdir/ximian.patchapply debian/stampdir/ximian.icons
 
 # All 'important' targets have 2 lines.  The one that is run by
 # dpkg-buildpackage or the user, and the one that does the actual work.  This
@@ -310,12 +348,50 @@ build-indep: $(STAMP_DIR)/solver
 # so that the target will not be run again.  Removing the file will make
 # make run the target over.
 
+patch.apply: $(STAMP_DIR)/patch.apply
+$(STAMP_DIR)/patch.apply:
+	# Test that we have the Ximian packaging directory available.  If your
+	# build stops here, you need to check it out.
+	# You can get the directory with the command:
+	# debian/rules get-build-ooo
+	dh_testdir $(TOOLS_DIR)/patches/apply.pl
+
+	rm -f $(STAMP_DIR)/patch.unapply
+	chmod 755 $(TOOLS_DIR)/patches/apply.pl
+	$(TOOLS_DIR)/patches/apply.pl $(TOOLS_DIR)/patches/$(PATCH_DIR) $(BUILD_DIR) --distro=Debian -f
+
+ifeq (libfreetype.so.6.3.0,$(shell readlink /usr/lib/libfreetype.so))
+	# Woody system - unapply system-freetype patch
+	ftpatch="`ls $(BUILD_DIR)/applied_patches/???-gui-ft-dynlink-system.patch`" ; \
+	if [ -f "$$ftpatch" ]; then \
+	  patch -R -l -b -p0 -f -d $(BUILD_DIR) < "$$ftpatch" && \
+	  rm "$$ftpatch" ;\
+	fi
+endif
+	mkdir -p $(STAMP_DIR)
+	touch $@
+
+patch.unapply: $(STAMP_DIR)/patch.unapply
+$(STAMP_DIR)/patch.unapply:
+	dh_testdir $(TOOLS_DIR)/patches/apply.pl
+
+	$(TOOLS_DIR)/patches/apply.pl $(TOOLS_DIR)/patches/$(PATCH_DIR) $(BUILD_DIR) --distro=Debian -f -R
+	rm -f $(STAMP_DIR)/patch.apply
+	mkdir -p $(STAMP_DIR)
+	touch $@
+
 # Build step 1 - prepare source tree
 build.prepare: $(STAMP_DIR)/build.prepare
-$(STAMP_DIR)/build.prepare: $(STAMP_DIR)/source.make
-	dh_testdir
+$(STAMP_DIR)/build.prepare: $(STAMP_DIR)/patch.apply
+	dh_testdir $(TOOLS_DIR)/patches/apply.pl
 
 	$(MAKE) -f debian/rules control
+	
+	# Back up source files that we modify
+	for f in dmake/configure config_office/configure; do \
+	  mkdir -p modified_files/`dirname $$f` && \
+	  cp -v -p $$f modified_files/$$f ;\
+	done
 
 	#rm -rf $(SOURCE_TREE)/external/gpc
 
@@ -328,27 +404,19 @@ ifeq "$(USE_SYSTEM_LIBS)" "y"
 	fi
 endif
 
-	# WorkArounds to fix the buildbugs
-
-	#Workaround for buildbug in 641c
-	#mkdir -p $(SOURCE_TREE)/solver/$(BUILDNUM)/unxl
-	#mkdir -p $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/inc
-	#touch $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/inc/minormkchanged.flg
-
-	#Workaround for builder on PPC belongs to mozilla codes
 ifneq "$(ARCH)" "i386"
+ifneq "$(MOZILLA)" "n"
+	# Workaround for mozilla zips on ! i386
 	cp -rvf ../mozlibs/* $(SOURCE_TREE)/moz/zipped/
 endif
-
-	# pt-BR is missing some bitmaps - use the directory for pt
-	[ -L $(SOURCE_TREE)/res/portbr ] || [ -d $(SOURCE_TREE)/res/portbr ] \
-	  || ln -s port $(SOURCE_TREE)/res/portbr
+endif
 
 	# In the 1.0.1 tarball, some scripts are not executable
-	chmod ugo+x $(SOURCE_TREE)/solenv/bin/*.pl
+	#chmod ugo+x $(SOURCE_TREE)/solenv/bin/*.pl
 
 	# we patched dmake - run autoconf
-	cd $(SOURCE_TREE)/dmake && autoconf
+	cd $(SOURCE_TREE)/dmake && \
+	  autoconf
 
 	touch $@
 
@@ -373,9 +441,12 @@ $(STAMP_DIR)/configure: $(STAMP_DIR)/build.prepare
 	  CC="$(_CC)" CXX="$(CXX)" sh ./configure \
             --with-lang=ALL \
 	    --with-jdk-home=$(JDK_HOME) \
-	    --without-gpc \
+	    --enable-libart \
 	    --disable-rpath \
-	    $(STLPORTHOME) \
+	    --enable-crashdump \
+	    --enable-symbols=SMALL \
+	    --without-fonts \
+	    $(CONFIGURE_FLAGS) \
 	    < /dev/null
 	touch $@
 	
@@ -402,7 +473,8 @@ $(STAMP_DIR)/bootstrap: $(STAMP_DIR)/configure
 solver: $(STAMP_DIR)/solver
 $(STAMP_DIR)/solver: $(STAMP_DIR)/bootstrap
 	dh_testdir
-	. $(SOURCE_TREE)/$(ENVFILE); cd $(SOURCE_TREE)/instsetoo && $(BUILDCMD) $(STARTFROM) instsetext= $(BUILDFLAGS)
+	. $(SOURCE_TREE)/$(ENVFILE); cd $(SOURCE_TREE)/instsetoo && \
+	    $(BUILDCMD) $(STARTFROM) $(BUILDFLAGS) -- instsetext= $(DMAKEFLAGS)
 
 	touch $@
 
@@ -410,7 +482,8 @@ $(STAMP_DIR)/solver: $(STAMP_DIR)/bootstrap
 instsetoo: $(STAMP_DIR)/instsetoo
 $(STAMP_DIR)/instsetoo: $(STAMP_DIR)/solver
 	dh_testdir
-	. $(SOURCE_TREE)/$(ENVFILE); cd $(SOURCE_TREE)/instsetoo && $(BUILDCMD) -from instsetoo instsetext="$(BUILDLANG)" $(BUILDFLAGS)
+	. $(SOURCE_TREE)/$(ENVFILE); cd $(SOURCE_TREE)/instsetoo && \
+	    $(BUILDCMD) $(BUILDFLAGS) --from instsetoo -- instsetext="$(BUILDLANG)" $(DMAKEFLAGS)
 
 	touch $@
 
@@ -422,7 +495,7 @@ ifeq "$(BUILD_ALL_LANGPACKS)" "y"
 	# we don't want to build $(BUILDLANG) so remove it from the list
 	. $(SOURCE_TREE)/$(ENVFILE); cd $(SOURCE_TREE)/instsetoo && LZIPFLAGS=-O \
 	instsetext="`cd util;dmake instsetext= | sed -n '/alllangext:/ s/alllangext:\(.*\) 01 \(.*\)/\1 \2/p'`" \
-	$(BUILDCMD) -from instsetoo $(BUILDFLAGS)
+	$(BUILDCMD) --from instsetoo $(BUILDFLAGS) -- $(DMAKEFLAGS)
 
 	touch $@
 endif
@@ -440,8 +513,8 @@ buildprj: $(STAMP_DIR)/bootstrap
 	dh_testdir
 
 	# run dmake with xfvb-run
-	. $(SOURCE_TREE)/$(ENVFILE); \
-	  cd $(SOURCE_TREE)/$(PRJ) && $(BUILDCMD) $(BUILDFLAGS)
+	. $(SOURCE_TREE)/$(ENVFILE); cd $(SOURCE_TREE)/$(PRJ) && \
+	    $(BUILDCMD) $(BUILDFLAGS) -- $(DMAKEFLAGS)
 
 	-echo Project $(PRJ) build successful
 
@@ -450,8 +523,8 @@ buildprj: $(STAMP_DIR)/bootstrap
 builduntil-%: $(STAMP_DIR)/bootstrap
 	dh_testdir
 
-	. $(SOURCE_TREE)/$(ENVFILE); \
-	  cd $(SOURCE_TREE)/$(subst builduntil-,,$@) && $(BUILDCMD) $(STARTFROM) $(BUILDFLAGS)
+	. $(SOURCE_TREE)/$(ENVFILE); cd $(SOURCE_TREE)/$(subst builduntil-,,$@) && \
+	    $(BUILDCMD) $(STARTFROM) $(BUILDFLAGS) --$(DMAKEFLAGS)
 
 	-echo Project $(PRJ) build successful
 
@@ -507,8 +580,8 @@ $(STAMP_DIR)/setup: $(STAMP_DIR)/instsetoo
 		debian/local/rsfile.global.txt > debian/local/rsfile.txt
 
 	# Run OOo setup using response file.
-	$(XVFB) $(SOURCE_TREE)/instsetoo/$(ARCHBUILDDIR)/$(BUILDLANG)/normal/setup -v \
-				-R:$(CURDIR)/debian/local/rsfile.txt
+	$(SOURCE_TREE)/instsetoo/$(ARCHBUILDDIR)/$(BUILDLANG)/normal/setup -v \
+				-R:$(CURDIR)/debian/local/rsfile.txt -nogui
 
 	rm -f debian/local/rsfile.txt
 
@@ -530,9 +603,10 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/setup
 	umask 022
 
 	# Remove package directories
-	rm -rf debian/openoffice.org$(VER) debian/openoffice.org$(VER)-bin
-	rm -f debian/openoffice.org$(VER).*.debhelper
-	rm -f debian/openoffice.org$(VER)-bin.*.debhelper
+	rm -rf $(MAINPKGDIR) $(MAINPKGDIR)-bin $(MAINPKGDIR)-gnome \
+		$(MAINPKGDIR)-mimelnk
+	rm -f $(MAINPKGDIR).*.debhelper
+	rm -f $(MAINPKGDIR)-bin.*.debhelper
 
 	dh_installdirs
 
@@ -546,7 +620,7 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/setup
 	      echo 'MANIFEST check failed; ignoring problem because \$$IGNORE_MANIFEST_CHANGES set' >&2; \
 	      echo 'Please ensure that the package maintainer has an up-to-date version of the' >&2; \
 	      echo 'MANIFEST.$(ARCH) file.' >&2; \
-	    $(ELSE) \
+	    else \
 	      echo 'MANIFEST check failed; please see debian/README' >&2; \
 	      exit 1; \
 	    fi; \
@@ -559,12 +633,12 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/setup
 	# Copied from Mandrake.  Thanks, Gwenole!
 	for module in gid_Module_Optional_Gnome gid_Module_Optional_Kde gid_Module_Optional_Cde; do \
 	   perl -pi -e "/^Module $$module/ .. /^End/ and s|(Installed.*)=.*|\1= NO;|" \
-	       debian/openoffice.org$(VER)-bin/$(OPENOFFICEDIR)/program/instdb.ins ;\
+	       $(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program/instdb.ins ;\
 	done
 
 	# convert program/icon paths in desktop shortcuts
-	for I in debian/openoffice.org$(VER)/usr/share/applnk/*/*.desktop \
-		 debian/openoffice.org$(VER)-gnome/usr/share/applications/*.desktop ;do \
+	for I in $(MAINPKGDIR)/usr/share/applnk/*/*.desktop \
+		 $(MAINPKGDIR)-gnome/usr/share/applications/*.desktop; do \
 	    sed -e 's,Exec="\?/.*\(/usr/lib/openoffice$(VER)/program/setup\)"\?,Exec=\1,' \
 	        -e 's,Exec="\?/.*/usr/lib/openoffice$(VER)/program/s\?\([^"]*\)"\?,Exec=/usr/bin/oo\1$(VER),' \
 		-e 's,/oooffice ,/ooffice ,' \
@@ -574,21 +648,23 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/setup
 	done
 
 	# Workaround for co-existing 1.0 and 1.1 - don't install icons in /usr/share/icons for 1.1 yet
-	#rm -r debian/openoffice.org1.1/usr/share/icons
+	#rm -r $(MAINPKGDIR)/usr/share/icons
 	 
 ifeq "$(ARCH)" "i386"
-	cp -rf $(PKGOPENOFFICEDIR)/program/libmozab2.so $(CURDIR)/debian/openoffice.org$(VER)-bin/usr/lib/openoffice$(VER)/program/libmozab2.so
-	cp -rf $(PKGOPENOFFICEDIR)/program/libmozabdrv2.so $(CURDIR)/debian/openoffice.org$(VER)-bin/usr/lib/openoffice$(VER)/program/libmozabdrv2.so
+	cp -rf $(PKGOPENOFFICEDIR)/program/libmozab2.so \
+	   $(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program/libmozab2.so
+	cp -rf $(PKGOPENOFFICEDIR)/program/libmozabdrv2.so \
+	   $(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program/libmozabdrv2.so
 endif
 
 ifneq "$(USE_SYSTEM_LIBS)" "y"
 	# Copy libstlport if we are using the internal library
 	cp -f $(PKGOPENOFFICEDIR)/program/libstlport_gcc.so \
-		$(CURDIR)/debian/openoffice.org$(VER)-bin/usr/lib/openoffice$(VER)/program
+		$(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program
 endif
 
 	# Remove packaging prefix and set default install directory to ~/.openoffice/<version> in instdb.ins
-	for FILE in debian/openoffice.org$(VER)-bin/$(OPENOFFICEDIR)/program/instdb.ins ; do \
+	for FILE in $(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program/instdb.ins ; do \
 	  sed -e 's#$(PKGOPENOFFICEDIR)#$(OPENOFFICEDIR)#g' \
 	      -e 's#\(DefaultDestPath *= *"\)OpenOffice.org#\1.openoffice/#' \
 	     "$$FILE" > "$$FILE".new; \
@@ -596,23 +672,29 @@ endif
 	done
 
 	# there are some wrong permissions; fix them ourselves
-	#find debian/openoffice.org debian/openoffice.org-bin \
+	#find $(MAINPKGDIR) $(MAINPKGDIR)-bin \
 	#	-type f \( -name "*.xpt" -o -name "*.js" -o -name "*en_US.*" \
 	#	        -o -name "component.reg" -o -name "xpti*.dat" \) -exec chmod ugo-x {} \;
-	#for FILE in editpic poll savepic show webcast; do\
-	#    chmod ugo+x debian/openoffice.org$(VER)/usr/lib/openoffice$(VER)/share/config/webcast/$$FILE.pl ;\
-	#done
+	for FILE in editpic poll savepic show webcast; do\
+	    chmod ugo+x $(MAINPKGDIR)/$(OPENOFFICEDIR)/share/config/webcast/$$FILE.pl ; \
+	done
+	for FILE in edit common index; do \
+	    chmod ugo-x $(MAINPKGDIR)/$(OPENOFFICEDIR)/share/config/webcast/$$FILE.pl; \
+	done
 
 	# install regcomp and configimport utililities
-	install -m755 $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/bin/regcomp \
-	              $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/bin/configimport.bin \
-		debian/openoffice.org$(VER)-bin/$(OPENOFFICEDIR)/program
+	install -m755 \
+	$(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/bin/regcomp \
+	$(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/bin/configimport.bin \
+		$(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program
 
 	# install openoffice-xlate-lang
-	install -m755 debian/local/openoffice-xlate-lang debian/openoffice.org$(VER)/usr/share/openoffice$(VER)/bin
+	install -m755 debian/local/openoffice-xlate-lang \
+		$(MAINPKGDIR)/usr/share/openoffice$(VER)/bin
 
 	# install info file for update-openoffice-dicts
-	install -m644 debian/dictlistinfo debian/openoffice.org$(VER)/usr/share/myspell/infos/ooo/openoffice.org$(VER)
+	install -m644 debian/dictlistinfo \
+		$(MAINPKGDIR)/usr/share/myspell/infos/ooo/openoffice.org$(VER)
 
 	touch $@
 
@@ -621,8 +703,8 @@ langpacks: $(STAMP_DIR)/langpacks
 $(STAMP_DIR)/langpacks: $(STAMP_DIR)/setupins debian/local/openoffice-xlate-lang
 
 	for ext in `debian/local/openoffice-xlate-lang -i $(LANGPACKLANGS) |tr A-Z a-z` ; do \
-	  rm -rf debian/openoffice.org$(VER)-l10n-$$ext;\
-	  rm -rf debian/openoffice.org$(VER)-l10n-$$ext.*.debhelper;\
+	  rm -rf $(MAINPKGDIR)-l10n-$$ext;\
+	  rm -rf $(MAINPKGDIR)-l10n-$$ext.*.debhelper;\
 	done
 
 	# Install the lang packs
@@ -634,10 +716,10 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/setupins debian/local/openoffice-xlate-lang
                 -i=$(SOURCE_TREE)/instsetoo/$(ARCHBUILDDIR)/$$prefix/normal/setup.ins \
                 -s=$(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR) || exit 1 \
 	        ;                                                           \
-	  rm -rf debian/openoffice.org$(VER)-l10n-$$langiso$(OPENOFFICEDIR)/help/main_transform.xsl;\
-	  if [ -f debian/openoffice.org$(VER)-l10n-$$langiso$(OPENOFFICEDIR)/program/resource/ooo$(BUILDNUM)$$prefix.res ]; then \
+	  rm -rf $(MAINPKGDIR)-l10n-$$langiso$(OPENOFFICEDIR)/help/main_transform.xsl;\
+	  if [ -f $(MAINPKGDIR)-l10n-$$langiso$(OPENOFFICEDIR)/program/resource/ooo$(BUILDNUM)$$prefix.res ]; then \
 	    ln -s ooo$(BUILDNUM)$$prefix.res \
-	        debian/openoffice.org$(VER)-l10n-$$langiso$(OPENOFFICEDIR)/program/resource/iso$(BUILDNUM)$$prefix.res ;\
+	        $(MAINPKGDIR)-l10n-$$langiso$(OPENOFFICEDIR)/program/resource/iso$(BUILDNUM)$$prefix.res ;\
 	  fi ;\
 	done
 
@@ -664,18 +746,27 @@ binary-common:
 	dh_installdocs
 	dh_installman
 	dh_installchangelogs
+	if [ -e $(MAINPKGDIR)/usr/share/doc/openoffice.org$(VER) ]; then \
+	 install -m644 ooo-build/ChangeLog \
+	   $(MAINPKGDIR)/usr/share/doc/openoffice.org/changelog.Ximian+Debian \
+	 && gzip -f9 \
+	   $(MAINPKGDIR)/usr/share/doc/openoffice.org/changelog.Ximian+Debian; \
+	fi
 ifeq ($(PO2DEBCONF),yes)
-	po2debconf -e utf8 debian/openoffice.org-bin.templates.master > debian/openoffice.org-bin.templates
+	po2debconf -e utf8 $(MAINPKGDIR)-bin.templates.master \
+		> $(MAINPKGDIR)-bin.templates
 endif
 	dh_installdebconf
 	dh_installmime
 	dh_installmenu
+	debian/scripts/installoverrides
 	dh_link
 	dh_strip
 	dh_compress
 	dh_fixperms
 	dh_installdeb
-	dh_shlibdeps -l debian/openoffice.org-bin/usr/lib/openoffice.org$(VER)/program $(SHLIBS_OVERRIDE)
+	dh_shlibdeps -l $(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program \
+		$(SHLIBS_OVERRIDE)
 	dh_gencontrol  -- -V'debconf-depends=debconf (>= $(MINDEBCONFVER))'
 	dh_md5sums
 	dh_builddeb
@@ -713,6 +804,7 @@ environment:
 	@echo '$$(CXX)' is "$(CXX)"
 	@echo '$$(BUILDCMD)' is "$(BUILDCMD)"
 	@echo '$$(BUILDFLAGS)' is "$(BUILDFLAGS)"
+	@echo '$$(DMAKEFLAGS)' is "$(DMAKEFLAGS)"
 	@echo '$$(SHLIBS_OVERRIDE)' is "$(SHLIBS_OVERRIDE)"
 
 	@echo 'See debian/control for build dependencies.'
@@ -720,9 +812,15 @@ environment:
 # -------------------------------------------------------
 # Miscellaneous targets used to do a few useful operations
 
+# Get the ximian packaging directory from gnome anoncvs
+get-ooo-build:
+	# press enter at the password prompt
+	cvs -d:pserver:anonymous@anoncvs.gnome.org:/cvs/gnome login
+	cvs -z3 -d:pserver:anonymous@anoncvs.gnome.org:/cvs/gnome co -d $(TOOLS_DIR) openoffice
+
 # Get latest patch files from Chris' repository
-PATCHNAME=000_postBeta2_stolen_from_ooo11rc
-PATCHDIR=openoffice/1.1beta
+PATCHNAME=000_prerc3_stolen_from_ooo11rc3
+PATCHDIR=openoffice/1.1rc3
 PATCHURL=http://people.debian.org/~halls/$(PATCHDIR)
 
 downloadpatch:
