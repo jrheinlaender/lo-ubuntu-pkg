@@ -28,8 +28,6 @@ OOVERSION="OpenOffice.org 1.0.1"
 ##
 [ -r /etc/openoffice/openoffice.conf ] && . /etc/openoffice/openoffice.conf
 
-## Previous dead installation?
-[ -d $HOME/.openoffice ] && echo "Warning: you have a user settings directory from 1.0.0 in ~/.openoffice - this is no longer used"
 ##
 ## where does OO live for this user ?
 ##
@@ -49,20 +47,6 @@ if [ -e ~/.sversionrc ] && grep -q "$OOVERSION" ~/.sversionrc ; then
     exit 1
   fi
 fi
-if [ -z $OOHOME ] ; then
-  if [ -e /etc/openoffice/autoresponse.conf ] && \
-    grep -q DESTINATIONPATH /etc/openoffice/autoresponse.conf ; then
-    # first install
-    OOHOME=`grep DESTINATIONPATH /etc/openoffice/autoresponse.conf | \
-           sed -e 's/DESTINATIONPATH=//' -e "s|<home>|$HOME|"`
-  else
-    echo "Damnit! I can't find OpenOffice's user files. Did you break"
-    echo "the /etc/openoffice/autoresponse.conf file manually ?"
-    echo "This file should contain DESTINATIONPATH"
-    exit 1
-  fi
-fi
-
 ##
 ## Unset SESSION_MANAGER if gnome-session is the session manager
 ## See http://www.openoffice.org/issues/show_bug.cgi?id=4494
@@ -79,13 +63,32 @@ fi
 ##
 ## install OO for this user if needed
 ##
-if [ ! -d $OOHOME ]; then
-  echo "running openoffice setup..."
-  if ! /usr/lib/openoffice/program/setup -R:/etc/openoffice/autoresponse.conf ; then
-    echo "setup failed.. abort"
+if [ -z "$OOHOME" ] ; then
+  if [ -e /etc/openoffice/autoresponse.conf ] && \
+    grep -q DESTINATIONPATH /etc/openoffice/autoresponse.conf ; then
+    # first install
+    OOHOME=`grep DESTINATIONPATH /etc/openoffice/autoresponse.conf | \
+           sed -e 's/DESTINATIONPATH=//' -e "s|<home>|$HOME|"`
+
+    if [ -d "$OOHOME" ]; then
+      echo "openoffice.org:  You have no entry for $OOVERSION in ~/.sversionrc, "
+      echo "yet the directory $OOHOME exists." 
+      echo "Please remove $OOHOME and try again."
+      exit 1
+    fi
+    echo "running openoffice.org setup..."
+    if ! /usr/lib/openoffice/program/setup -R:/etc/openoffice/autoresponse.conf ; then
+      echo "setup failed.. abort"
+      exit 1
+    fi
+    echo "Setup complete. Running openoffice.org..."
+ else
+    echo "openoffice.org: Damnit! I can't find OpenOffice's user files. Did you break"
+    echo "the /etc/openoffice/autoresponse.conf file manually ?"
+    echo "This file should contain DESTINATIONPATH"
     exit 1
   fi
-fi 
+fi
 
 ##
 ## Change the config files to conform to current locale used
@@ -151,17 +154,17 @@ if [ $LOCALE != $OLDLOCALE ] ; then
   
 fi # LOCALE != OLDLOCALE
 
+## Previous dead installation?
+[ -d $HOME/.openoffice ] && echo "Warning: you have a user settings directory from 1.0.0 in ~/.openoffice - this is no longer used"
 
 ##
 ## That's it. Launch the beast (with the given args)
 ##
-if [ "x$DEBUG" = "xyes" ] ; then
-  strace "$OOHOME/soffice" "$@"
-else
-  exec "$OOHOME/soffice" "$@"
-fi
+exec "$OOHOME/soffice" "$@"
 
 ## Changelog
+# 07/10 challs
+#   * use 1.0.1 directory and improve error checking
 # 07/02 challs
 #   * use readlink in /proc/PID/exe to get
 #     real session manager name
