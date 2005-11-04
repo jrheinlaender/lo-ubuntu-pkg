@@ -1,0 +1,112 @@
+#!/bin/sh
+# xvfb-run - run the specified command in a virtual X server
+
+# This script starts an instance of Xvfb, the "fake" X server, runs a
+# command with that server available, and kills the X server when
+# done.  The return value of the command becomes the return value of
+# this script.
+#
+# If anyone is using this to build a Debian package, make sure the
+# package Build-Depends on xvfb, xbase-clients and xfonts-base.
+
+DISPLAYNUM=99
+AUTHFILE=$(pwd)/Xauthority
+STARTWAIT=3
+LISTENTCP="-nolisten tcp"
+unset AUTODISPLAYNUM || true
+
+usage()
+{
+  echo "Usage: $0 [OPTION]... [command]"
+  echo
+  echo "run specified X client or command in a virtual X server environment"
+  echo
+  echo "  -a --auto-displaynum      Try to get a free display number, starting at --display-num"
+  echo "  -f --auth-file=FILE       File to store auth cookie (default:./Xauthority)"
+  echo "  -n --display-num=NUM      Display number to use (default:$DISPLAYNUM)"
+  echo "  -l --listen-tcp           Enable TCP port listening in the X server"
+  echo "  -w --wait=DELAY           Delay in seconds to wait for Xvfb to start (default:$STARTWAIT)"
+  echo "  -h --help                 Display this help and exit"
+}
+
+# Find free display number by looking at .X-lock files in /tmp
+find_free_display()
+{
+    i=$DISPLAYNUM
+    while [ -f /tmp/.X$i-lock ]; do
+      i=$(($i+1))
+    done
+    echo $i
+}
+
+# Parse command line
+ARGS=`getopt --options +af:n:lw:h \
+	--long auto-displaynum,authority-file:,display-num:,listen-tcp,wait:,help \
+	--name "$0" -- "$@"`
+if [ $? != 0 ] ; then echo "Terminating..." >&2 ; exit 1 ; fi
+
+eval set -- "$ARGS"
+while true ; do
+    case "$1" in
+      '-a'|'--auto-displaynum')
+      	    AUTODISPLAYNUM=y
+      	    ;;
+      '-f'|'--auth-file')
+	    AUTHFILE="$2"
+	    shift
+	    ;;
+      '-n'|'--display-num')
+	    DISPLAYNUM="$2"
+	    shift
+	    ;;
+      '-l'|'--listen-tcp')
+	    LISTENTCP=
+	    ;;
+      '-w'|'--wait')
+	    STARTWAIT="$2"
+	    shift
+	    ;;
+      '-h'|'--help')
+	    usage
+	    exit 1
+	    ;;
+      '--')
+	    # end of options
+	    shift
+	    break
+	    ;;
+      *)
+            echo "Internal error!"; exit 1;;
+    esac
+
+    shift
+done
+
+[ -n "$AUTODISPLAYNUM" ] && DISPLAYNUM=`find_free_display`
+
+rm -f "$AUTHFILE"
+MCOOKIE=$(mcookie)
+XAUTHORITY="$AUTHFILE" xauth add :$DISPLAYNUM . $MCOOKIE > /dev/null
+XAUTHORITY="$AUTHFILE" Xvfb :$DISPLAYNUM -screen 0 640x480x8 $LISTENTCP \
+	> /dev/null  &
+XVFBPID=$!
+sleep $STARTWAIT
+
+# Check that server has not exited
+if ! kill -0 $XVFBPID; then
+  echo "Xvfb server has died" >&2
+  exit 1
+fi
+
+# start the command and save its exit status
+echo $@
+DISPLAY=:$DISPLAYNUM XAUTHORITY="$AUTHFILE" $@ 2>&1
+RETVAL=$?
+
+# kill Xvfb and clean up
+kill $XVFBPID
+XAUTHORITY="$AUTHFILE" xauth remove :$DISPLAYNUM > /dev/null
+rm "$AUTHFILE"
+
+# return the executed command's exit status
+exit $RETVAL

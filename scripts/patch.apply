@@ -1,0 +1,42 @@
+#!/bin/sh
+
+#Setting ARCH- variable
+ARCH=`dpkg --print-gnu-build-architecture`
+
+. debian/scripts/vars
+
+[ ! -d debian/patches ] && exit
+
+mkdir -p $STAMP_DIR/patches $SOURCE_TREE
+
+#debian/patches/$ARCH contains the $ARCH-specific patches, 
+#which don't work on other $ARCHs
+
+for f in $(find debian/patches debian/patches/$ARCH -type f -not -name "*~" -maxdepth 1 | sort); do
+ stampfile=$STAMP_DIR/patches/$(basename $f)
+ if [ ! -e $stampfile ]; then
+  echo -n "Testing patch $f..."
+  case "$f" in
+   *.gz) cmd=zcat ;;
+   *.bz) cmd=bzcat ;;
+   *.bz2) cmd=bz2cat ;;
+   *) cmd=cat ;;
+  esac
+  if $cmd $f | (cd $SOURCE_TREE; patch -p1 --dry-run) > $stampfile.log; then
+   echo -n "OK.  applying..."
+   if $cmd $f | (cd $SOURCE_TREE; patch -p1) > $stampfile.log; then
+    echo "done."
+    touch $stampfile
+   else
+    echo "failed!"
+    exit 1
+   fi
+  else
+   echo "patch would fail."
+   echo "See $stampfile.log for details."
+   exit 1
+  fi
+ else
+  echo "Patch $f already applied."
+ fi
+done

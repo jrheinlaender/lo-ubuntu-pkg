@@ -1,0 +1,419 @@
+#!/usr/bin/make -f
+# Debian rules file for openoffice source package
+# Originally by Stephen Early <sde1000@debian.org>
+# Modified by Mark W. Eichin <eichin@kitten.gen.ma.us>
+# Modified by Adam Heath <doogie@debian.org>
+# Modified by Branden Robinson <branden@debian.org>
+# Modified by Peter Novodvorsky <nidd@debian.org>
+# Modified by Filip Van Raemdonck <mechanix@debian.org>
+# Modified by Jan-Hendrik Palic <jan.palic@linux-debian.de>
+# Copyright 1996-2001 Software in the Public Interest, Inc.
+# Licensed under the GNU General Public License, version 2.  See the file
+# /usr/share/common-licenses/GPL or <http://www.gnu.org/copyleft/gpl.txt>.
+# Acknowlegements to Branden Robinson, Stephen Early, Mark Eichin, and Manoj Srivastava.
+
+# Read in important variables.
+include debian/scripts/vars
+BUILD_DIR=$(SOURCE_DIR)/$(TAR_DIR)
+
+
+# default rule to keep things from going nuts by accident
+default: environment
+
+checksource: source.make
+	$(checksource_command)
+
+define checksource_command
+	# make sure all the patches applied cleanly
+	@if grep -v '^patch' debian/stampdir/patches/*.log; then echo "Some patches did not apply cleanly.  Please investigate." >&2; exit 1; fi
+	# yes, they did
+endef
+
+# Include Adam Heath's source archive/patch handling system.
+include debian/doogie-build-system
+
+# oh my God, this is a gross hack
+ELSE:=else
+
+# This is a horrendous kludge to ensure that some scripts we need are executable.
+DUMMY:=$(shell if [ ! -x debian/setperms ]; then chmod 755 debian/setperms; fi)
+DUMMY:=$(shell debian/setperms)
+
+#XDISPLAY:=$(shell debian/local/scripts/find-free-display)
+#export DISPLAY=$(XDISPLAY)
+export XAUTHORITY=
+
+# hacked xvfb-run automatically finds a display 
+# and checks that Xvfb didn't die
+XVFB=$(CURDIR)/debian/local/scripts/oo-xvfb-run -a -w 5
+
+# debhelper
+export DH_OPTIONS
+
+# Command for converting HTML to plain text.
+#HTML2TEXT=lynx -dump -nolist
+HTML2TEXT=html2text -nobs -style pretty
+
+# Get package version info.
+SOURCE_VERSION:=$(shell head -1 debian/changelog | cut -d\( -f2 | cut -d\) -f1)
+# Determine our architecture.
+BUILD_ARCH:=$(shell dpkg --print-gnu-build-architecture)
+# Work around some old-time dpkg braindamage.
+BUILD_ARCH:=$(subst i486,i386,$(BUILD_ARCH))
+# The DEB_HOST_ARCH variable may be set per the Debian cross-compilation policy.
+ifdef DEB_HOST_ARCH
+ ARCH:=$(DEB_HOST_ARCH)
+else
+ # dpkg-cross sets the ARCH environment variable; if set, use it.
+ ifdef ARCH
+  ARCH:=$(ARCH)
+ else
+  ARCH:=$(BUILD_ARCH)
+ endif
+endif
+
+# Read in architecture-specific variables of importance.
+include debian/scripts/vars.$(ARCH)
+
+# This is where the upstream install rules will put their stuff.
+DEBTREEDIR:=$(CURDIR)/debian/tmp
+OPENOFFICEDIR:=/usr/lib/openoffice
+PKGOPENOFFICEDIR:=$(DEBTREEDIR)/$(OPENOFFICEDIR)
+
+# Package build directories
+MAINPKGDIR:=$(CURDIR)/debian/openoffice.org
+
+# KDE integration
+KDEPKGDIR:=$(MAINPKGDIR)
+
+# Use GCC version 3? USE_GCC=3 in vars or vars.<arch>
+ifeq "$(USE_GCC3)" "y"
+  CC=gcc-3.0
+  CXX=g++-3.0
+  export CC CXX
+  GCC3 := --enable-gcc3
+  ifeq "$(ARCHBUILDDIR)" "unxlngi3.pro"
+    # Build directory is different for GCC3
+    ARCHBUILDDIR=unxlngi4.pro
+  endif
+else
+  CC=gcc-2.95
+  CXX=g++-2.95
+  GCC3 :=
+  export CC CXX
+endif
+
+# Use compiler cache?  Include ccache in DEB_BUILD_OPTIONS for fun :)
+ifeq (ccache,$(findstring ccache,$(DEB_BUILD_OPTIONS)))
+  CCACHE=ccache
+  CCACHE_LOGFILE=$(STAMP_DIR)/ccache.log
+  export CCACHE_LOGFILE
+else
+  CCACHE=
+endif
+
+
+# Because of the stampdir magic, when you actually want to run a rule
+# over, you would have to remove the stamp manually.  Now, just do
+# 'debian/rules <target> <target> ... FORCE=1', and the stamp files
+# that match the given targets will be removed automagically.
+stampdir_targets=build.prepare configure bootstrap dmake build 
+stampdir_targets+=setup install binary-arch binary-indep
+stampdir_targets+=source.make patchapply
+stampdir_targets+=source.build source.unpack fix.source.patch source.patch
+stampdir_targets+=unfix.source.patch
+ifdef FORCE
+ DUMMY:=$(shell rm -f $(patsubst %,$(STAMP_DIR)/%,$(filter $(stampdir_targets),$(MAKECMDGOALS))))
+endif
+
+# If this is defined, then none of the 'long' commands will be run.  Useful
+# for testing.
+# test_rules=1
+
+clean: source.clean
+	dh_testdir
+	rm -rf $(STAMP_DIR) $(DEBTREEDIR)
+	rm -f debian/*.postinst debian/*.postrm debian/*.preinst debian/*.prerm
+	
+	rm -rf debian/local/stlport-home
+	dh_clean
+
+# All 'important' targets have 2 lines.  The one that is run by
+# dpkg-buildpackage or the user, and the one that does the actual work.  This
+# indirection is needed so that the 'stamp' files that signify when a rule is
+# done can be located in a separate 'stampdir'.  Recall that make has no way to
+# know when a goal has been met for a phony target (like "build" or "install").
+#
+# At the end of each stampdir target, be sure to run the command 'touch $@'
+# so that the target will not be run again.  Removing the file will make
+# make run the target over.
+
+# Build step 1 - prepare source tree
+build.prepare: $(STAMP_DIR)/build.prepare
+$(STAMP_DIR)/build.prepare: $(STAMP_DIR)/source.make
+	dh_testdir
+
+	#rm -rf $(SOURCE_TREE)/external/gpc
+	
+	# making stlport home
+	
+	mkdir debian/local/stlport-home
+	ln -s /usr/include debian/local/stlport-home/include
+	ln -s /usr/lib debian/local/stlport-home/lib
+
+	# WorkArounds to fix the buildbugs 
+
+	#Workaround for buildbug in 641c
+	#mkdir -p $(SOURCE_TREE)/solver/$(BUILDNUM)/unxl
+	#mkdir -p $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/inc
+	#touch $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/inc/minormkchanged.flg
+	
+	#Workaround for builder on PPC belongs to mozilla codes
+	cp -rvf $(SOURCE_TREE)/moz/zipped/LINUXGCCIinc.zip $(SOURCE_TREE)/moz/zipped/LINUXGCCPinc.zip
+	cp -rvf $(SOURCE_TREE)/moz/zipped/LINUXGCCIlib.zip $(SOURCE_TREE)/moz/zipped/LINUXGCCPlib.zip
+	cp -rvf $(SOURCE_TREE)/moz/zipped/LINUXGCCIruntime.zip $(SOURCE_TREE)/moz/zipped/LINUXGCCPruntime.zip
+				
+	#mkdir -p $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/inc/external/gpc
+	#cp -f $(SOURCE_TREE)/external/gpc/gpc.c $(SOURCE_TREE)/external/gpc/gpc.h \
+	#	$(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/inc/external/gpc
+
+	#Workaround for missing libs with GCC3
+	mkdir -p $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/lib
+	cp -f /lib/libgcc_s.so.1* $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/lib
+	cp -f /usr/lib/libstdc++.so.3* $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/lib
+
+	#If using compiler cache, place links to ccache on the path before the compilers
+	if [ -n "$(CCACHE)" ];then \
+	  for I in gcc gcc-3.0 g++ g++-3.0 ; \
+	  do ln -sf "`which ccache`" $(SOURCE_TREE)/solenv/bin/$$I;done;\
+	fi
+
+	touch $@
+
+# Build step 2 - configure
+configure: $(STAMP_DIR)/configure
+$(STAMP_DIR)/configure: $(STAMP_DIR)/build.prepare
+	dh_testdir
+
+	# Remove config.cache so we always generate config again
+	rm -f $(SOURCE_TREE)/config_office/config.cache
+
+	cd $(SOURCE_TREE)/config_office && autoconf && sh ./configure $(GCC3) \
+	    --with-stlport4-home=$(CURDIR)/debian/local/stlport-home \
+	    --with-jdk-home=$(JDKHOME)
+	touch $@
+	
+
+# Build step 3 - bootstrap
+bootstrap: $(STAMP_DIR)/bootstrap
+$(STAMP_DIR)/bootstrap: $(STAMP_DIR)/configure
+	dh_testdir
+
+	cd $(SOURCE_TREE) && tcsh -c 'source $(ENVFILE); ./bootstrap'
+
+	#mkdir -p $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/inc/external/gpc
+	#mkdir -p $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/lib
+	#cp /usr/include/gpcl/gpc.h $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/inc/external/gpc
+	#cp /usr/lib/libgpcl*.so  $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/lib
+
+	touch $@
+
+# Build step 4 - dmake (build complete project)
+dmake: $(STAMP_DIR)/dmake
+$(STAMP_DIR)/dmake: $(STAMP_DIR)/bootstrap	
+	dh_testdir
+
+	set -e
+	# Start Xvfb and run dmake
+	cd $(SOURCE_TREE) && \
+	    tcsh -c 'source $(ENVFILE); $(XVFB) dmake'
+	 
+	touch $@
+	
+# Build step 4a - project (build individual project)
+# for an overview, see: 
+#	http://www.openoffice.org/dev_docs/source/build_linux.html#BuildingIndividualProjects
+# This target is not used by the main build, but may be useful to just build a troublesome project.
+# You need to specify a project like this:
+#   debian/rules buildprj PRJ=<module>
+PRJ=unknown-project
+# See http://tools.openoffice.org/modules.html for a list of modules that can be built.
+#
+# Warning - the command to run the solver may change, and the following line would have to be updated:
+SOLVER=$(CURDIR)/$(SOURCE_TREE)/solenv/bin/build.pl product=full
+
+buildprj: $(STAMP_DIR)/bootstrap
+	dh_testdir
+
+	# run dmake with xfvb-run
+	cd $(SOURCE_TREE) && \
+	    tcsh -c 'source $(ENVFILE); cd $(PRJ) &&	$(XVFB) $(SOLVER)'\
+	
+	-echo Project $(PRJ) build successful
+
+# Build step 5 - generate maintainer scripts
+build: $(STAMP_DIR)/build
+$(STAMP_DIR)/build: $(STAMP_DIR)/dmake
+	dh_testdir
+
+	# there is a problem that uno_writerdb.rdb does not exist, so setup does not work.
+	# This is a workaround
+	# TODO: file an issue about this
+	cp $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/bin/setup_services.rdb \
+	   $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/bin/uno_writerdb.rdb
+	zip -j -5 "f0_061" $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/bin/uno_writerdb.rdb
+	mv f0_061.zip $(SOURCE_TREE)/instsetoo/$(ARCHBUILDDIR)/$(BUILDLANG)/normal
+
+	# generate maintainer scripts
+	for FILE in debian/*.postinst.in debian/*.postrm.in debian/*.preinst.in debian/*.prerm.in; do \
+	  if [ -e "$$FILE" ]; then \
+	    MAINTSCRIPT=$$(echo $$FILE | sed 's/.in$$//'); \
+	    sed -n '1,/^#INCLUDE_SHELL_LIB#$$/p' < $$FILE | sed -e '/^#INCLUDE_SHELL_LIB#$$/d' > $$MAINTSCRIPT; \
+	    cat debian/shell-lib.sh >> $$MAINTSCRIPT; \
+	    sed -n '/^#INCLUDE_SHELL_LIB#$$/,$$p' < $$FILE | sed -e '/^#INCLUDE_SHELL_LIB#$$/d' >> $$MAINTSCRIPT; \
+	  fi; \
+	done
+	touch $@
+
+# Run openoffice setup for net install
+setup: $(STAMP_DIR)/setup
+$(STAMP_DIR)/setup: $(STAMP_DIR)/build
+	dh_testdir
+	dh_testroot
+	umask 022
+
+	# Packagers - if you are working on improving the .debs, you can
+	# rebuild them over and over like this:
+	# rm debian/stampdir/setup ; fakeroot debian/rules binary
+
+	rm -rf $(DEBTREEDIR) 
+	rm -f $(STAMP_DIR)/install.log
+	mkdir -p $(PKGOPENOFFICEDIR)
+
+	sed -e "s#@DESTDIR@#$(PKGOPENOFFICEDIR)#" \
+	    -e "s#@LOGFILE@#$(CURDIR)/$(STAMP_DIR)/install.log#" \
+		debian/local/rsfile.global.txt > debian/local/rsfile.txt
+
+	# Run OOo setup using response file.
+	$(XVFB) $(SOURCE_TREE)/instsetoo/$(ARCHBUILDDIR)/$(BUILDLANG)/normal/setup -v \
+				-R:$(CURDIR)/debian/local/rsfile.txt
+
+	rm -f debian/local/rsfile.txt
+
+	touch $@
+
+install: $(STAMP_DIR)/install
+$(STAMP_DIR)/install: $(STAMP_DIR)/setup
+	dh_testdir
+	dh_testroot
+	umask 022
+	
+	# compare manifests
+	(cd debian/tmp && find -type f | LC_ALL=C sort | cut -c3-) > debian/MANIFEST.$(ARCH).new
+	# confirm that the installed file list has not changed
+	if [ -e debian/MANIFEST.$(ARCH) ]; then \
+	  if ! cmp -s debian/MANIFEST.$(ARCH) debian/MANIFEST.$(ARCH).new; then \
+	    diff -u -0 debian/MANIFEST.$(ARCH) debian/MANIFEST.$(ARCH).new; \
+	    if [ -n "$$IGNORE_MANIFEST_CHANGES" ]; then \
+	      echo 'MANIFEST check failed; ignoring problem because \$$IGNORE_MANIFEST_CHANGES set' >&2; \
+	      echo 'Please ensure that the package maintainer has an up-to-date version of the' >&2; \
+	      echo 'MANIFEST.$(ARCH) file.' >&2; \
+	    $(ELSE) \
+	      echo 'MANIFEST check failed; please see debian/README' >&2; \
+	      exit 1; \
+	    fi; \
+	  fi; \
+	fi;
+
+	# Clear destinations so this target is idempotent
+	rm -rf $(KDEPKGDIR) $(MAINPKGDIR) debian/*.debhelper
+
+	# Move files around from openoffice locations to 
+	# debian-friendly locations
+
+	# KDE icons
+	#mkdir -p $(KDEPKGDIR)/usr/share/apps/openoffice.org
+	#cp -r $(PKGOPENOFFICEDIR)/share/kde/net/mimelnk/share/icons $(KDEPKGDIR)/usr/share/apps/openoffice.org
+
+	# mime .desktop files
+	#mkdir -p $(KDEPKGDIR)/usr/share/mimelnk/application
+	#cp -r $(PKGOPENOFFICEDIR)/share/kde/net/mimelnk/share/mimelnk/application \
+	#      $(KDEPKGDIR)/usr/share/mimelnk
+	
+	#cp -r $(PKGOPENOFFICEDIR)/share/kde/net/applnk $(KDEPKGDIR)/usr/share
+	# convert shortcuts
+	#for I in $(KDEPKGDIR)/usr/share/applnk/*/*.desktop ;do \
+	#    sed 's#Exec=".*\(/usr/lib/openoffice/.*\)"#Exec="\1"#' < "$$I" > "$$I.new" ;\
+	#    rm "$$I"; mv "$$I.new" "$$I" ;\
+	#done
+	
+	touch $@
+
+binary-indep: $(STAMP_DIR)/binary-indep
+$(STAMP_DIR)/binary-indep: DH_OPTIONS=-i
+$(STAMP_DIR)/binary-indep: $(STAMP_DIR)/build $(STAMP_DIR)/install
+	touch $@
+
+binary-arch: $(STAMP_DIR)/binary-arch
+$(STAMP_DIR)/binary-arch: DH_OPTIONS=-s
+$(STAMP_DIR)/binary-arch: $(STAMP_DIR)/build $(STAMP_DIR)/install
+	dh_testdir
+	dh_testroot
+	dh_movefiles
+ifeq "$(ARCH)" "i386"
+	cp -rf $(PKGOPENOFFICEDIR)/program/libmozab2.so $(MAINPKGDIR)/usr/lib/openoffice/program/libmozab2.so 
+	cp -rf $(PKGOPENOFFICEDIR)/program/libmozabdrv2.so $(MAINPKGDIR)/usr/lib/openoffice/program/libmozabdrv2.so 
+endif
+	
+	
+	dh_installdirs
+	
+	
+	install -m644 debian/local/rsfile.local.txt \
+		      debian/openoffice.org/etc/openoffice/autoresponse.conf
+	
+	install -m755 debian/local/ooffice debian/openoffice.org/usr/bin/openoffice
+	
+	for FILE in program/instdb.ins \
+		 share/config/registry/instance/org/openoffice/Setup.xml \
+		 share/config/registry/instance/org/openoffice/Office/Common.xml; do \
+	  sed -e 's#$(PKGOPENOFFICEDIR)#$(OPENOFFICEDIR)#g' debian/openoffice.org/$(OPENOFFICEDIR)/"$$FILE" > \
+							    debian/openoffice.org/$(OPENOFFICEDIR)/"$$FILE".new; \
+	  mv debian/openoffice.org/$(OPENOFFICEDIR)/"$$FILE".new \
+	     debian/openoffice.org/$(OPENOFFICEDIR)/"$$FILE"; \
+	done
+	
+	dh_installdocs
+	dh_undocumented
+	dh_installchangelogs
+	dh_installmime
+	dh_link
+	dh_strip
+	dh_compress
+	dh_fixperms
+	dh_shlibdeps
+	dh_gencontrol
+	dh_md5sums
+	dh_builddeb
+	
+	
+	touch $@
+
+binary: binary-arch binary-indep
+
+# Use 'debian/rules environment' to help debug architecture-related problems
+# with the rules file.
+environment:
+	
+	@echo 'Package build environment (not all variables may be set):'
+	@echo '$$(ARCH)' is "$(ARCH)"
+	@echo '$$(DEB_HOST_ARCH)' is "$(DEB_HOST_ARCH)"
+	@echo '$$(BUILD_ARCH)' is "$(BUILD_ARCH)"
+	@echo '$$(CURDIR)' is "$(CURDIR)"
+	@echo 'See debian/control for build dependencies.'
+
+
+.PHONY: default build install clean-debian clean binary-arch binary-indep binary
+.PHONY: default environment checksource
+
+# vim:set noet ai sts=8 sw=8 tw=0:

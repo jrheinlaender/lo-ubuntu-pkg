@@ -1,0 +1,65 @@
+#!/usr/bin/make -f
+# Debian rules file for XFree86
+# Originally by Stephen Early <sde1000@debian.org>
+# Modified by Mark W. Eichin <eichin@kitten.gen.ma.us>
+# Modified by Branden Robinson <branden@debian.org>
+# Complete overhaul by Adam Heath <doogie@debian.org>
+
+patchapply: debian/stampdir/patchapply
+debian/stampdir/patchapply: debian/stampdir/source.build
+	debian/scripts/patch.apply
+	touch $@
+	rm -f debian/stampdir/patchunapply
+
+patchunapply: debian/stampdir/patchunapply
+debian/stampdir/patchunapply: debian/stampdir/source.build
+	debian/scripts/patch.unapply
+	touch $@
+	rm -f debian/stampdir/patchapply
+
+.export: SOURCE_TREE
+
+#
+# The rules that really do the work all start with debian/stampdir/
+# This little trick allows us to use stamp files to keep us from
+# having to rerun long targets over and over.  It also puts
+# all stamp files in one place, for easy cleaning.
+#
+# If a stampdir rule depends on something else, be sure it is
+# another stampdir rule.  Depending on base rule won't work.
+#
+
+source.build: debian/stampdir/source.build
+debian/stampdir/source.build: debian/stampdir/source.unpack debian/stampdir/source.patch
+	touch $@
+
+source.clean: unfix.source.patch
+	rm -rf $(SOURCE_DIR) debian/stampdir/upstream debian/stampdir/patches
+	rm -f $(patsubst %,debian/stampdir/%,source.build source.make source.unpack fix.source.patch)
+
+source.make: debian/stampdir/source.make
+debian/stampdir/source.make: debian/stampdir/source.build debian/stampdir/patchapply
+	touch $@
+
+source.unpack: debian/stampdir/source.unpack
+debian/stampdir/source.unpack:
+	debian/scripts/source.unpack
+	touch $@
+
+source.patch: debian/stampdir/source.patch
+debian/stampdir/source.patch: debian/stampdir/source.unpack debian/stampdir/fix.source.patch
+	debian/scripts/source.patch
+	touch $@
+
+fix.source.patch: debian/stampdir/fix.source.patch
+debian/stampdir/fix.source.patch:
+	debian/scripts/fix.source.patch
+	touch $@
+
+unfix.source.patch: debian/stampdir/unfix.source.patch
+debian/stampdir/unfix.source.patch:
+	debian/scripts/unfix.source.patch
+	touch $@
+
+DIR_TARGETS+=debian/stampdir
+# STAMPDIR_TARGETS+=source.make source.unpack source.patch fix.source.patch unfix.source.patch patchunapply patchunapply
