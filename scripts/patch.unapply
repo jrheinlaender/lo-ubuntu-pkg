@@ -1,25 +1,35 @@
 #!/bin/sh
 
+ARCH=`dpkg --print-gnu-build-architecture`
+
 . debian/scripts/vars
 
 mkdir -p $STAMP_DIR/patches/
 
 [ -d debian/patches/$ARCH ] && ARCHDIR=debian/patches/$ARCH
-for f in $(find debian/patches $ARCHDIR -type f -name "*~" -maxdepth 1 | sort -r); do
+for f in $(find debian/patches $ARCHDIR -type f -not -name "*~" -maxdepth 1 | sort -r); do
  stampfile=$STAMP_DIR/patches/`basename $f`
  if [ -e $stampfile ]; then
-  echo -n "Reversing patch $f"
+  echo -n "Testing patch $f..."
   case "$f" in
-   *.gz) cmd=zcat ;;
-   *.bz) cmd=bzcat ;;
-   *.bz2) cmd=bz2cat ;;
-   *) cmd=cat ;;
+   *.gz) cmd=zcat parms= ;;
+   *.bz) cmd=bzcat parms= ;;
+   *.bz2) cmd=bz2cat parms= ;;
+   *.uu) cmd=uudecode parms="-o/dev/stdout" ;;
+   *) cmd=cat parms= ;;
   esac
-  if $cmd $f | (cd $PATCH_TREE; patch -R -p1) > $stampfile.log; then
-   echo " successful."
-   rm $stampfile
+  if $cmd $parms $f | (cd $SOURCE_TREE; patch -R -p1 --dry-run) > $stampfile.log; then
+   echo -n "OK.  Reversing..."
+   if $cmd $parms $f | (cd $SOURCE_TREE; patch -R -p1) > $stampfile.log; then
+     echo " done."
+     rm $stampfile
+   else
+    echo " failed!"
+    exit 1
+   fi
   else
-   echo " failed!"
+   echo "patch would fail."
+   echo "See $stampfile.log for details."
    exit 1
   fi
  else
