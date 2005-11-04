@@ -11,20 +11,21 @@ mkdir -p $STAMP_DIR/patches $SOURCE_TREE
 
 #debian/patches/$ARCH contains the $ARCH-specific patches, 
 #which don't work on other $ARCHs
-
-for f in $(find debian/patches debian/patches/$ARCH -type f -not -name "*~" -maxdepth 1 | sort); do
+[ -d debian/patches/$ARCH ] && ARCHDIR=debian/patches/$ARCH
+for f in $(find debian/patches $ARCHDIR -type f -not -name "*~" -maxdepth 1 | sort); do
  stampfile=$STAMP_DIR/patches/$(basename $f)
  if [ ! -e $stampfile ]; then
   echo -n "Testing patch $f..."
   case "$f" in
-   *.gz) cmd=zcat ;;
-   *.bz) cmd=bzcat ;;
-   *.bz2) cmd=bz2cat ;;
-   *) cmd=cat ;;
+   *.gz) cmd=zcat parms= ;;
+   *.bz) cmd=bzcat parms= ;;
+   *.bz2) cmd=bz2cat parms= ;;
+   *.uu) cmd=uudecode parms="-o/dev/stdout" ;;
+   *) cmd=cat parms= ;;
   esac
-  if $cmd $f | (cd $SOURCE_TREE; patch -p1 --dry-run) > $stampfile.log; then
+  if $cmd $parms $f | (cd $SOURCE_TREE; patch -p1 --dry-run) > $stampfile.log; then
    echo -n "OK.  applying..."
-   if $cmd $f | (cd $SOURCE_TREE; patch -p1) > $stampfile.log; then
+   if $cmd $parms $f | (cd $SOURCE_TREE; patch -p1) > $stampfile.log; then
     echo "done."
     touch $stampfile
    else

@@ -87,10 +87,12 @@ MAINPKGDIR:=$(CURDIR)/debian/openoffice.org
 # KDE integration
 KDEPKGDIR:=$(MAINPKGDIR)
 
-# Use GCC version 3? USE_GCC=3 in vars or vars.<arch>
+# Use GCC version 3? USE_GCC=3 in vars or vars.<arch>. 
+# Set GCC3VER in vars or vars.<arch> 
+# to 3.0 if you use gcc-3.0 oer 3.1, if you use gcc-3.1.
 ifeq "$(USE_GCC3)" "y"
-  CC=gcc-3.0
-  CXX=g++-3.0
+  CC=gcc-$(GCC3VER)
+  CXX=g++-$(GCC3VER)
   export CC CXX
   GCC3 := --enable-gcc3
   ifeq "$(ARCHBUILDDIR)" "unxlngi3.pro"
@@ -149,7 +151,13 @@ debian/control: debian/control.in debian/control.lang.in
 	for LNUM in `debian/local/openoffice-xlate-lang -p all ` ; do \
 	    LNAME=`debian/local/openoffice-xlate-lang -l $$LNUM | tr A-Z a-z`; \
 	    LCODE=`debian/local/openoffice-xlate-lang -i $$LNUM | tr A-Z a-z`; \
-	    sed -e "s|@LNAME@|$$LNAME|g" -e "s|@LCODE@|$$LCODE|g" >> debian/control < debian/control.lang.in; \
+	    SUGGESTS=; \
+	    case $$LCODE in \
+	      de) SUGGESTS="openoffice.org-spellcheck-de-de,openoffice.org-spellcheck-de-at,openoffice.org-spellcheck-de-ch";;\
+	    esac; \
+	    sed -e "s|@LNAME@|$$LNAME|g" -e "s|@LCODE@|$$LCODE|g" \
+	        -e "s|@SUGGESTS@|$$SUGGESTS|g" \
+	        >> debian/control < debian/control.lang.in; \
 	done
 
 .DELETE_ON_ERROR: debian/control
@@ -185,10 +193,9 @@ $(STAMP_DIR)/build.prepare: $(STAMP_DIR)/source.make
 	#touch $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/inc/minormkchanged.flg
 
 	#Workaround for builder on PPC belongs to mozilla codes
-	cp -rvf $(SOURCE_TREE)/moz/zipped/LINUXGCCIinc.zip $(SOURCE_TREE)/moz/zipped/LINUXGCCPinc.zip
-	cp -rvf $(SOURCE_TREE)/moz/zipped/LINUXGCCIlib.zip $(SOURCE_TREE)/moz/zipped/LINUXGCCPlib.zip
-	cp -rvf $(SOURCE_TREE)/moz/zipped/LINUXGCCIruntime.zip $(SOURCE_TREE)/moz/zipped/LINUXGCCPruntime.zip
-
+ifeq "$(ARCH)" "powerpc"
+	cp -rvf ../mozlibs/* $(SOURCE_TREE)/moz/zipped/
+endif
 	#mkdir -p $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/inc/external/gpc
 	#cp -f $(SOURCE_TREE)/external/gpc/gpc.c $(SOURCE_TREE)/external/gpc/gpc.h \
 	#	$(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/inc/external/gpc
@@ -199,7 +206,7 @@ $(STAMP_DIR)/build.prepare: $(STAMP_DIR)/source.make
 
 	#If using compiler cache, place links to ccache on the path before the compilers
 	if [ -n "$(CCACHE)" ];then \
-	  for I in gcc gcc-3.0 g++ g++-3.0 ; \
+	  for I in gcc gcc-3.0 gcc-3.1 g++ g++-3.0 g++-3.1 ; \
 	  do ln -sf "`which ccache`" $(SOURCE_TREE)/solenv/bin/$$I;done;\
 	fi
 

@@ -20,21 +20,23 @@
 # along with this program; if not, write to the Free Software                  
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA      
 
-# this string should be exactly as in ~/.sversion
-OOVERSION="OpenOffice.org 1.0"
+# this string should be exactly as in ~/.sversionrc
+OOVERSION="OpenOffice.org 1.0.1"
 
 ##
 ## Source system configuration file
 ##
 [ -r /etc/openoffice/openoffice.conf ] && . /etc/openoffice/openoffice.conf
 
+## Previous dead installation?
+[ -d $HOME/.openoffice ] && echo "Warning: you have a user settings directory from 1.0.0 in ~/.openoffice - this is no longer used"
 ##
 ## where does OO live for this user ?
 ##
 OOHOME=""
 if [ -e ~/.sversionrc ] && grep -q "$OOVERSION" ~/.sversionrc ; then
   # already installed for this user (warning, .sversionrc is DOS encoded)
-  OOHOME=`grep "$OOVERSION" ~/.sversionrc| \
+  OOHOME=`grep "^$OOVERSION=" ~/.sversionrc| \
           sed "s|^$OOVERSION=file://||"  | \
 	  xargs echo`
   if [ ! -e $OOHOME ] ; then
@@ -62,6 +64,19 @@ if [ -z $OOHOME ] ; then
 fi
 
 ##
+## Unset SESSION_MANAGER if gnome-session is the session manager
+## See http://www.openoffice.org/issues/show_bug.cgi?id=4494
+##
+SMPID=`echo $SESSION_MANAGER | sed --quiet "s,local.*/,,p"`
+if [ -n "$SMPID" ] && [ -L /proc/"$SMPID"/exe ]; then
+  SESMGR="`readlink -f /proc/$SMPID/exe`"
+  if [ "$SESMGR" = "/usr/bin/gnome-session" ]; then
+      echo "Gnome session manager detected - session management disabled"
+      unset SESSION_MANAGER
+  fi
+fi
+
+##
 ## install OO for this user if needed
 ##
 if [ ! -d $OOHOME ]; then
@@ -84,7 +99,7 @@ SETUPFILE="$OOHOME/user/config/registry/instance/org/openoffice/Setup.xml"
 # Search the right locale
 OLDLOCALE=""
 if [ -e $LINGFILE ] ; then
-  OLDLOCALE=`grep DefaultLocale $LINGFILE|sed 's/<[^>]*>//g'|sed 's/[[:blank:]]//g'`
+  OLDLOCALE=`grep 'DefaultLocale cfg' $LINGFILE|sed 's/<[^>]*>//g'|sed 's/[[:blank:]]//g'`
 fi 
 if [ -z $OLDLOCALE ]; then  OLDLOCALE="en-US";  fi
 if [ "x$OLDLOCALE" = "xC" ]; then  OLDLOCALE="en-US";  fi
@@ -136,16 +151,6 @@ if [ $LOCALE != $OLDLOCALE ] ; then
   
 fi # LOCALE != OLDLOCALE
 
-# Unset SESSION_MANAGER if gnome-session is the session manager
-# See http://www.openoffice.org/issues/show_bug.cgi?id=4494
-SMPID=`echo $SESSION_MANAGER | sed --quiet "s,local.*/,,p"`
-if [ -n "$SMPID" ]; then
-  if ps -p$SMPID -ocmd --no-heading | grep -q "^[^ ]*gnome-session"; then
-      echo "Gnome session manager detected - session management disabled"
-      unset SESSION_MANAGER
-  fi
-fi
-
 
 ##
 ## That's it. Launch the beast (with the given args)
@@ -157,6 +162,9 @@ else
 fi
 
 ## Changelog
+# 07/02 challs
+#   * use readlink in /proc/PID/exe to get
+#     real session manager name
 # 06/12 challs
 #   * merge into main package
 #   * change $@ to "$@"
