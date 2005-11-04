@@ -13,6 +13,7 @@
 # Modified by Filip Van Raemdonck <mechanix@debian.org>
 # Modified by Jan-Hendrik Palic <jan.palic@linux-debian.de>
 # Modified by Chris Halls <chris.halls@gmx.de>
+# Modified by Rene Engelhard <rene@debian.org>
 # Copyright 1996-2001,2002 Software in the Public Interest, Inc.
 # Licensed under the GNU General Public License, version 2.  See the file
 # /usr/share/common-licenses/GPL or <http://www.gnu.org/copyleft/gpl.txt>.
@@ -67,7 +68,23 @@ ARCH := $(shell dpkg-architecture -qDEB_HOST_ARCH)
 include debian/scripts/vars.$(ARCH)
 
 # include variable -- where is Java? ;)
-JDK_HOME := $(shell debian/scripts/detect_java.sh)
+ifneq (jdkhome=,$(findstring jdkhome=,$(DEB_BUILD_OPTIONS)))
+  JDK_HOME := $(shell debian/scripts/detect_java.sh)
+else
+  JDK_HOME:=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*jdkhome=\([^,]*\),.*/\1/p')
+endif
+
+# if nolangpacks is specified in DEB_BUILD_OPTIONS, the OOo build will be configured not
+# to generate any extra language sets.  This saves a lot of disk space.
+# Only works if building binary-arch.
+ifeq (debug,$(findstring nolangpacks,$(DEB_BUILD_OPTIONS)))
+   BUILD_PL_FLAGS+= debug=yes
+   CREATE_LANGPACKS=n
+else
+   CONFIGURE_LANG=--with-lang=ALL
+   CREATE_LANGPACKS=y
+endif
+
 
 # This is where the upstream install rules will put their stuff.
 DEBTREEDIR:=$(CURDIR)/debian/tmp
@@ -77,24 +94,13 @@ PKGOPENOFFICEDIR:=$(DEBTREEDIR)/$(OPENOFFICEDIR)
 # Package install directory
 MAINPKGDIR:=$(CURDIR)/debian/openoffice.org
 
-# Use GCC version 3? USE_GCC=3 in vars or vars.<arch>. 
-# Set GCC3VER in vars or vars.<arch> 
-# to 3.0 if you use gcc-3.0 oer 3.1, if you use gcc-3.1.
-ifeq "$(USE_GCC3)" "y"
-  # we can't use 'CC' - it confuses dpkg, so use _CC and pass CC to configure.  CXX is OK.
+ifeq "$(GCC3VER)" ""
+  _CC=gcc
+  CXX=g++
+else
+  # use specific compiler version
   _CC=gcc-$(GCC3VER)
   CXX=g++-$(GCC3VER)
-  export CXX
-  GCC3 := --enable-gcc3
-  ifeq "$(ARCHBUILDDIR)" "unxlngi3.pro"
-    # Build directory is different for GCC3
-    ARCHBUILDDIR=unxlngi4.pro
-  endif
-else
-  _CC=gcc-2.95
-  CXX=g++-2.95
-  GCC3 :=
-  export CXX
 endif
 
 # Default build.pl flags
@@ -105,8 +111,7 @@ else
   BUILD_PL_FLAGS=-all
 endif
 
-
-BUILD_PL_DMAKEFLAGS=product=full
+BUILD_PL_DMAKEFLAGS=
 PARALLEL=
 
 #if debug is set into DEB_BUILD_OPTIONS, debug=yes will added to buildprj, so you can
@@ -263,8 +268,7 @@ endif
 	#  do ln -sf "`which ccache`" $(SOURCE_TREE)/solenv/bin/$$I;done;\
 	#fi
 
-	# OK, If we want to use the new bison-1.35 package in sid we need
-	# this hack
+	# Bison-1.875 has problems, so use bison-1.35 if installed 
 	if [ -x /usr/bin/bison-1.35 ]; then ln -sf "`which bison-1.35`" \
 		$(SOURCE_TREE)/solenv/bin/bison; fi
 	
@@ -279,16 +283,18 @@ $(STAMP_DIR)/configure: $(STAMP_DIR)/build.prepare
 	dh_testdir
 
 	# Make sure we have a valid JDK.  If this test fails, please install the JDK
-	# package (j2sdk1.3), or add the path to debian/scripts/detect_java.sh
-	test -d $(JDK_HOME)
+	# package (j2sdk1.3), or add the path to debian/scripts/detect_java.sh,
+	# or specify a JDK location with DEB_BUILD_OPTIONS=jdkhome=/absolute/path/to/jdk
+	test -x /$(JDK_HOME)/bin/javac
 
 	# Remove config.cache so we always generate config again
 	rm -f $(SOURCE_TREE)/config_office/config.cache
 
-	export CC="$(_CC)" ; cd $(SOURCE_TREE)/config_office && autoconf && \
-	  sh ./configure $(GCC3) \
-	    --with-lang=ALL \
-	    --with-jdk-home=$(JDK_HOME)
+	cd $(SOURCE_TREE)/config_office && autoconf && \
+	  CC="$(_CC)" CXX="$(CXX)" sh ./configure \
+            $(CONFIGURE_LANG) \
+	    --with-jdk-home=$(JDK_HOME) \
+	    < /dev/null
 #	    --with-stlport4-home=$(CURDIR)/debian/local/stlport-home 
 	touch $@
 	
@@ -298,7 +304,7 @@ bootstrap: $(STAMP_DIR)/bootstrap
 $(STAMP_DIR)/bootstrap: $(STAMP_DIR)/configure
 	dh_testdir
 
-	export CC="$(_CC)" ; cd $(SOURCE_TREE) && tcsh -c 'source $(ENVFILE); ./bootstrap'
+	cd $(SOURCE_TREE); ./bootstrap
 
 	# Copy files needed when building with libgpc (this is non-free and
 	# therefore not part of the official Debian packages)
@@ -316,9 +322,8 @@ $(STAMP_DIR)/instsetoo: $(STAMP_DIR)/bootstrap
 
 	rm -rf $(SOURCE_TREE)/instsetoo/$(ARCHBUILDDIR)
 
-	echo DISTCC_HOSTS:$(DISTCC_HOSTS)
-	export CC="$(_CC)" ; cd $(SOURCE_TREE) && \
-	    tcsh -c 'source $(ENVFILE); cd instsetoo &&	$(BUILDCMD)'
+	#echo DISTCC_HOSTS:$(DISTCC_HOSTS)
+	. $(SOURCE_TREE)/$(ENVFILE); cd $(SOURCE_TREE)/instsetoo && $(BUILDCMD)
 
 	touch $@
 
@@ -335,8 +340,8 @@ buildprj: $(STAMP_DIR)/bootstrap
 	dh_testdir
 
 	# run dmake with xfvb-run
-	export CC="$(_CC)" ; cd $(SOURCE_TREE) && \
-	    tcsh -c 'source $(ENVFILE); cd $(PRJ) &&	$(XVFB) $(BUILDCMD)'
+	. $(SOURCE_TREE)/$(ENVFILE); \
+	  cd $(SOURCE_TREE)/$(PRJ) && $(XVFB) $(BUILDCMD)
 
 	-echo Project $(PRJ) build successful
 
@@ -597,8 +602,22 @@ environment:
 	@echo '$$(CURDIR)' is "$(CURDIR)"
 	@echo 'See debian/control for build dependencies.'
 
+# Get latest patch files from Chris' repository
+PATCHNAME=000_pre102_stolen_from_STABLE1
+PATCHURL=http://people.debian.org/~halls/openoffice/stable1
+
+downloadpatch:
+	wget -O - $(PATCHURL)/$(PATCHNAME).diff.bz2 | bunzip2 -c > debian/patches/$(PATCHNAME).diff
+	wget -O - $(PATCHURL)/$(PATCHNAME)-binaries.diff.uu.bz2 | bunzip2 -c > debian/patches/$(PATCHNAME)-binaries.diff.uu
+
+# If you are a Debian developer, you can save some bandwidth by using rsync instead of wget:
+rsyncpatch:
+	rsync -vL -e ssh \
+	   gluck.debian.org:/home/halls/public_html/openoffice/stable1/$(PATCHNAME).diff \
+	   debian/patches
+	wget -O - $(PATCHURL)/$(PATCHNAME)-binaries.diff.uu.bz2 | bunzip2 -c > debian/patches/$(PATCHNAME)-binaries.diff.uu
 
 .PHONY: default build install clean-debian clean binary-arch binary-indep binary
-.PHONY: default environment checksource control instsetoo
+.PHONY: default environment checksource control instsetoo downloadpatch rsyncpatch
 
 # vim:set noet ai sts=8 sw=8 tw=0:

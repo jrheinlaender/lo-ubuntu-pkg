@@ -9,7 +9,7 @@ trap "message;\
 HOOKFILE=/usr/lib/openoffice.org-debian-files/install-hook
 
 if [ -x $HOOKFILE ]; then
-  $HOOKFILE  $THIS_PACKAGE $THIS_SCRIPT "$@"
+  $HOOKFILE $THIS_SCRIPT $THIS_PACKAGE "$@"
 fi
 
 #DEBHELPER#
