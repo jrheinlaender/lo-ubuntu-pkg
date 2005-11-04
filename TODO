@@ -7,6 +7,8 @@
 02. We have a report about ugly fonts after installation. We have not yet
     investigated this problem to find a fix.
     We need to look at SAL_FONT_PATH variable.
+    Also, see the font troubleshooting FAQ at
+    http://www.openoffice.org/files/documents/16/63/FontTroubleshooting-v2.pdf
     
 03. Where should the configuration files go?
     Tim Wheeler pointed out, that the splash screen should be disabled.
@@ -17,6 +19,8 @@
     The name of the dir in /etc could be changed to openoffice.org :)
     
     I'm not really sure that it is splashscreen that makes a load. --Nidd.
+    The splash screen does not cause the load, but it stays in front of other
+    windows while Openoffice.org is loading... --Chris
 
 04. Tim Wheeler also mentioned:
     I had to add /usr/lib/openoffice/program to /etc/ld.so.conf so that i
@@ -35,23 +39,21 @@
 05. OpenOffice.org ready for debian main?
 
     Peter Novodvorski is working on patches for two problems that will let
-    OpenOffice.org be put into main. The problems we have are two
-    build dependencies: Java 1.3.1 and libgcpl0. Both packages
-    are non-free, which means that currently OpenOffice.org can only be
-    uploaded to contrib.  Since Openoffice.org is due to release 1.0 in the
-    next week or so, we will not be able to get rid of these in time for the
-    release.  Hopefully it will be possible to announce Openoffice.org for
-    main soon :)
-    gpc patch is already in CVS --Nidd.
-    it is in the 1.0 .deb :) --Chris
+    OpenOffice.org be put into main.  He has created a Java removal patch, but
+    Chris has not yet had time to test and integrate it into the package.
+    
+    The problems we have are two build dependencies: Java 1.3.1 and libgcpl0.
+    Both packages are non-free, which means that currently OpenOffice.org can
+    only be uploaded to contrib.  The gpcl dependency has been removed.
+    Unfortunately, that means that 3D filled polygons do not print with our
+    packages.
 
 07. Upload OpenOffice.org to debian experimental?
 
     If we decide to upload OpenOffice.org to experimental, we have the
     advantage of the debian-BTS for handling bugs.  But we are not ready to
-    do this yet.
-    So, please, if you have some reports, bugs or issues, mail them to
-    debian-openoffice@lists.debian.org.
+    do this yet.  However, we are using the PTS to track bugs that are filed to
+    the Debian BTS.
 
 08. Problems with setup
     The openoffice script tries to start setup if it has not already been
@@ -61,19 +63,27 @@
     Will work on this. --Nidd.
 
 09. Other languages.  See http://lang.openoffice.org
-    There is simple support for building .debs for other supported languages
-    by changing the language number in debian/scripts/vars:
-    
-    BUILDLANG=01
-    
-    Change 01 to the country code for the language that you wish to build
-    for, e.g. 49 for German, then rebuild the deb.
-    We need to improve this process so that several languages can be built at
-    once, and .debs with different names generated.
-    You also need to edit /etc/openoffice/autoresponse.conf and change
-    LAGUAGELIST=01 to your language code.
 
-    It appears the language files are in <openoffice-root>/program/resource.
+    Several language packs have been built, but the language is not yet
+    automatically changed.
+
+    There still seem to be some problems with the language pack generation.  In
+    particular, I spotted these files that don't get put in the language packs;
+    I added them to the install list for the openoffice.org package, but only
+    the English language files:
+
+    usr/lib/openoffice/program/resource/iso64101.res
+    usr/lib/openoffice/share/wordbook/english/sun.dic
+    usr/lib/openoffice/share/wordbook/english/th_en_US.dat
+    usr/lib/openoffice/share/wordbook/english/th_en_US.idx
+    usr/lib/openoffice/user/wordbook/en_US.aff
+    usr/lib/openoffice/user/wordbook/en_US.dic
+    usr/lib/openoffice/user/wordbook/hyph_da.dic
+    usr/lib/openoffice/user/wordbook/hyph_de.dic
+    usr/lib/openoffice/user/wordbook/hyph_en.dic
+    usr/lib/openoffice/user/wordbook/hyph_ru.dic
+
+    So foreign language dictionaries are not yet available in the .debs.
 
 11. Problems with S3 Savage chip
     If you are running XFree86 4.x and have an S3 Savage chip, you must use
@@ -93,7 +103,12 @@
     The desktop integration has not yet been done.  The files are not put
     into the correct places yet.
 
-    There are details of the steps needed here:
+    We have removed the icons for now, because they were causing many errors
+    during user setup.  John Cooper has already created menu and mime entries -
+    install the Debian menu package to see the menu entries.  Mandrake have
+    improved the integration in their packages; we will be able to adapt that
+    for our use in a future version.
+
     http://installation.openoffice.org/how_to_repackage_oo.html
 
 13. ODBC libraries
@@ -102,19 +117,6 @@
 
     http://bugs.debian.org/138453
 
-14. Breaking up openoffice.org?
-    The package is currently the biggest in Debian to date!  We will look at
-    breaking the package into smaller pieces, but there will probably still
-    be quite a large openoffice.org-core package (100-180MB unpacked?) that is
-    needed whichever application is installed.
-
-    A tip from http://installation.openoffice.org/how_to_repackage_oo.html:
-
-    To split the file list into two, you should include all files in
-    <path-to-openoffice-root>/program/resource  and the
-    <path-to-openoffice-root>/share tree into  the language package list and
-    the rest into the binary package list.
-
 15. libstlport4.5
     On i386 architecture, the libstlport shared library that is needed for
     Openoffice.org must be compiled with gcc 3, due to the ABI change.  This
@@ -122,3 +124,19 @@
     conflicts with the libstlport built with gcc 2.95, which means you cannot
     install Openoffice.org and packages that depend on libstlport4.5
     (libboost-xxx).  We need to change the soname for this library.        
+
+16. Remove libraries from the package which are already available in Debian.
+
+17. There are some warning messages which are fairly harmless, but can be
+    confusing when trying to locate other problems:
+
+    sh: /usr/sbin/lpc: No such file or directory
+    sh: lpc: command not found
+    sh: lpstat: command not found
+
+    Also: chkfontpath
+
+18. Gnome session manager problem - OOo shuts down spontaneously
+    http://www.openoffice.org/issues/show_bug.cgi?id=4494
+    There is a workaround in the openoffice script which unsets SESSION_MANAGER
+    if gnome-session is the session manager.

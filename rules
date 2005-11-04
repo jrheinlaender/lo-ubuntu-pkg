@@ -43,12 +43,13 @@ DUMMY:=$(shell debian/setperms)
 #export DISPLAY=$(XDISPLAY)
 export XAUTHORITY=
 
-# hacked xvfb-run automatically finds a display 
+# hacked xvfb-run automatically finds a display
 # and checks that Xvfb didn't die
 XVFB=$(CURDIR)/debian/local/scripts/oo-xvfb-run -a -w 5
 
 # debhelper
 export DH_OPTIONS
+export DH_ALWAYS_EXCLUDE=CVS
 
 # Command for converting HTML to plain text.
 #HTML2TEXT=lynx -dump -nolist
@@ -134,9 +135,24 @@ clean: source.clean
 	dh_testdir
 	rm -rf $(STAMP_DIR) $(DEBTREEDIR)
 	rm -f debian/*.postinst debian/*.postrm debian/*.preinst debian/*.prerm
-	
 	rm -rf debian/local/stlport-home
+	# Regenerate control file if necessary
+	$(MAKE) -f debian/rules control
 	dh_clean
+
+# Generate control file, because we have so many different languages
+# Based on script by Martin Quinson <Martin.Quinson@tuxfamily.org>
+control: debian/control
+debian/control: debian/control.in debian/control.lang.in
+	cat > debian/control < debian/control.in
+
+	for LNUM in `debian/local/openoffice-xlate-lang -p all ` ; do \
+	    LNAME=`debian/local/openoffice-xlate-lang -l $$LNUM | tr A-Z a-z`; \
+	    LCODE=`debian/local/openoffice-xlate-lang -i $$LNUM | tr A-Z a-z`; \
+	    sed -e "s|@LNAME@|$$LNAME|g" -e "s|@LCODE@|$$LCODE|g" >> debian/control < debian/control.lang.in; \
+	done
+
+.DELETE_ON_ERROR: debian/control
 
 # All 'important' targets have 2 lines.  The one that is run by
 # dpkg-buildpackage or the user, and the one that does the actual work.  This
@@ -154,33 +170,32 @@ $(STAMP_DIR)/build.prepare: $(STAMP_DIR)/source.make
 	dh_testdir
 
 	#rm -rf $(SOURCE_TREE)/external/gpc
-	
+
 	# making stlport home
-	
+
 	mkdir debian/local/stlport-home
 	ln -s /usr/include debian/local/stlport-home/include
 	ln -s /usr/lib debian/local/stlport-home/lib
 
-	# WorkArounds to fix the buildbugs 
+	# WorkArounds to fix the buildbugs
 
 	#Workaround for buildbug in 641c
 	#mkdir -p $(SOURCE_TREE)/solver/$(BUILDNUM)/unxl
 	#mkdir -p $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/inc
 	#touch $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/inc/minormkchanged.flg
-	
+
 	#Workaround for builder on PPC belongs to mozilla codes
 	cp -rvf $(SOURCE_TREE)/moz/zipped/LINUXGCCIinc.zip $(SOURCE_TREE)/moz/zipped/LINUXGCCPinc.zip
 	cp -rvf $(SOURCE_TREE)/moz/zipped/LINUXGCCIlib.zip $(SOURCE_TREE)/moz/zipped/LINUXGCCPlib.zip
 	cp -rvf $(SOURCE_TREE)/moz/zipped/LINUXGCCIruntime.zip $(SOURCE_TREE)/moz/zipped/LINUXGCCPruntime.zip
-				
+
 	#mkdir -p $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/inc/external/gpc
 	#cp -f $(SOURCE_TREE)/external/gpc/gpc.c $(SOURCE_TREE)/external/gpc/gpc.h \
 	#	$(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/inc/external/gpc
 
-	#Workaround for missing libs with GCC3
-	mkdir -p $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/lib
-	cp -f /lib/libgcc_s.so.1* $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/lib
-	cp -f /usr/lib/libstdc++.so.3* $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/lib
+	#Workaround for xml files
+	mkdir -p $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/xml
+	cp -r debian/local/office $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/
 
 	#If using compiler cache, place links to ccache on the path before the compilers
 	if [ -n "$(CCACHE)" ];then \
@@ -200,7 +215,8 @@ $(STAMP_DIR)/configure: $(STAMP_DIR)/build.prepare
 
 	cd $(SOURCE_TREE)/config_office && autoconf && sh ./configure $(GCC3) \
 	    --with-stlport4-home=$(CURDIR)/debian/local/stlport-home \
-	    --with-jdk-home=$(JDKHOME)
+	    --with-lang=ALL \
+	    --with-jdk-home=$(JDK_HOME)
 	touch $@
 	
 
@@ -228,6 +244,8 @@ $(STAMP_DIR)/dmake: $(STAMP_DIR)/bootstrap
 	cd $(SOURCE_TREE) && \
 	    tcsh -c 'source $(ENVFILE); $(XVFB) dmake'
 	 
+	# This target also created the installation set
+	touch $(STAMP_DIR)/instsetoo
 	touch $@
 	
 # Build step 4a - project (build individual project)
@@ -247,12 +265,27 @@ buildprj: $(STAMP_DIR)/bootstrap
 
 	# run dmake with xfvb-run
 	cd $(SOURCE_TREE) && \
-	    tcsh -c 'source $(ENVFILE); cd $(PRJ) &&	$(XVFB) $(SOLVER)'\
+	    tcsh -c 'source $(ENVFILE); cd $(PRJ) &&	$(XVFB) $(SOLVER)'
 	
 	-echo Project $(PRJ) build successful
 
+# Build step 4b - instsetoo (build installation set)
+# this is normally part of the dmake target, but if an individual project is built or the contents
+# of insetsetoo removed, this will rebuild the installation sets
+instsetoo: $(STAMP_DIR)/instsetoo
+$(STAMP_DIR)/instsetoo: $(SOURCE_TREE)/instsetoo/$(ARCHBUILDDIR)/$(BUILDLANG)/normal/setup.ins
+	dh_testdir
+
+	# Remove all installation sets
+	rm -rf $(SOURCE_TREE)/instsetoo/$(ARCHBUILDDIR)
+
+	cd $(SOURCE_TREE) && \
+	    tcsh -c 'source $(ENVFILE); cd instsetoo &&	$(SOLVER)'
+	touch $@	
+
+#
 # Build step 5 - generate maintainer scripts
-build: $(STAMP_DIR)/build
+build: $(STAMP_DIR)/build $(STAMP_DIR)/instsetoo
 $(STAMP_DIR)/build: $(STAMP_DIR)/dmake
 	dh_testdir
 
@@ -281,12 +314,13 @@ $(STAMP_DIR)/setup: $(STAMP_DIR)/build
 	dh_testdir
 	dh_testroot
 	umask 022
+	dh_clean -k
 
 	# Packagers - if you are working on improving the .debs, you can
-	# rebuild them over and over like this:
-	# rm debian/stampdir/setup ; fakeroot debian/rules binary
+	# run setup and rebuild over and over like this:
+	# rm debian/stampdir/setup ; dpkg-buildpackage -nc -rfakeroot
 
-	rm -rf $(DEBTREEDIR) 
+	rm -rf $(DEBTREEDIR)
 	rm -f $(STAMP_DIR)/install.log
 	mkdir -p $(PKGOPENOFFICEDIR)
 
@@ -302,12 +336,21 @@ $(STAMP_DIR)/setup: $(STAMP_DIR)/build
 
 	touch $@
 
+# Install files generated by setup into package directories
 install: $(STAMP_DIR)/install
 $(STAMP_DIR)/install: $(STAMP_DIR)/setup
 	dh_testdir
 	dh_testroot
 	umask 022
-	
+
+	# Remove package directories
+	rm -rf debian/openoffice.org debian/openoffice.org-bin
+	for ext in `debian/local/openoffice-xlate-lang -i all|tr A-Z a-z` ; do \
+	  rm -rf scripts/openoffice.org-l10n-$$ext;\
+	done
+
+	dh_installdirs
+
 	# compare manifests
 	(cd debian/tmp && find -type f | LC_ALL=C sort | cut -c3-) > debian/MANIFEST.$(ARCH).new
 	# confirm that the installed file list has not changed
@@ -326,9 +369,9 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/setup
 	fi;
 
 	# Clear destinations so this target is idempotent
-	rm -rf $(KDEPKGDIR) $(MAINPKGDIR) debian/*.debhelper
+	#rm -rf $(KDEPKGDIR) $(MAINPKGDIR) debian/*.debhelper
 
-	# Move files around from openoffice locations to 
+	# Move files around from openoffice locations to
 	# debian-friendly locations
 
 	# KDE icons
@@ -339,41 +382,26 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/setup
 	#mkdir -p $(KDEPKGDIR)/usr/share/mimelnk/application
 	#cp -r $(PKGOPENOFFICEDIR)/share/kde/net/mimelnk/share/mimelnk/application \
 	#      $(KDEPKGDIR)/usr/share/mimelnk
-	
+
 	#cp -r $(PKGOPENOFFICEDIR)/share/kde/net/applnk $(KDEPKGDIR)/usr/share
 	# convert shortcuts
 	#for I in $(KDEPKGDIR)/usr/share/applnk/*/*.desktop ;do \
 	#    sed 's#Exec=".*\(/usr/lib/openoffice/.*\)"#Exec="\1"#' < "$$I" > "$$I.new" ;\
 	#    rm "$$I"; mv "$$I.new" "$$I" ;\
 	#done
-	
-	touch $@
 
-binary-indep: $(STAMP_DIR)/binary-indep
-$(STAMP_DIR)/binary-indep: DH_OPTIONS=-i
-$(STAMP_DIR)/binary-indep: $(STAMP_DIR)/build $(STAMP_DIR)/install
-	touch $@
+	dh_install --sourcedir=debian/tmp
 
-binary-arch: $(STAMP_DIR)/binary-arch
-$(STAMP_DIR)/binary-arch: DH_OPTIONS=-s
-$(STAMP_DIR)/binary-arch: $(STAMP_DIR)/build $(STAMP_DIR)/install
-	dh_testdir
-	dh_testroot
-	dh_movefiles
 ifeq "$(ARCH)" "i386"
-	cp -rf $(PKGOPENOFFICEDIR)/program/libmozab2.so $(MAINPKGDIR)/usr/lib/openoffice/program/libmozab2.so 
-	cp -rf $(PKGOPENOFFICEDIR)/program/libmozabdrv2.so $(MAINPKGDIR)/usr/lib/openoffice/program/libmozabdrv2.so 
+	cp -rf $(PKGOPENOFFICEDIR)/program/libmozab2.so $(MAINPKGDIR)/usr/lib/openoffice/program/libmozab2.so
+	cp -rf $(PKGOPENOFFICEDIR)/program/libmozabdrv2.so $(MAINPKGDIR)/usr/lib/openoffice/program/libmozabdrv2.so
 endif
-	
-	
-	dh_installdirs
-	
-	
+
 	install -m644 debian/local/rsfile.local.txt \
 		      debian/openoffice.org/etc/openoffice/autoresponse.conf
-	
+
 	install -m755 debian/local/ooffice debian/openoffice.org/usr/bin/openoffice
-	
+
 	for FILE in program/instdb.ins \
 		 share/config/registry/instance/org/openoffice/Setup.xml \
 		 share/config/registry/instance/org/openoffice/Office/Common.xml; do \
@@ -382,29 +410,100 @@ endif
 	  mv debian/openoffice.org/$(OPENOFFICEDIR)/"$$FILE".new \
 	     debian/openoffice.org/$(OPENOFFICEDIR)/"$$FILE"; \
 	done
-	
+
+	# Install the lang packs
+	for prefix in `debian/local/openoffice-xlate-lang -p all`; do  \
+          echo "Unpack "`debian/local/openoffice-xlate-lang -l $$prefix`" l10n..."; \
+          langiso=`debian/local/openoffice-xlate-lang -i $$prefix|tr A-Z a-z`;      \
+	  debian/local/openoffice-dpack-lang                                        \
+                -d="debian/openoffice.org-l10n-$$langiso/usr/lib/openoffice"                     \
+                -i=$(SOURCE_TREE)/instsetoo/$(ARCHBUILDDIR)/$$prefix/normal/setup.ins \
+	        >/dev/null;                                                           \
+	  rm -rf debian/openoffice.org-l10n-$$langiso/usr/lib/openoffice/help/main_transform.xsl;\
+	done
+
+	# move the help and templates to the extra package
+	#for prefix in `debian/local/openoffice-xlate-lang -p all|sed 's#01##'`; do  \
+	#  echo "prefix=$$prefix"; \
+        #  langiso=`debian/local/openoffice-xlate-lang -i $$prefix|tr A-Z a-z`;      \
+	#  mkdir -p debian/ooo-ui-extra-$$langiso/usr/lib/openoffice/share;            \
+	#  for FILE in help share/template ; do                                        \
+        #    if [ -e debian/ooo-ui-$$langiso/usr/lib/openoffice/$$FILE ] ; then        \
+	#      mv -v debian/ooo-ui-$$langiso/usr/lib/openoffice/$$FILE \
+        #            debian/ooo-ui-extra-$$langiso/usr/lib/openoffice/;                \
+        #    fi;                                                                       \
+	#  done;                                                                       \
+	#done
+	# move the lex stuff to the right directory
+	#for prefix in `debian/local/openoffice-xlate-lang -p all|sed 's#01##'`; do  \
+	#  echo "prefix=$$prefix"; \
+        #  langiso=`debian/local/openoffice-xlate-lang -i $$prefix|tr A-Z a-z`;      \
+	#  mkdir -p debian/ooo-lex-$$langiso/usr/lib/openoffice;                       \
+	#  for FILE in share user ; do                                                 \
+        #    if [ -e debian/ooo-ui-$$langiso/usr/lib/openoffice/$$FILE ] ; then        \
+	#      mv -v debian/ooo-ui-$$langiso/usr/lib/openoffice/$$FILE \
+        #            debian/ooo-lex-$$langiso/usr/lib/openoffice/;                     \
+        #    fi;                                                                       \
+	#  done;                                                                       \
+	#done
+
+	# remove empty packages
+	#for pkg in ui ui-extra lex ; do                                               \
+	# for iso in `debian/local/openoffice-xlate-lang -i all| \
+        #             sed 's#en##'|tr A-Z a-z`; do                                     \
+	#  data=`find debian/ooo-$${pkg}-$$iso/usr/lib/openoffice -type f`;            \
+	#  if [ -z $$data ]; then echo "$$pkg"-"$$iso est vide"; fi;                   \
+	# done;                                                                        \
+	#done
+
+	touch $@
+
+
+# This single target is used to build all the packages, all at once, or
+# one at a time. So keep in mind: any options passed to commands here will
+# affect _all_ packages. Anything you want to only affect one package
+# should be put in another target, such as the install target.
+binary-common:
+	dh_testdir
+	dh_testroot
+
 	dh_installdocs
 	dh_undocumented
 	dh_installchangelogs
 	dh_installmime
+	dh_installmenu
 	dh_link
 	dh_strip
 	dh_compress
 	dh_fixperms
+	dh_installdeb
 	dh_shlibdeps
 	dh_gencontrol
 	dh_md5sums
 	dh_builddeb
-	
-	
+
+# Build architecture independant packages using the common target.
+binary-indep: $(STAMP_DIR)/binary-indep control
+$(STAMP_DIR)/binary-indep: $(STAMP_DIR)/install
+	$(MAKE) -f debian/rules DH_OPTIONS=-i binary-common
 	touch $@
+
+# Build architecture dependant packages using the common target.
+binary-arch: $(STAMP_DIR)/binary-arch control
+$(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install
+	$(MAKE) -f debian/rules DH_OPTIONS=-a binary-common
+	touch $@
+
+# Any other binary targets build just one binary package at a time.
+binary-%: $(STAMP_DIR)/install
+	make -f debian/rules binary-common DH_OPTIONS=-p$*
 
 binary: binary-arch binary-indep
 
 # Use 'debian/rules environment' to help debug architecture-related problems
 # with the rules file.
 environment:
-	
+
 	@echo 'Package build environment (not all variables may be set):'
 	@echo '$$(ARCH)' is "$(ARCH)"
 	@echo '$$(DEB_HOST_ARCH)' is "$(DEB_HOST_ARCH)"
@@ -414,6 +513,6 @@ environment:
 
 
 .PHONY: default build install clean-debian clean binary-arch binary-indep binary
-.PHONY: default environment checksource
+.PHONY: default environment checksource control instsetoo
 
 # vim:set noet ai sts=8 sw=8 tw=0:
