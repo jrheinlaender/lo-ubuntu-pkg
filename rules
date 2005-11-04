@@ -98,13 +98,26 @@ else
   USE_SYSTEM_LIBS=n
 endif
 
-# Default build.pl flags
-
-ifeq (build=,$(findstring build=,$(DEB_BUILD_OPTIONS)))
-  BUILDFLAGS=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*build=\([^,]*\),.*/\1/p')
-else
-  BUILDFLAGS=
+# Packages compiled with libfreetype on Woody do not work properly with
+# libfreetype from Sarge or Sid, so enforce that with a shlibs override
+ifeq (libfreetype.so.6.3.0,$(shell readlink /usr/lib/libfreetype.so))
+  SHLIBS_OVERRIDE=-- -Ldebian/shlibs.woody.local
 endif
+
+# Default build.pl flags
+ifeq (build=,$(findstring build=,$(DEB_BUILD_OPTIONS)))
+  BUILDFLAGS:=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*build=\([^,]*\),.*/\1/p')
+else
+  BUILDFLAGS:=
+endif
+
+# If startfrom=<prj> is specified, resume build from this project
+ifeq (startfrom=,$(findstring startfrom=,$(DEB_BUILD_OPTIONS)))
+  STARTFROM:=-from_opt $(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*startfrom=\([^,]*\),.*/\1/p')
+else
+  STARTFROM:=-all
+endif
+
 
 PARALLEL=
 
@@ -161,7 +174,7 @@ BUILDCMD:=$(CURDIR)/$(SOURCE_TREE)/solenv/bin/build.pl
 # over, you would have to remove the stamp manually.  Now, just do
 # 'debian/rules <target> <target> ... FORCE=1', and the stamp files
 # that match the given targets will be removed automagically.
-stampdir_targets=build.prepare configure bootstrap buildall instsetoo build 
+stampdir_targets=build.prepare configure bootstrap solver instsetoo
 stampdir_targets+=setupins setup install langpacks binary-common binary-arch binary-indep
 stampdir_targets+=source.make patchapply
 stampdir_targets+=source.build source.unpack fix.source.patch source.patch
@@ -207,7 +220,7 @@ clean: source.clean clean-debdir
 # Generate control file, because we have so many different languages
 # Based on script by Martin Quinson <Martin.Quinson@tuxfamily.org>
 control: debian/control
-debian/control: debian/control.in debian/control.lang.in
+debian/control: debian/control.in debian/control.lang.in debian/local/openoffice-xlate-lang
 	cat > debian/control < debian/control.in
 
 	for LNUM in `debian/local/openoffice-xlate-lang -p all ` ; do \
@@ -220,6 +233,10 @@ debian/control: debian/control.in debian/control.lang.in
 	done
 
 .DELETE_ON_ERROR: debian/control
+
+build: build-arch build-indep
+build-arch: $(STAMP_DIR)/instsetoo
+build-indep: $(STAMP_DIR)/solver
 
 # All 'important' targets have 2 lines.  The one that is run by
 # dpkg-buildpackage or the user, and the one that does the actual work.  This
@@ -328,16 +345,16 @@ $(STAMP_DIR)/bootstrap: $(STAMP_DIR)/configure
 	touch $@
 
 # Build step . - build all projects needed for installation sets but do not yet create instsets
-buildall: $(STAMP_DIR)/buildall
-$(STAMP_DIR)/buildall: $(STAMP_DIR)/bootstrap
+solver: $(STAMP_DIR)/solver
+$(STAMP_DIR)/solver: $(STAMP_DIR)/bootstrap
 	dh_testdir
-	. $(SOURCE_TREE)/$(ENVFILE); cd $(SOURCE_TREE)/instsetoo && $(BUILDCMD) -all instsetext= $(BUILDFLAGS)
+	. $(SOURCE_TREE)/$(ENVFILE); cd $(SOURCE_TREE)/instsetoo && $(BUILDCMD) $(STARTFROM) instsetext= $(BUILDFLAGS)
 
 	touch $@
 
 # Build step . - build full installation set for BUILDLANG language
 instsetoo: $(STAMP_DIR)/instsetoo
-$(STAMP_DIR)/instsetoo: $(STAMP_DIR)/buildall
+$(STAMP_DIR)/instsetoo: $(STAMP_DIR)/solver
 	dh_testdir
 	. $(SOURCE_TREE)/$(ENVFILE); cd $(SOURCE_TREE)/instsetoo && $(BUILDCMD) -from instsetoo instsetext="$(BUILDLANG)" $(BUILDFLAGS)
 
@@ -345,7 +362,7 @@ $(STAMP_DIR)/instsetoo: $(STAMP_DIR)/buildall
 
 # Build step . - build insetsetoo installation scrips for langpacks
 setupins: $(STAMP_DIR)/setupins
-$(STAMP_DIR)/setupins: $(STAMP_DIR)/buildall
+$(STAMP_DIR)/setupins: $(STAMP_DIR)/solver
 	dh_testdir
 	# we don't want to build $(BUILDLANG) so remove it from the list
 
@@ -370,6 +387,16 @@ buildprj: $(STAMP_DIR)/bootstrap
 	# run dmake with xfvb-run
 	. $(SOURCE_TREE)/$(ENVFILE); \
 	  cd $(SOURCE_TREE)/$(PRJ) && $(XVFB) $(BUILDCMD) $(BUILDFLAGS)
+
+	-echo Project $(PRJ) build successful
+
+# Build all projects until the given project
+# e.g. debian/rules builduntil-transex3
+builduntil-%: $(STAMP_DIR)/bootstrap
+	dh_testdir
+
+	. $(SOURCE_TREE)/$(ENVFILE); \
+	  cd $(SOURCE_TREE)/$(subst builduntil-,,$@) && $(XVFB) $(BUILDCMD) $(STARTFROM) $(BUILDFLAGS)
 
 	-echo Project $(PRJ) build successful
 
@@ -542,11 +569,13 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/setupins
 	  debian/local/openoffice-dpack-lang                                        \
                 -d="debian/openoffice.org-l10n-$$langiso$(OPENOFFICEDIR)"                     \
                 -i=$(SOURCE_TREE)/instsetoo/$(ARCHBUILDDIR)/$$prefix/normal/setup.ins \
-                -s=$(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR) \
+                -s=$(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR) || exit 1 \
 	        ;                                                           \
 	  rm -rf debian/openoffice.org-l10n-$$langiso$(OPENOFFICEDIR)/help/main_transform.xsl;\
-	  ln -s ooo$(BUILDNUM)$$prefix.res \
+	  if [ -f debian/openoffice.org-l10n-$$langiso$(OPENOFFICEDIR)/program/resource/ooo$(BUILDNUM)$$prefix.res ]; then \
+	    ln -s ooo$(BUILDNUM)$$prefix.res \
 	        debian/openoffice.org-l10n-$$langiso$(OPENOFFICEDIR)/program/resource/iso$(BUILDNUM)$$prefix.res ;\
+	  fi ;\
 	done
 
 	# move the help and templates to the extra package
@@ -609,7 +638,7 @@ binary-common:
 	dh_compress
 	dh_fixperms
 	dh_installdeb
-	dh_shlibdeps
+	dh_shlibdeps $(SHLIBS_OVERRIDE)
 	dh_gencontrol
 	dh_md5sums
 	dh_builddeb
@@ -647,6 +676,7 @@ environment:
 	@echo '$$(CXX)' is "$(CXX)"
 	@echo '$$(BUILDCMD)' is "$(BUILDCMD)"
 	@echo '$$(BUILDFLAGS)' is "$(BUILDFLAGS)"
+	@echo '$$(SHLIBS_OVERRIDE)' is "$(SHLIBS_OVERRIDE)"
 
 	@echo 'See debian/control for build dependencies.'
 
@@ -654,7 +684,7 @@ environment:
 # Miscellaneous targets used to do a few useful operations
 
 # Get latest patch files from Chris' repository
-PATCHNAME=000_pre102_stolen_from_STABLE1
+PATCHNAME=000_pre103_stolen_from_STABLE1
 PATCHURL=http://people.debian.org/~halls/openoffice/stable1
 
 downloadpatch:
@@ -679,6 +709,7 @@ makebinariestar:
 
 .PHONY: environment checksource control downloadpatch rsyncpatch makebinariestar
 .PHONY: clean-debdir clean-instsetoo clean-objectdirs clean default
+.PHONY: build build-indep build-arch
 .PHONY: $(stampdir_targets)
 
 # vim:set noet ai sts=8 sw=8 tw=0:
