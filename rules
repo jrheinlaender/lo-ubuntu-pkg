@@ -90,9 +90,10 @@ ifneq "$(GCCVER)" ""
   CXX=g++-$(GCCVER)
 endif
 
-ifeq "$_CC" "gcc-3.0"
+ifeq "$(_CC)" "gcc-3.0"
   # gcc 3.0 Backport - disable mozilla and MANIFEST check
   IGNORE_MANIFEST_CHANGES=1
+  MOZILLA=n
   export IGNORE_MANIFEST_CHANGES
 else
   ifneq "$(MOZILLA)" "n"
@@ -212,15 +213,17 @@ endif
 # Add parallel build flags and always hard link into the solver
 
 #command to use to build OOo
-BUILDCMD:=XCLASSPATH=$$XCLASSPATH::/usr/share/java/crimson.jar:/usr/share/java/xalan.jar:/usr/share/java/xml-apis.jar:/usr/share/java/xalan2.jar PRODUCT="FULL" \
-          $(CURDIR)/$(SOURCE_TREE)/solenv/bin/build.pl
+BUILDCMD:=XCLASSPATH=$$XCLASSPATH::/usr/share/java/crimson.jar:/usr/share/java/xalan.jar:/usr/share/java/xml-apis.jar:/usr/share/java/xalan2.jar
+
+BUILDCMD+= $(ARCH_PREFIX) $(CURDIR)/$(SOURCE_TREE)/solenv/bin/build.pl
 
 # Because of the stampdir magic, when you actually want to run a rule
 # over, you would have to remove the stamp manually.  Now, just do
 # 'debian/rules <target> <target> ... FORCE=1', and the stamp files
 # that match the given targets will be removed automagically.
 stampdir_targets=build.prepare configure bootstrap solver instsetoo
-stampdir_targets+=setupins setup install langpacks binary-common binary-arch binary-indep
+stampdir_targets+=setupins setup install-arch install-indep manifest
+stampdir_targets+=langpacks binary-common binary-arch binary-indep
 stampdir_targets+=source.make patchapply
 stampdir_targets+=source.build source.unpack fix.source.patch source.patch
 stampdir_targets+=unfix.source.patch
@@ -275,9 +278,8 @@ endif
 	#
 
 	# we do not need them and they make problem with dpkg-source....
-	rm -f $(TOOLS_DIR)/desktop/*.png $(TOOLS_DIR)/src/*tar.gz \
-		$(TOOLS_DIR)/www/*.png
-	
+	rm -f $(TOOLS_DIR)/desktop/*.png $(TOOLS_DIR)/www/*.png
+
 	# Clean rule, if we had a system dmake..
 	#if [ -f $(SOURCE_TREE)/$(ENVFILE) ]; then \
 	#    cd $(SOURCE_TREE) && . ./$(ENVFILE) && \
@@ -292,6 +294,35 @@ endif
 	rm -rf $(SOURCE_TREE)/*/$(ARCHBUILDDIR) \
 	       $(SOURCE_TREE)/solver \
 	       $(SOURCE_TREE)/dmake/autom4te.cache
+	# workaround
+	rm -f \
+	  $(SOURCE_TREE)/solenv/`echo $(ARCHBUILDDIR) | cut -d"." -f1`/bin/dmake
+
+	# remove xcf and bmp from the Debian splashscreen
+	rm -f debian/openintro_debian.xcf debian/openintro_debian.bmp \
+		offmgr/res/openintro_debian.bmp
+
+	# undo scaling (i.e. remove stamps, scaled icons)
+	chmod 755 $(TOOLS_DIR)/bin/scale-icons
+	if [ -d modified_files ]; then \
+	  $(TOOLS_DIR)/bin/scale-icons $(SOURCE_TREE) --remove ;\
+	fi
+
+	# Delete all bmp and bmp.orig files if we have the backup
+	if [ -d modified_files ]; then \
+	  find . ! -path './ooo-icons*' -a ! -path './debian*' \
+	    -a ! -path *unx*.pro* -a ! -path './modified_files*' \
+	    -a \( -name '*.bmp' -o -name '*.bmp.orig' \) -exec rm {} \; ;\
+	fi
+
+	# Delete html export buttons
+	rm -f $(SOURCE_TREE)/extras/source/gallery/htmlexpo/*.png
+
+	# Delete artwork tarball
+	rm -f $(TOOLS_DIR)/src/*tar.gz
+
+	# and extracted artwork
+	rm -rf $(SOURCE_TREE)/$(OOO_ICONS_VER)
 
 	# Restore modified files
 	if cd $(SOURCE_TREE)/modified_files; then \
@@ -299,7 +330,7 @@ endif
 	fi
 
 	rm -rf $(SOURCE_TREE)/modified_files
-	  
+
 	# Delete files in dmake
 	if [ -f dmake/Makefile ];then $(MAKE) -C dmake distclean; fi
 	rm -f dmake/dmakeroot.h
@@ -334,9 +365,6 @@ debian/control: debian/control.in debian/control.lang.in debian/local/openoffice
 build: build-arch build-indep
 build-arch: $(STAMP_DIR)/instsetoo
 build-indep: $(STAMP_DIR)/solver
-#
-# apply ximian patches and install new icons
-debian/stampdir/source.patch: debian/stampdir/ximian.patchapply debian/stampdir/ximian.icons
 
 # All 'important' targets have 2 lines.  The one that is run by
 # dpkg-buildpackage or the user, and the one that does the actual work.  This
@@ -353,7 +381,7 @@ $(STAMP_DIR)/patch.apply:
 	# Test that we have the Ximian packaging directory available.  If your
 	# build stops here, you need to check it out.
 	# You can get the directory with the command:
-	# debian/rules get-build-ooo
+	# debian/rules get-ooo-build
 	dh_testdir $(TOOLS_DIR)/patches/apply.pl
 
 	rm -f $(STAMP_DIR)/patch.unapply
@@ -375,6 +403,7 @@ patch.unapply: $(STAMP_DIR)/patch.unapply
 $(STAMP_DIR)/patch.unapply:
 	dh_testdir $(TOOLS_DIR)/patches/apply.pl
 
+	chmod 755 $(TOOLS_DIR)/patches/apply.pl
 	$(TOOLS_DIR)/patches/apply.pl $(TOOLS_DIR)/patches/$(PATCH_DIR) $(BUILD_DIR) --distro=Debian -f -R
 	rm -f $(STAMP_DIR)/patch.apply
 	mkdir -p $(STAMP_DIR)
@@ -386,7 +415,7 @@ $(STAMP_DIR)/build.prepare: $(STAMP_DIR)/patch.apply
 	dh_testdir $(TOOLS_DIR)/patches/apply.pl
 
 	$(MAKE) -f debian/rules control
-	
+
 	# Back up source files that we modify
 	for f in dmake/configure config_office/configure; do \
 	  mkdir -p modified_files/`dirname $$f` && \
@@ -420,9 +449,42 @@ endif
 
 	touch $@
 
+build.prepare.icons: $(STAMP_DIR)/build.prepare.icons
+$(STAMP_DIR)/build.prepare.icons: $(STAMP_DIR)/build.prepare
+
+	# Back up all bmp files (!)
+	find . ! -path './ooo-icons*' -a ! -path './debian*' \
+	  -a ! -path *unx*.pro* -a ! -path './modified_files*' \
+	  -a -name '*.bmp' -exec cp -vfp --parent {} modified_files \;
+
+	cd $(TOOLS_DIR)/src && uudecode $(OOO_ICONS_VER).tar.gz.uu
+	tar xzf $(TOOLS_DIR)/src/$(OOO_ICONS_VER).tar.gz
+
+	# remove ximian about since we do not have the full Ximian edition...
+	rm -f $(OOO_ICONS_VER)/offmgr/res/openabout.bmp
+	
+	# add the splashscreen with the Debian logo
+	uudecode debian/openintro_debian.xcf.uu > \
+		debian/openintro_debian.xcf && \
+		xvfb-run debian/scripts/xcftobmp debian/openintro_debian.xcf && \
+		cp debian/openintro_debian.bmp offmgr/res/openintro_debian.bmp
+		
+#		mogrify -colors 8 debian/openintro_debian.bmp && \
+	
+	chmod 755 $(TOOLS_DIR)/bin/scale-icons
+	$(TOOLS_DIR)/bin/scale-icons $(SOURCE_TREE)
+
+	# Copy new artwork into the tree
+	cp -avf $(SOURCE_TREE)/$(OOO_ICONS_VER)/* $(SOURCE_TREE)
+
+	# Force rebuild of image lists etc.
+	#find $(SOURCE_TREE) -name '*.src' -exec touch {} \;
+
+	touch $@
+
 # Build step 2 - configure
 configure: $(STAMP_DIR)/configure
-$(STAMP_DIR)/configure: $(STAMP_DIR)/build.prepare 
+$(STAMP_DIR)/configure: $(STAMP_DIR)/build.prepare $(STAMP_DIR)/build.prepare.icons
 	dh_testdir
 	$(MAKE) -f debian/rules environment
 
@@ -431,6 +493,22 @@ $(STAMP_DIR)/configure: $(STAMP_DIR)/build.prepare
 	# or specify a JDK location with DEB_BUILD_OPTIONS=jdkhome=/absolute/path/to/jdk
 	test -x /$(JDK_HOME)/bin/javac
 
+	# test for libhpi.so and warn ppc folks....
+ifeq "$(ARCH)" "powerpc"
+	find /$(JDK_HOME) -type f -name "libhpi*" | grep usr | grep green \
+		> debian/libhpi.search && if [ -s debian/libhpi.search ]; then \
+	echo ""; echo ""; \
+	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" ; \
+	echo "green_threads libhpi.so found in"; \
+	echo "`cat debian/libhpi.search | sed -e s,//,/,`.";\
+	echo "This could let the build fail with \"OUCH: nested memory code, to 1 levels.\""; \
+	echo "For a working build you may want to remove that file..."; \
+	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"; \
+	echo ""; echo ""; \
+	fi; \
+	rm debian/libhpi.search
+endif
+
 	# Make sure we have /proc mounted - otherwise idlc will fail later.
 	test -r /proc/version
 
@@ -438,7 +516,7 @@ $(STAMP_DIR)/configure: $(STAMP_DIR)/build.prepare
 	rm -f $(SOURCE_TREE)/config_office/config.cache
 
 	cd $(SOURCE_TREE)/config_office && autoconf && \
-	  CC="$(_CC)" CXX="$(CXX)" sh ./configure \
+	  CC="$(_CC)" CXX="$(CXX)" $(ARCH_PREFIX) sh ./configure \
             --with-lang=ALL \
 	    --with-jdk-home=$(JDK_HOME) \
 	    --enable-libart \
@@ -449,8 +527,7 @@ $(STAMP_DIR)/configure: $(STAMP_DIR)/build.prepare
 	    $(CONFIGURE_FLAGS) \
 	    < /dev/null
 	touch $@
-	
-#	    --without-fonts \
+
 #    --with-python \
 
 # Build step 3 - bootstrap
@@ -458,7 +535,7 @@ bootstrap: $(STAMP_DIR)/bootstrap
 $(STAMP_DIR)/bootstrap: $(STAMP_DIR)/configure
 	dh_testdir
 
-	cd $(SOURCE_TREE); ./bootstrap
+	cd $(SOURCE_TREE); $(ARCH_PREFIX) ./bootstrap
 
 	# Copy files needed when building with libgpc (this is non-free and
 	# therefore not part of the official Debian packages)
@@ -593,23 +670,11 @@ $(STAMP_DIR)/setup: $(STAMP_DIR)/instsetoo
 
 	touch $@
 
-# Install files generated by setup into package directories
-install: $(STAMP_DIR)/install
-$(STAMP_DIR)/install: debian/openoffice.org$(VER).install debian/openoffice.org$(VER)-bin.install
-$(STAMP_DIR)/install: debian/MANIFEST.$(ARCH) debian/openoffice.org$(VER).dirs
-$(STAMP_DIR)/install: $(STAMP_DIR)/setup
+manifest: $(STAMP_DIR)/manifest
+$(STAMP_DIR)/manifest: debian/MANIFEST.$(ARCH) $(STAMP_DIR)/setup
 	dh_testdir
-	dh_testroot
 	umask 022
-
-	# Remove package directories
-	rm -rf $(MAINPKGDIR) $(MAINPKGDIR)-bin $(MAINPKGDIR)-gnome \
-		$(MAINPKGDIR)-mimelnk
-	rm -f $(MAINPKGDIR).*.debhelper
-	rm -f $(MAINPKGDIR)-bin.*.debhelper
-
-	dh_installdirs
-
+	
 	# compare manifests
 	(cd debian/tmp && find -type f -o -type l | LC_ALL=C sort | cut -c3-) > debian/MANIFEST.$(ARCH).new
 	# confirm that the installed file list has not changed
@@ -626,8 +691,80 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/setup
 	    fi; \
 	  fi; \
 	fi;
+	touch $@
 
-	dh_install --sourcedir=debian/tmp
+install-arch: $(STAMP_DIR)/install-arch
+$(STAMP_DIR)/install-arch: debian/openoffice.org$(VER)-bin.install
+$(STAMP_DIR)/install-arch: debian/openoffice.org$(VER)-gnome.install
+$(STAMP_DIR)/install-arch: debian/openoffice.org$(VER)-crashrep.install
+$(STAMP_DIR)/install-arch: $(STAMP_DIR)/manifest
+	dh_testdir
+	dh_testroot
+	umask 022
+
+	# Remove package directories
+	rm -rf $(MAINPKGDIR)-bin $(MAINPKGDIR)-gnome $(MAINPKGDIR)-crashrep \
+	rm -f $(MAINPKGDIR)-bin.*.debhelper \
+	      $(MAINPKGDIR)-gnome.*.debhelper \
+	      $(MAINPKGDIR)-crashrep.*.debhelper
+
+	dh_installdirs -a
+	dh_install --sourcedir=debian/tmp -a
+
+ifneq "$(MOZILLA)" "n"
+ifeq "$(ARCH)" "i386"
+	for i in libmozab2.so libmozabdrv2.so; do \
+		cp -rf $(PKGOPENOFFICEDIR)/program/$$i \
+	   	  $(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program; \
+	done
+endif
+	for i in component.reg components libldap50.so libmozjs.so libmozz.so \
+	   libmsgbaseutil.so libnspr4.so libplc4.so libplds4.so libprldap50.so \
+	   libxpcom.so; do \
+		cp -rf $(PKGOPENOFFICEDIR)/program/$$i \
+	   	   $(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program; \
+	done
+endif
+
+ifneq "$(USE_SYSTEM_LIBS)" "y"
+	# Copy libstlport if we are using the internal library
+	cp -f $(PKGOPENOFFICEDIR)/program/libstlport_gcc.so \
+		$(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program
+endif
+
+	# Remove packaging prefix and set default install directory to ~/.openoffice/<version> in instdb.ins
+	for FILE in $(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program/instdb.ins ; do \
+	  sed -e 's#$(PKGOPENOFFICEDIR)#$(OPENOFFICEDIR)#g' \
+	      -e 's#\(DefaultDestPath *= *"\)OpenOffice.org#\1.openoffice/#' \
+	     "$$FILE" > "$$FILE".new; \
+	  mv "$$FILE".new "$$FILE"; \
+	done
+
+	# install regcomp and configimport utililities
+	install -m755 \
+	$(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/bin/regcomp \
+	$(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/bin/configimport.bin \
+		$(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program
+
+	touch $@
+
+# Install files generated by setup into package directories
+install-indep: $(STAMP_DIR)/install
+$(STAMP_DIR)/install-indep: debian/openoffice.org$(VER).install 
+$(STAMP_DIR)/install-indep: debian/openoffice.org$(VER)-mimelnk.install 
+$(STAMP_DIR)/install-indep: debian/openoffice.org$(VER).dirs
+$(STAMP_DIR)/install-indep: $(STAMP_DIR)/manifest
+	dh_testdir
+	dh_testroot
+	umask 022
+
+	# Remove package directories
+	rm -rf $(MAINPKGDIR) \
+		$(MAINPKGDIR)-mimelnk
+	rm -f $(MAINPKGDIR).*.debhelper
+
+	dh_installdirs -i
+	dh_install --sourcedir=debian/tmp -i
 
 	# Disable desktop (KDE, GNOME, CDE) integration for user installs
 	# Copied from Mandrake.  Thanks, Gwenole!
@@ -650,26 +787,10 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/setup
 	# Workaround for co-existing 1.0 and 1.1 - don't install icons in /usr/share/icons for 1.1 yet
 	#rm -r $(MAINPKGDIR)/usr/share/icons
 	 
-ifeq "$(ARCH)" "i386"
-	cp -rf $(PKGOPENOFFICEDIR)/program/libmozab2.so \
-	   $(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program/libmozab2.so
-	cp -rf $(PKGOPENOFFICEDIR)/program/libmozabdrv2.so \
-	   $(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program/libmozabdrv2.so
+ifneq "$(MOZILLA)" "n"
+	cp -rf $(PKGOPENOFFICEDIR)/program/defaults \
+		$(MAINPKGDIR)/$(OPENOFFICEDIR)/program
 endif
-
-ifneq "$(USE_SYSTEM_LIBS)" "y"
-	# Copy libstlport if we are using the internal library
-	cp -f $(PKGOPENOFFICEDIR)/program/libstlport_gcc.so \
-		$(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program
-endif
-
-	# Remove packaging prefix and set default install directory to ~/.openoffice/<version> in instdb.ins
-	for FILE in $(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program/instdb.ins ; do \
-	  sed -e 's#$(PKGOPENOFFICEDIR)#$(OPENOFFICEDIR)#g' \
-	      -e 's#\(DefaultDestPath *= *"\)OpenOffice.org#\1.openoffice/#' \
-	     "$$FILE" > "$$FILE".new; \
-	  mv "$$FILE".new "$$FILE"; \
-	done
 
 	# there are some wrong permissions; fix them ourselves
 	#find $(MAINPKGDIR) $(MAINPKGDIR)-bin \
@@ -681,12 +802,6 @@ endif
 	for FILE in edit common index; do \
 	    chmod ugo-x $(MAINPKGDIR)/$(OPENOFFICEDIR)/share/config/webcast/$$FILE.pl; \
 	done
-
-	# install regcomp and configimport utililities
-	install -m755 \
-	$(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/bin/regcomp \
-	$(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/bin/configimport.bin \
-		$(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program
 
 	# install openoffice-xlate-lang
 	install -m755 debian/local/openoffice-xlate-lang \
@@ -773,19 +888,19 @@ endif
 
 # Build architecture independant packages using the common target.
 binary-indep: $(STAMP_DIR)/binary-indep
-$(STAMP_DIR)/binary-indep: $(STAMP_DIR)/install $(STAMP_DIR)/langpacks debian/control $(STAMP_DIR)/maintscripts
+$(STAMP_DIR)/binary-indep: $(STAMP_DIR)/install-indep $(STAMP_DIR)/langpacks debian/control $(STAMP_DIR)/maintscripts
 	$(MAKE) -f debian/rules DH_OPTIONS=-i binary-common
 
 	touch $@
 
 # Build architecture dependant packages using the common target.
 binary-arch: $(STAMP_DIR)/binary-arch
-$(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install debian/control $(STAMP_DIR)/maintscripts
+$(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/maintscripts
 	$(MAKE) -f debian/rules DH_OPTIONS=-a binary-common
 	touch $@
 
 # Any other binary targets build just one binary package at a time.
-binary-%: $(STAMP_DIR)/install $(STAMP_DIR)/langpacks $(STAMP_DIR)/maintscripts
+binary-%: $(STAMP_DIR)/install-indep $(STAMP_DIR)/install-arch $(STAMP_DIR)/langpacks $(STAMP_DIR)/maintscripts
 	$(MAKE) -f debian/rules binary-common DH_OPTIONS=-p$*
 
 binary: binary-arch binary-indep
@@ -815,8 +930,13 @@ environment:
 # Get the ximian packaging directory from gnome anoncvs
 get-ooo-build:
 	# press enter at the password prompt
-	cvs -d:pserver:anonymous@anoncvs.gnome.org:/cvs/gnome login
-	cvs -z3 -d:pserver:anonymous@anoncvs.gnome.org:/cvs/gnome co -d $(TOOLS_DIR) openoffice
+	cvs -d:pserver:anonymous@anoncvs3.gnome.org:/cvs/gnome login
+	cvs -z3 -d:pserver:anonymous@anoncvs3.gnome.org:/cvs/gnome co -d $(TOOLS_DIR) openoffice
+
+get-ooo-icons:
+	test -d $(TOOLS_DIR)/src || mkdir $(TOOLS_DIR)/src
+	wget -O $(TOOLS_DIR)/src/$(OOO_ICONS_VER).tar.gz http://ooo.ximian.com/packages/$(OOO_ICONS_VER).tar.gz
+	uuencode $(TOOLS_DIR)/src/$(OOO_ICONS_VER).tar.gz $(OOO_ICONS_VER).tar.gz > $(TOOLS_DIR)/src/$(OOO_ICONS_VER).tar.gz.uu
 
 # Get latest patch files from Chris' repository
 PATCHNAME=000_prerc3_stolen_from_ooo11rc3
