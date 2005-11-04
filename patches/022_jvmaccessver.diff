@@ -1,0 +1,115 @@
+Changes from workspace cws_srx644_uno1.  See IssueZilla #11720
+
+diff -ur -x CVS oo_cvs/jvmaccess/inc/jvmaccess/virtualmachine.hxx oo_cvs/jvmaccess.uno1/inc/jvmaccess/virtualmachine.hxx
+--- oo_cvs/jvmaccess/inc/jvmaccess/virtualmachine.hxx	2003-04-23 11:17:07.000000000 +0200
++++ oo_cvs/jvmaccess.uno1/inc/jvmaccess/virtualmachine.hxx	2003-04-23 11:21:54.000000000 +0200
+@@ -138,7 +138,10 @@
+ 
+         @param nVersion
+         The JNI version of the virtual machine pointed to by pVm.  Must be at
+-        least JNI_VERSION_1_2.
++        least JNI_VERSION_1_2.  This parameter should be of type jint, not int,
++        but at least on some platforms the definition of jint changed from
++        JDK 1.3 (long) to JDK 1.4 (int), so that the mangled C++ name of the
++        constructor would depend on the JDK version used at compile time.
+ 
+         @param bDestroy
+         Whether to destroy the virtual machine when destructing the wrapper
+@@ -160,7 +163,7 @@
+         the virtual machine use the context class loader of the "initial Java
+         thread."
+      */
+-    VirtualMachine(JavaVM * pVm, jint nVersion, bool bDestroy,
++    VirtualMachine(JavaVM * pVm, int nVersion, bool bDestroy,
+                    JNIEnv * pMainThreadEnv);
+ 
+ private:
+diff -ur -x CVS oo_cvs/jvmaccess/prj/build.lst oo_cvs/jvmaccess.uno1/prj/build.lst
+--- oo_cvs/jvmaccess/prj/build.lst	2003-04-23 11:17:07.000000000 +0200
++++ oo_cvs/jvmaccess.uno1/prj/build.lst	2003-04-23 11:21:54.000000000 +0200
+@@ -1,4 +1,4 @@
+-jv jvmaccess : cppu sal salhelper NULL
++jv jvmaccess : ridljar cppu sal salhelper NULL
+ jv jvmaccess usr1 - all jv_mkout NULL
+ jv jvmaccess\source nmake - all jv_source NULL
+ jv jvmaccess\util nmake - all jv_util jv_source NULL
+diff -ur -x CVS oo_cvs/jvmaccess/source/javainfoimpl.cxx oo_cvs/jvmaccess.uno1/source/javainfoimpl.cxx
+--- oo_cvs/jvmaccess/source/javainfoimpl.cxx	2003-04-23 11:17:07.000000000 +0200
++++ oo_cvs/jvmaccess.uno1/source/javainfoimpl.cxx	2003-04-23 11:21:54.000000000 +0200
+@@ -120,10 +120,14 @@
+    with DEFAULT_SEARCH_PATH to find a Java if no JAVA_HOME, PATH or LD_LIBRARY_PATH
+    contains a Java.
+ */
+-#define JAVA_DIR_NAMES  "j2re1.4.1_01", \
++#define JAVA_DIR_NAMES  "j2re1.4.1_02", \
++                        "j2sdk1.4.1_02", \
++                        "j2re1.4.1_01", \
+                         "j2sdk1.4.1_01", \
+                         "j2re1.4.1", \
+                         "j2sdk1.4.1", \
++                        "j2re1.4.0_03", \
++                        "j2sdk1.4.0_03", \
+                         "j2re1.4.0_02", \
+                         "j2sdk1.4.0_02", \
+                         "j2re1.4.0_01", \
+@@ -132,6 +136,12 @@
+                         "j2sdk1.4.0", \
+                         "j2re1_3_1_04", \
+                         "j2sdk1_3_1_04", \
++                        "jre1.3.1_07", \
++                        "jdk1.3.1_07", \
++                        "jre1.3.1_06", \
++                        "jdk1.3.1_06", \
++                        "jre1.3.1_05", \
++                        "jdk1.3.1_05", \
+                         "jre1.3.1_04", \
+                         "jdk1.3.1_04", \
+                         "j2re1_3_1_03", \
+diff -ur -x CVS oo_cvs/jvmaccess/source/virtualmachine.cxx oo_cvs/jvmaccess.uno1/source/virtualmachine.cxx
+--- oo_cvs/jvmaccess/source/virtualmachine.cxx	2003-04-23 11:17:07.000000000 +0200
++++ oo_cvs/jvmaccess.uno1/source/virtualmachine.cxx	2003-04-23 11:21:54.000000000 +0200
+@@ -98,7 +98,7 @@
+         m_xMachine->detachThread();
+ }
+ 
+-VirtualMachine::VirtualMachine(JavaVM * pVm, jint nVersion, bool bDestroy,
++VirtualMachine::VirtualMachine(JavaVM * pVm, int nVersion, bool bDestroy,
+                                JNIEnv * pMainThreadEnv):
+     m_pVm(pVm), m_nVersion(nVersion), m_bDestroy(bDestroy)
+ {
+diff -ur -x CVS oo_cvs/jvmaccess/util/cc5_solaris_sparc.map oo_cvs/jvmaccess.uno1/util/cc5_solaris_sparc.map
+--- oo_cvs/jvmaccess/util/cc5_solaris_sparc.map	2003-04-23 11:17:07.000000000 +0200
++++ oo_cvs/jvmaccess.uno1/util/cc5_solaris_sparc.map	2003-04-23 11:21:54.000000000 +0200
+@@ -38,7 +38,7 @@
+         __1cJjvmaccessOVirtualMachineLAttachGuard2t5B6MrknDrtlJReference4n0B____v_; # jvmaccess::VirtualMachine::AttachGuard::AttachGuard(rtl::Reference< VirtualMachine > const &) #Nvariant 1
+         __1cJjvmaccessOVirtualMachineLAttachGuard2T6M_v_; # jvmaccess::VirtualMachine::AttachGuard::~AttachGuard()
+         __1cJjvmaccessOVirtualMachineLAttachGuard2T5B6M_v_; # jvmaccess::VirtualMachine::AttachGuard::~AttachGuard() #Nvariant 1
+-        __1cJjvmaccessOVirtualMachine2t6MpnHJavaVM__ibpnHJNIEnv___v_; # jvmaccess::VirtualMachine::VirtualMachine(JavaVM *, jint, bool, JNIEnv *)
++        __1cJjvmaccessOVirtualMachine2t6MpnHJavaVM__ibpnHJNIEnv___v_; # jvmaccess::VirtualMachine::VirtualMachine(JavaVM *, int, bool, JNIEnv *)
+ 
+     local:
+         *;
+diff -ur -x CVS oo_cvs/jvmaccess/util/gcc3_linux_intel.map oo_cvs/jvmaccess.uno1/util/gcc3_linux_intel.map
+--- oo_cvs/jvmaccess/util/gcc3_linux_intel.map	2003-04-23 11:17:15.000000000 +0200
++++ oo_cvs/jvmaccess.uno1/util/gcc3_linux_intel.map	2003-04-23 11:21:54.000000000 +0200
+@@ -36,7 +36,7 @@
+         _ZN9jvmaccess14VirtualMachine11AttachGuardC2ERKN3rtl9ReferenceIS0_EE; # jvmaccess::VirtualMachine::AttachGuard::AttachGuard(rtl::Reference< VirtualMachine > const &)
+         _ZN9jvmaccess14VirtualMachine11AttachGuardD1Ev; # jvmaccess::VirtualMachine::AttachGuard::~AttachGuard()
+         _ZN9jvmaccess14VirtualMachine11AttachGuardD2Ev; # jvmaccess::VirtualMachine::AttachGuard::~AttachGuard()
+-        _ZN9jvmaccess14VirtualMachineC1EP7JavaVM_ibP7JNIEnv_; # jvmaccess::VirtualMachine::VirtualMachine(JavaVM *, jint, bool, JNIEnv *)
++        _ZN9jvmaccess14VirtualMachineC1EP7JavaVM_ibP7JNIEnv_; # jvmaccess::VirtualMachine::VirtualMachine(JavaVM *, int, bool, JNIEnv *)
+ 
+     local:
+         *;
+diff -ur -x CVS oo_cvs/jvmaccess/util/msvc_win32_intel.map oo_cvs/jvmaccess.uno1/util/msvc_win32_intel.map
+--- oo_cvs/jvmaccess/util/msvc_win32_intel.map	2003-04-23 11:17:08.000000000 +0200
++++ oo_cvs/jvmaccess.uno1/util/msvc_win32_intel.map	2003-04-23 11:21:54.000000000 +0200
+@@ -30,7 +30,7 @@
+         ??4CreationException@AttachGuard@VirtualMachine@jvmaccess@@QAEAAV0123@ABV0123@@Z; # jvmaccess::VirtualMachine::AttachGuard::CreationException::operator =(CreationException const &)
+         ??0AttachGuard@VirtualMachine@jvmaccess@@QAE@ABV?$Reference@VVirtualMachine@jvmaccess@@@rtl@@@Z; # jvmaccess::VirtualMachine::AttachGuard::AttachGuard(rtl::Reference< VirtualMachine > const &)
+         ??1AttachGuard@VirtualMachine@jvmaccess@@QAE@XZ; # jvmaccess::VirtualMachine::AttachGuard::~AttachGuard()
+-        ??0VirtualMachine@jvmaccess@@QAE@PAUJavaVM_@@J_NPAUJNIEnv_@@@Z; # jvmaccess::VirtualMachine::VirtualMachine(JavaVM *, jint, bool, JNIEnv *)
++	??0VirtualMachine@jvmaccess@@QAE@PAUJavaVM_@@H_NPAUJNIEnv_@@@Z; # jvmaccess::VirtualMachine::VirtualMachine(JavaVM *, int, bool, JNIEnv *)
+ 
+     local:
+         *;

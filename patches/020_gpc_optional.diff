@@ -1,0 +1,199 @@
+Index: oo_cvs/tools/source/generic/makefile.mk
+===================================================================
+RCS file: /cvs/util/tools/source/generic/makefile.mk,v
+retrieving revision 1.4.14.3
+diff -u -3 -p -r1.4.14.3 makefile.mk
+--- oo_cvs/tools/source/generic/makefile.mk	18 Feb 2003 14:09:37 -0000	1.4.14.3
++++ oo_cvs/tools/source/generic/makefile.mk	22 Apr 2003 14:37:52 -0000
+@@ -71,6 +71,10 @@ TARGET=gen
+ .INCLUDE : settings.mk
+ .INCLUDE : sv.mk
+ 
++.IF "$(WITH_GPC)"!="NO"
++CDEFS+=-DHAVE_GPC_H
++.ENDIF
++
+ # --- Files --------------------------------------------------------
+ 
+ EXCEPTIONSFILES=	$(SLO)$/poly.obj
+Index: oo_cvs/tools/source/generic/poly2.cxx
+===================================================================
+RCS file: /cvs/util/tools/source/generic/poly2.cxx,v
+retrieving revision 1.1.4.1
+diff -u -3 -p -r1.1.4.1 poly2.cxx
+--- oo_cvs/tools/source/generic/poly2.cxx	18 Feb 2003 14:10:01 -0000	1.1.4.1
++++ oo_cvs/tools/source/generic/poly2.cxx	22 Apr 2003 14:37:52 -0000
+@@ -61,6 +61,8 @@
+ 
+ #define _SV_POLY2_CXX
+ 
++#ifdef HAVE_GPC_H
++
+ #ifndef __gpc_h
+ extern "C" 
+ {
+@@ -68,6 +70,16 @@ extern "C" 
+ }
+ #endif
+ 
++#else
++
++// No GPC
++#define GPC_INT 0
++#define GPC_UNION 0
++#define GPC_DIFF 0
++#define GPC_XOR 0
++
++#endif // HAVE_GPC_H
++
+ #include <cstring>
+ #include <cmath>
+ #ifndef _POLY_H
+@@ -446,6 +458,8 @@ void PolyPolygon::GetXOR( const PolyPoly
+ 
+ // -----------------------------------------------------------------------
+ 
++#ifdef HAVE_GPC_H
++
+ void* PolyPolygon::ImplCreateGPCPolygon() const
+ {
+ 	gpc_polygon* pRet = new gpc_polygon;
+@@ -522,6 +536,21 @@ void PolyPolygon::ImplDoOperation( const
+ 	gpc_free_polygon( pResult );
+ 	delete pResult;
+ }
++
++#else
++// No GPC implementation
++
++void* PolyPolygon::ImplCreateGPCPolygon() const
++{
++	return NULL;
++}
++
++void PolyPolygon::ImplDoOperation( const PolyPolygon& rPolyPoly, PolyPolygon& rResult, ULONG nOperation ) const
++{ 
++	return;
++}
++
++#endif // HAVE_GPC_H
+ 
+ // -----------------------------------------------------------------------
+ 
+Index: oo_cvs/config_office/configure.in
+===================================================================
+RCS file: /cvs/tools/config_office/configure.in,v
+retrieving revision 1.49.2.2.4.1
+diff -u -3 -p -r1.49.2.2.4.1 configure.in
+--- oo_cvs/config_office/configure.in	12 Mar 2003 11:31:06 -0000	1.49.2.2.4.1
++++ oo_cvs/config_office/configure.in	22 Apr 2003 14:42:00 -0000
+@@ -16,6 +16,13 @@ AC_REVISION( $Revision: 1.2.2.1 $ )
+ AC_PREREQ(2.50)
+ AC_INIT()
+ echo "$@" >config.parms
++AC_ARG_WITH(gpc,
++[  --without-gpc           *NOT RECOMMENDED*  Removes GPC code from
++                          openoffice.org Reduces some graphics capability
++                          slightly.
++                          This is required to allow some strict packagers to
++                          comply with their distrubution policy.
++],,)
+ AC_ARG_ENABLE(gcc3,
+ [  --enable-gcc3          Deprecated: Now has no effect, checks compiler version.
+ ],,)
+@@ -1100,22 +1107,29 @@ dnl ====================================
+ dnl Test for the presence of the required gpc.{c,h} files
+ dnl ===================================================================
+ 
+-AC_MSG_CHECKING([GPC files])
+-if test -f ../external/gpc/gpc.h; then
++if test "$with_gpc" != "no" ; then
++  WITH_GPC=YES
++
++  AC_MSG_CHECKING([GPC files])
++  if test -f ../external/gpc/gpc.h; then
+ 	HAVE_GPC_H="yes"
+-else
++  else
+ 	HAVE_GPC_H="no"
+-fi
+-if test -f ../external/gpc/gpc.c; then
++  fi
++  if test -f ../external/gpc/gpc.c; then
+ 	HAVE_GPC_C="yes"
+-else
++  else
+ 	HAVE_GPC_C="no"
+-fi
++  fi
+ 
+-if test "$HAVE_GPC_H" = "yes" -a "$HAVE_GPC_C" = "yes"; then
++  if test "$HAVE_GPC_H" = "yes" -a "$HAVE_GPC_C" = "yes"; then
+ 	AC_MSG_RESULT([GPC files found])
++  else
++	AC_MSG_ERROR([GPC files not found
++ftp://ftp.cs.man.ac.uk/pub/toby/gpc/gpc231.tar.Z and untar in external/gpc])
++  fi
+ else
+-	AC_MSG_ERROR([GPC files not found])
++  WITH_GPC=NO
+ fi
+ 
+ dnl ===================================================================
+@@ -1277,6 +1291,7 @@ AC_SUBST(USE_GCC3)
+ AC_SUBST(PTHREAD_CFLAGS)
+ AC_SUBST(PTHREAD_LIBS)
+ AC_SUBST(ENABLE_DEBUG)
++AC_SUBST(WITH_GPC)
+ 
+ AC_OUTPUT([set_soenv])
+ 
+Index: oo_cvs/config_office/set_soenv.in
+===================================================================
+RCS file: /cvs/tools/config_office/set_soenv.in,v
+retrieving revision 1.4.2.2.4.1
+diff -u -3 -p -r1.4.2.2.4.1 set_soenv.in
+--- oo_cvs/config_office/set_soenv.in	27 Feb 2003 14:12:36 -0000	1.4.2.2.4.1
++++ oo_cvs/config_office/set_soenv.in	22 Apr 2003 14:42:00 -0000
+@@ -1688,6 +1688,7 @@ ToFile( "CXX",               $CXX,      
+ if ( $COM ne "MSC" ) {
+   ToFile( "LINK",			 $CC,				 "e" );
+ }
++ToFile( "WITH_GPC",          "@WITH_GPC@",      "e" );
+ ToFile( "GXX_INCLUDE_PATH",  "@GXX_INCLUDE_PATH@","e" );
+ ToFile( "BISON_HAIRY",       $BISON_HAIRY,       "e" );
+ ToFile( "BISON_SIMPLE",      $BISON_SIMPLE,      "e" );
+--- oo_1.1beta_src/external/gpc/makefile.mk.orig	2003-04-22 20:39:42.000000000 +0200
++++ oo_1.1beta_src/external/gpc/makefile.mk	2003-04-22 20:40:00.000000000 +0200
+@@ -73,12 +73,14 @@
+ 
+ # --- Files --------------------------------------------------------
+ 
++.IF "$(WITH_GPC)"!="NO"
+ SLOFILES = $(SLO)$/gpc.obj	
+ 
+ 
+ LIB1TARGET=$(SLB)$/$(TARGET).lib
+ LIB1ARCHIV=$(LB)$/lib$(TARGET).a
+ LIB1OBJFILES=$(SLOFILES)
++.ENDIF
+ 
+ # --- Targets ------------------------------------------------------
+ 
+Index: oo_cvs/solenv/inc/libs.mk
+===================================================================
+RCS file: /cvs/tools/solenv/inc/libs.mk,v
+retrieving revision 1.59.2.2
+diff -u -3 -p -r1.59.2.2 libs.mk
+--- oo_cvs/solenv/inc/libs.mk	20 Feb 2003 21:55:29 -0000	1.59.2.2
++++ oo_cvs/solenv/inc/libs.mk	23 Apr 2003 08:18:46 -0000
+@@ -73,7 +73,9 @@ LIBPRE=libr
+ #
+ 
+ ICUI18NLIB=-licui18n -licuuc -licule -licudata
++.IF "$(WITH_GPC)"!="NO"
+ GPC3RDLIB=-lgpc
++.ENDIF
+ SALHELPERLIB=-lsalhelper$(COMID)
+ XMLSCRIPTLIB =-lxcr$(OFFICEUPD)$(DLLPOSTFIX)
+ .INCLUDE .IGNORE : comphelper$/version.mk
