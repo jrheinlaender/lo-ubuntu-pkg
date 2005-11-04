@@ -5,6 +5,8 @@ if [ -x /usr/lib/j2sdk1.3/bin/javac ]; then
 	JDK_HOME=/usr/lib/j2sdk1.3
 elif [ -x /usr/lib/j2se/1.3/bin/javac ]; then
 	JDK_HOME=/usr/lib/j2se/1.3
+elif [ -x /usr/local/IBMJava2-s390-131/bin/javac ]; then
+	JDK_HOME=/usr/local/IBMJava2-s390-131
 else
 	# uh oh, this isn't supposed to happen :)
 	JDK_HOME=JDK_HOME_NOT_FOUND

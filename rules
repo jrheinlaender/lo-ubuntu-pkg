@@ -81,7 +81,7 @@ MAINPKGDIR:=$(CURDIR)/debian/openoffice.org
 # Set GCC3VER in vars or vars.<arch> 
 # to 3.0 if you use gcc-3.0 oer 3.1, if you use gcc-3.1.
 ifeq "$(USE_GCC3)" "y"
-  # we can't use 'CC' - it confuses dpkg, so use _CC and pass CC to configure
+  # we can't use 'CC' - it confuses dpkg, so use _CC and pass CC to configure.  CXX is OK.
   _CC=gcc-$(GCC3VER)
   CXX=g++-$(GCC3VER)
   export CXX
@@ -98,7 +98,14 @@ else
 endif
 
 # Default build.pl flags
-BUILD_PL_FLAGS=-all
+
+ifeq (build=,$(findstring build=,$(DEB_BUILD_OPTIONS)))
+  BUILD_PL_FLAGS=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*build=\([^,]*\),.*/\1/p')
+else
+  BUILD_PL_FLAGS=-all
+endif
+
+
 BUILD_PL_DMAKEFLAGS=product=full
 PARALLEL=
 
@@ -108,16 +115,21 @@ ifeq (debug,$(findstring debug,$(DEB_BUILD_OPTIONS)))
    BUILD_PL_FLAGS+= debug=yes
 endif
 
+# Extract -PP or -P options from command line
+PARALLEL:=$(shell echo $(DEB_BUILD_OPTIONS) | tr ',' '\n' | grep "^-PP\?[0-9]\+$$" | tr '\n' ' ')
+
 # distcc will be used if DISTCC_HOSTS is set
 # The number of processes (-PP) will be set to the number of DISTCC_HOSTS, unless you
-# override it with -PPn in DEB_BUILD_OPTIONS
-ifdef DISTCC_HOSTS
-  # Set number of parallel processes to run (can override with -PPn in DEB_BUILD_OPTIONS)
-  PARALLEL:=-PP$(strip $(shell echo $(DISTCC_HOSTS) | wc -w))
-
-  _CC:=distcc $(_CC)
-  CXX:=distcc $(CXX)
-endif
+# override it with -PPn or -Pn in DEB_BUILD_OPTIONS
+#ifdef DISTCC_HOSTS
+#  # If there were no -PP or -P options, set to number of distcc hosts
+#  ifeq "$(PARALLEL)" ""
+#    PARALLEL:=-PP$(strip $(shell echo $(DISTCC_HOSTS) | wc -w))
+#  fi
+#
+#  _CC:=distcc $(_CC)
+#  CXX:=distcc $(CXX)
+#endif
 
 # Use compiler cache?  Include ccache in DEB_BUILD_OPTIONS for much faster rebuild times
 # A complete build uses about 200Mb of compiler cache.
@@ -129,12 +141,6 @@ ifeq (ccache,$(findstring ccache,$(DEB_BUILD_OPTIONS)))
   export CCACHE_LOGFILE
 else
   CCACHE=
-endif
-
-
-# Pararell build - add -PPn into DEB_BUILD_OPTIONS, where n is the number of processes
-ifeq (-PP,$(findstring -PP,$(DEB_BUILD_OPTIONS)))
-  PARALLEL:=$(shell echo $(DEB_BUILD_OPTIONS) | sed -e 's/.*\(-PP[0-9]\+\).*/\1/')
 endif
 
 #command to use to build OOo
@@ -183,9 +189,7 @@ clean: source.clean clean-debdir
 	dh_testdir
 	rm -rf $(STAMP_DIR) $(DEBTREEDIR)
 	rm -rf debian/local/stlport-home
-#Making important script executable
-	chmod 755 debian/local/openoffice-dpack-lang  
-	chmod 755 debian/local/openoffice-xlate-lang 
+	chmod a+x debian/local/openoffice-*-lang debian/scripts/*.sh
 	$(MAKE) -f debian/rules control
 
 
@@ -196,7 +200,7 @@ debian/control: debian/control.in debian/control.lang.in
 	cat > debian/control < debian/control.in
 
 	for LNUM in `debian/local/openoffice-xlate-lang -p all ` ; do \
-	    LNAME=`debian/local/openoffice-xlate-lang -l $$LNUM | tr A-Z a-z`; \
+	    LNAME=`debian/local/openoffice-xlate-lang -l $$LNUM`; \
 	    LCODE=`debian/local/openoffice-xlate-lang -i $$LNUM | tr A-Z a-z`; \
 	    SUGGESTS=; \
 	    sed -e "s|@LNAME@|$$LNAME|g" -e "s|@LCODE@|$$LCODE|g" \
@@ -221,6 +225,8 @@ build.prepare: $(STAMP_DIR)/build.prepare
 $(STAMP_DIR)/build.prepare: $(STAMP_DIR)/source.make
 	dh_testdir
 
+	chmod a+x debian/local/openoffice-*-lang debian/scripts/*.sh
+
 	$(MAKE) -f debian/rules control
 
 	#rm -rf $(SOURCE_TREE)/external/gpc
@@ -240,7 +246,7 @@ $(STAMP_DIR)/build.prepare: $(STAMP_DIR)/source.make
 	touch $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/inc/minormkchanged.flg
 
 	#Workaround for builder on PPC belongs to mozilla codes
-ifeq "$(ARCH)" "powerpc"
+ifneq "$(ARCH)" "i386"
 	cp -rvf ../mozlibs/* $(SOURCE_TREE)/moz/zipped/
 endif
 	#mkdir -p $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/inc/external/gpc
@@ -248,8 +254,8 @@ endif
 	#	$(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/inc/external/gpc
 
 	#Workaround for xml files
-	mkdir -p $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/xml
-	cp -r debian/local/office $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/
+	#mkdir -p $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/xml
+	#cp -r debian/local/office $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/
 
 	#If using compiler cache, place links to ccache on the path before the compilers
 	#if [ -n "$(CCACHE)" ];then \
@@ -292,7 +298,7 @@ bootstrap: $(STAMP_DIR)/bootstrap
 $(STAMP_DIR)/bootstrap: $(STAMP_DIR)/configure
 	dh_testdir
 
-	cd $(SOURCE_TREE) && tcsh -c 'source $(ENVFILE); ./bootstrap'
+	export CC="$(_CC)" ; cd $(SOURCE_TREE) && tcsh -c 'source $(ENVFILE); ./bootstrap'
 
 	# Copy files needed when building with libgpc (this is non-free and
 	# therefore not part of the official Debian packages)
@@ -304,14 +310,14 @@ $(STAMP_DIR)/bootstrap: $(STAMP_DIR)/configure
 	touch $@
 
 # Build step 4 - instsetoo (build complete project and installation sets)
-instsetoo: $(STAMP_DIR)/insetsetoo
+instsetoo: $(STAMP_DIR)/instsetoo
 $(STAMP_DIR)/instsetoo: $(STAMP_DIR)/bootstrap
 	dh_testdir
 
 	rm -rf $(SOURCE_TREE)/instsetoo/$(ARCHBUILDDIR)
 
 	echo DISTCC_HOSTS:$(DISTCC_HOSTS)
-	cd $(SOURCE_TREE) && \
+	export CC="$(_CC)" ; cd $(SOURCE_TREE) && \
 	    tcsh -c 'source $(ENVFILE); cd instsetoo &&	$(BUILDCMD)'
 
 	touch $@
@@ -329,7 +335,7 @@ buildprj: $(STAMP_DIR)/bootstrap
 	dh_testdir
 
 	# run dmake with xfvb-run
-	cd $(SOURCE_TREE) && \
+	export CC="$(_CC)" ; cd $(SOURCE_TREE) && \
 	    tcsh -c 'source $(ENVFILE); cd $(PRJ) &&	$(XVFB) $(BUILDCMD)'
 
 	-echo Project $(PRJ) build successful
