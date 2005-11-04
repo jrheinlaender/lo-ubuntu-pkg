@@ -5,9 +5,11 @@ trap "message;\
       message;\
       exit 1" 1 2 3 15
 
+VER=
+
 # call hook in openoffice.org-debian-files
-if [ -x /usr/share/openoffice.org1.1-debian-files/install-hook ]; then
-  /usr/share/openoffice.org1.1-debian-files/install-hook $THIS_SCRIPT $THIS_PACKAGE "$@"
+if [ -x /usr/share/openoffice.org${VER}-debian-files/install-hook ]; then
+  /usr/share/openoffice.org${VER}-debian-files/install-hook $THIS_SCRIPT $THIS_PACKAGE "$@"
 fi
 
 #DEBHELPER#
