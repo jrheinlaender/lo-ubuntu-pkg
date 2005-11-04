@@ -12,9 +12,9 @@
 # Modified by Peter Novodvorsky <nidd@debian.org>
 # Modified by Filip Van Raemdonck <mechanix@debian.org>
 # Modified by Jan-Hendrik Palic <jan.palic@linux-debian.de>
-# Modified by Chris Halls <chris.halls@gmx.de>
+# Modified by Chris Halls <halls@debian.org>
 # Modified by Rene Engelhard <rene@debian.org>
-# Copyright 1996-2001,2002 Software in the Public Interest, Inc.
+# Copyright 1996-2001,2002,2003 Software in the Public Interest, Inc.
 # Licensed under the GNU General Public License, version 2.  See the file
 # /usr/share/common-licenses/GPL or <http://www.gnu.org/copyleft/gpl.txt>.
 # Acknowlegements to Branden Robinson, Stephen Early, Mark Eichin, and Manoj Srivastava.
@@ -93,6 +93,7 @@ PKGOPENOFFICEDIR:=$(DEBTREEDIR)/$(OPENOFFICEDIR)
 # Package install directory
 MAINPKGDIR:=$(CURDIR)/debian/openoffice.org$(VER)
 
+# automatic configuration for woody backports
 # check that default compiler is not gcc 2.x (as it is on Woody)
 ifneq (gcc-2.9,$(findstring gcc-2.9,$(shell readlink /usr/bin/gcc)))
   _CC=gcc
@@ -110,6 +111,12 @@ else
 endif
 STLPORTHOME=
 USE_SYSTEM_LIBS=n
+
+# gcc version can be overriden by setting GCCVER in scripts/vars[.arch]
+ifneq "$(GCCVER)" ""
+  _CC=gcc-$(GCCVER)
+  CXX=g++-$(GCCVER)
+endif
 
 # Packages compiled with libfreetype on Woody do not work properly with
 # libfreetype from Sarge or Sid, so enforce that with a shlibs override
@@ -181,7 +188,7 @@ endif
 # Add parallel build flags and always hard link into the solver
 
 #command to use to build OOo
-BUILDCMD:=XCLASSPATH=$$XCLASSPATH::/usr/share/java/crimson.jar:/usr/share/java/xalan.jar:/usr/share/java/xml-apis.jar $(CURDIR)/$(SOURCE_TREE)/solenv/bin/build.pl
+BUILDCMD:=XCLASSPATH=$$XCLASSPATH::/usr/share/java/crimson.jar:/usr/share/java/xalan.jar:/usr/share/java/xml-apis.jar $(XVFB) $(CURDIR)/$(SOURCE_TREE)/solenv/bin/build.pl
 
 # Because of the stampdir magic, when you actually want to run a rule
 # over, you would have to remove the stamp manually.  Now, just do
@@ -289,24 +296,10 @@ endif
 ifneq "$(ARCH)" "i386"
 	cp -rvf ../mozlibs/* $(SOURCE_TREE)/moz/zipped/
 endif
-	#mkdir -p $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/inc/external/gpc
-	#cp -f $(SOURCE_TREE)/external/gpc/gpc.c $(SOURCE_TREE)/external/gpc/gpc.h \
-	#	$(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/inc/external/gpc
 
-	#Workaround for xml files
-	#mkdir -p $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/xml
-	#cp -r debian/local/office $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/
+	# pt-BR is missing some bitmaps - use the directory for pt
+	[ -f $(SOURCE_TREE)/res/portbr ] || ln -s port $(SOURCE_TREE)/res/portbr
 
-	#If using compiler cache, place links to ccache on the path before the compilers
-	#if [ -n "$(CCACHE)" ];then \
-	#  for I in gcc gcc-3.0 gcc-3.1 gcc-3.2 g++ g++-3.0 g++-3.1 g++-3.2 ; \
-	#  do ln -sf "`which ccache`" $(SOURCE_TREE)/solenv/bin/$$I;done;\
-	#fi
-
-	# Bison-1.875 has problems, so use bison-1.35 if installed 
-	#if [ -x /usr/bin/bison-1.35 ]; then ln -sf "`which bison-1.35`" \
-	#	$(SOURCE_TREE)/solenv/bin/bison; fi
-	
 	# In the 1.0.1 tarball, some scripts are not executable
 	chmod ugo+x $(SOURCE_TREE)/solenv/bin/*.pl
 
@@ -398,7 +391,7 @@ buildprj: $(STAMP_DIR)/bootstrap
 
 	# run dmake with xfvb-run
 	. $(SOURCE_TREE)/$(ENVFILE); \
-	  cd $(SOURCE_TREE)/$(PRJ) && $(XVFB) $(BUILDCMD) $(BUILDFLAGS)
+	  cd $(SOURCE_TREE)/$(PRJ) && $(BUILDCMD) $(BUILDFLAGS)
 
 	-echo Project $(PRJ) build successful
 
@@ -408,7 +401,7 @@ builduntil-%: $(STAMP_DIR)/bootstrap
 	dh_testdir
 
 	. $(SOURCE_TREE)/$(ENVFILE); \
-	  cd $(SOURCE_TREE)/$(subst builduntil-,,$@) && $(XVFB) $(BUILDCMD) $(STARTFROM) $(BUILDFLAGS)
+	  cd $(SOURCE_TREE)/$(subst builduntil-,,$@) && $(BUILDCMD) $(STARTFROM) $(BUILDFLAGS)
 
 	-echo Project $(PRJ) build successful
 
@@ -521,7 +514,7 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/setup
 		 debian/openoffice.org$(VER)/usr/share/gnome/apps/OpenOffice1.1/*.desktop \
 		 debian/openoffice.org$(VER)/usr/share/gnome/apps/OpenOffice1.1/.directory ;do \
 	    sed -e 's,Exec="\?/.*\(/usr/lib/openoffice$(VER)/program/setup\)"\?,Exec=\1,' \
-	        -e 's,Exec="\?/.*/usr/lib/openoffice$(VER)/program/s\([^"]*\)"\?,Exec=/usr/bin/oo\1,' \
+	        -e 's,Exec="\?/.*/usr/lib/openoffice$(VER)/program/s\([^"]*\)"\?,Exec=/usr/bin/oo\11.1,' \
 	        -e 's,Icon=.*/\([^/]*\.png\),Icon=/usr/lib/openoffice$(VER)/share/icons/\1,' \
 	        < "$$I" > "$$I.new" ;\
 	    rm "$$I"; mv "$$I.new" "$$I" ;\
@@ -673,15 +666,25 @@ PATCHDIR=openoffice/1.1beta
 PATCHURL=http://people.debian.org/~halls/$(PATCHDIR)
 
 downloadpatch:
+	# we don't want to change the patches if already applied (hint: debian/scripts/patch.unapply)
+	test ! -f $(STAMP_DIR)/patches/$(PATCHNAME).diff 
+	test ! -f $(STAMP_DIR)/patches/$(PATCHNAME)-binaries.diff.uu 
+
 	wget -O - $(PATCHURL)/$(PATCHNAME).diff.bz2 | bunzip2 -c > debian/patches/$(PATCHNAME).diff
-	wget -O - $(PATCHURL)/$(PATCHNAME)-binaries.diff.uu.bz2 | bunzip2 -c > debian/patches/$(PATCHNAME)-binaries.diff.uu
+	wget -O - $(PATCHURL)/$(PATCHNAME)-binaries.diff.uu.bz2 | bunzip2 -c \
+	  > debian/patches/$(PATCHNAME)-binaries.diff.uu
 
 # If you are a Debian developer, you can save some bandwidth by using rsync instead of wget:
 rsyncpatch:
+	# we don't want to change the patches if already applied (hint: debian/scripts/patch.unapply)
+	test ! -f $(STAMP_DIR)/patches/$(PATCHNAME).diff 
+	test ! -f $(STAMP_DIR)/patches/$(PATCHNAME)-binaries.diff.uu 
+
 	rsync -vL -e ssh \
 	   gluck.debian.org:/home/halls/public_html/$(PATCHDIR)/$(PATCHNAME).diff \
 	   debian/patches
-	wget -O - $(PATCHURL)/$(PATCHNAME)-binaries.diff.uu.bz2 | bunzip2 -c > debian/patches/$(PATCHNAME)-binaries.diff.uu
+	wget -O - $(PATCHURL)/$(PATCHNAME)-binaries.diff.uu.bz2 | bunzip2 -c \
+	  > debian/patches/$(PATCHNAME)-binaries.diff.uu
 
 # Take a tarfile of all the non-stripped binaries in solver, for generating backtraces
 # from coredumps.
