@@ -7,57 +7,64 @@ my $progname=$0; $progname = $& if $progname =~ m,[^/]+$,;
 my %PREFIX;   # used to search for prefix numbers
 my %ISOCODE;  # used to search for iso codes
 my %LANGUAGE; # used to search for language names
+my %RESOURCE; # used to search for resource name
 
 #=======================================================================
-# initialisation code - stuff the DATA into the CODES hash
+# Initialisation code - map the DATA into the CODES hash
 #=======================================================================
 sub init {
-
     my $prefix;
     my $code;
     my $name;
 
-
-    while (<DATA>)
-    {
+    while (<DATA>) {
         next unless /\S/;
         chop;
-        ($prefix, $code, $name ) = split(/:/, $_, 3);
+        my ($prefix, $code, $resource, $name) = split(/:/, $_, 4);
+        
         $PREFIX{$prefix} = $prefix;
         $PREFIX{$code} = $prefix;
         $PREFIX{$name} = $prefix;
+        $PREFIX{$resource} = $prefix;
 
         $ISOCODE{$prefix} = $code;
         $ISOCODE{$code} = $code;
         $ISOCODE{$name} = $code;
-	
+        $ISOCODE{$resource} = $code;
+    
         $LANGUAGE{$prefix} = $name;
         $LANGUAGE{$code} = $name;
         $LANGUAGE{$name} = $name;
+        $LANGUAGE{$resource} = $name;
+
+        $RESOURCE{$prefix} = $resource;
+        $RESOURCE{$code} = $resource;
+        $RESOURCE{$name} = $resource;
+        $RESOURCE{$resource} = $resource;
     }
 }
 
 
 #=======================================================================
-# usage - error message
+# Usage - error message
 #=======================================================================
 sub usage {
     my $errmsg = shift;
     my $errcode = shift;
-    print "$progname: $errmsg\n" if $errmsg;
-    print "$progname: Converts between prefix codes, iso codes and langnames\n";
-    print " Usage: $progname (-i|-l|-p|-h) <code>|all\n";
-    print "  -i <code>: convert prefix to iso code (ex: 03 -> pt)\n";
-    print "  -l <code>: convert iso code to language name (ex: pt -> portuguese)\n";
-    print "  -p <code>: convert iso code to prefix (ex: pt -> 03)\n";
-    print "  the code can either be an iso code, a prefix or even a language name\n";
-    print "  The special code \"all\" asks for all possible values.\n\n";
-    print "  -h : print this help\n";
+    print STDERR "$progname: $errmsg\n\n" if $errmsg;
+    print STDERR "Usage: $progname (-i|-l|-p|-r|-h) (<code>(,<code>)*|all)\n";
+    print STDERR "  -h : print this help\n";
+    print STDERR "  -i <code>: convert prefix to iso code (ex: 03 -> pt)\n";
+    print STDERR "  -l <code>: convert iso code to language name (ex: pt -> Portuguese)\n";
+    print STDERR "  -p <code>: convert iso code to prefix (ex: pt -> 03)\n";
+    print STDERR "  -r <code>: convert iso code to resource name (ex: pt -> PORT)\n";
+    print STDERR "  the code can either be an iso code, a prefix or even a language name\n";
+    print STDERR "  The special code \"all\" asks for all possible values.\n\n";
     exit $errcode;
 }
 
 #=======================================================================
-# main - 
+# Main
 #=======================================================================
 init();
 
@@ -66,19 +73,22 @@ my ($LanguageCode, $LanguageMap);
 while ($ARGV[0] =~ /^-/) {
     $_ = shift;
     if (m/^-i/) {
-	$LanguageMap = \%ISOCODE;
+        $LanguageMap = \%ISOCODE;
     }
     elsif (m/^-l/) {
-	$LanguageMap = \%LANGUAGE;
+        $LanguageMap = \%LANGUAGE;
     }
     elsif (m/^-p/) {
-	$LanguageMap = \%PREFIX;
+        $LanguageMap = \%PREFIX;
+    }
+    elsif (m/^-r/) {
+        $LanguageMap = \%RESOURCE;
     }
     elsif (m/^-h/) {
-	usage("",0);
+        usage "", 0;
     }
     else {
-	usage ("unknown option $_",1);
+        usage "unknown option $_", 1;
     }
 }
 
@@ -109,26 +119,26 @@ print $LanguageMap->{$LanguageCode}, "\n";
 1;
 
 __DATA__
-01:en:English (US)
-03:pt:Portuguese
-07:ru:Russian
-30:el:Greek
-31:nl:Dutch
-33:fr:French
-34:es:Spanish
-35:fi:Finnish
-37:ca:Catalan
-39:it:Italian
-42:cs:Czech
-43:sk:Slovak
-45:da:Danish
-46:sv:Swedish
-48:pl:Polish
-49:de:German
-55:pt-BR:Brazilian Portuguese
-81:ja:Japanese
-82:ko:Korean
-86:zh-CN:Chinese (simplified)
-88:zh-TW:Chinese (traditional)
-90:tr:Turkish
-96:ar:Arabic
+01:en:ENUS:English US
+03:pt:PORT:Portuguese
+07:ru:RUSS:Russian
+30:el:GREEK:Greek
+31:nl:DTCH:Dutch
+33:fr:FREN:French
+34:es:SPAN:Spanish
+35:fi:FINN:Finnish
+37:ca:CAT:Catalan
+39:it:ITAL:Italian
+42:cs:CZECH:Czech
+43:sk:SLOVAK:Slovak
+45:da:DAN:Danish
+46:sv:SWED:Swedish
+48:pl:POL:Polish
+49:de:GER:German
+55:pt-BR:PORTBR:Português do Brasil
+81:ja:JAPN:Japanese
+82:ko:KOREAN:Korean
+86:zh-CN:CHINSIM:Chinese Simplified
+88:zh-TW:CHINTRAD:Chinese Traditional
+90:tr:TURK:Turkish
+96:ar:ARAB:Arabic

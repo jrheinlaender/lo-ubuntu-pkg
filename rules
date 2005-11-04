@@ -42,11 +42,19 @@ ARCH := $(shell dpkg-architecture -qDEB_HOST_ARCH)
 # Read in architecture-specific variables of importance.
 include debian/scripts/vars.$(ARCH)
 
-# include variable -- where is Java? ;)
+CONFIGURE_FLAGS=
+
+# If DEB_BUILD_OPTIONS contains jdkhome=/absolute/path/to/jdk, build with the
+# JDK at /absolute/path/to/jdk.
 ifneq (jdkhome=,$(findstring jdkhome=,$(DEB_BUILD_OPTIONS)))
-  JDK_HOME := $(shell /bin/sh debian/scripts/detect_java.sh)
+  USE_JAVA=n
+  CONFIGURE_FLAGS+= --disable-java
 else
+  USE_JAVA=y
   JDK_HOME:=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*jdkhome=\([^,]*\),.*/\1/p')
+  CONFIGURE_FLAGS+= --with-jdk-home=$(JDK_HOME)
+  IGNORE_MANIFEST_CHANGES=1
+  export IGNORE_MANIFEST_CHANGES
 endif
 
 ifeq "$(BUILD_ALL_LANGPACKS)" "y"
@@ -65,23 +73,23 @@ PKGOPENOFFICEDIR:=$(DEBTREEDIR)/$(OPENOFFICEDIR)
 # Package install directory
 MAINPKGDIR:=$(CURDIR)/debian/openoffice.org$(VER)
 
-CONFIGURE_FLAGS=
-
 # automatic configuration for woody backports
 # check that default compiler is not gcc 2.x (as it is on Woody)
 ifneq (gcc-2.9,$(findstring gcc-2.9,$(shell readlink /usr/bin/gcc)))
   _CC=gcc
   CXX=g++
-  #USE_SYSTEM_LIBS=y
-  USE_SYSTEM_LIBS=n
+  #USE_SYSTEM_STLPORT=y
+  USE_SYSTEM_STLPORT=n
   #CONFIGURE_FLAGS+= --with-stlport4-home=$(CURDIR)/stlport-home
+  USE_FONTCONFIG=y
+  CONFIGURE_FLAGS+= --enable-fontconfig
 else
   # use latest gcc-3.x compiler version
   _CC=$(shell cd /usr/bin; ls gcc-3.* | tail -1)
   CXX=$(subst gcc,g++,$(_CC))
 
   # Don't use system libstlport
-  USE_SYSTEM_LIBS=n
+  USE_SYSTEM_STLPORT=n
 endif
 
 # gcc version can be overriden by setting GCCVER in scripts/vars[.arch]
@@ -154,19 +162,6 @@ BUILDPARALLEL:=$(shell echo $(DEB_BUILD_OPTIONS) | sed -n 's/^\(.*,\)\?-PP\([0-9
 BUILDFLAGS+= $(BUILDPARALLEL)
 DMAKEFLAGS+= $(DMAKEPARALLEL)
 
-# distcc will be used if DISTCC_HOSTS is set
-# The number of processes (-PP) will be set to the number of DISTCC_HOSTS, unless you
-# override it with -PPn or -Pn in DEB_BUILD_OPTIONS
-#ifdef DISTCC_HOSTS
-#  # If there were no -PP or -P options, set to number of distcc hosts
-#  ifeq "$(PARALLEL)" ""
-#    PARALLEL:=-PP$(strip $(shell echo $(DISTCC_HOSTS) | wc -w))
-#  fi
-#
-#  _CC:=distcc $(_CC)
-#  CXX:=distcc $(CXX)
-#endif
-
 # Use compiler cache?  Include ccache in DEB_BUILD_OPTIONS for much faster rebuild times
 # A complete build uses about 200Mb of compiler cache.
 ifeq (ccache,$(findstring ccache,$(DEB_BUILD_OPTIONS)))
@@ -205,7 +200,12 @@ endif
 ifeq (deloutput,$(findstring deloutput,$(DEB_BUILD_OPTIONS)))
   BUILDFLAGS+= --dlv_switch link deloutput
 else
-  BUILDFLAGS+= --dlv_switch link
+  # save disk space on buildds, thanks James Troup for the info...
+  ifeq (buildd,$(shell whoami))
+    BUILDFLAGS+= --dlv_switch link deloutput
+  else
+    BUILDFLAGS+= --dlv_switch link
+  endif
 endif
   
 
@@ -213,7 +213,9 @@ endif
 # Add parallel build flags and always hard link into the solver
 
 #command to use to build OOo
-BUILDCMD:=XCLASSPATH=$$XCLASSPATH::/usr/share/java/crimson.jar:/usr/share/java/xalan.jar:/usr/share/java/xml-apis.jar:/usr/share/java/xalan2.jar
+ifeq "$(USE_JAVA)" "y"
+BUILDCMD+= XCLASSPATH=$$XCLASSPATH::/usr/share/java/crimson.jar:/usr/share/java/xalan.jar:/usr/share/java/xml-apis.jar:/usr/share/java/xalan2.jar
+endif
 
 BUILDCMD+= $(ARCH_PREFIX) $(CURDIR)/$(SOURCE_TREE)/solenv/bin/build.pl
 
@@ -224,9 +226,6 @@ BUILDCMD+= $(ARCH_PREFIX) $(CURDIR)/$(SOURCE_TREE)/solenv/bin/build.pl
 stampdir_targets=build.prepare configure bootstrap solver instsetoo
 stampdir_targets+=setupins setup install-arch install-indep manifest
 stampdir_targets+=langpacks binary-common binary-arch binary-indep
-stampdir_targets+=source.make patchapply
-stampdir_targets+=source.build source.unpack fix.source.patch source.patch
-stampdir_targets+=unfix.source.patch
 ifdef FORCE
  DUMMY:=$(shell rm -f $(patsubst %,$(STAMP_DIR)/%,$(filter $(stampdir_targets),$(MAKECMDGOALS))))
 endif
@@ -280,23 +279,16 @@ endif
 	# we do not need them and they make problem with dpkg-source....
 	rm -f $(TOOLS_DIR)/desktop/*.png $(TOOLS_DIR)/www/*.png
 
-	# Clean rule, if we had a system dmake..
-	#if [ -f $(SOURCE_TREE)/$(ENVFILE) ]; then \
-	#    cd $(SOURCE_TREE) && . ./$(ENVFILE) && \
-	#    dmake distclean; \
-	#fi
 	cd $(SOURCE_TREE)/config_office && \
-	  rm -f config.cache config.log \
-              config.status config.parms \
-	      warn set_soenv && \
-	  rm -rf autom4te.cache
+               rm -f config.cache config.log \
+                   config.status config.parms \
+                  warn set_soenv && \
+              rm -rf autom4te.cache
 
-	rm -rf $(SOURCE_TREE)/*/$(ARCHBUILDDIR) \
-	       $(SOURCE_TREE)/solver \
-	       $(SOURCE_TREE)/dmake/autom4te.cache
-	# workaround
-	rm -f \
-	  $(SOURCE_TREE)/solenv/`echo $(ARCHBUILDDIR) | cut -d"." -f1`/bin/dmake
+	if [ -f $(SOURCE_TREE)/$(ENVFILE) ]; then \
+	    cd $(SOURCE_TREE) && . ./$(ENVFILE); \
+	    dmake distclean; \
+	fi
 
 	# remove xcf and bmp from the Debian splashscreen
 	rm -f debian/openintro_debian.xcf debian/openintro_debian.bmp \
@@ -327,6 +319,7 @@ endif
 	# Restore modified files
 	if cd $(SOURCE_TREE)/modified_files; then \
 	  find . -type f -exec cp -v -p {} ../{} \; ;\
+          rm -f $(STAMP_DIR)/icons.backup ;\
 	fi
 
 	rm -rf $(SOURCE_TREE)/modified_files
@@ -336,7 +329,12 @@ endif
 	rm -f dmake/dmakeroot.h
 	find dmake/startup -name Makefile -exec rm {} \;
 
-	dh_clean delzip
+	# delete delzip files
+	find helpcontent/unx sysui/desktop -name "delzip" -exec rm {} \;
+
+	rm -f desktop/source/icons/*.xpm
+	
+	dh_clean
 
 	rm -rf $(STAMP_DIR) $(DEBTREEDIR) stlport-home
 	rm -f makefile.mk $(ENVFILE) $(subst Env.Set.sh,Env.Set,$(ENVFILE)) \
@@ -377,7 +375,7 @@ build-indep: $(STAMP_DIR)/solver
 # make run the target over.
 
 patch.apply: $(STAMP_DIR)/patch.apply
-$(STAMP_DIR)/patch.apply:
+$(STAMP_DIR)/patch.apply: $(TOOLS_DIR)/patches/$(PATCH_DIR)/apply
 	# Test that we have the Ximian packaging directory available.  If your
 	# build stops here, you need to check it out.
 	# You can get the directory with the command:
@@ -406,15 +404,20 @@ $(STAMP_DIR)/patch.unapply:
 	chmod 755 $(TOOLS_DIR)/patches/apply.pl
 	$(TOOLS_DIR)/patches/apply.pl $(TOOLS_DIR)/patches/$(PATCH_DIR) $(BUILD_DIR) --distro=Debian -f -R
 	rm -f $(STAMP_DIR)/patch.apply
+
 	mkdir -p $(STAMP_DIR)
 	touch $@
 
-# Build step 1 - prepare source tree
-build.prepare: $(STAMP_DIR)/build.prepare
-$(STAMP_DIR)/build.prepare: $(STAMP_DIR)/patch.apply
-	dh_testdir $(TOOLS_DIR)/patches/apply.pl
+# Back up files that we must modify in the source, into modified_files.
+files.backup: $(STAMP_DIR)/files.backup
+$(STAMP_DIR)/files.backup:
 
-	$(MAKE) -f debian/rules control
+	mkdir -p modified_files 
+
+	# Back up all bmp files (!)
+	find . ! -path './ooo-icons*' -a ! -path './debian*' \
+	  -a ! -path *unx*.pro* -a ! -path './modified_files*' \
+	  -a -name '*.bmp' -exec cp -fp --parent {} modified_files \;
 
 	# Back up source files that we modify
 	for f in dmake/configure config_office/configure; do \
@@ -422,9 +425,29 @@ $(STAMP_DIR)/build.prepare: $(STAMP_DIR)/patch.apply
 	  cp -v -p $$f modified_files/$$f ;\
 	done
 
+	mkdir -p $(STAMP_DIR)
+	touch $@
+
+# Scale all icons in the tree; a long process so it gets
+# its own target
+icons.scale: $(STAMP_DIR)/icons.scale
+$(STAMP_DIR)/icons.scale: $(STAMP_DIR)/files.backup
+
+	chmod 755 $(TOOLS_DIR)/bin/scale-icons
+	$(TOOLS_DIR)/bin/scale-icons $(SOURCE_TREE)
+
+	touch $@
+
+# prepare source tree
+build.prepare: $(STAMP_DIR)/build.prepare
+$(STAMP_DIR)/build.prepare: $(STAMP_DIR)/patch.apply
+	dh_testdir $(TOOLS_DIR)/patches/apply.pl
+
+	$(MAKE) -f debian/rules control
+
 	#rm -rf $(SOURCE_TREE)/external/gpc
 
-ifeq "$(USE_SYSTEM_LIBS)" "y"
+ifeq "$(USE_SYSTEM_STLPORT)" "y"
 	# making stlport home
 	if [ ! -d stlport-home ]; then \
 	  mkdir stlport-home ;\
@@ -443,58 +466,68 @@ endif
 	# In the 1.0.1 tarball, some scripts are not executable
 	#chmod ugo+x $(SOURCE_TREE)/solenv/bin/*.pl
 
+ifeq "$(HAVE_DMAKE_PKG)" "n"
 	# we patched dmake - run autoconf
 	cd $(SOURCE_TREE)/dmake && \
 	  autoconf
+endif
 
 	touch $@
 
-build.prepare.icons: $(STAMP_DIR)/build.prepare.icons
-$(STAMP_DIR)/build.prepare.icons: $(STAMP_DIR)/build.prepare
+build.prepare.artwork: $(STAMP_DIR)/build.prepare.artwork
+$(STAMP_DIR)/build.prepare.artwork: $(STAMP_DIR)/files.backup $(TOOLS_DIR)/src/$(OOO_ICONS_VER).tar.gz.uu
+$(STAMP_DIR)/build.prepare.artwork: $(STAMP_DIR)/icons.scale
+$(STAMP_DIR)/build.prepare.artwork: debian/openintro_debian.xcf.uu
 
-	# Back up all bmp files (!)
-	find . ! -path './ooo-icons*' -a ! -path './debian*' \
-	  -a ! -path *unx*.pro* -a ! -path './modified_files*' \
-	  -a -name '*.bmp' -exec cp -vfp --parent {} modified_files \;
-
-	cd $(TOOLS_DIR)/src && uudecode $(OOO_ICONS_VER).tar.gz.uu
-	tar xzf $(TOOLS_DIR)/src/$(OOO_ICONS_VER).tar.gz
-
-	# remove ximian about since we do not have the full Ximian edition...
-	rm -f $(OOO_ICONS_VER)/offmgr/res/openabout.bmp
-	
 	# add the splashscreen with the Debian logo
 	uudecode debian/openintro_debian.xcf.uu > \
 		debian/openintro_debian.xcf && \
-		xvfb-run debian/scripts/xcftobmp debian/openintro_debian.xcf && \
+		debian/scripts/oo-xvfb-run -a debian/scripts/xcftobmp \
+			debian/openintro_debian.xcf && \
 		cp debian/openintro_debian.bmp offmgr/res/openintro_debian.bmp
-		
+
 #		mogrify -colors 8 debian/openintro_debian.bmp && \
 	
-	chmod 755 $(TOOLS_DIR)/bin/scale-icons
-	$(TOOLS_DIR)/bin/scale-icons $(SOURCE_TREE)
+	cd $(TOOLS_DIR)/src && uudecode $(OOO_ICONS_VER).tar.gz.uu
+	tar xzf $(TOOLS_DIR)/src/$(OOO_ICONS_VER).tar.gz
+	
+	# remove ximian about since we do not have the full Ximian edition...
+	rm -f $(OOO_ICONS_VER)/offmgr/res/openabout.bmp
 
 	# Copy new artwork into the tree
-	cp -avf $(SOURCE_TREE)/$(OOO_ICONS_VER)/* $(SOURCE_TREE)
+	cp -dRvf $(SOURCE_TREE)/$(OOO_ICONS_VER)/* $(SOURCE_TREE)
 
-	# Force rebuild of image lists etc.
+	# Force rebuild of image lists and resource files
+	-find $(SOURCE_TREE)/*/$(ARCHBUILDDIR)/bin -name "*.res" -exec rm {} \;
+	-find $(SOURCE_TREE)/*/$(ARCHBUILDDIR)/srs -name "*.srs" -exec rm {} \;
+	-find $(SOURCE_TREE)/*/$(ARCHBUILDDIR)/misc -name "*_img??.don" -exec rm {} \;
 	#find $(SOURCE_TREE) -name '*.src' -exec touch {} \;
 
 	touch $@
 
-# Build step 2 - configure
+# After build preparation, run configure
 configure: $(STAMP_DIR)/configure
-$(STAMP_DIR)/configure: $(STAMP_DIR)/build.prepare $(STAMP_DIR)/build.prepare.icons
+$(STAMP_DIR)/configure: $(STAMP_DIR)/build.prepare
+$(STAMP_DIR)/configure: $(STAMP_DIR)/build.prepare.artwork
 	dh_testdir
 	$(MAKE) -f debian/rules environment
 
-	# Make sure we have a valid JDK.  If this test fails, please install the JDK
-	# package (j2sdk1.3), or add the path to debian/scripts/detect_java.sh,
-	# or specify a JDK location with DEB_BUILD_OPTIONS=jdkhome=/absolute/path/to/jdk
+ifeq "$(USE_JAVA)" "y"
+	# If building with a JDK, make sure we have a valid JDK and all the
+	# necessary java packages.  If this test fails, please ensure that a
+	# valid JDK is provided in the path specified with
+	# DEB_BUILD_OPTIONS=jdkhome=/absolute/path/to/jdk, and that the
+	# libcrimson-java, libxalan-java, and libxalan2-java packages are
+	# installed.
 	test -x /$(JDK_HOME)/bin/javac
+	test -r /usr/share/java/crimson.jar
+	test -r /usr/share/java/xalan.jar
+	test -r /usr/share/java/xml-apis.jar
+	test -r /usr/share/java/xalan2.jar
+endif
 
-	# test for libhpi.so and warn ppc folks....
 ifeq "$(ARCH)" "powerpc"
+	# test for libhpi.so and warn ppc folks....
 	find /$(JDK_HOME) -type f -name "libhpi*" | grep usr | grep green \
 		> debian/libhpi.search && if [ -s debian/libhpi.search ]; then \
 	echo ""; echo ""; \
@@ -517,20 +550,20 @@ endif
 
 	cd $(SOURCE_TREE)/config_office && autoconf && \
 	  CC="$(_CC)" CXX="$(CXX)" $(ARCH_PREFIX) sh ./configure \
-            --with-lang=ALL \
-	    --with-jdk-home=$(JDK_HOME) \
+	    --with-lang=ALL \
 	    --enable-libart \
 	    --disable-rpath \
 	    --enable-crashdump \
 	    --enable-symbols=SMALL \
 	    --without-fonts \
-	    $(CONFIGURE_FLAGS) \
+	    --with-system-zlib \
+	   $(CONFIGURE_FLAGS) \
 	    < /dev/null
 	touch $@
 
 #    --with-python \
 
-# Build step 3 - bootstrap
+# bootstrap build
 bootstrap: $(STAMP_DIR)/bootstrap
 $(STAMP_DIR)/bootstrap: $(STAMP_DIR)/configure
 	dh_testdir
@@ -546,7 +579,7 @@ $(STAMP_DIR)/bootstrap: $(STAMP_DIR)/configure
 
 	touch $@
 
-# Build step . - build all projects needed for installation sets but do not yet create instsets
+# Build all projects needed for installation sets but do not yet create instsets
 solver: $(STAMP_DIR)/solver
 $(STAMP_DIR)/solver: $(STAMP_DIR)/bootstrap
 	dh_testdir
@@ -555,7 +588,7 @@ $(STAMP_DIR)/solver: $(STAMP_DIR)/bootstrap
 
 	touch $@
 
-# Build step . - build full installation set for BUILDLANG language
+# Build full installation set for BUILDLANG language
 instsetoo: $(STAMP_DIR)/instsetoo
 $(STAMP_DIR)/instsetoo: $(STAMP_DIR)/solver
 	dh_testdir
@@ -564,7 +597,7 @@ $(STAMP_DIR)/instsetoo: $(STAMP_DIR)/solver
 
 	touch $@
 
-# Build step . - build insetsetoo installation scrips for langpacks
+# Build insetsetoo installation scrips for langpacks
 setupins: $(STAMP_DIR)/setupins
 $(STAMP_DIR)/setupins: $(STAMP_DIR)/solver
 ifeq "$(BUILD_ALL_LANGPACKS)" "y"
@@ -577,7 +610,7 @@ ifeq "$(BUILD_ALL_LANGPACKS)" "y"
 	touch $@
 endif
 
-# Build step 4a - project (build individual project)
+# build individual project (optional)
 # for an overview, see:
 #	http://www.openoffice.org/dev_docs/source/build_linux.html#BuildingIndividualProjects
 # This target is not used by the main build, but may be useful to just build a troublesome project.
@@ -589,13 +622,13 @@ PRJ=unknown-project
 buildprj: $(STAMP_DIR)/bootstrap
 	dh_testdir
 
-	# run dmake with xfvb-run
+	# run dmake
 	. $(SOURCE_TREE)/$(ENVFILE); cd $(SOURCE_TREE)/$(PRJ) && \
 	    $(BUILDCMD) $(BUILDFLAGS) -- $(DMAKEFLAGS)
 
 	-echo Project $(PRJ) build successful
 
-# Build all projects until the given project
+# Build all projects until the given project (optional)
 # e.g. debian/rules builduntil-transex3
 builduntil-%: $(STAMP_DIR)/bootstrap
 	dh_testdir
@@ -606,7 +639,7 @@ builduntil-%: $(STAMP_DIR)/bootstrap
 	-echo Project $(PRJ) build successful
 
 #
-# Build step 5 - generate maintainer scripts
+# Generate maintainer scripts
 maintscripts: $(STAMP_DIR)/maintscripts
 $(STAMP_DIR)/maintscripts: debian/shell-lib.sh debian/control
 	dh_testdir
@@ -670,13 +703,17 @@ $(STAMP_DIR)/setup: $(STAMP_DIR)/instsetoo
 
 	touch $@
 
+# Compare files copied by setup with known list of files
 manifest: $(STAMP_DIR)/manifest
 $(STAMP_DIR)/manifest: debian/MANIFEST.$(ARCH) $(STAMP_DIR)/setup
 	dh_testdir
 	umask 022
 	
 	# compare manifests
-	(cd debian/tmp && find -type f -o -type l | LC_ALL=C sort | cut -c3-) > debian/MANIFEST.$(ARCH).new
+	find debian/tmp \( -type f -o -type l \) \
+	  ! -path 'debian/tmp/usr/lib/openoffice/program/python-core*' \
+	    | LC_ALL=C sort | cut -c12- > debian/MANIFEST.$(ARCH).new
+
 	# confirm that the installed file list has not changed
 	if [ -e debian/MANIFEST.$(ARCH) ]; then \
 	  if ! cmp -s debian/MANIFEST.$(ARCH) debian/MANIFEST.$(ARCH).new; then \
@@ -693,6 +730,7 @@ $(STAMP_DIR)/manifest: debian/MANIFEST.$(ARCH) $(STAMP_DIR)/setup
 	fi;
 	touch $@
 
+# Install files generated by setup into arch-dependent package directories
 install-arch: $(STAMP_DIR)/install-arch
 $(STAMP_DIR)/install-arch: debian/openoffice.org$(VER)-bin.install
 $(STAMP_DIR)/install-arch: debian/openoffice.org$(VER)-gnome.install
@@ -726,7 +764,25 @@ endif
 	done
 endif
 
-ifneq "$(USE_SYSTEM_LIBS)" "y"
+# If building with a JDK, install the additional files
+ifeq "$(USE_JAVA)" "y"
+ifeq "$(LIBSUFFIX)" ""
+	echo 'LIBSUFFIX unknown for $(ARCH).' >&2
+	echo 'Please set it in debian/scripts/vars.$(ARCH).' >&2
+	exit 1
+endif
+	for i in javaldx javaloader.uno.so javavm.uno.so jvmsetup.bin \
+	         libdb_java-3.2.so libjava_uno.so libjdbc2.so libjpipe.so \
+	         libjuh.so libjuhx.so libjvm$(BUILDNUM)$(LIBSUFFIX).so \
+	         libjvmaccessgcc3.so.3.1.0 libofficebean.so \
+	         libxmlfa$(BUILDNUM)$(LIBSUFFIX).so \
+		 libxmlfd$(BUILDNUM)$(LIBSUFFIX).so; do \
+	        cp -rf $(PKGOPENOFFICEDIR)/program/$$i \
+	          $(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program; \
+	done
+endif
+
+ifneq "$(USE_SYSTEM_STLPORT)" "y"
 	# Copy libstlport if we are using the internal library
 	cp -f $(PKGOPENOFFICEDIR)/program/libstlport_gcc.so \
 		$(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program
@@ -746,9 +802,19 @@ endif
 	$(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/bin/configimport.bin \
 		$(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program
 
+	# convert program/icon paths in desktop shortcuts in gnome (arch-dep) package
+	for I in $(MAINPKGDIR)-gnome/usr/share/applications/*.desktop; do \
+	    sed -e 's,Exec="\?/.*\(/usr/lib/openoffice$(VER)/program/setup\)"\?,Exec=\1,' \
+	        -e 's,Exec="\?/.*/usr/lib/openoffice$(VER)/program/s\?\([^"]*\)"\?,Exec=/usr/bin/oo\1$(VER),' \
+		-e 's,/oooffice ,/ooffice ,' \
+	        -e 's,Icon=.*/\([^/]*\.png\),Icon=/usr/lib/openoffice$(VER)/share/icons/\1,' \
+	        < "$$I" > "$$I.new" ;\
+	    rm "$$I"; mv "$$I.new" "$$I" ;\
+	done
+
 	touch $@
 
-# Install files generated by setup into package directories
+# Install files generated by setup into arch-independent package directories
 install-indep: $(STAMP_DIR)/install
 $(STAMP_DIR)/install-indep: debian/openoffice.org$(VER).install 
 $(STAMP_DIR)/install-indep: debian/openoffice.org$(VER)-mimelnk.install 
@@ -774,8 +840,7 @@ $(STAMP_DIR)/install-indep: $(STAMP_DIR)/manifest
 	done
 
 	# convert program/icon paths in desktop shortcuts
-	for I in $(MAINPKGDIR)/usr/share/applnk/*/*.desktop \
-		 $(MAINPKGDIR)-gnome/usr/share/applications/*.desktop; do \
+	for I in $(MAINPKGDIR)/usr/share/applnk/*/*.desktop; do \
 	    sed -e 's,Exec="\?/.*\(/usr/lib/openoffice$(VER)/program/setup\)"\?,Exec=\1,' \
 	        -e 's,Exec="\?/.*/usr/lib/openoffice$(VER)/program/s\?\([^"]*\)"\?,Exec=/usr/bin/oo\1$(VER),' \
 		-e 's,/oooffice ,/ooffice ,' \
@@ -790,6 +855,26 @@ $(STAMP_DIR)/install-indep: $(STAMP_DIR)/manifest
 ifneq "$(MOZILLA)" "n"
 	cp -rf $(PKGOPENOFFICEDIR)/program/defaults \
 		$(MAINPKGDIR)/$(OPENOFFICEDIR)/program
+endif
+
+# If building with a JDK, install the additional files
+ifeq "$(USE_JAVA)" "y"
+	for i in jvmsetup libjvmaccessgcc3.so libjvmaccess3.so.3; do \
+	        cp -rf $(PKGOPENOFFICEDIR)/program/$$i \
+	          $(MAINPKGDIR)/$(OPENOFFICEDIR)/program; \
+	done
+	mkdir -p $(MAINPKGDIR)/$(OPENOFFICEDIR)/program/classes
+	for i in XFlatXml.jar XMergeBridge.jar XSLTFilter.jar \
+	         XSLTValidate.jar classes.jar common.jar docbook.jar \
+	         htmlsoff.jar java_uno.jar juh.jar jurt.jar jut.jar \
+	         officebean.jar report.jar ridl.jar sandbox.jar unoil.jar \
+	         xmerge.jar xt.jar ; do \
+	        cp -rf $(PKGOPENOFFICEDIR)/program/classes/$$i \
+	   	  $(MAINPKGDIR)/$(OPENOFFICEDIR)/program/classes; \
+	done
+	mkdir -p $(MAINPKGDIR)/$(OPENOFFICEDIR)/share/config
+	cp -rf $(PKGOPENOFFICEDIR)/share/config/javarc \
+	  $(MAINPKGDIR)/$(OPENOFFICEDIR)/share/config
 endif
 
 	# there are some wrong permissions; fix them ourselves
@@ -810,6 +895,17 @@ endif
 	# install info file for update-openoffice-dicts
 	install -m644 debian/dictlistinfo \
 		$(MAINPKGDIR)/usr/share/myspell/infos/ooo/openoffice.org$(VER)
+
+ifeq "$(USE_FONTCONFIG)" "y"
+	mkdir -p $(MAINPKGDIR)/usr/share/fonts/truetype/openoffice
+	install -m644 $(PKGOPENOFFICEDIR)/share/fonts/truetype/opens___.ttf \
+		$(MAINPKGDIR)/usr/share/fonts/truetype/openoffice
+else
+	mkdir -p $(MAINPKGDIR)/usr/lib/openoffice/share/fonts/truetype
+	for i in fonts.dir fonts.dir.global opens___.ttf; do \
+		install -m644 $(PKGOPENOFFICEDIR)/share/fonts/truetype/$$i \
+		   $(MAINPKGDIR)/usr/lib/openoffice/share/fonts/truetype
+endif
 
 	touch $@
 
@@ -863,9 +959,9 @@ binary-common:
 	dh_installchangelogs
 	if [ -e $(MAINPKGDIR)/usr/share/doc/openoffice.org$(VER) ]; then \
 	 install -m644 ooo-build/ChangeLog \
-	   $(MAINPKGDIR)/usr/share/doc/openoffice.org/changelog.Ximian+Debian \
+	   $(MAINPKGDIR)/usr/share/doc/openoffice.org/changelog.ooo-build \
 	 && gzip -f9 \
-	   $(MAINPKGDIR)/usr/share/doc/openoffice.org/changelog.Ximian+Debian; \
+	   $(MAINPKGDIR)/usr/share/doc/openoffice.org/changelog.ooo-build; \
 	fi
 ifeq ($(PO2DEBCONF),yes)
 	po2debconf -e utf8 $(MAINPKGDIR)-bin.templates.master \
@@ -905,6 +1001,9 @@ binary-%: $(STAMP_DIR)/install-indep $(STAMP_DIR)/install-arch $(STAMP_DIR)/lang
 
 binary: binary-arch binary-indep
 
+# -------------------------------------------------------
+# Miscellaneous targets used to do a few useful operations
+
 # Use 'debian/rules environment' to help debug architecture-related problems
 # with the rules file.
 environment:
@@ -924,45 +1023,17 @@ environment:
 
 	@echo 'See debian/control for build dependencies.'
 
-# -------------------------------------------------------
-# Miscellaneous targets used to do a few useful operations
-
 # Get the ximian packaging directory from gnome anoncvs
 get-ooo-build:
 	# press enter at the password prompt
 	cvs -d:pserver:anonymous@anoncvs3.gnome.org:/cvs/gnome login
 	cvs -z3 -d:pserver:anonymous@anoncvs3.gnome.org:/cvs/gnome co -d $(TOOLS_DIR) openoffice
 
+# Download the latest icons
 get-ooo-icons:
 	test -d $(TOOLS_DIR)/src || mkdir $(TOOLS_DIR)/src
 	wget -O $(TOOLS_DIR)/src/$(OOO_ICONS_VER).tar.gz http://ooo.ximian.com/packages/$(OOO_ICONS_VER).tar.gz
 	uuencode $(TOOLS_DIR)/src/$(OOO_ICONS_VER).tar.gz $(OOO_ICONS_VER).tar.gz > $(TOOLS_DIR)/src/$(OOO_ICONS_VER).tar.gz.uu
-
-# Get latest patch files from Chris' repository
-PATCHNAME=000_prerc3_stolen_from_ooo11rc3
-PATCHDIR=openoffice/1.1rc3
-PATCHURL=http://people.debian.org/~halls/$(PATCHDIR)
-
-downloadpatch:
-	# we don't want to change the patches if already applied (hint: debian/scripts/patch.unapply)
-	test ! -f $(STAMP_DIR)/patches/$(PATCHNAME).diff 
-	test ! -f $(STAMP_DIR)/patches/$(PATCHNAME)-binaries.diff.uu 
-
-	wget -O - $(PATCHURL)/$(PATCHNAME).diff.bz2 | bunzip2 -c > debian/patches/$(PATCHNAME).diff
-	wget -O - $(PATCHURL)/$(PATCHNAME)-binaries.diff.uu.bz2 | bunzip2 -c \
-	  > debian/patches/$(PATCHNAME)-binaries.diff.uu
-
-# If you are a Debian developer, you can save some bandwidth by using rsync instead of wget:
-rsyncpatch:
-	# we don't want to change the patches if already applied (hint: debian/scripts/patch.unapply)
-	test ! -f $(STAMP_DIR)/patches/$(PATCHNAME).diff 
-	test ! -f $(STAMP_DIR)/patches/$(PATCHNAME)-binaries.diff.uu 
-
-	rsync -vL -e ssh \
-	   gluck.debian.org:/home/halls/public_html/$(PATCHDIR)/$(PATCHNAME).diff \
-	   debian/patches
-	wget -O - $(PATCHURL)/$(PATCHNAME)-binaries.diff.uu.bz2 | bunzip2 -c \
-	  > debian/patches/$(PATCHNAME)-binaries.diff.uu
 
 # Take a tarfile of all the non-stripped binaries in solver, for generating backtraces
 # from coredumps.
@@ -973,7 +1044,7 @@ makebinariestar:
 
 # -------------------------------------------------------
 
-.PHONY: environment checksource control downloadpatch rsyncpatch makebinariestar
+.PHONY: environment checksource control makebinariestar
 .PHONY: clean-debdir clean-instsetoo clean-objectdirs clean default
 .PHONY: build build-indep build-arch
 .PHONY: $(stampdir_targets)

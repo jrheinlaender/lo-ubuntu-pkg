@@ -1,13 +1,10 @@
 Openoffice build system
 -----------------------
 
-This package was adapted from the XFree86 build system.  It uses an adapted dbs.
-
 Building the packages from source
 =================================
 Overview:
   apt-get source openoffice.org
-  [install a jdk if needed]
   [install moz zips if building for powerpc, s390 or sparc]
   apt-get build-dep openoffice.org (to install build dependencies)
   cd openoffice.org-1.0.99+1.1rc
@@ -47,68 +44,29 @@ These options are supported:
   deloutput - delete the contents of each project once it has been built and
 	      delivered.  This reduces the amount of disk space needed to build
 	      the packages, but slows down rebuilds.  You can get a good
-	      compromise by using 'ccache' and 'delobj' together - this will
+	      compromise by using 'ccache' and 'deloutput' together - this will
 	      cache the object files using ccache (needs about 200mb in total)
 	      but remove all other files.
 
   jdkhome=/absolute/path/to/jdk - use the JDK installed in this path.  
 
-Installing a JDK
-----------------
-OpenOffice.org still needs a non-free JDK.  You can find a suitable JDK here:
+JDK Support
+-----------
 
--i386, powerpc and sparc-
- deb http://ftp.gwdg.de/pub/languages/java/linux/debian unstable main non-free
-
--s390-
- https://www6.software.ibm.com/dl/lxdk/lxdk-p (unpack tarball under /usr/local)
-
-If you a building on a machine without a JDK and have no root access to install
-one, you can install the JDK to your home directory and specify the path using
-DEB_BUILD_OPTIONS=jdkhome=/absolute/path/to/jdk
-
-Hint: use dpkg-buildpackage -d to skip the build dependencies check.
+The official Debian packages of OpenOffice.org are built without a JDK.  This
+disables support for some features which require a JDK at runtime.  In order
+to enable these features, a JDK must be present at build time.  To build the
+packages from source using a JDK, add jdkhome=/absolute/path/to/jdk to
+DEB_BUILD_OPTIONS.  You will also need libcrimson-java, libxalan-java, and
+libxalan2-java, in addition to the standard build dependencies.
 
 We are working on adding support for other JDKs to OOo.  See this issue for progress:
     http://www.openoffice.org/issues/show_bug.cgi?id=10477
 
-Installing moz zips for powerpc, s390 and sparc
------------------------------------------------
-If you are building for powerpc, you need to manually get some precompiled
-files for mozilla.  Jan has compiled these with gcc 3.2.1 and you can find them here:
-
- http://sevdalia.hajvan.net/~palic/debian/OpenOffice.org/mozlibs/
-
- mkdir mozlibs; cd mozlibs
- wget -l2 -L -np --accept "*.zip" -nd -nH -m http://sevdalia.hajvan.net/~palic/debian/OpenOffice.org/mozlibs/
-
-If you are building for s390, you need to manually get some precompiled
-files for mozilla.  Gerhard has compiled these with gcc 3.2.2 and you can find
-them here:
-
- http://people.debian.org/~gt/mozlibs/
-
- mkdir mozlibs; cd mozlibs
- wget -l2 -L -np --accept "*.zip" -nd -nH -m http://people.debian.org/~gt/mozlibs/
-
-If you are building for sparc; you need to manually get some precompiled
-files for mozilla. René has compiled these with gcc 3.2.3 and you can find
-them here:
-
-  http://people.debian.org/~rene/openoffice.org/mozlibs/sparc
-
-  mkdir mozlibs; cd mozlibs
-  wget -l2 -L -np --accept "*.zip" -nd -nH -m http://people.debian.org/~rene/openoffice.org/mozlibs/sparc/
-  
 The targets that are built during the package build
 ---------------------------------------------------
 
 - targets run during the package build -
-
-source.unpack - (dbs) Unpack OpenOffice sources from upstream/archives into build-tree
-
-source.make   - (dbs) Apply patches from debian/patches directory.
-  	        (why is there source.patch and patchapply?? TODO: fix this)
 
 build.prepare - Applies any workarounds/modifications needed to the build tree
 		once the source is unpacked.  Currently: create a fake
@@ -184,64 +142,12 @@ buildprj	   - Build only one a particular project.  Set PRJ to the name of
 		     the project:
 		       debian/rules buildprj PRJ=tools
 
-downloadpatch      - During the runup to a release, Chris is generating patches
-                     that patch the current source to the next release from CVS.  
-		     This target downloads the files and unpacks them to the
-		     patches directory.  You can run this target as often as
-		     you like.  If you have a Debian developer account, use the
-		     'rsyncpatch' target instead, which uses rsync over ssh to
-		     save bandwidth.
-
 Build system file layout
 ========================
-  Note: for OpenOffice builds, we have modified the build system to support
-  binary patches that have been uuencoded (extension .uu).
-
-  A chunk of makefile implementing Doogie's Build System (this is a pretty
-  old, prototypical version, but it works well enough for me).  You
-  shouldn't need to use this makefile directly; you can call the rules you
-  need from debian/rules.  The purpose of Doogie's Build System is to avoid
-  a difficult-to-manage Debian .diff.gz file by keeping our patches to the
-  upstream sources separate and applying them at package build time.  Here
-  are a couple of targets that I have found useful:
-	debian/rules source.unpack	Simply unpacks the source
-					archive(s); does not apply any
-					Debian patches.
-	debian/rules source.make	Unpacks the source archive(s) and
-					applies Debian patches.
-	debian/rules checksource	Unpacks the source archive(s),
-					applies Debian patches, and ensures
-					that the patches applied cleanly.
-
 scripts:
-  Directory containing the internals of Doogie's Build System.  If any
-  architecture-specific make variables need to be declared, you may do so
+  Directory containing various build-related scripts.  If any
+  architecture-specific make variables need to be declared, you may do so in
   debian/scripts/vars.$(ARCH).
-
-patches:
-  Directory containing patches applied in ASCIIbetical order.
-  numeric prefix indicates disposition of patch
-  000     patches FROM upstream
-
-  001-899 patches that should be sent upstream
-
-	001-099		general-purpose patches
-	100-149		sparc/sparc64 architecture patches
-	150-199		powerpc architecture patches
-	200-249		alpha architecture patches
-	250-299		m68k architecture patches
-	300-349		arm architecture patches
-	350-399		mips/mipsel architecture patches
-	400-449		hppa architecture patches
-	450-499		ia64 architecture patches
-	500-549		s390 architecture patches
-	800-849		GNU Hurd kernel patches
-
-   900-999 patches that should not be sent upstream
-
-	900-998		Debian-specific behavior and enhancements
-	999		experimental or debugging patches (should not
-			generally be present in a production release)
 
 local:
   This contains Debian-specific programs and documentation that we include
