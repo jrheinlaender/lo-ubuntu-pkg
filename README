@@ -29,12 +29,14 @@ These options are supported:
 	      $DEB_BUILD_OPTIONS under pbuilder (this has no effect on speed,
 	      though because the cache does not persist in pbuilder)
 
-  -Pn       - run n processes in parallel in dmake -equivalent to MAKEFLAGS=-jn.  
+  -Pn       - run n processes in parallel in dmake -equivalent to
+              MAKEFLAGS=-jn.  
               There are still some projects which fail, see IssueZilla #9443
 
   -PPn      - enable n projects to be built in parallel (-P flag to build.pl).
-              This seems to hang when using perl 5.8.
-
+              The log output can get a little confusing, and some projects
+	      may fail still
+	      
   startfrom=<prj>
             - Resume build from the specified project.  Useful if a build is 
 	      interrupted.
@@ -51,7 +53,39 @@ These options are supported:
   jdkhome=/absolute/path/to/jdk - use the JDK installed in this path.  
 
   lang=<code>
-  	     - Build only the specified language number
+  	    - Build only the specified language number
+
+  kdeicons  - Build using KDE icon set instead of Gnome icons.  You can download
+              the KDE icon set like this:
+	        debian/rules get-ooo-icons DEB_BUILD_OPTIONS=kdeicons
+
+Building Woody backports
+------------------------
+
+The package scripts are designed to run slighly differently when building on
+Woody (i386):
+Instead of requiring lots of extra libraries to be backported (such as
+libfreetype), we use OOo's internal versions of the libraries instead.  This
+means the resulting packages have no extra runtime dependencies that must be
+satisfied when installing on a Woody system.
+
+To build on Woody, you need to install these packages from non-woody sources
+(These are only build-time dependencies):
+  
+  - dmake and debhelper from the woody section of the Debian OpenOffice.org
+    mirrors
+  - a backport of xsltproc, version 1.30 or above. (available for example
+    from www.backports.org)
+
+Then, you should install the following packages.  They satisfy the alternative
+build dependencies which 'apt-get build-dep' will not install automatically for you:
+
+  - gcc-3.0 gimp1.2 xlibs-dev
+  
+After you have installed those packages, use 'dpkg-checkbuilddeps' to get a
+list of the remaining required dependencies, which can all be satisfied from
+Woody.  If you are lucky, 'apt-get build-dep openoffice.org' may work for you
+too.
 
 JDK Support
 -----------
@@ -63,7 +97,8 @@ packages from source using a JDK, add jdkhome=/absolute/path/to/jdk to
 DEB_BUILD_OPTIONS.  You will also need libcrimson-java, libxalan-java, and
 libxalan2-java, in addition to the standard build dependencies.
 
-We are working on adding support for other JDKs to OOo.  See this issue for progress:
+We are working on adding support for other JDKs to OOo.  See this issue for
+progress:
     http://www.openoffice.org/issues/show_bug.cgi?id=10477
 
 The targets that are built during the package build
@@ -76,7 +111,8 @@ build.prepare - Applies any workarounds/modifications needed to the build tree
 		libstlport tree, fix some file permissions.
 
 configure     - Run configure in config_office.  This creates the settings file
-                in the build root, which is sourced by the other targets in tcsh.
+                in the build root, which is sourced by the other targets in
+                tcsh.
 
 bootstrap     - Bootstrap the solver environment, by building these projects:
                 dmake, external, xml2cmp, sal, vos, soltools.
@@ -88,8 +124,8 @@ instsetoo     - Build a complete installation set for the language BUILDLANG.
 		This is the install set that is distributed by upstream in
 		tar.gz format.
 
-setupins      - For all other languages, build just the 'setup.ins', which is used to
-		generate language packs by our scripts.
+setupins      - For all other languages, build just the 'setup.ins', which is
+                used to generate language packs by our scripts.
 
 setup    - Run OOo network install from the instsetoo directory,
            installing to debian/tmp
@@ -141,8 +177,8 @@ builduntil-<prjname> Build a particular project, including all its
 		     execute:
 		       debian/rules builduntil-transex3
 
-buildprj	   - Build only one a particular project.  Set PRJ to the name of
-		     the project:
+buildprj	   - Build only one a particular project.  Set PRJ to the name
+		     of the project:
 		       debian/rules buildprj PRJ=tools
 
 Build system file layout

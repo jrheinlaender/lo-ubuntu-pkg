@@ -1,17 +1,30 @@
-#!/usr/bin/perl
+#!/bin/bash
 
-use Gimp qw(:auto );;
+# gimp has problems with upgrading the alternative (/usr/bin/gimp), so test
+# for the stuff manually
+if [ -L /usr/bin/gimp ] && [ -x "$(readlink $(readlink /usr/bin/gimp))" ]; then
+	GIMP=gimp
+elif [ -x /usr/bin/gimp ]; then
+	GIMP=gimp
+elif [ -x /usr/bin/gimp-1.2 ]; then
+	GIMP=gimp-1.2
+elif [ -x /usr/bin/gimp-2.0 ]; then
+	GIMP=gimp-2.0
+elif [ -x /usr/bin/gimp-2.2 ]; then
+	GIMP=gimp-2.2
+else
+        echo $0: Could not find gimp.
+	exit 1
+fi
 
-
-$in_name=$ARGV[0];
-$out_name=$ARGV[0];
-$out_name =~ s/xcf$/bmp/;
-
-Gimp::init;
-
-
-$img = Gimp->xcf_load(0,$in_name, $in_name);
-$layer = $img->flatten;
-file_bmp_save(NON_INTERACTIVE, $layer, $out_name, $out_name);
-gimp_image_delete($img);
-Gimp::end;
+script_fu="
+(let* ((in-name \"$1\")
+       (out-name \"$2\")
+       (img (car (gimp-xcf-load 0 in-name in-name)))
+       (layer (car (gimp-image-flatten img))))
+  (file-bmp-save 0 img layer out-name out-name)
+  (gimp-image-delete img)
+  (gimp-quit 0))
+"
+                                                                                
+$GIMP -i -d -c -b "$script_fu"
