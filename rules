@@ -14,10 +14,16 @@
 ###################################################################################
 
 default: environment
-VER=2
-PKGDIR=debian/openoffice.org$(VER)
-OODIR=usr/lib/openoffice$(VER)
-MILESTONE=66
+VER:=2
+PKGDIR:=debian/openoffice.org$(VER)
+OODIR:=usr/lib/openoffice$(VER)
+
+SOURCE_VERSION:=$(shell head -1 debian/changelog | cut -d\( -f2 | cut -d\) -f1)
+UPSTREAM_VERSION:=$(shell echo "$(SOURCE_VERSION)"| cut -d- -f1)
+MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)"| cut -d. -f3)
+ARCH := $(shell dpkg-architecture -qDEB_HOST_ARCH)
+# Dist we are building for
+DIST := $(shell lsb_release -is)
 
 # ensure that some scripts we need are executable.
 DUMMY:=$(shell if [ ! -x debian/scripts/setperms ]; then chmod 755 debian/scripts/setperms; fi)
@@ -28,13 +34,6 @@ export DH_OPTIONS
 export DH_ALWAYS_EXCLUDE=CVS
 #export DH_VERBOSE=1
 
-# Get package version info.
-SOURCE_VERSION:=$(shell head -1 debian/changelog | cut -d\( -f2 | cut -d\) -f1)
-UPSTREAM_VERSION:=$(shell echo "$(SOURCE_VERSION)"| cut -d- -f1)
-# Determine our architecture.
-ARCH := $(shell dpkg-architecture -qDEB_HOST_ARCH)
-# Dist we are building for
-DIST := $(shell lsb_release -is)
 
 STAMP_DIR=debian/stampdir
 DEBHELPER_OPTIONS = -Nopenoffice.org$(VER)-java
@@ -51,7 +50,8 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
 		 --enable-package-directories \
 		 --disable-java \
 		 --with-installed-ooo-dirname=openoffice$(VER) \
-		 --with-binsuffix=2
+		 --with-binsuffix=2 \
+		 --mandir=/usr/share/man
 
 #		 --with-ooo-builddir=$(CURDIR) \
 #		 --with-src=$(CURDIR) \
@@ -75,6 +75,13 @@ CONFIGURE_OPTIONS=--with-system-gcc --with-jdk-home=/usr/lib/SunJava2-1.4.2 \
 		   --with-system-libxml
 
 export CONFIGURE_OPTIONS
+
+# Build python depends from current python version
+PYMAJOR:=$(shell python -c "import sys; print sys.version_info[0]")
+PYMINOR:=$(shell python -c "import sys; print sys.version_info[1]")
+PYMINORPLUS1:=$(shell python -c "import sys; print sys.version_info[1]+1")
+PYTHON_DEPENDS=python (>= $(PYMAJOR).$(PYMINOR)), python (<< $(PYMAJOR).$(PYMINORPLUS1))
+PYTHON_SITE:=debian/python-uno/usr/lib/python$(PYMAJOR).$(PYMINOR)/site-packages
 
 # Because of the stampdir magic, when you actually want to run a rule
 # over, you would have to remove the stamp manually.  Now, just do
@@ -128,31 +135,35 @@ clean:
 		ooo-build/src/open*bmp ooo-build/src/file-bug-*.png
 
 	if [ -d ooo-build/test ]; then \
-		find ooo-build/test -type f \
+		find ooo-build/test ooo-build/doc -type f \
 		     \( -name '*.xls' -o -name '*.sx?' -o -name '*.doc' \
 			-o -name '*.123' -o -name '*.lwp' -o -name '*.ppt' \
-			-o -name '*.wb2' -o -name '*.png' \) -exec rm {} \; ;\
+			-o -name '*.wb2' -o -name '*.png' -o -name '*.WB2' \) -exec rm {} \; ;\
 	fi
 	rm -f ooo-build/fonts/symbols.xls
+	rm -rf ooo-build/build
+	rm -f ooo-build/src/open*.png
 
 	# remove xcf and bmp of the Debian splashscreen
 	rm -f debian/openintro_debian.xcf debian/openintro_debian.bmp \
 		offmgr/res/openintro_debian.bmp
 
 	# uuencode binary files
+#	for f in fonts/opens___.ttf src/ooo_custom_images*.bz2 src/images*.zip; do 
 	cd ooo-build ;\
-	for f in fonts/opens___.ttf src/ooo_custom_images*.bz2 src/images*.zip; do \
+	for f in fonts/opens___.ttf; do \
 	  if [ -s $$f ]; then \
 	    uuencode $$f $$f > $$f.uu && \
             touch -r $$f.uu $$f ;\
 	  fi ;\
 	  rm -f $$f ;\
 	done
-	
+
 	dh_clean
 
 	# Files created in debian directory
 	rm -f debian/*.postinst debian/*.postrm debian/*.preinst debian/*.prerm
+	if [ -d "$(STAMP_DIR)" ]; then rm -rf "$(STAMP_DIR)"; fi
 
 	$(MAKE) -f debian/rules control
 
@@ -230,7 +241,7 @@ install: $(STAMP_DIR)/install
 $(STAMP_DIR)/install: $(STAMP_DIR)/build
 	dh_testdir
 	dh_testroot
-	
+
 	rm -rf $(CURDIR)/debian/tmp
 	cd ooo-build ; DESTDIR=$(CURDIR)/debian/tmp $(MAKE) install
 	touch $@
@@ -281,10 +292,10 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/install ooo-build/bin/openoffice-xlate-lang
 	# For now move stuff out of the -common install
 	for dir in program/resource share/registry/res/en-US; do \
 	  mkdir -m755 -p $(PKGDIR)-l10n-en-us/$(OODIR)/$$dir ;\
-	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-common/usr/lib/openoffice$(VER)/$$dir/* \
+	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-common/$(OODIR)/$$dir/* \
 			$(PKGDIR)-l10n-en-us/$(OODIR)/$$dir || exit 1;\
 	done
-	
+
 	touch $@
 
 
@@ -302,14 +313,14 @@ $(STAMP_DIR)/install-arch: $(STAMP_DIR)/install
 	  rm -rf $(PKGDIR)-$$i $(PKGDIR)-$$i.*.debhelper ;\
 	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-$$i $(PKGDIR)-$$i || exit 1;\
 	done
-	
+
 	for i in "" -kde -gnome -evolution; do \
 	  rm -rf $(PKGDIR)$$i $(PKGDIR)$$i.*.debhelper ;\
 	done
 
 	dh_installdirs -a
 	#dh_install $(DEBHELPER_OPTIONS) --sourcedir=debian/tmp -a
-	
+
 	mkdir -p -m755 $(PKGDIR)-kde/$(OODIR)/program
 	mkdir -p -m755 $(PKGDIR)-gnome/$(OODIR)/program
 	mkdir -p -m755 $(PKGDIR)-evolution/$(OODIR)/program
@@ -320,21 +331,26 @@ $(STAMP_DIR)/install-arch: $(STAMP_DIR)/install
 	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-gnome/$(OODIR)/program || exit 1;\
 	done
 	mv $(PKGDIR)-core/$(OODIR)/program/libevoab2.so $(PKGDIR)-evolution/$(OODIR)/program
-	
+
+	mkdir -p -m755 $(PKGDIR)-base/usr/share/applications \
+	               $(PKGDIR)-core/usr/share/applications
+                       
 	# Nasy menu icons hack, urgently needs better version
-	dirname="`cd ooo-build/build/src680-m$(MILESTONE)/sysui/unx*.pro/misc/gnome; pwd`" ;\
-	for p in writer calc impress draw math; do \
+	dirname="`cd ooo-build/build/src680-m$(MILESTONE)/sysui/unx*.pro/misc/desktopshare; pwd`" ;\
+	for p in writer calc impress draw math base; do \
 		mkdir -p -m755 $(PKGDIR)-$$p/usr/share/applications ;\
-	    sed -e 's,Exec=<progpath_utf8>/program/s\(.*\) %U,Exec=oo\1$(VER) %U,' \
+	    sed -e 's,Exec=openoffice.org-1.9 \(.*\) %U,Exec=ooffice$(VER) \1 %U,' \
 		    -e 's,Icon=<progpath>/share/icons/\(ooo_.*\.png\),Icon=\1,' \
-			-e 's,<productname>,OpenOffice.org2,' \
-		   < $$dirname/ooo680$$p.desktop \
-		   > $(PKGDIR)-$$p/usr/share/applications/ooo$(VER)-$$p.desktop ;\
+			-e 's,Name=OpenOffice.org 1.9 ,Name=OpenOffice.org2 ,' \
+		   < $$dirname/$$p.desktop \
+		   > $(PKGDIR)-$$p/usr/share/applications/ooo$(VER)-$$p.desktop || exit 1 ;\
 	done
-	
+	mv $(PKGDIR)-base/usr/share/applications/ooo$(VER)-base.desktop $(PKGDIR)-core/usr/share/applications
+	rm -r $(PKGDIR)-base
+
 	touch $@
-	
-	
+
+
 # TODO If building with a JDK, install the additional files to be diverted
 ifeq "$(USE_JAVA)" "y"
 	. debian/java-lib.sh ;\
@@ -347,19 +363,33 @@ ifeq "$(USE_JAVA)" "y"
 
 endif
 
+	# Pyuno packging
+	rm -rf debian/python-uno debian/python-uno.*.debhelper
+	cp -r --preserve=mode debian/tmp/pkg/python-uno debian/python-uno
+	
+	install -d $(PYTHON_SITE)
+	mv debian/python-uno/$(OODIR)/program/uno.py $(PYTHON_SITE)
+	mv debian/python-uno/$(OODIR)/program/pyuno.so $(PYTHON_SITE)
+	chmod u+w debian/python-uno/$(OODIR)/program/pyunorc
+	( echo 'PYTHONHOME=file:///usr/lib/python$(PYMAJOR).$(PYMINOR)' ;\
+	  echo 'PYTHONPATH=$$PYTHONHOME/lib $$ORIGIN' \
+	) >> debian/python-uno/$(OODIR)/program/pyunorc
+	chmod u-w debian/python-uno/$(OODIR)/program/pyunorc
+
 	# install regcomp and configimport utililities
 	#install -m755 \
 	#$(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/bin/regcomp \
 	#$(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/bin/configimport.bin \
 	#	$(PKGDIR)-bin/$(OPENOFFICEDIR)/program
-	
+
 	touch $@
 
 # Install files generated by setup into arch-independent package directories
-install-indep: $(STAMP_DIR)/install
+install-indep: $(STAMP_DIR)/install-indep
 #$(STAMP_DIR)/install-indep: debian/openoffice.org$(VER).install 
 #$(STAMP_DIR)/install-indep: debian/openoffice.org$(VER)-mimelnk.install 
 #$(STAMP_DIR)/install-indep: debian/openoffice.org$(VER).dirs
+$(STAMP_DIR)/install-indep: $(STAMP_DIR)/install
 $(STAMP_DIR)/install-indep: ooo-build/fonts/opens___.ttf
 	dh_testdir
 	dh_testroot
@@ -380,6 +410,15 @@ $(STAMP_DIR)/install-indep: ooo-build/fonts/opens___.ttf
 
 	dh_installdirs -i
 
+	# Icons
+	cd ooo-build/build/src680-m$(MILESTONE)/sysui/unx*.pro/misc/redhat/usr/share/icons ;\
+	for d in `find -type d`; do \
+	  install -d -m755 $(CURDIR)/$(PKGDIR)-common/usr/share/icons/$$d ;\
+	done ;\
+	for f in `find -type f`; do \
+	  install -m444 $$f $(CURDIR)/$(PKGDIR)-common/usr/share/icons/$$f ;\
+	done
+	
 	# remove .desktop files already in KDE 3.2
 	#cd $(PKGDIR)-mimelnk/usr/share/mimelnk/application && \
 	#	for i in calc draw impress writer; do \
@@ -424,7 +463,7 @@ $(STAMP_DIR)/install-indep: ooo-build/fonts/opens___.ttf
 	# install info file for update-openoffice-dicts
 	#install -m644 debian/dictlistinfo \
 	#	$(PKGDIR)-thesaurus-en-us/usr/share/myspell/infos/ooo/openoffice.org$(VER)-thesaurus-en-us
-		
+
 	# this is a hack. it is needed to get the dictionaries hook
 	# notice that we have a newer OOo and do not need to change
 	# dictionary.lst
@@ -477,7 +516,8 @@ binary-common:
 #          -l $(PKGDIR)-bin/$(OPENOFFICEDIR)/program 
 	dh_gencontrol -- \
 		-V'python-depends=$(PYTHON_DEPENDS)' \
-		-V'java-additional-depends=$(JAVA_ADDITIONAL_DEPENDS)'
+		-V'java-additional-depends=$(JAVA_ADDITIONAL_DEPENDS)' \
+		-V'base-version=$(UPSTREAM_VERSION)'
 #		-v1.1.1+1.1.2rc3-`dpkg-parsechangelog  | grep urgency \
 #		| awk '{print $$2}' | sed -e s/"("// -e s/")"// | cut -d"-" -f2`
 	dh_md5sums
@@ -515,6 +555,7 @@ environment:
 	@echo '$$(CURDIR)' is "$(CURDIR)"
 	@echo '$$(SOURCE_VERSION)' is "$(SOURCE_VERSION)"
 	@echo '$$(UPSTREAM_VERSION)' is "$(UPSTREAM_VERSION)"
+	@echo '$$(MILESTONE)' is "$(MILESTONE)"
 	@echo '$$(JDK_HOME)' is "$(JDK_HOME)"
 	@echo '$$(SUNJDK_VER)' is "$(SUNJDK_VER)"
 	@echo '$$(_CC)' is "$(_CC)"
@@ -528,7 +569,7 @@ environment:
 	@echo '$$(BUILDLANG),$$(BUILDLANG_PREFIX)' is "$(BUILDLANG),$(BUILDLANG_PREFIX)"
 	@echo '$$(USE_INTERNAL_FREETYPE)' is "$(USE_INTERNAL_FREETYPE)"
 	@echo '$$(DEBHELPER_OPTIONS)' is "$(DEBHELPER_OPTIONS)"
-	
+	@echo '$$(PYTHON_DEPENDS)' is "$(PYTHON_DEPENDS)"
 	@echo 'See debian/control for build dependencies.'
 
 # Get the ximian packaging directory from gnome anoncvs
@@ -559,7 +600,7 @@ upstreamclean:
 	                    -not -name ooo-build -not -name debian -not -name $(SOURCE_TREE)\
 			    -not -name tmp.source.unpack -not -name tmp.oldsource \
 	                    -exec mv {} $(SOURCE_TREE)/tmp.oldsource \;
-	
+
 	rm -rf $(SOURCE_TREE)/tmp.oldsource
 	tar -C $(SOURCE_TREE)/tmp.source.unpack -zxf ../openoffice.org_$(UPSTREAM_VERSION).orig.tar.gz
 	mv $(SOURCE_TREE)/tmp.source.unpack/*/* $(SOURCE_TREE)
@@ -586,8 +627,8 @@ endif
 # -------------------------------------------------------
 
 .PHONY: environment checksource control makebinariestar
-.PHONY: clean-debdir clean-instsetoo clean-objectdirs clean default
-.PHONY: build build-indep build-arch
+.PHONY: clean-debdir clean-instsetoo clean-objectdirs clean default configure
+.PHONY: build build-indep build-arch install-arch install-indep
 .PHONY: $(stampdir_targets)
 
 # vim:set noet ai sts=8 sw=8 tw=0:
