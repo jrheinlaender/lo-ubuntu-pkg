@@ -50,12 +50,20 @@ else
   PATCHSET=Debian
 endif
 
-#ISOS="$(shell ooo-build/bin/openoffice-xlate-lang -i all)"
-ISOS:="en-US de es fr it"
-#HELPISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all)
-HELPISOS:=en-US de es fr it
-#LANGPACKISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all)
-LANGPACKISOS:=en-US de es fr it
+#ENABLE_MONO=y
+#PACKAGE_TESTTOOL=y
+
+# Note that the first one here *has to be* en-US. the first one gets
+# gid_Module_Root as filelist later and the rest gid_Module_Root.$iso
+# but we can't/shouldn't do dynamic switching, so let en-US be the first
+# one to that gid_Module_Root always is english and the other langpacks
+# have gid_Module_Root.$iso
+#ISOS="$(shell ooo-build/bin/openoffice-xlate-lang -i all')"
+ISOS:="en-US de es fr it ja ko pt-BR ru sv zh-CN zh-TW"
+#HELPISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all') 
+#HELPISOS:=en-US de es fr it
+#LANGPACKISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
+LANGPACKISOS:=en-US de es fr it ja ko pt-BR ru sv zh-CN zh-TW
 
 # Default flags to pass to configure of ooo-build
 CONFIGURE_FLAGS= --disable-post-install-scripts \
@@ -68,6 +76,10 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
 		 --with-binsuffix=2 \
 		 --mandir=/usr/share/man \
 		 --with-lang=$(ISOS)
+
+ifeq "$(ENABLE_MONO)" "y"
+		 CONFIGURE_FLAGS+= --enable-mono
+endif
 
 #		 --with-ooo-builddir=$(CURDIR) \
 #		 --with-src=$(CURDIR) \
@@ -171,7 +183,7 @@ clean:
 	# uuencode binary files
 	cd ooo-build ;\
 	  for f in fonts/opens___.ttf src/ooo_*_images*.bz2 src/extras*bz2 \
-	    src/evolocal.odb src/*.png src/*.bmp src/*.xcf; do \
+	    src/evolocal.odb src/*.png src/*.bmp src/*.xcf test/macro/*.ods; do \
 	  if [ -s $$f ]; then \
 	    uuencode $$f $$f > $$f.uu && \
             touch -r $$f.uu $$f ;\
@@ -206,6 +218,7 @@ debian/control: debian/control.in debian/control.lang.in ooo-build/bin/openoffic
 			-e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 	        >> debian/control < debian/control.lang.in; \
 	done
+ifneq "$(HELPISOS)" ""
 	for LNUM in $(HELPISOS) ; do \
 	    LNAME=`ooo-build/bin/openoffice-xlate-lang -l $$LNUM | perl -e 'print ucfirst(<STDIN>);'`; \
 	    LCODE=`ooo-build/bin/openoffice-xlate-lang -i $$LNUM | tr A-Z a-z`; \
@@ -213,6 +226,12 @@ debian/control: debian/control.in debian/control.lang.in ooo-build/bin/openoffic
 			-e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 	        >> debian/control < debian/control.help.in; \
 	done
+endif
+ifeq "$(ENABLE_MONO)" "y"
+	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
+		>> debian/control < debian/control.mono.in
+endif
+
 
 .DELETE_ON_ERROR: debian/control
 
@@ -298,8 +317,8 @@ endif
 build: $(STAMP_DIR)/build
 $(STAMP_DIR)/build: ooo-build/config.status
 	dh_testdir
-	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) $(MAKE)
-	cd $(SOURCE_TREE)/sysui; . ../*.sh; RPM=rpmbuild PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ../solenv/bin/build.pl
+	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 $(MAKE)
+	cd $(SOURCE_TREE)/sysui; . ../*.sh; RPM=rpmbuild PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ../solenv/bin/build.pl || true
 
 	touch $@
 
@@ -310,6 +329,7 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/build
 
 	rm -rf $(CURDIR)/debian/tmp
 	cd ooo-build ; DESTDIR=$(CURDIR)/debian/tmp $(MAKE) install
+ifneq "$(HELPISOS)" ""
 	# install *english* help; we can't do that later since this is in
 	# arch-dep and arch-indep stuff..
 	cd debian/tmp/pkg; \
@@ -319,6 +339,23 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/build
 			 ./openoffice.org-help-en-us/$(OODIR)/help/en && \
 			rm -rf ./openoffice.org-$$i/$(OODIR)/help/en; \
 		done
+endif
+	# install database sttuff. there's no gid for this and we have stuff
+	# in arch-dep and arch-indep stuff.- the arch-dep stuff is done
+	# in install-arch as "normal"...
+	cd debian/tmp/pkg; \
+		mkdir -p -m755 openoffice.org-base/$(OODIR)/program; \
+		mkdir -p -m755 openoffice.org-base/$(OODIR)/share/registry/data/org/openoffice/Office/UI; \
+		mkdir -p -m755 openoffice.org-base/$(OODIR)/share/registry/schema/org/openoffice/Office/UI; \
+		mkdir -p -m755 openoffice.org-base/$(OODIR)/share/xdg; \
+		mv openoffice.org-common/$(OODIR)/program/sbase \
+		   openoffice.org-base/$(OODIR)/program/sbase; \
+		mv openoffice.org-common/$(OODIR)/share/registry/data/org/openoffice/Office/UI/Db* \
+		   openoffice.org-base/$(OODIR)/share/registry/data/org/openoffice/Office/UI; \
+		mv openoffice.org-common/$(OODIR)/share/registry/schema/org/openoffice/Office/UI/Db* \
+		   openoffice.org-base/$(OODIR)/share/registry/schema/org/openoffice/Office/UI; \
+		mv openoffice.org-common/$(OODIR)/share/xdg/base.desktop \
+		  openoffice.org-base/$(OODIR)/share/xdg/base.desktop
 	
 	touch $@
 
@@ -370,10 +407,11 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/install ooo-build/bin/openoffice-xlate-lang
 	  if [ "$$iso" = "en-US" ]; then continue; fi ; \
 	  pkgiso=`echo $$iso | tr \[:upper:\] \[:lower:\]`; \
 	  rm -rf $(PKGDIR)-l10n-$$pkgiso $(PKGDIR)-l10n-$$pkgiso.*.debhelper; \
-	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-l10n-$$pkgiso \
+	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-l10n-$$iso \
 		$(PKGDIR)-l10n-$$pkgiso || exit 1; \
 	done
 
+ifneq "$(HELPISOS)" ""
 	# move the help out of the langpacks into the help packages...
 	for iso in $(HELPISOS); do \
 	  if [ "$$iso" = "en-US" ]; then continue; fi ; \
@@ -383,6 +421,7 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/install ooo-build/bin/openoffice-xlate-lang
 	  mv $(PKGDIR)-l10n-$$pkgiso/$(OODIR)/help \
 		$(PKGDIR)-help-$$pkgiso/$(OODIR); \
 	done
+endif
 
 	touch $@
 
@@ -400,9 +439,12 @@ $(STAMP_DIR)/install-arch: $(STAMP_DIR)/install
 	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-$$i $(PKGDIR)-$$i || exit 1;\
 	done
 
+	rm -rf $(PKGDIR)-base $(PKGDIR)-base.*.debhelper ;\
+	cp -r --preserve=mode debian/tmp/pkg/openoffice.org-base $(PKGDIR)-base || exit 1
+
+	rm -rf debian/mozilla-openoffice.org debian/mozilla-openoffice.org.*.debhelper
 	for i in "" -kde -evolution; do \
-	  rm -rf $(PKGDIR)$$i debian/mozilla-openoffice.org \
-		$(PKGDIR)$$i.*.debhelper debian/mozilla-openoffice.org.*.debhelper ;\
+	  rm -rf $(PKGDIR)$$i $(PKGDIR)$$i.*.debhelper ;\
 	done
 
 	dh_installdirs -a
@@ -416,12 +458,12 @@ $(STAMP_DIR)/install-arch: $(STAMP_DIR)/install
 	# move the GNOME stuff which are *not* in gid_Module_Optional_Gnome
 	# (which is moved into -gnome in package-ooo) into -gnome
 	mkdir -p -m755 $(PKGDIR)-gnome/$(OODIR)/program
-	for f in gnome-open-url.bin libfps_gnome.so libvclplug_gtk[0-9]*.so; do \
+	for f in gnome-open-url.bin fps_gnome.uno.so libvclplug_gtk[0-9]*.so; do \
 	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-gnome/$(OODIR)/program || exit 1;\
 	done
 	
 	mkdir -p -m755 $(PKGDIR)-evolution/$(OODIR)/program
-	mv $(PKGDIR)-core/$(OODIR)/program/libevoab1.so $(PKGDIR)-evolution/$(OODIR)/program
+	mv $(PKGDIR)-core/$(OODIR)/program/libevoab2.so $(PKGDIR)-evolution/$(OODIR)/program
 	
 	mkdir -p -m755 debian/mozilla-openoffice.org/$(OODIR)/program
 	for f in libnpsoplugin.so nsplugin; do \
@@ -444,6 +486,23 @@ $(STAMP_DIR)/install-arch: $(STAMP_DIR)/install
 	mv $(PKGDIR)-core/$(OODIR)/program/libbindet* \
 		$(PKGDIR)-filter-so52/$(OODIR)/program
 
+	# hack for splitting out -base. There's no gid_ for it...
+	mkdir -p -m755 $(PKGDIR)-base/$(OODIR)/program
+	for i in dba dbu; do \
+		mv $(PKGDIR)-core/$(OODIR)/program/lib$$i* \
+		   $(PKGDIR)-base/$(OODIR)/program; \
+	done
+
+	# OOo's package split sucks...
+	mv $(PKGDIR)-core/$(OODIR)/program/libsw* \
+		$(PKGDIR)-writer/$(OODIR)/program
+	mv $(PKGDIR)-core/$(OODIR)/program/libsd6* \
+	   $(PKGDIR)-core/$(OODIR)/program/libsdd* \
+	   $(PKGDIR)-core/$(OODIR)/program/libsdui* \
+		$(PKGDIR)-draw/$(OODIR)/program
+	mv $(PKGDIR)-core/$(OODIR)/program/slideshow.uno.so \
+		$(PKGDIR)-impress/$(OODIR)/program
+	
 	mkdir -p -m755 $(PKGDIR)-officebean/$(OODIR)/program/classes
 	#mv $(PKGDIR)-common/$(OODIR)/program/classes/officebean.jar \
 	#	$(PKGDIR)-officebean/$(OODIR)/program/classes
@@ -452,19 +511,30 @@ $(STAMP_DIR)/install-arch: $(STAMP_DIR)/install
 
 	mkdir -p -m755 $(PKGDIR)-base/usr/share/applications \
 	               $(PKGDIR)-core/usr/share/applications
-                       
+
+	# we don't need the testtool in "normal" builds...
+ifneq "$(PACKAGE_TESTTOOL)" "y"
+	rm $(PKGDIR)-core/$(OODIR)/program/testtool*
+else
+ifeq "$(HELPISOS)" ""
+	# install hid.lst manually - we don't build helpcontents
+	cp $(SOURCE_TREE)/helpcontent2/helpers/hid.lst \
+		$(PKGDIR)-core/$(OODIR)/program
+endif
+endif
+
 	# Nasty menu icons hack, urgently needs better version
 	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare; pwd`" ;\
 	for p in writer calc impress draw math base; do \
 		mkdir -p -m755 $(PKGDIR)-$$p/usr/share/applications ;\
-	    sed -e 's,Exec=openoffice.org-1.9 \(.*\) %U,Exec=ooffice$(VER) \1 %U,' \
+		sed -e 's,Exec=openoffice.org-1.9 \(.*\) %U,Exec=ooffice$(VER) \1 %U,' \
 		    -e 's,Icon=<progpath>/share/icons/\(ooo_.*\.png\),Icon=\1,' \
 			-e 's,Name=OpenOffice.org 1.9 ,Name=OpenOffice.org2 ,' \
 		   < $$dirname/$$p.desktop \
 		   > $(PKGDIR)-$$p/usr/share/applications/ooo$(VER)-$$p.desktop || exit 1 ;\
 	done
-	mv $(PKGDIR)-base/usr/share/applications/ooo$(VER)-base.desktop $(PKGDIR)-core/usr/share/applications
-	rm -r $(PKGDIR)-base
+	#mv $(PKGDIR)-base/usr/share/applications/ooo$(VER)-base.desktop $(PKGDIR)-core/usr/share/applications
+	#rm -r $(PKGDIR)-base
 
         # compress manpages
 	for i in calc math draw writer impress; do \
@@ -497,6 +567,13 @@ $(STAMP_DIR)/install-arch: $(STAMP_DIR)/install
 		find . -type d -name "CVS" | xargs rm -rf && \
 		find . -type f -name "*.orig" | xargs rm
 
+ifeq "$(ENABLE_MONO)" "y"
+	# Mono bindings
+	mkdir -p -m755 debian/libuno-cil/$(OODIR)/program
+	mv $(PKGDIR)-core/$(OODIR)/program/libcli* \
+		debian/libuno-cil/$(OODIR)/program
+endif
+
 	# install regcomp and configimport utililities
 	#install -m755 \
 	#$(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/bin/regcomp \
@@ -517,10 +594,15 @@ $(STAMP_DIR)/install-indep: ooo-build/fonts/opens___.ttf
 	umask 022
 
 	# Copy files placed by ooo-build/bin/package-ooo	
-	for i in common help-en-us; do \
-	  rm -rf $(PKGDIR)-$$i $(PKGDIR)-$$i.*.debhelper; \
-	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-$$i $(PKGDIR)-$$i || exit 1;\
-	done
+	rm -rf $(PKGDIR)-common $(PKGDIR)-common.*.debhelper; \
+	cp -r --preserve=mode debian/tmp/pkg/openoffice.org-common $(PKGDIR)-common || exit 1
+
+	# we assume here that when we want to build/package help here we want
+	# to do that with en-US anyway...
+ifneq "$(HELPISO)" ""
+	rm -rf $(PKGDIR)-help-en-us $(PKGDIR)-help-en-us.*.debhelper; \
+	cp -r --preserve=mode debian/tmp/pkg/openoffice.org-help-en-us $(PKGDIR)-help-en-us || exit 1
+endif
 
 	# create symlink wrt hsqldb
 	#cd $(PKGDIR)-common/$(OODIR)/program/classes && \
@@ -601,8 +683,23 @@ $(STAMP_DIR)/install-indep: ooo-build/fonts/opens___.ttf
 	# compress manpages
 	find $(PKGDIR)-common -type f -name "*.1" | xargs gzip -9
 
+ifneq "$(HELPISO)" ""
 	# fix permisson
 	chmod ugo-x $(PKGDIR)-common/$(OODIR)/program/hid.lst
+endif
+
+# when we don't build helpcontent2 here we are missing helpxsl.zip so this file
+# doesn't get installed either. Do it manually..
+ifeq "$(HELPISO)" ""
+	mkdir -p -m755 $(PKGDIR)-common/$(OODIR)/help && \
+	cp $(SOURCE_TREE)/helpcontent2/source/auxiliary/main_transform.xsl \
+		$(PKGDIR)-common/$(OODIR)/help
+endif
+
+	# install DicOOo...
+	#mkdir -p -m755 $(PKGDIR)-common/usr/share/myspell/dicts
+	#	cp $(SOURCE_TREE)/dictionaries/diclst/DicOOo.sxw \
+	#	  $(PKGDIR)-common/usr/share/myspell/dicts
 
 	# fix shebang
 	perl -pi -e 's,/bin/awk,/usr/bin/awk,'\
@@ -649,6 +746,9 @@ ifeq "$(ARCH)" "i386"
 	LD_ASSUME_KERNEL="2.4.27" dh_shlibdeps $(SHLIBS_OVERRIDE)
 else
 	dh_shlibdeps $(SHLIBS_OVERRIDE)
+endif
+ifeq "$(ENABLE_MONO)" "y"
+	dh_clideps
 endif
 	mkdir -p $(PKGDIR)-core/usr/share/doc/openoffice.org$(VER)-core
 	debian/scripts/gen_lib_list \
