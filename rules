@@ -33,6 +33,9 @@ SOURCE_VERSION:=$(shell head -1 debian/changelog | cut -d\( -f2 | cut -d\) -f1)
 UPSTREAM_VERSION:=$(shell echo "$(SOURCE_VERSION)"| cut -d- -f1)
 # Determine our architecture.
 ARCH := $(shell dpkg-architecture -qDEB_HOST_ARCH)
+# Dist we are building for
+DIST := $(shell lsb_release -is)
+
 STAMP_DIR=debian/stampdir
 DEBHELPER_OPTIONS = -Nopenoffice.org$(VER)-java
 
@@ -158,7 +161,9 @@ clean:
 # Based on script by Martin Quinson <Martin.Quinson@tuxfamily.org>
 control: debian/control
 debian/control: debian/control.in debian/control.lang.in ooo-build/bin/openoffice-xlate-lang
-	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
+	sed -e "s#openoffice.orgVER#openoffice.org$(VER)#g" \
+	    -e "s#%$(DIST)=\([^%]*\)%#, \1#g#" \
+	    -e "s#%[A-Za-z]*=[^%]*%##g#" \
 	    < debian/control.in > debian/control
 
 #	for LNUM in `ooo-build/bin/openoffice-xlate-lang -p all ` ; do \
@@ -211,7 +216,6 @@ ooo-build/config.status: ooo-build/configure
 	# Make sure we have /proc mounted - otherwise idlc will fail later.
 	test -r /proc/version
 
-	chmod u+x ooo-build/configure ooo-build/bin/[a-z]* ooo-build/patches/apply.pl
 	cd ooo-build ; ../ooo-build/configure $(CONFIGURE_FLAGS)
 	touch $@
 
@@ -535,7 +539,7 @@ get-ooo-build:
 	cd ooo-build && ./autogen.sh $(CONFIGURE_FLAGS)
 
 # Download the latest ooo-build sources
-download: $(STAMP_DIR)/configure
+download: ooo-build/config.status
 	ooo-build/download	
 
 # Update debian and ooo-build directories from cvs
