@@ -34,9 +34,11 @@ export DH_OPTIONS
 export DH_ALWAYS_EXCLUDE=CVS
 #export DH_VERBOSE=1
 
+SHLIBS_OVERRIDE=-- -Ldebian/shlibs.override.internal
 
+TAG=src680-m$(MILESTONE)
+SOURCE_TREE=ooo-build/build/$(TAG)
 STAMP_DIR=debian/stampdir
-DEBHELPER_OPTIONS = -Nopenoffice.org$(VER)-java
 
 # Read in architecture-specific variables of importance.
 #include debian/scripts/vars.$(ARCH)
@@ -48,17 +50,24 @@ else
   PATCHSET=Debian
 endif
 
+#ISOS="$(shell ooo-build/bin/openoffice-xlate-lang -i all)"
+ISOS:="en-US de es fr it"
+#HELPISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all)
+HELPISOS:=en-US de es fr it
+#LANGPACKISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all)
+LANGPACKISOS:=en-US de es fr it
+
 # Default flags to pass to configure of ooo-build
 CONFIGURE_FLAGS= --disable-post-install-scripts \
-                 --with-tag=src680-m$(MILESTONE) \
+                 --with-tag=$(TAG) \
 		 --with-system-gcc \
 		 --with-distro=$(PATCHSET) \
 		 --with-vendor=Debian \
 		 --enable-package-directories \
-		 --disable-java \
 		 --with-installed-ooo-dirname=openoffice$(VER) \
 		 --with-binsuffix=2 \
-		 --mandir=/usr/share/man
+		 --mandir=/usr/share/man \
+		 --with-lang=$(ISOS)
 
 #		 --with-ooo-builddir=$(CURDIR) \
 #		 --with-src=$(CURDIR) \
@@ -69,26 +78,26 @@ ifeq (ccache,$(findstring ccache,$(DEB_BUILD_OPTIONS)))
   CONFIGURE_FLAGS += --with-gcc-speedup=ccache
 endif
 
-# Flags to pass to configure of openoffice.org
-CONFIGURE_OPTIONS=--with-system-gcc --with-jdk-home=/usr/lib/SunJava2-1.4.2 \
-		   --with-lang=en-US --enable-libart --enable-libsn --enable-crashdump=no \
-		   --with-system-zlib --with-system-freetype --with-system-jpeg \
-		   --without-fonts --enable-fontconfig \
-		   --with-system-mozilla \
-		   --with-system-nas \
-		   --with-ant-home=/usr/share/ant --disable-crashdump \
-		   --with-system-python --disable-binfilter \
-		   --disable-epm --without-myspell-dicts \
-		   --with-system-libxml
-
-export CONFIGURE_OPTIONS
-
 # Build python depends from current python version
 PYMAJOR:=$(shell python -c "import sys; print sys.version_info[0]")
 PYMINOR:=$(shell python -c "import sys; print sys.version_info[1]")
 PYMINORPLUS1:=$(shell python -c "import sys; print sys.version_info[1]+1")
-PYTHON_DEPENDS=python (>= $(PYMAJOR).$(PYMINOR)), python (<< $(PYMAJOR).$(PYMINORPLUS1))
 PYTHON_SITE:=debian/python-uno/usr/lib/python$(PYMAJOR).$(PYMINOR)/site-packages
+
+CURDIR ?= $(shell pwd)
+
+GCC_VERSION = 4.0
+#GCC_VERSION = snapshot
+ifeq ($(GCC_VERSION),)
+	BUILD_PATH = $(CURDIR)/debian/usr/lib/jvm/java-1.4.2-gcj-4.0-1.4.2.0/bin:$$PATH
+else
+ifeq ($(GCC_VERSION),snapshot)
+	BUILD_PATH = $(CURDIR)/debian/usr/lib/jvm/java-1.4.2-gcj-4.0-1.4.2.0/bin:/usr/lib/gcc-snapshot/bin:$$PATH
+	BUILD_LD_LIBRARY_PATH = /usr/lib/gcc-snapshot/lib:$$LD_LIBRARY_PATH
+else
+	BUILD_PATH = $(CURDIR)/debian/usr/lib/jvm/java-1.4.2-gcj-4.0-1.4.2.0/bin:$(CURDIR)/debian/usr/bin:$$PATH
+endif
+endif
 
 # Because of the stampdir magic, when you actually want to run a rule
 # over, you would have to remove the stamp manually.  Now, just do
@@ -129,6 +138,7 @@ clean-objectdirs: clean-instsetoo
 	find $(SOURCE_TREE) -maxdepth 2 -name $(ARCHBUILDDIR) -type d -exec rm -rf {} \;
 
 clean:
+	dh_testroot
 	dh_testdir
 
 	if [ -r ooo-build/Makefile ]; then \
@@ -138,8 +148,7 @@ clean:
 	# we do not need them and they make problem with dpkg-source....
 	rm -f ooo-build/desktop/*.png ooo-build/www/*.png \
 		ooo-build/www/images/*.png ooo-build/templates/*.s* \
-		ooo-build/www/l10n/*.gif \
-		ooo-build/src/open*bmp ooo-build/src/file-bug-*.png
+		ooo-build/www/l10n/*.gif
 
 	if [ -d ooo-build/test ]; then \
 		find ooo-build/test ooo-build/doc -type f \
@@ -149,16 +158,20 @@ clean:
 	fi
 	rm -f ooo-build/fonts/symbols.xls
 	rm -rf ooo-build/build
-	rm -f ooo-build/src/open*.png
 
 	# remove xcf and bmp of the Debian splashscreen
 	rm -f debian/openintro_debian.xcf debian/openintro_debian.bmp \
 		offmgr/res/openintro_debian.bmp
 
+	# remove generated symlinks / java wrappers
+	rm -rf debian/usr
+
+	rm -f debian/java-gcj-compat*.orig.tar.gz
+
 	# uuencode binary files
-#	for f in fonts/opens___.ttf src/ooo_custom_images*.bz2 src/images*.zip; do 
 	cd ooo-build ;\
-	for f in fonts/opens___.ttf; do \
+	  for f in fonts/opens___.ttf src/ooo_*_images*.bz2 src/extras*bz2 \
+	    src/evolocal.odb src/*.png src/*.bmp src/*.xcf; do \
 	  if [ -s $$f ]; then \
 	    uuencode $$f $$f > $$f.uu && \
             touch -r $$f.uu $$f ;\
@@ -184,10 +197,8 @@ debian/control: debian/control.in debian/control.lang.in ooo-build/bin/openoffic
 	    -e "s#%[A-Za-z]*=[^%]*%##g#" \
 	    < debian/control.in > debian/control
 
-#	for LNUM in `ooo-build/bin/openoffice-xlate-lang -p all ` ; do \
-	# TOOD - all langpacks
-	for LNUM in en-US ; do \
-	    LNAME=`ooo-build/bin/openoffice-xlate-lang -l $$LNUM`; \
+	for LNUM in $(LANGPACKISOS) ; do \
+	    LNAME=`ooo-build/bin/openoffice-xlate-lang -l $$LNUM | perl -e 'print ucfirst(<STDIN>);'`; \
 	    LCODE=`ooo-build/bin/openoffice-xlate-lang -i $$LNUM | tr A-Z a-z`; \
 	    SUGGESTS=; \
 	    sed -e "s|@LNAME@|$$LNAME|g" -e "s|@LCODE@|$$LCODE|g" \
@@ -195,10 +206,13 @@ debian/control: debian/control.in debian/control.lang.in ooo-build/bin/openoffic
 			-e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 	        >> debian/control < debian/control.lang.in; \
 	done
-	# -hi-in was renamed to -hi; add Conflicts:/Replaces:/Provides:
-	perl -pi -e \
-		's/(openoffice.org1.1-l10n-hi)/\1, openoffice.org-l10n-hi-in/' \
-		debian/control
+	for LNUM in $(HELPISOS) ; do \
+	    LNAME=`ooo-build/bin/openoffice-xlate-lang -l $$LNUM | perl -e 'print ucfirst(<STDIN>);'`; \
+	    LCODE=`ooo-build/bin/openoffice-xlate-lang -i $$LNUM | tr A-Z a-z`; \
+	    sed -e "s|@LNAME@|$$LNAME|g" -e "s|@LCODE@|$$LCODE|g" \
+			-e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
+	        >> debian/control < debian/control.help.in; \
+	done
 
 .DELETE_ON_ERROR: debian/control
 
@@ -231,16 +245,61 @@ ooo-build/config.status: ooo-build/configure
           fi ;\
 	done
 
+	# build java-gcj-compat
+	uudecode -o debian/java-gcj-compat_1.0.14.orig.tar.gz \
+		debian/java-gcj-compat_1.0.14.orig.tar.gz.uu
+	if [ ! -d ooo-build/build ]; then mkdir ooo-build/build; fi && \
+	tar xfvz debian/java-gcj-compat_1.0.14.orig.tar.gz -C ooo-build/build
+	cd ooo-build/build/java-gcj-compat-1.0.14 && \
+	JAVAC="gcj-4.0 -C" ./configure --prefix=$(CURDIR)/debian/usr && \
+	$(MAKE) && $(MAKE) install
+	# FIXME: why are these paths so weird? Find that out and remove this
+	# workaround
+	cd $(CURDIR)/debian/usr && \
+	  for i in ./bin/java ./lib/jvm/java-1.4.2-gcj-1.4.2.0/bin/java \
+	    ./lib/jvm/java-1.4.2-gcj-1.4.2.0/jre/bin/java \
+	    ./lib/jvm/java-1.4.2-gcj-1.4.2.0/bin/javac; do \
+		perl -pi -e 's,bin/gij,usr/bin/gij-4.0,' $$i; \
+	  done && \
+	  perl -pi -e 's,bin/fastjar,usr/bin/fastjar,' \
+		./lib/jvm/java-1.4.2-gcj-1.4.2.0/bin/jar && \
+	  perl -pi -e 's,bin/gcjh,usr/bin/gcjh-4.0,' \
+		./lib/jvm/java-1.4.2-gcj-1.4.2.0/bin/jar && \
+	  perl -pi -e 's,bin/gjdoc,usr/bin/gjdoc,' \
+		./lib/jvm/java-1.4.2-gcj-1.4.2.0/bin/javadoc && \
+	  perl -pi -e 's,bin/grmic,usr/bin/grmic-4.0,' \
+		./lib/jvm/java-1.4.2-gcj-1.4.2.0/bin/rmic && \
+	  for i in ./lib/jvm/java-1.4.2-gcj-1.4.2.0/bin/rmiregistry \
+	    ./lib/jvm/java-1.4.2-gcj-1.4.2.0/jre/bin/rmiregistry; do \
+		 perl -pi -e 's,bin/grmiregistry,usr/bin/grmiregistry-4.0,' \
+		    $$i; \
+	  done && \
+	  find . -type f -name "javac" | xargs rm
+	
+ifneq ($(GCC_VERSION),)
+ifneq ($(GCC_VERSION),snapshot)
+	# create links for gcc and g++ (and gij and gcj), ooo-build does not
+	# honour overriding CC and CC and we need to use gcc/g++ 4.0 or /
+	# ant.mk wants gcj at the moment...
+	mkdir -p $(CURDIR)/debian/usr/bin
+	ln -sf /usr/bin/gcc-$(GCC_VERSION) $(CURDIR)/debian/usr/bin/gcc
+	ln -sf /usr/bin/g++-$(GCC_VERSION) $(CURDIR)/debian/usr/bin/g++
+	ln -sf /usr/bin/gcj-$(GCC_VERSION) $(CURDIR)/debian/usr/bin/gcj
+	ln -sf /usr/bin/gij-$(GCC_VERSION) $(CURDIR)/debian/usr/bin/gij
+endif
+endif
+
 	# Make sure we have /proc mounted - otherwise idlc will fail later.
 	test -r /proc/version
 
-	cd ooo-build ; ../ooo-build/configure $(CONFIGURE_FLAGS)
+	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ../ooo-build/configure $(CONFIGURE_FLAGS)
 	touch $@
 
 build: $(STAMP_DIR)/build
 $(STAMP_DIR)/build: ooo-build/config.status
 	dh_testdir
-	cd ooo-build ; $(MAKE)
+	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) $(MAKE)
+	cd $(SOURCE_TREE)/sysui; . ../*.sh; RPM=rpmbuild PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ../solenv/bin/build.pl
 
 	touch $@
 
@@ -251,6 +310,16 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/build
 
 	rm -rf $(CURDIR)/debian/tmp
 	cd ooo-build ; DESTDIR=$(CURDIR)/debian/tmp $(MAKE) install
+	# install *english* help; we can't do that later since this is in
+	# arch-dep and arch-indep stuff..
+	cd debian/tmp/pkg; \
+		mkdir -p openoffice.org-help-en-us/$(OODIR)/help/en; \
+		for i in common calc math draw writer impress; do \
+			cp -r ./openoffice.org-$$i/$(OODIR)/help/en/* \
+			 ./openoffice.org-help-en-us/$(OODIR)/help/en && \
+			rm -rf ./openoffice.org-$$i/$(OODIR)/help/en; \
+		done
+	
 	touch $@
 
 #
@@ -267,9 +336,6 @@ $(STAMP_DIR)/maintscripts: debian/shell-lib.sh debian/java-lib.sh debian/control
 	    if [ -e $$MAINTSCRIPT.in ]; then \
 	      sed -n '1,/^#INCLUDE_SHELL_LIB#$$/p' < $$MAINTSCRIPT.in | sed -e '/^#INCLUDE_SHELL_LIB#$$/d' > $$MAINTSCRIPT; \
 	      grep LIBSUFFIX debian/scripts/vars.$(ARCH) >> $$MAINTSCRIPT; \
-	      if [ $$PKG = openoffice.org$(VER)-java ]; then \
-	        cat debian/java-lib.sh >> $$MAINTSCRIPT ; \
-              fi ; \
 	      cat debian/shell-lib.sh >> $$MAINTSCRIPT; \
 	      sed -n '/^#INCLUDE_SHELL_LIB#$$/,$$p' < $$MAINTSCRIPT.in | sed -e '/^#INCLUDE_SHELL_LIB#$$/d' >> $$MAINTSCRIPT; \
 	    else \
@@ -282,9 +348,6 @@ $(STAMP_DIR)/maintscripts: debian/shell-lib.sh debian/java-lib.sh debian/control
 	done
 	touch $@
 
-#LANGPACKISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all)
-LANGPACKISOS:=en-US
-
 # Install files generated by setup into package directories
 langpacks: $(STAMP_DIR)/langpacks
 $(STAMP_DIR)/langpacks: $(STAMP_DIR)/install ooo-build/bin/openoffice-xlate-lang
@@ -294,13 +357,31 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/install ooo-build/bin/openoffice-xlate-lang
 	  rm -rf $(PKGDIR)-l10n-$$ext.*.debhelper;\
 	done
 
-	# Install the lang packs TODO
-
-	# For now move stuff out of the -common install
+	# move the english stuff out of the -common install
 	for dir in program/resource share/registry/res/en-US; do \
 	  mkdir -m755 -p $(PKGDIR)-l10n-en-us/$(OODIR)/$$dir ;\
 	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-common/$(OODIR)/$$dir/* \
 			$(PKGDIR)-l10n-en-us/$(OODIR)/$$dir || exit 1;\
+	done
+
+	# ... and install the rest of the langpacks
+	# FIXME: Filter stuff out which are doubled...
+	for iso in $(LANGPACKISOS); do \
+	  if [ "$$iso" = "en-US" ]; then continue; fi ; \
+	  pkgiso=`echo $$iso | tr \[:upper:\] \[:lower:\]`; \
+	  rm -rf $(PKGDIR)-l10n-$$pkgiso $(PKGDIR)-l10n-$$pkgiso.*.debhelper; \
+	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-l10n-$$pkgiso \
+		$(PKGDIR)-l10n-$$pkgiso || exit 1; \
+	done
+
+	# move the help out of the langpacks into the help packages...
+	for iso in $(HELPISOS); do \
+	  if [ "$$iso" = "en-US" ]; then continue; fi ; \
+	  pkgiso=`echo $$iso | tr \[:upper:\] \[:lower:\]`; \
+	  rm -rf $(PKGDIR)-help-$$pkgiso; \
+	  mkdir -p $(PKGDIR)-help-$$pkgiso/$(OODIR); \
+	  mv $(PKGDIR)-l10n-$$pkgiso/$(OODIR)/help \
+		$(PKGDIR)-help-$$pkgiso/$(OODIR); \
 	done
 
 	touch $@
@@ -308,42 +389,72 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/install ooo-build/bin/openoffice-xlate-lang
 
 # Install files generated by setup into arch-dependent package directories
 install-arch: $(STAMP_DIR)/install-arch
-#$(STAMP_DIR)/install-arch: debian/openoffice.org$(VER)-bin.install
-#$(STAMP_DIR)/install-arch: debian/openoffice.org$(VER)-java.install
 $(STAMP_DIR)/install-arch: $(STAMP_DIR)/install
 	dh_testdir
 	dh_testroot
 	umask 022
 
 	# Copy files placed by ooo-build/bin/package-ooo	
-	for i in calc core draw impress math writer; do \
+	for i in calc core draw impress math writer gnome; do \
 	  rm -rf $(PKGDIR)-$$i $(PKGDIR)-$$i.*.debhelper ;\
 	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-$$i $(PKGDIR)-$$i || exit 1;\
 	done
 
-	for i in "" -kde -gnome -evolution; do \
-	  rm -rf $(PKGDIR)$$i $(PKGDIR)$$i.*.debhelper ;\
+	for i in "" -kde -evolution; do \
+	  rm -rf $(PKGDIR)$$i debian/mozilla-openoffice.org \
+		$(PKGDIR)$$i.*.debhelper debian/mozilla-openoffice.org.*.debhelper ;\
 	done
 
 	dh_installdirs -a
 	#dh_install $(DEBHELPER_OPTIONS) --sourcedir=debian/tmp -a
 
 	mkdir -p -m755 $(PKGDIR)-kde/$(OODIR)/program
-	mkdir -p -m755 $(PKGDIR)-gnome/$(OODIR)/program
-	mkdir -p -m755 $(PKGDIR)-evolution/$(OODIR)/program
 	for f in kdefilepicker libfps_kde.so libvclplug_kde[0-9]*.so; do \
 	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-kde/$(OODIR)/program || exit 1 ;\
 	done
-	for f in libfps_gnome.so libvclplug_gtk[0-9]*.so; do \
+	
+	# move the GNOME stuff which are *not* in gid_Module_Optional_Gnome
+	# (which is moved into -gnome in package-ooo) into -gnome
+	mkdir -p -m755 $(PKGDIR)-gnome/$(OODIR)/program
+	for f in gnome-open-url.bin libfps_gnome.so libvclplug_gtk[0-9]*.so; do \
 	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-gnome/$(OODIR)/program || exit 1;\
 	done
-	mv $(PKGDIR)-core/$(OODIR)/program/libevoab2.so $(PKGDIR)-evolution/$(OODIR)/program
+	
+	mkdir -p -m755 $(PKGDIR)-evolution/$(OODIR)/program
+	mv $(PKGDIR)-core/$(OODIR)/program/libevoab1.so $(PKGDIR)-evolution/$(OODIR)/program
+	
+	mkdir -p -m755 debian/mozilla-openoffice.org/$(OODIR)/program
+	for f in libnpsoplugin.so nsplugin; do \
+		mv $(PKGDIR)-core/$(OODIR)/program/$$f debian/mozilla-openoffice.org/$(OODIR)/program; \
+	done
+	cd debian/mozilla-openoffice.org && \
+		for b in mozilla mozilla-firefox; do \
+			mkdir -p usr/lib/$$b/plugins && \
+				ln -sf /$(OODIR)/program/libnpsoplugin.so \
+				   usr/lib/$$b/plugins/libnpsoplugin.so; \
+		done
+	
+	mkdir -p -m755 $(PKGDIR)-filter-so52/$(OODIR)/program
+	mv $(PKGDIR)-core/$(OODIR)/program/libbf_* \
+		$(PKGDIR)-filter-so52/$(OODIR)/program
+	mv $(PKGDIR)-calc/$(OODIR)/program/libbf_sc* \
+		$(PKGDIR)-filter-so52/$(OODIR)/program
+	mv $(PKGDIR)-core/$(OODIR)/program/liblegacy_binfilters* \
+		$(PKGDIR)-filter-so52/$(OODIR)/program
+	mv $(PKGDIR)-core/$(OODIR)/program/libbindet* \
+		$(PKGDIR)-filter-so52/$(OODIR)/program
+
+	mkdir -p -m755 $(PKGDIR)-officebean/$(OODIR)/program/classes
+	#mv $(PKGDIR)-common/$(OODIR)/program/classes/officebean.jar \
+	#	$(PKGDIR)-officebean/$(OODIR)/program/classes
+	mv $(PKGDIR)-core/$(OODIR)/program/libofficebean.so \
+		$(PKGDIR)-officebean/$(OODIR)/program
 
 	mkdir -p -m755 $(PKGDIR)-base/usr/share/applications \
 	               $(PKGDIR)-core/usr/share/applications
                        
-	# Nasy menu icons hack, urgently needs better version
-	dirname="`cd ooo-build/build/src680-m$(MILESTONE)/sysui/unx*.pro/misc/desktopshare; pwd`" ;\
+	# Nasty menu icons hack, urgently needs better version
+	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare; pwd`" ;\
 	for p in writer calc impress draw math base; do \
 		mkdir -p -m755 $(PKGDIR)-$$p/usr/share/applications ;\
 	    sed -e 's,Exec=openoffice.org-1.9 \(.*\) %U,Exec=ooffice$(VER) \1 %U,' \
@@ -355,20 +466,12 @@ $(STAMP_DIR)/install-arch: $(STAMP_DIR)/install
 	mv $(PKGDIR)-base/usr/share/applications/ooo$(VER)-base.desktop $(PKGDIR)-core/usr/share/applications
 	rm -r $(PKGDIR)-base
 
-	touch $@
-
-
-# TODO If building with a JDK, install the additional files to be diverted
-ifeq "$(USE_JAVA)" "y"
-	. debian/java-lib.sh ;\
-	for FILE in $$java_diversions; do \
-	  echo mkdir -p $$(dirname $(PKGDIR)-java/$$FILE) ;\
-	  mkdir -p $$(dirname $(PKGDIR)-java/$$FILE) ;\
-	  cp -pf debian/tmp/$$FILE \
-	    $(PKGDIR)-java/$$FILE  || exit 1;\
+        # compress manpages
+	for i in calc math draw writer impress; do \
+		find $(PKGDIR)-$$i -type f -name "*.1" | xargs gzip -9; \
 	done
 
-endif
+	touch $@
 
 	# Pyuno packging
 	rm -rf debian/python-uno debian/python-uno.*.debhelper
@@ -376,12 +479,23 @@ endif
 	
 	install -d $(PYTHON_SITE)
 	mv debian/python-uno/$(OODIR)/program/uno.py $(PYTHON_SITE)
+	mv debian/python-uno/$(OODIR)/program/unohelper.py $(PYTHON_SITE)
 	mv debian/python-uno/$(OODIR)/program/pyuno.so $(PYTHON_SITE)
+	touch debian/python-uno/$(OODIR)/program/pyunorc
 	chmod u+w debian/python-uno/$(OODIR)/program/pyunorc
 	( echo 'PYTHONHOME=file:///usr/lib/python$(PYMAJOR).$(PYMINOR)' ;\
 	  echo 'PYTHONPATH=$$PYTHONHOME/lib $$ORIGIN' \
 	) >> debian/python-uno/$(OODIR)/program/pyunorc
 	chmod u-w debian/python-uno/$(OODIR)/program/pyunorc
+
+	mkdir -p debian/python-uno/usr/share/doc/python-uno
+	for i in doc demo; do \
+		cp -r $(SOURCE_TREE)/pyuno/$$i \
+		  debian/python-uno/usr/share/doc/python-uno; \
+	done
+	cd debian/python-uno/usr/share/doc/python-uno && \
+		find . -type d -name "CVS" | xargs rm -rf && \
+		find . -type f -name "*.orig" | xargs rm
 
 	# install regcomp and configimport utililities
 	#install -m755 \
@@ -403,10 +517,14 @@ $(STAMP_DIR)/install-indep: ooo-build/fonts/opens___.ttf
 	umask 022
 
 	# Copy files placed by ooo-build/bin/package-ooo	
-	for i in common; do \
+	for i in common help-en-us; do \
 	  rm -rf $(PKGDIR)-$$i $(PKGDIR)-$$i.*.debhelper; \
 	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-$$i $(PKGDIR)-$$i || exit 1;\
 	done
+
+	# create symlink wrt hsqldb
+	#cd $(PKGDIR)-common/$(OODIR)/program/classes && \
+	#	ln -s /usr/share/java/hsqldb.jar hsqldb.jar
 
 	# Remove files in langpack
 	for dir in program/resource share/registry/res/en-US; do \
@@ -418,7 +536,7 @@ $(STAMP_DIR)/install-indep: ooo-build/fonts/opens___.ttf
 	dh_installdirs -i
 
 	# Icons
-	cd ooo-build/build/src680-m$(MILESTONE)/sysui/unx*.pro/misc/redhat/usr/share/icons &&\
+	cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/redhat/usr/share/icons &&\
 	for d in `find -type d`; do \
 	  install -d -m755 $(CURDIR)/$(PKGDIR)-common/usr/share/icons/$$d || exit 1 ;\
 	done &&\
@@ -480,6 +598,16 @@ $(STAMP_DIR)/install-indep: ooo-build/fonts/opens___.ttf
 	#install -m644 ooo-build/fonts/opens___.ttf \
 	#	debian/ttf-opensymbol/usr/share/fonts/truetype/openoffice
 
+	# compress manpages
+	find $(PKGDIR)-common -type f -name "*.1" | xargs gzip -9
+
+	# fix permisson
+	chmod ugo-x $(PKGDIR)-common/$(OODIR)/program/hid.lst
+
+	# fix shebang
+	perl -pi -e 's,/bin/awk,/usr/bin/awk,'\
+		$(PKGDIR)-common/$(OODIR)/program/uri-encode
+
 	touch $@
 
 
@@ -508,13 +636,20 @@ binary-common:
 	dh_installdebconf
 	dh_installmime
 	dh_installmenu
+	dh_python
 	debian/scripts/installoverrides
 	dh_link
 	dh_strip
 	dh_compress
 	dh_fixperms
 	dh_installdeb
-	dh_shlibdeps -X msgbox-gnome -X getstyle-gnome $(SHLIBS_OVERRIDE)
+ifeq "$(ARCH)" "i386"
+	# this LD_ASSUME_KERNEL is for working around some bug which makes
+	# dh_shlibddeps report/find nothing with libc6-i686/TLS systems
+	LD_ASSUME_KERNEL="2.4.27" dh_shlibdeps $(SHLIBS_OVERRIDE)
+else
+	dh_shlibdeps $(SHLIBS_OVERRIDE)
+endif
 	mkdir -p $(PKGDIR)-core/usr/share/doc/openoffice.org$(VER)-core
 	debian/scripts/gen_lib_list \
 	 > $(PKGDIR)-core/usr/share/doc/openoffice.org$(VER)-core/used_libs
@@ -522,8 +657,6 @@ binary-common:
 # causes ldd crashes sometimes when used with fakeroot:
 #          -l $(PKGDIR)-bin/$(OPENOFFICEDIR)/program 
 	dh_gencontrol -- \
-		-V'python-depends=$(PYTHON_DEPENDS)' \
-		-V'java-additional-depends=$(JAVA_ADDITIONAL_DEPENDS)' \
 		-V'base-version=$(UPSTREAM_VERSION)'
 #		-v1.1.1+1.1.2rc3-`dpkg-parsechangelog  | grep urgency \
 #		| awk '{print $$2}' | sed -e s/"("// -e s/")"// | cut -d"-" -f2`
@@ -595,38 +728,20 @@ cvsupdate:
 	cd debian && cvs -z3 -q update -dP
 	cd ooo-build && cvs -z3 -q update -dP
 
-# Clean all source except for debian and ooo-build directories
-# and re-unpack the source tarball.  The parent direcory name
-# is preserved
-upstreamclean:
-	# Make sure the upstream source tarball is available
-	test -f ../openoffice.org_$(UPSTREAM_VERSION).orig.tar.gz
-
-	mkdir -p $(SOURCE_TREE)/tmp.source.unpack $(SOURCE_TREE)/tmp.oldsource
-	find $(SOURCE_TREE) -maxdepth 1 \
-	                    -not -name ooo-build -not -name debian -not -name $(SOURCE_TREE)\
-			    -not -name tmp.source.unpack -not -name tmp.oldsource \
-	                    -exec mv {} $(SOURCE_TREE)/tmp.oldsource \;
-
-	rm -rf $(SOURCE_TREE)/tmp.oldsource
-	tar -C $(SOURCE_TREE)/tmp.source.unpack -zxf ../openoffice.org_$(UPSTREAM_VERSION).orig.tar.gz
-	mv $(SOURCE_TREE)/tmp.source.unpack/*/* $(SOURCE_TREE)
-	rm -r $(SOURCE_TREE)/tmp.source.unpack
-
 # Take a tarfile of all the non-stripped binaries in solver, for generating backtraces
 # from coredumps.
 makebinariestar:
 ifeq "$(ARCH)" "i386"
-	cd $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR) && \
+	cd $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT) && \
 	  find bin lib | xargs file | sed -n '/LSB \(executable\|shared object\),.* not stripped/ s/:.*$$//p' | \
 	  tar -T - -jcvf $(CURDIR)/../openoffice.org$(VER)-binaries_$(SOURCE_VERSION)_$(ARCH).tar.bz2
 else
   ifeq "$(ARCH)" "arm"
-	cd $(SOURCE_TREE)/sdolver/$(BUILDNUM)/$(ARCHBUILDDIR) && \
+	cd §(SOURCE_TREE)/solver/$(shell . $(SOURCE_TRE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE/*.sh; echo $$OUTPATH$$PROEXT) && \
 	  find bin lib | xargs file | sed -n '/LSB \(executable\|shared object\),.* not stripped/ s/:.*$$//p' | \
 	  tar -T - -jcvf $(CURDIR)/../openoffice.org$(VER)-binaries_$(SOURCE_VERSION)_$(ARCH).tar.bz2
   else
-	cd $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR) && \
+	cd $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT) && \
 	  find bin lib | xargs file | sed -n '/MSB \(executable\|shared object\),.* not stripped/ s/:.*$$//p' | \
 	  tar -T - -jcvf $(CURDIR)/../openoffice.org$(VER)-binaries_$(SOURCE_VERSION)_$(ARCH).tar.bz2
   endif
