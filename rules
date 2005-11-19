@@ -5,30 +5,23 @@
 # Please see debian/README for detailed documentation about the build system, and
 # how to build OpenOffice.org.
 ###################################################################################
-# Originally by Stephen Early <sde1000@debian.org>
-# Modified by Mark W. Eichin <eichin@kitten.gen.ma.us>
-# Modified by Adam Heath <doogie@debian.org>
-# Modified by Branden Robinson <branden@debian.org>
-# Modified by Peter Novodvorsky <nidd@debian.org>
-# Modified by Filip Van Raemdonck <mechanix@debian.org>
-# Modified by Jan-Hendrik Palic <jan.palic@linux-debian.de>
-# Modified by Chris Halls <halls@debian.org>
-# Modified by Rene Engelhard <rene@debian.org>
-# Copyright 1996-2004 Software in the Public Interest, Inc.
+# Authors:
+# Chris Halls <halls@debian.org>
+# Rene Engelhard <rene@debian.org>
+# Copyright 2005 Software in the Public Interest, Inc.
 # Licensed under the GNU General Public License, version 2.  See the file
 # /usr/share/common-licenses/GPL or <http://www.gnu.org/copyleft/gpl.txt>.
-# Acknowlegements to Branden Robinson, Stephen Early, Mark Eichin, and Manoj Srivastava.
 ###################################################################################
 
-# Read in important variables.
-include debian/scripts/vars
-
-# default rule to keep things from going nuts by accident
 default: environment
+VER=2
+PKGDIR=debian/openoffice.org$(VER)
+OODIR=usr/lib/openoffice$(VER)
+MILESTONE=66
 
-# This is a horrendous kludge to ensure that some scripts we need are executable.
-DUMMY:=$(shell if [ ! -x debian/setperms ]; then chmod 755 debian/setperms; fi)
-DUMMY:=$(shell debian/setperms)
+# ensure that some scripts we need are executable.
+DUMMY:=$(shell if [ ! -x debian/scripts/setperms ]; then chmod 755 debian/scripts/setperms; fi)
+DUMMY:=$(shell debian/scripts/setperms)
 
 # debhelper
 export DH_OPTIONS
@@ -40,287 +33,52 @@ SOURCE_VERSION:=$(shell head -1 debian/changelog | cut -d\( -f2 | cut -d\) -f1)
 UPSTREAM_VERSION:=$(shell echo "$(SOURCE_VERSION)"| cut -d- -f1)
 # Determine our architecture.
 ARCH := $(shell dpkg-architecture -qDEB_HOST_ARCH)
-# Dist we are building for
-DIST := $(shell lsb_release -is)
+STAMP_DIR=debian/stampdir
+DEBHELPER_OPTIONS = -Nopenoffice.org$(VER)-java
 
 # Read in architecture-specific variables of importance.
-include debian/scripts/vars.$(ARCH)
+#include debian/scripts/vars.$(ARCH)
 
-# Default flags to pass to configure
-CONFIGURE_FLAGS= --enable-libart \
-	         --disable-rpath \
-	         --enable-crashdump \
-	         --without-fonts \
-		 --without-myspell-dicts \
-		 --disable-fontooo \
-	         --with-system-zlib \
-		 --with-system-nas \
-		 --with-system-sane-headers \
-		 --with-system-x11-extensions-headers \
-		 --enable-gtk \
-		 --with-system-db --with-db-version=$(D) \
-                 --with-system-altlinuxhyph \
-		 --with-system-curl \
-                 --with-system-neon \
-                 --enable-fontconfig \
-                 --with-python=/usr/bin/python \
-		 --enable-libsn \
-		 --with-dynamic-xinerama
+# Default flags to pass to configure of ooo-build
+CONFIGURE_FLAGS= --disable-post-install-scripts \
+                 --with-tag=src680-m$(MILESTONE) \
+		 --with-system-gcc \
+		 --with-distro=Debian \
+		 --with-vendor=Debian \
+		 --enable-package-directories \
+		 --disable-java \
+		 --with-installed-ooo-dirname=openoffice$(VER) \
+		 --with-binsuffix=2
 
-#		 --with-system-myspell \
-#		 --with-system-libwpd
-
-DEBHELPER_OPTIONS=
-
-#ifneq "$(DIST)" "Ubuntu"
-#  BUILD_KDE=y
-#else
-#  ifneq (withkde,$(findstring withkde,$(DEB_BUILD_OPTIONS)))
-#	BUILD_KDE=n
-#  else
-#	BUILD_KDE=y
-#  endif
-#endif
-
-ifeq "$(BUILD_KDE)" "y"
-	CONFIGURE_FLAGS += --enable-kde
-	IGNORE_MANIFEST_CHANGES=1
-	export IGNORE_MANIFEST_CHANGES
-else
-	DEBHELPER_OPTIONS += -Nopenoffice.org-kde
-endif
-
-D=4.2
-USE_SYSTEM_STLPORT=n
-STLPORT_HOME=/usr
-USE_SYSTEM_DB=y
-PATCHSET=Debian
-ifeq "$(USE_SYSTEM_STLPORT)" "y"
-	DEV_STL_DEPENDS=, libstlport4.6-dev
-	CONFIGURE_FLAGS+= --with-stlport4-home=$(STLPORT_HOME)
-endif
-
-# If DEB_BUILD_OPTIONS contains jdkhome=/absolute/path/to/jdk, build with the
-# JDK at /absolute/path/to/jdk.
-ifneq (jdkhome=,$(findstring jdkhome=,$(DEB_BUILD_OPTIONS)))
-  USE_JAVA=n
-  CONFIGURE_FLAGS+= --disable-java
-  DEBHELPER_OPTIONS+=-Nopenoffice.org-java -Nopenoffice.org-dev-doc-java
-else
-  USE_JAVA=y
-  JDK_HOME:=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*jdkhome=\([^,]*\),.*/\1/p')
-  SUNJDK_VER:=$(shell $(JDK_HOME)/bin/java -version 2>&1 | sed -n '1s/java version "\([0-9._]*\)"/\1/p')
-  
-  # Non-1.4 Jdks need extra jar files
-ifneq (1.4,$(findstring 1.4,$(SUNJDK_VER)))
-  BUILDCMD+= XCLASSPATH=$$XCLASSPATH::/usr/share/java/crimson.jar:/usr/share/java/xalan.jar:/usr/share/java/xml-apis.jar:/usr/share/java/xalan2.jar:/usr/share/java/xmlParserAPIs.jar:/usr/share/java/xercesImpl.jar:/usr/share/java/xt.jar:/usr/share/java/xp.jar
-endif
-  LIBDB_JAR=/usr/share/java/libdb$(D)-java.jar
-  CONFIGURE_FLAGS+= --with-jdk-home=$(JDK_HOME) --with-db-jar=$(LIBDB_JAR)
-  JAVA_ADDITIONAL_DEPENDS=, libdb$(D)-java
-  IGNORE_MANIFEST_CHANGES=1
-  export IGNORE_MANIFEST_CHANGES
-  BUILDCMD+= XCLASSPATH=$$XCLASSPATH::/usr/share/java/xmlParserAPIs.jar:/usr/share/java/xercesImpl.jar:/usr/share/java/xt.jar:/usr/share/java/xp.jar
-endif
-
-# You build just one language by passing lang=<langcode> such as 'en' in DEB_BUILD_OPTIONS
-ifeq (lang=,$(findstring lang=,$(DEB_BUILD_OPTIONS)))
-  BUILD_ALL_LANGPACKS=n
-  BUILDLANG:=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*lang=\([^,]*\),.*/\1/p')
-else
- ifeq "$(DIST)" "Debian"
-   # the buildds do binary-only builds; thefore we only need to build en
-   # (thanks James Troup for the username info) 	 
-   ifeq (buildd,$(shell whoami)) 	 
-     BUILD_ALL_LANGPACKS=n 
-     BUILDLANG:=en
-   endif
- endif
-endif
-
-ifeq "$(BUILD_ALL_LANGPACKS)" "y"
-  # Build langpacks for all known languages 
-  LANGPACKISOS=$(shell debian/local/openoffice-xlate-lang -i all)
-  CONFIGURE_LANGPACK_FLAGS+=--with-lang=ALL
-else
-  # Build only 1 language pack
-  LANGPACKISOS=$(BUILDLANG)
-  CONFIGURE_LANGPACK_FLAGS+=--with-lang=$(shell debian/local/openoffice-xlate-lang -r $(BUILDLANG))
-endif
-
-# Prefix where setup is built
-BUILDLANG_PREFIX:=$(shell debian/local/openoffice-xlate-lang -p $(BUILDLANG))
-
-# This is where the upstream install rules will put their stuff.
-DEBTREEDIR:=$(CURDIR)/debian/tmp
-OPENOFFICEDIR:=/usr/lib/openoffice$(VER)
-PKGOPENOFFICEDIR:=$(DEBTREEDIR)/$(OPENOFFICEDIR)
-
-# Package install directory
-MAINPKGDIR:=$(CURDIR)/debian/openoffice.org$(VER)
-  
-ifeq ($(ARCH)-linux,sparc-linux)
-  # Use 32 bit compiler
-  _CC:=sparc-linux-gnu-gcc-3.3
-  CXX:=sparc-linux-gnu-g++-3.3
-else
-  _CC:=gcc-3.3
-  CXX:=g++-3.3
-endif
-
-# gcc version can be overriden by setting GCCVER in scripts/vars[.arch]
-ifneq "$(GCCVER)" ""
-  _CC=gcc-$(GCCVER)
-  CXX=g++-$(GCCVER)
-endif
-
-ifeq "$(_CC)" "gcc-3.0"
-  # gcc 3.0 Backport - disable mozilla and MANIFEST check
-  IGNORE_MANIFEST_CHANGES=1
-  export IGNORE_MANIFEST_CHANGES
-  MOZILLA=n
-  CONFIGURE_FLAGS+= --disable-symbols
-else
-  # gcc 3.0 didn't understand -g1, but newer compilers do
-  CONFIGURE_FLAGS+= --enable-symbols=SMALL 
-endif
-
-ifeq "$(DIST)" "Ubuntu"
-  # Disable mozilla - system moz has a different ABI and interferes
-  # with build
-  MOZILLA=n
-endif
-
-ifeq "$(MOZILLA)" "n"
-  CONFIGURE_FLAGS+= --disable-mozilla 
-endif
-
-# Auto freetype configuration.  If we detect the Woody freetype, we
-# build and include our own version instead.  This is because there 
-# are ABI incompatibilities between the version in Woody and newer 
-# versions, and some other backports (Gnome, X4.3) require a newer 
-# freetype and it all ends up in a horrible mess.
-ifeq (libfreetype.so.6.3.0,$(shell readlink /usr/lib/libfreetype.so))
-  USE_INTERNAL_FREETYPE=y
-else
-  USE_INTERNAL_FREETYPE=n
-  CONFIGURE_FLAGS += --with-system-freetype
-endif
-
-MINDEBCONFVER := 1.2.0
-
-# Although we build with internal freetype on woody dpkg-shlibdeps
-# inserts a libfreetype6 dependency. Work around this with a shlibs.local
-# file setting no dependency for libfreetype.so.6
-ifeq "$(USE_INTERNAL_FREETYPE)" "y"
-  SHLIBS_OVERRIDE=-- -Ldebian/shlibs.woody.local
-endif
-
-# Default build.pl flags
-ifeq (build=,$(findstring build=,$(DEB_BUILD_OPTIONS)))
-  BUILDFLAGS:=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*build=\([^,]*\),.*/\1/p')
-else
-  BUILDFLAGS:=
-endif
-
-# Default dmake flags
-ifeq (dmake=,$(findstring dmake=,$(DEB_BUILD_OPTIONS)))
-  DMAKEFLAGS:=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*dmake=\([^,]*\),.*/\1/p')
-else
-  DMAKEFLAGS:=
-endif
-
-# If startfrom=<prj> is specified, resume build from this project
-ifeq (startfrom=,$(findstring startfrom=,$(DEB_BUILD_OPTIONS)))
-  STARTFROM:=--from $(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*startfrom=\([^,]*\),.*/\1/p')
-else
-  STARTFROM:=--all
-endif
-
-#if debug is set into DEB_BUILD_OPTIONS, debug=yes will added to buildprj, so you can
-#build single projects with debugging symbols
-ifeq (debug,$(findstring debug,$(DEB_BUILD_OPTIONS)))
-   DMAKEFLAGS+= debug=yes
-endif
-
-# Setting MAXPROCESS for dmake for parallel builds.  There are some problems, see IZ#9443
-# Extract -Pn from DEB_BUILD_OPTIONS for dmake option
-DMAKEPARALLEL:=$(shell echo $(DEB_BUILD_OPTIONS) | sed -n 's/^\(.*,\)\?-P\([0-9]\+\)\(,.*\)\?$$/-P\2/p')
-
-# Building n projects in parallel.
-# Extract -PPn from DEB_BUILD_OPTIONS as -Pn for build.pl option
-BUILDPARALLEL:=$(shell echo $(DEB_BUILD_OPTIONS) | sed -n 's/^\(.*,\)\?-PP\([0-9]\+\)\(,.*\)\?$$/-P\2/p')
-
-BUILDFLAGS+= $(BUILDPARALLEL)
-DMAKEFLAGS+= $(DMAKEPARALLEL)
+#		 --with-ooo-builddir=$(CURDIR) \
+#		 --with-src=$(CURDIR) \
 
 # Use compiler cache?  Include ccache in DEB_BUILD_OPTIONS for much faster rebuild times
 # A complete build uses about 200Mb of compiler cache.
 ifeq (ccache,$(findstring ccache,$(DEB_BUILD_OPTIONS)))
-  _CC:=ccache $(_CC)
-  CXX:=ccache $(CXX)
+  CONFIGURE_FLAGS += --with-gcc-speedup=ccache
 endif
 
-ifeq (noopt,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
-  ENVCFLAGS=-O0
-  ENVCFLAGSCXX=-O0
-  export ENVCFLAGS ENVCFLAGSCXX
-else
-  # we do that because at least on i386 compiling with -O1 instead of
-  # -O2 does not give the experienced relocation errors anymore...;
-  # sparc, i386 have -O1 anyhow
-  ifeq ($(ARCH),powerpc)
-    OPT_STD_2=1
-  else
-    ifeq ($(ARCH),s390)
-      OPT_STD_2=1
-    endif
-  endif
-  ifdef OPT_STD_2
-    ENVCFLAGS=-O1
-    ENVCFLAGSCXX=-O1
-    export ENVCFLAGS ENVCFLAGSCXX
-  endif
-endif
+# Flags to pass to configure of openoffice.org
+CONFIGURE_OPTIONS=--with-system-gcc --with-jdk-home=/usr/lib/SunJava2-1.4.2 \
+		   --with-lang=en-US --enable-libart --enable-libsn --enable-crashdump=no \
+		   --with-system-zlib --with-system-freetype --with-system-jpeg \
+		   --without-fonts --enable-fontconfig \
+		   --with-system-mozilla \
+		   --with-ant-home=/usr/share/ant --disable-crashdump \
+		   --with-system-python --disable-binfilter \
+		   --disable-epm --without-myspell-dicts \
+		   --with-system-libxml
 
-# Delete each project output tree once it has been delivered to the solver?  DEB_BUILD_OPTIONS=deloutput
-ifeq (deloutput,$(findstring deloutput,$(DEB_BUILD_OPTIONS)))
-  BUILDFLAGS+= --dlv_switch link deloutput
-else
-  # save disk space on buildds, thanks James Troup for the username info...
-  ifeq (buildd,$(shell whoami))
-    BUILDFLAGS+= --dlv_switch link deloutput
-  else
-    BUILDFLAGS+= --dlv_switch link
-  endif
-endif
-  
-
-#
-# Add parallel build flags and always hard link into the solver
-
-#command to use to build OOo
-
-BUILDCMD+= $(CURDIR)/$(SOURCE_TREE)/solenv/bin/build.pl
-
-# KDE icon set? DEB_BUILD_OPTIONS=kdeicons
-ifeq (kdeicons,$(findstring kdeicons,$(DEB_BUILD_OPTIONS)))
-  OOO_ICONS_VER=$(OOO_KDE_ICONS_VER)
-  OOO_ICONS_URI=$(OOO_KDE_ICONS_URI)
-  # MANIFEST files are for Gnome icon set
-  IGNORE_MANIFEST_CHANGES=1  
-else
-  OOO_ICONS_VER=$(OOO_GNOME_ICONS_VER)
-  OOO_ICONS_URI=$(OOO_GNOME_ICONS_URI)
-endif
+export CONFIGURE_OPTIONS
 
 # Because of the stampdir magic, when you actually want to run a rule
 # over, you would have to remove the stamp manually.  Now, just do
 # 'debian/rules <target> <target> ... FORCE=1', and the stamp files
 # that match the given targets will be removed automagically.
 stampdir_targets=files.backup icons.scale patch.apply build.prepare.artwork 
-stampdir_targets+=build.prepare configure bootstrap solver solver.langpacks instsetoo
-stampdir_targets+=setupins setup install-arch install-indep manifest
+stampdir_targets+=build.prepare configure
+stampdir_targets+=setupins setup install install-arch install-indep
 stampdir_targets+=langpacks binary-common binary-arch binary-indep
 ifdef FORCE
  DUMMY:=$(shell rm -f $(patsubst %,$(STAMP_DIR)/%,$(filter $(stampdir_targets),$(MAKECMDGOALS))))
@@ -352,153 +110,62 @@ clean-objectdirs: clean-instsetoo
 	dh_testdir
 	find $(SOURCE_TREE) -maxdepth 2 -name $(ARCHBUILDDIR) -type d -exec rm -rf {} \;
 
-clean: $(STAMP_DIR)/patch.unapply
-	dh_testdir config_office/configure.in
-	rm -f debian/MANIFEST.*.new
-	#cd $(SOURCE_TREE)/dmake && \
-	# [ -f configure.orig ] && \
-	#  mv -f configure.orig configure
-
-	# undo scaling (i.e. remove stamps, scaled icons)
-	chmod 755 $(OOO_BUILD)/bin/scale-icons
-	if [ -d modified_files ]; then \
-	  $(OOO_BUILD)/bin/scale-icons $(SOURCE_TREE) --remove ;\
-	fi
+clean:
+	dh_testdir
 
 	# we do not need them and they make problem with dpkg-source....
-	rm -f $(OOO_BUILD)/www/*.png \
-		$(OOO_BUILD)/www/images/*.png $(OOO_BUILD)/templates/*.s* \
-		$(OOO_BUILD)/www/l10n/*.gif \
-		$(OOO_BUILD)/src/open*bmp $(OOO_BUILD)/src/file-bug-*.bmp
+	rm -f ooo-build/desktop/*.png ooo-build/www/*.png \
+		ooo-build/www/images/*.png ooo-build/templates/*.s* \
+		ooo-build/www/l10n/*.gif \
+		ooo-build/src/open*bmp ooo-build/src/file-bug-*.png
 
-	if [ -d $(OOO_BUILD)/test ]; then \
-		find $(OOO_BUILD)/test -type f \
+	if [ -d ooo-build/test ]; then \
+		find ooo-build/test -type f \
 		     \( -name '*.xls' -o -name '*.sx?' -o -name '*.doc' \
 			-o -name '*.123' -o -name '*.lwp' -o -name '*.ppt' \
 			-o -name '*.wb2' -o -name '*.png' \) -exec rm {} \; ;\
 	fi
+	rm -f ooo-build/fonts/symbols.xls
 
-	cd $(SOURCE_TREE)/config_office && \
-               rm -f config.cache config.log \
-                   config.status config.parms \
-                  warn set_soenv && \
-              rm -rf autom4te.cache
-
-	if [ -f $(SOURCE_TREE)/$(ENVFILE) ]; then \
-	    cd $(SOURCE_TREE) && . ./$(ENVFILE); \
-	    dmake distclean; \
-	fi
-
-	rm -f $(SOURCE_TREE)/external/glibc/rtufiles/getopt.c
-	rm -f $(SOURCE_TREE)/external/glibc/rtufiles/getopt.h
-	rm -f $(SOURCE_TREE)/external/glibc/rtufiles/getopt1.c
-	rm -f $(SOURCE_TREE)/external/glibc/rtufiles/readdir_r.c
-	rm -f $(SOURCE_TREE)/external/glibc/rtufiles/config.h
-	rm -f $(SOURCE_TREE)/external/glibc/rtufiles/makefile.mk
-	rm -f $(SOURCE_TREE)/external/glibc/patchinf
-
-	rm -f $(SOURCE_TREE)/svtools/bmpmaker/bmpmaker..dpr
-
-	rm -f $(SOURCE_TREE)/fpicker/source/unx/kde/kdefilepicker.moc.cxx
-	
 	# remove xcf and bmp of the Debian splashscreen
 	rm -f debian/openintro_debian.xcf debian/openintro_debian.bmp \
 		offmgr/res/openintro_debian.bmp
 
-	# Delete all bmp and bmp.orig files if we have the backup
-	if [ -d modified_files ]; then \
-	  find . ! -path './ooo-icons*' ! -path './debian*' \
-	    ! -path '$(OOO_BUILD)' \
-	    ! -path *unx*.pro* ! -path './modified_files*' \
-	    \( -name '*.bmp' -o -name '*.bmp.orig' \) -exec rm {} \; ;\
-	fi
-
-	# Delete html export buttons
-	rm -f $(SOURCE_TREE)/extras/source/gallery/htmlexpo/*.png
-
-	# Delete artwork tarball
-	rm -f $(OOO_BUILD)/src/*tar.gz
-
-	# and extracted artwork
-	rm -rf $(SOURCE_TREE)/$(OOO_GNOME_ICONS_VER) \
-	       $(SOURCE_TREE)/$(OOO_KDE_ICONS_VER)
-
-	# and libwpd snapshot tarball
-	rm -f $(SOURCE_TREE)/libwpd/download/$(LIBWPD_VER).tar.gz
-
-	# Restore modified files
-	if cd $(SOURCE_TREE)/modified_files; then \
-	  find . -type f -exec cp -v -p {} ../{} \; ;\
-          rm -f $(STAMP_DIR)/icons.backup ;\
-	fi
-
-	rm -rf $(SOURCE_TREE)/modified_files
-
-	# Delete files in dmake
-	if [ -f dmake/Makefile ];then $(MAKE) -C dmake distclean; fi
-	rm -f dmake/dmakeroot.h
-	find dmake/startup -name Makefile -exec rm {} \;
-
-	# delete delzip files
-	find helpcontent/unx sysui/desktop -name "delzip" -exec rm {} \;
-
-	rm -f desktop/source/icons/*.xpm
-
-	# uuencode OpenSymbol font
-	if [ -s $(OOO_BUILD)/fonts/opens___.ttf ]; then \
-	  uuencode $(OOO_BUILD)/fonts/opens___.ttf opens___.ttf \
-	    > $(OOO_BUILD)/fonts/opens___.ttf.uu &&\
-          touch -r $(OOO_BUILD)/fonts/opens___.ttf.uu $(OOO_BUILD)/fonts/opens___.ttf ;\
-	fi
-	rm -f $(OOO_BUILD)/fonts/opens___.ttf $(OOO_BUILD)/fonts/symbols.xls
-
-	# uuencode Ximian desktop icons
-	for i in calc draw impress math template web writer; do \
-	  if [ -s $(OOO_BUILD)/desktop/ximian-openoffice-$$i.png ]; then \
-	    uuencode $(OOO_BUILD)/desktop/ximian-openoffice-$$i.png \
-		ximian-openoffice-$$i.png \
-		> $(OOO_BUILD)/desktop/ximian-openoffice-$$i.png.uu &&\
-	    touch -r $(OOO_BUILD)/desktop/ximian-openoffice-$$i.png.uu \
-		$(OOO_BUILD)/desktop/ximian-openoffice-$$i.png ;\
-	  fi; \
+	# uuencode binary files
+	cd ooo-build ;\
+	for f in fonts/opens___.ttf src/ooo_custom_images*.bz2 src/images*.zip; do \
+	  if [ -s $$f ]; then \
+	    uuencode $$f $$f > $$f.uu && \
+            touch -r $$f.uu $$f ;\
+	  fi ;\
+	  rm -f $$f ;\
 	done
-	rm -f $(OOO_BUILD)/desktop/*.png
-
+	
 	dh_clean
 
-	rm -rf $(STAMP_DIR) $(DEBTREEDIR) stlport-home
-	rm -f makefile.mk $(ENVFILE) $(ENVFILE).langpacks $(subst Env.Set.sh,Env.Set,$(ENVFILE)) \
-	      bootstrap
-
-	for i in xmlhelp/source/com/sun/star/help/*.java.in; do \
-		rm -f `basename $$i .in`; \
-	done
-
-	# remove created links
-	rm -f external/common/xt.jar
-	rm -f external/common/parser.jar
-
 	# Files created in debian directory
-	rm -f debian/*.postinst debian/*.postrm debian/*.preinst debian/*.prerm \
-		debian/openoffice.org-dev.links
+	rm -f debian/*.postinst debian/*.postrm debian/*.preinst debian/*.prerm
 
-	rm -rf tools/$(ARCHBUILDDIR:.pro=.gnomevfs.pro)
-
+	-$(MAKE) -C ooo-build distclean
 	$(MAKE) -f debian/rules control
 
 
 # Generate control file, because we have so many different languages
 # Based on script by Martin Quinson <Martin.Quinson@tuxfamily.org>
 control: debian/control
-debian/control: debian/control.in debian/control.lang.in debian/local/openoffice-xlate-lang
-	cat > debian/control < debian/control.in
+debian/control: debian/control.in debian/control.lang.in ooo-build/bin/openoffice-xlate-lang
+	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
+	    < debian/control.in > debian/control
 
-	for LNUM in `debian/local/openoffice-xlate-lang -p all ` ; do \
-	    LNAME=`debian/local/openoffice-xlate-lang -l $$LNUM`; \
-	    LCODE=`debian/local/openoffice-xlate-lang -i $$LNUM | tr A-Z a-z`; \
+#	for LNUM in `ooo-build/bin/openoffice-xlate-lang -p all ` ; do \
+	# TOOD - all langpacks
+	for LNUM in en-US ; do \
+	    LNAME=`ooo-build/bin/openoffice-xlate-lang -l $$LNUM`; \
+	    LCODE=`ooo-build/bin/openoffice-xlate-lang -i $$LNUM | tr A-Z a-z`; \
 	    SUGGESTS=; \
 	    sed -e "s|@LNAME@|$$LNAME|g" -e "s|@LCODE@|$$LCODE|g" \
 	        -e "s|@SUGGESTS@|$$SUGGESTS|g" \
+			-e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 	        >> debian/control < debian/control.lang.in; \
 	done
 	# -hi-in was renamed to -hi; add Conflicts:/Replaces:/Provides:
@@ -509,10 +176,8 @@ debian/control: debian/control.in debian/control.lang.in debian/local/openoffice
 .DELETE_ON_ERROR: debian/control
 
 build: build-arch build-indep
-build-arch: $(STAMP_DIR)/instsetoo
-build-arch: $(STAMP_DIR)/tools.gnomevfs
-
-build-indep: $(STAMP_DIR)/setupins
+build-arch: $(STAMP_DIR)/build
+build-indep: $(STAMP_DIR)/build
 
 # All 'important' targets have 2 lines.  The one that is run by
 # dpkg-buildpackage or the user, and the one that does the actual work.  This
@@ -524,340 +189,42 @@ build-indep: $(STAMP_DIR)/setupins
 # so that the target will not be run again.  Removing the file will make
 # make run the target over.
 
-patch.apply: $(STAMP_DIR)/patch.apply
-$(STAMP_DIR)/patch.apply: $(OOO_BUILD)/patches/$(PATCH_DIR)/apply
-	# Test that we have the Ximian packaging directory available.  If your
-	# build stops here, you need to check it out.
-	# You can get the directory with the command:
-	# debian/rules get-ooo-build
-	dh_testdir $(OOO_BUILD)/patches/apply.pl
-
-	rm -f $(STAMP_DIR)/patch.unapply
-	chmod 755 $(OOO_BUILD)/patches/apply.pl
-	$(OOO_BUILD)/patches/apply.pl $(CURDIR)/$(OOO_BUILD)/patches/$(PATCH_DIR) $(CURDIR)/$(BUILD_DIR) --distro=$(PATCHSET) -f
-
-	mkdir -p $(STAMP_DIR)
-	touch $@
-
-patch.unapply: $(STAMP_DIR)/patch.unapply
-$(STAMP_DIR)/patch.unapply:
-	dh_testdir $(OOO_BUILD)/patches/apply.pl
-
-	chmod 755 $(OOO_BUILD)/patches/apply.pl
-	$(OOO_BUILD)/patches/apply.pl $(CURDIR)/$(OOO_BUILD)/patches/$(PATCH_DIR) $(CURDIR)/$(BUILD_DIR) --distro=$(PATCHSET) -f -R
-	rm -f $(STAMP_DIR)/patch.apply
-
-	mkdir -p $(STAMP_DIR)
-	touch $@
-
-# Back up files that we must modify in the source, into modified_files.
-files.backup: $(STAMP_DIR)/files.backup
-$(STAMP_DIR)/files.backup:
-
-	mkdir -p modified_files 
-
-	# Back up all bmp files (!)
-	find . ! -path './ooo-icons*' ! -path './debian*' \
-	  ! -path '$(OOO_BUILD)' \
-	  ! -path *unx*.pro* ! -path './modified_files*' \
-	  -name '*.bmp' -exec cp -fp --parent {} modified_files \;
-
-	# Back up source files that we modify
-	for f in dmake/configure config_office/configure; do \
-	  mkdir -p modified_files/`dirname $$f` && \
-	  cp -v -p $$f modified_files/$$f ;\
-	done
-
-	mkdir -p $(STAMP_DIR)
-	touch $@
-
-# Scale all icons in the tree; a long process so it gets
-# its own target
-icons.scale: $(STAMP_DIR)/icons.scale
-$(STAMP_DIR)/icons.scale: $(STAMP_DIR)/files.backup
-
-	chmod 755 $(OOO_BUILD)/bin/scale-icons
-	$(OOO_BUILD)/bin/scale-icons $(SOURCE_TREE)
-
-	touch $@
-
-# prepare source tree
-build.prepare: $(STAMP_DIR)/build.prepare
-$(STAMP_DIR)/build.prepare: $(STAMP_DIR)/patch.apply
-	dh_testdir $(OOO_BUILD)/patches/apply.pl
-
-	$(MAKE) -f debian/rules control
-
-ifneq "$(ARCH)" "i386"
-ifneq "$(MOZILLA)" "n"
-	# Workaround for mozilla zips on ! i386
-	cp -rvf ../mozlibs/* $(SOURCE_TREE)/moz/zipped/
-endif
-endif
-
-	# applying gui-font-help-large-diff leaves .orig files
-	# in the directory that are added to the install set, so
-	# remove them.  [The effects of this patch are not seen in
-	# the main packages, because we package the help source
-	# seperately, but we apply it anyway to help with testing
-	# install sets]
-	rm -f $(SOURCE_TREE)/helpcontent/unx/common/*/*.orig
-	# same with sd-export-html-descr.diff
-	rm -f $(SOURCE_TREE)/extras/source/gallery/htmltheme.orig
-	
-        # uudecode OpenSymbol font
-	if [ ! -s $(OOO_BUILD)/fonts/opens___.ttf ]; then \
-	  uudecode -o $(OOO_BUILD)/fonts/opens___.ttf \
-	           $(OOO_BUILD)/fonts/opens___.ttf.uu ;\
-	  touch -r $(OOO_BUILD)/fonts/opens___.ttf $(OOO_BUILD)/fonts/opens___.ttf.uu ;\
-	fi
-
-	# uudecode Ximian desktop icons
-	for i in calc draw impress math template web writer; do \
-	  if [ ! -s $(OOO_BUILD)/desktop/ximian-openoffice-$$i.png ]; then \
-	    uudecode -o $(OOO_BUILD)/desktop/ximian-openoffice-$$i.png \
-		$(OOO_BUILD)/desktop/ximian-openoffice-$$i.png.uu ;\
-	    touch -r $(OOO_BUILD)/desktop/ximian-openoffice-$$i.png.uu \
-		$(OOO_BUILD)/desktop/ximian-openoffice-$$i.png ;\
-	  fi; \
-	done
-
-	# uudecode libwpd snapshot
-	if [ ! -s $(SOURCE_TREE)/libwpd/download/$(LIBWPD_VER).tar.gz ]; then \
-	  uudecode -o $(SOURCE_TREE)/libwpd/download/$(LIBWPD_VER).tar.gz \
-	           $(SOURCE_TREE)/libwpd/download/$(LIBWPD_VER).tar.gz.uu; \
-	fi
-
-ifeq "$(USE_JAVA)" "y"
-	# adding them to the classpath somehow doesn't help (done nevertheless)
-	# we need to make symlinks here...
-	if [ ! -d external/common ]; then mkdir -p external/common; fi
-	ln -sf /usr/share/java/xp.jar external/common/parser.jar
-	ln -sf /usr/share/java/xt.jar external/common/xt.jar
-endif
-
-	touch $@
-
-build.prepare.artwork: $(STAMP_DIR)/build.prepare.artwork
-$(STAMP_DIR)/build.prepare.artwork: $(STAMP_DIR)/files.backup $(OOO_BUILD)/src/$(OOO_ICONS_VER).tar.gz.uu
-$(STAMP_DIR)/build.prepare.artwork: $(STAMP_DIR)/icons.scale
-ifneq "$(DIST)" "Ubuntu"
-$(STAMP_DIR)/build.prepare.artwork: debian/openintro_debian.xcf.uu
-
-	# add the splashscreen with the Debian logo
-	uudecode debian/openintro_debian.xcf.uu > \
-		debian/openintro_debian.xcf && \
-		debian/scripts/oo-xvfb-run -a debian/scripts/xcftobmp \
-		  debian/openintro_debian.xcf debian/openintro_debian.bmp && \
-		cp debian/openintro_debian.bmp offmgr/res/openintro_debian.bmp
-endif
-#		mogrify -colors 8 debian/openintro_debian.bmp && \
-	
-	cd $(OOO_BUILD)/src && uudecode $(OOO_ICONS_VER).tar.gz.uu
-	tar xzf $(OOO_BUILD)/src/$(OOO_ICONS_VER).tar.gz
-	
-	# remove ximian about since we do not have the full Ximian edition...
-	rm -f $(OOO_ICONS_VER)/offmgr/res/openabout.bmp
-
-	# Copy new artwork into the tree
-	cp -dRvf $(SOURCE_TREE)/$(OOO_ICONS_VER)/* $(SOURCE_TREE)
-
-	# Force rebuild of image lists and resource files
-	-find $(SOURCE_TREE)/*/$(ARCHBUILDDIR)/bin -name "*.res" -exec rm {} \;
-	-find $(SOURCE_TREE)/*/$(ARCHBUILDDIR)/srs -name "*.srs" -exec rm {} \;
-	-find $(SOURCE_TREE)/*/$(ARCHBUILDDIR)/misc -name "*_img??.don" -exec rm {} \;
-	#find $(SOURCE_TREE) -name '*.src' -exec touch {} \;
-
-	touch $@
-
-# After build preparation, run configure
-configure: $(STAMP_DIR)/configure
-$(STAMP_DIR)/configure: $(STAMP_DIR)/build.prepare
-$(STAMP_DIR)/configure: $(STAMP_DIR)/build.prepare.artwork
+configure: ooo-build/config.status
+ooo-build/config.status: ooo-build/configure
 	dh_testdir
 	$(MAKE) -f debian/rules environment
+	mkdir -p $(STAMP_DIR)
 
-ifeq "$(USE_JAVA)" "y"
-        
-	# Make sure we have a valid JDK. If this test fails, please ensure 
-	# that a valid JDK is provided in the path specified with
-	# DEB_BUILD_OPTIONS=jdkhome=/absolute/path/to/jdk
-	test -x /$(JDK_HOME)/bin/javac
-	
-	# Make sure we have all the necessary java packages. If this test
-	# fails, please ensure that the libxt-java, libxp-java and
-	# libxerces2-java packages are installed
-	test -r /usr/share/java/xmlParserAPIs.jar
-	test -r /usr/share/java/xercesImpl.jar
-	test -r /usr/share/java/xt.jar
-	test -r /usr/share/java/xp.jar
-	
-	# Non-1.4 Jdks need extra jar files
-ifneq (1.4,$(findstring 1.4,$(SUNJDK_VER)))
-	# Make sure we have all the necessary java packages when building
-	# with 1.3.  If this  test fails, please ensure that the
-	# libcrimson-java, libxalan-java, and libxalan2-java packages are
-	# installed.
-	test -r /usr/share/java/crimson.jar
-	test -r /usr/share/java/xalan.jar
-	test -r /usr/share/java/xml-apis.jar
-	test -r /usr/share/java/xalan2.jar
-endif
-
-ifeq "$(USE_SYSTEM_DB)" "y"
-	# We need the db java bindings for Java builds.
-	# If this test fails you need to install libdb$(D)-java
-	test -r $(LIBDB_JAR)
-endif
-
-ifeq "$(ARCH)" "powerpc"
-	# test for libhpi.so and warn ppc folks....
-	find /$(JDK_HOME) -type f -name "libhpi*" | grep usr | grep green \
-		> debian/libhpi.search && if [ -s debian/libhpi.search ]; then \
-	echo ""; echo ""; \
-	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" ; \
-	echo "green_threads libhpi.so found in"; \
-	echo "`cat debian/libhpi.search | sed -e s,//,/,`.";\
-	echo "This could let the build fail with \"OUCH: nested memory code, to 1 levels.\""; \
-	echo "For a working build you may want to remove that file..."; \
-	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"; \
-	echo ""; echo ""; \
-	fi; \
-	rm debian/libhpi.search
-endif
-
-endif # USE_JAVA
+	# uudecode source files
+	cd ooo-build; for uu in fonts/opens___.ttf.uu src/*.uu; do \
+	  orig="`echo "$$uu" |sed -e 's#.uu$$##'`" ;\
+          if [ ! -s $$orig ]; then \
+            uudecode -o $$orig $$uu ;\
+            touch -r $$orig $$uu ;\
+          fi ;\
+	done
 
 	# Make sure we have /proc mounted - otherwise idlc will fail later.
 	test -r /proc/version
 
-	# Remove config.cache so we always generate config again
-	rm -f $(SOURCE_TREE)/config_office/config.cache
+	cd ooo-build ; ../ooo-build/configure $(CONFIGURE_FLAGS)
+	touch $@
 
-	rm -f $(SOURCE_TREE)/$(ENVFILE).langpacks
+build: $(STAMP_DIR)/build
+$(STAMP_DIR)/build: ooo-build/config.status
+	dh_testdir
+	cd ooo-build ; $(MAKE)
 
-	cd $(SOURCE_TREE)/config_office && autoconf
+	touch $@
+
+install: $(STAMP_DIR)/install
+$(STAMP_DIR)/install: $(STAMP_DIR)/build
+	dh_testdir
+	dh_testroot
 	
-	# Run configure twice: The first time we generate an
-	# environemnt file for lang-specific file creation, the
-	# second for the binary build without all languages
-	cd $(SOURCE_TREE)/config_office && \
-	  CC="$(_CC)" CXX="$(CXX)" sh ./configure \
-	   $(CONFIGURE_FLAGS) \
-	   $(CONFIGURE_LANGPACK_FLAGS) \
-	   < /dev/null
-	mv $(SOURCE_TREE)/$(ENVFILE) $(SOURCE_TREE)/$(ENVFILE).langpacks
-
-	# Normal complete build with only one language
-	cd $(SOURCE_TREE)/config_office && \
-	  CC="$(_CC)" CXX="$(CXX)" sh ./configure \
-	   $(CONFIGURE_FLAGS) \
-	   --with-lang=$(shell debian/local/openoffice-xlate-lang -r $(BUILDLANG)) \
-	   < /dev/null
-
+	rm -rf $(CURDIR)/debian/tmp
+	cd ooo-build ; DESTDIR=$(CURDIR)/debian/tmp $(MAKE) install
 	touch $@
-
-# bootstrap build
-bootstrap: $(STAMP_DIR)/bootstrap
-$(STAMP_DIR)/bootstrap: $(STAMP_DIR)/configure
-	dh_testdir
-
-	cd $(SOURCE_TREE); ./bootstrap
-
-	touch $@
-
-# Build all projects needed for installation sets but do not yet create instsets
-solver: $(STAMP_DIR)/solver
-$(STAMP_DIR)/solver: $(STAMP_DIR)/bootstrap
-	dh_testdir
-
-	. $(SOURCE_TREE)/$(ENVFILE); cd $(SOURCE_TREE)/instsetoo && \
-	    $(BUILDCMD) $(STARTFROM) $(BUILDFLAGS) -- instsetext= $(DMAKEFLAGS)
-
-	touch $@
-
-sdk: $(STAMP_DIR)/sdk
-$(STAMP_DIR)/sdk: $(STAMP_DIR)/solver
-	dh_testdir
-	. $(SOURCE_TREE)/$(ENVFILE); cd $(SOURCE_TREE)/sdk_oo && \
-	    $(BUILDCMD) $(BUILDFLAGS) -- $(DMAKEFLAGS) && \
-	    $(CURDIR)/$(SOURCE_TREE)/solenv/bin/deliver.pl
-
-	touch $@
-
-tools.gnomevfs: $(STAMP_DIR)/tools.gnomevfs
-$(STAMP_DIR)/tools.gnomevfs: $(STAMP_DIR)/solver
-	# Then build tools again, this time with GnomeVFS enabled.
-	. $(SOURCE_TREE)/$(ENVFILE); cd $(SOURCE_TREE)/tools && \
-	OUTPATH="$$OUTPATH.gnomevfs" USE_GNOMEVFS=TRUE \
-	$(BUILDCMD) $(BUILDFLAGS) -- $(DMAKEFLAGS)
-
-	touch $@
-
-# Build full installation set for BUILDLANG language
-instsetoo: $(STAMP_DIR)/instsetoo
-$(STAMP_DIR)/instsetoo: $(STAMP_DIR)/solver
-	dh_testdir
-	. $(SOURCE_TREE)/$(ENVFILE); cd $(SOURCE_TREE)/instsetoo && \
-	    $(BUILDCMD) $(BUILDFLAGS) --from instsetoo -- instsetext="$(BUILDLANG_PREFIX)" $(DMAKEFLAGS)
-
-	touch $@
-
-# Build all projects needed for installation sets for all possible languages
-solver.langpacks: $(STAMP_DIR)/solver.langpacks
-$(STAMP_DIR)/solver.langpacks: $(STAMP_DIR)/bootstrap
-ifeq "$(BUILD_ALL_LANGPACKS)" "y"
-	dh_testdir
-	. $(SOURCE_TREE)/$(ENVFILE).langpacks; cd $(SOURCE_TREE)/instsetoo && \
-	    $(BUILDCMD) $(STARTFROM) $(BUILDFLAGS) -- instsetext= $(DMAKEFLAGS)
-
-	# This also builds everything needed for solver target
-	touch $(STAMP_DIR)/solver
-
-	touch $@
-endif
-
-# Build insetsetoo installation scrips for langpacks
-setupins: $(STAMP_DIR)/setupins
-$(STAMP_DIR)/setupins: $(STAMP_DIR)/solver.langpacks
-ifeq "$(BUILD_ALL_LANGPACKS)" "y"
-	dh_testdir
-	# we don't want to build $(BUILDLANG_PREFIX) so remove it from the list
-	. $(SOURCE_TREE)/$(ENVFILE).langpacks; cd $(SOURCE_TREE)/instsetoo && LZIPFLAGS=-O \
-	instsetext="`cd util;dmake instsetext= \
-	  | sed -n '/alllangext:/ s/alllangext:\(.*\) $(BUILDLANG_PREFIX) \(.*\)/\1 \2/p'`" \
-	$(BUILDCMD) --from instsetoo $(BUILDFLAGS) -- $(DMAKEFLAGS)
-
-	touch $@
-endif
-
-# build individual project (optional)
-# for an overview, see:
-#	http://www.openoffice.org/dev_docs/source/build_linux.html#BuildingIndividualProjects
-# This target is not used by the main build, but may be useful to just build a troublesome project.
-# You need to specify a project like this:
-#   debian/rules buildprj PRJ=<module>
-PRJ=unknown-project
-# See http://tools.openoffice.org/modules.html for a list of modules that can be built.
-
-buildprj: $(STAMP_DIR)/bootstrap
-	dh_testdir
-
-	# run dmake
-	. $(SOURCE_TREE)/$(ENVFILE); cd $(SOURCE_TREE)/$(PRJ) && \
-	    $(BUILDCMD) $(BUILDFLAGS) -- $(DMAKEFLAGS)
-
-	-echo Project $(PRJ) build successful
-
-# Build all projects until the given project (optional)
-# e.g. debian/rules builduntil-transex3
-builduntil-%: $(STAMP_DIR)/bootstrap
-	dh_testdir
-
-	. $(SOURCE_TREE)/$(ENVFILE); cd $(SOURCE_TREE)/$(subst builduntil-,,$@) && \
-	    $(BUILDCMD) $(STARTFROM) $(BUILDFLAGS) --$(DMAKEFLAGS)
-
-	-echo Project $(PRJ) build successful
 
 #
 # Generate maintainer scripts
@@ -873,11 +240,8 @@ $(STAMP_DIR)/maintscripts: debian/shell-lib.sh debian/java-lib.sh debian/control
 	    if [ -e $$MAINTSCRIPT.in ]; then \
 	      sed -n '1,/^#INCLUDE_SHELL_LIB#$$/p' < $$MAINTSCRIPT.in | sed -e '/^#INCLUDE_SHELL_LIB#$$/d' > $$MAINTSCRIPT; \
 	      grep LIBSUFFIX debian/scripts/vars.$(ARCH) >> $$MAINTSCRIPT; \
-	      if [ $$PKG = openoffice.org-java ]; then \
+	      if [ $$PKG = openoffice.org$(VER)-java ]; then \
 	        cat debian/java-lib.sh >> $$MAINTSCRIPT ; \
-              fi ; \
-	      if [ $$PKG = openoffice.org-gnomevfs ]; then \
-	        cat debian/gnomevfs-lib.sh >> $$MAINTSCRIPT ; \
               fi ; \
 	      cat debian/shell-lib.sh >> $$MAINTSCRIPT; \
 	      sed -n '/^#INCLUDE_SHELL_LIB#$$/,$$p' < $$MAINTSCRIPT.in | sed -e '/^#INCLUDE_SHELL_LIB#$$/d' >> $$MAINTSCRIPT; \
@@ -885,420 +249,181 @@ $(STAMP_DIR)/maintscripts: debian/shell-lib.sh debian/java-lib.sh debian/control
 	      echo '#!/bin/sh' > $$MAINTSCRIPT ; \
 	      echo THIS_PACKAGE=$$PKG >> $$MAINTSCRIPT ;\
 	      echo THIS_SCRIPT=$$FILE >> $$MAINTSCRIPT ;\
-	      grep LIBSUFFIX debian/scripts/vars.$(ARCH) >> $$MAINTSCRIPT; \
 	      cat debian/shell-lib.sh >> $$MAINTSCRIPT; \
 	    fi; \
 	  done; \
 	done
-
 	touch $@
 
-# Run openoffice setup for net install
-setup: $(STAMP_DIR)/setup
-$(STAMP_DIR)/setup: $(STAMP_DIR)/instsetoo
-	dh_testdir
-	dh_testroot
-	umask 022
+#LANGPACKISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all)
+LANGPACKISOS:=en-US
+
+# Install files generated by setup into package directories
+langpacks: $(STAMP_DIR)/langpacks
+$(STAMP_DIR)/langpacks: $(STAMP_DIR)/install ooo-build/bin/openoffice-xlate-lang
+
+	for ext in `echo $(LANGPACKISOS) |tr A-Z a-z` ; do \
+	  rm -rf $(PKGDIR)-l10n-$$ext;\
+	  rm -rf $(PKGDIR)-l10n-$$ext.*.debhelper;\
+	done
+
+	# Install the lang packs TODO
+
+	# For now move stuff out of the -common install
+	for dir in program/resource share/registry/res/en-US; do \
+	  mkdir -m755 -p $(PKGDIR)-l10n-en-us/$(OODIR)/$$dir ;\
+	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-common/usr/lib/openoffice$(VER)/$$dir/* \
+			$(PKGDIR)-l10n-en-us/$(OODIR)/$$dir || exit 1;\
+	done
 	
-	# Make sure we have /proc mounted - otherwise setup will fail
-	test -r /proc/version
-
-	# Packagers - if you are working on improving the .debs, you can
-	# run setup and rebuild over and over like this:
-	# rm debian/stampdir/setup ; dpkg-buildpackage -nc -rfakeroot
-
-	rm -rf $(DEBTREEDIR)
-	rm -f $(STAMP_DIR)/install.log
-	mkdir -p $(PKGOPENOFFICEDIR)
-
-	sed -e "s#@DESTDIR@#$(PKGOPENOFFICEDIR)#" \
-	    -e "s#@LOGFILE@#$(CURDIR)/$(STAMP_DIR)/install.log#" \
-		debian/local/rsfile.global.txt > debian/local/rsfile.txt
-
-	# Run OOo setup using response file.
-	$(SOURCE_TREE)/instsetoo/$(ARCHBUILDDIR)/$(BUILDLANG_PREFIX)/normal/setup -v \
-				-R:$(CURDIR)/debian/local/rsfile.txt -nogui
-
-	rm -f debian/local/rsfile.txt
-
-	# Remove copy of libstdc++ since we do not use it
-	rm -f $(PKGOPENOFFICEDIR)/program/libstdc++*
-
-	# Check that setup really did something
-	[ -f $(PKGOPENOFFICEDIR)/program/soffice.bin ]
-
 	touch $@
 
-# Compare files copied by setup with known list of files
-manifest: $(STAMP_DIR)/manifest
-$(STAMP_DIR)/manifest: debian/MANIFEST.$(ARCH) $(STAMP_DIR)/setup
-	dh_testdir
-	umask 022
-	
-	# compare manifests
-	find debian/tmp \( -type f -o -type l \) \
-	  ! -path 'debian/tmp/usr/lib/openoffice/program/python-core*' \
-	    | LC_ALL=C sort | cut -c12- > debian/MANIFEST.$(ARCH).new
 
-	# confirm that the installed file list has not changed
-	if [ -e debian/MANIFEST.$(ARCH) ]; then \
-	  if ! cmp -s debian/MANIFEST.$(ARCH) debian/MANIFEST.$(ARCH).new; then \
-	    diff -U0 debian/MANIFEST.$(ARCH) debian/MANIFEST.$(ARCH).new; \
-	    if [ -n "$$IGNORE_MANIFEST_CHANGES" ]; then \
-	      echo 'MANIFEST check failed; ignoring problem because \$$IGNORE_MANIFEST_CHANGES set' >&2; \
-	      echo 'Please ensure that the package maintainer has an up-to-date version of the' >&2; \
-	      echo 'MANIFEST.$(ARCH) file.' >&2; \
-	    else \
-	      echo 'MANIFEST check failed; please see debian/README' >&2; \
-	      exit 1; \
-	    fi; \
-	  fi; \
-	fi;
-	touch $@
-
-extract-sdk: $(STAMP_DIR)/extract-sdk
-$(STAMP_DIR)/extract-sdk: $(STAMP_DIR)/sdk $(STAMP_DIR)/setup $(STAMP_DIR)/manifest
-	dh_testdir
-
-	rm -rf debian/tmp/usr/lib/openoffice/sdk
-	tar xfvz \
-	 solver/$(BUILDNUM)/$(ARCHBUILDDIR)/bin/OpenOffice.org$(OOVERSIONNO)_SDK.tar.gz \
-	 -C debian/tmp/usr/lib/openoffice && cd debian/tmp/usr/lib/openoffice; \
-	 mv OpenOffice.org$(OOVERSIONNO)_SDK sdk
-
-	touch $@
-	
 # Install files generated by setup into arch-dependent package directories
 install-arch: $(STAMP_DIR)/install-arch
-$(STAMP_DIR)/install-arch: debian/openoffice.org$(VER)-bin.install
-$(STAMP_DIR)/install-arch: debian/openoffice.org$(VER)-java.install
-$(STAMP_DIR)/install-arch: debian/openoffice.org$(VER)-gtk-gnome.install
-$(STAMP_DIR)/install-arch: debian/openoffice.org$(VER)-gnomevfs.install
-$(STAMP_DIR)/install-arch: debian/openoffice.org$(VER)-kde.install
-$(STAMP_DIR)/install-arch: debian/openoffice.org$(VER)-dev.install
-$(STAMP_DIR)/install-arch: debian/openoffice.org$(VER)-evolution.install
-$(STAMP_DIR)/install-arch: $(STAMP_DIR)/manifest
-$(STAMP_DIR)/install-arch: $(STAMP_DIR)/extract-sdk
-$(STAMP_DIR)/install-arch: $(STAMP_DIR)/tools.gnomevfs
+#$(STAMP_DIR)/install-arch: debian/openoffice.org$(VER)-bin.install
+#$(STAMP_DIR)/install-arch: debian/openoffice.org$(VER)-java.install
+$(STAMP_DIR)/install-arch: $(STAMP_DIR)/install
 	dh_testdir
 	dh_testroot
 	umask 022
 
-	# Remove package directories
-	rm -rf $(MAINPKGDIR)-bin $(MAINPKGDIR)-gtk-gnome $(MAINPKGDIR)-kde \
-	       $(MAINPKGDIR)-gnomevfs $(MAINPKGDIR)-java $(MAINPKGDIR)-dev \
-	       $(MAINPKGDIR)-evolution
-	rm -f $(MAINPKGDIR)-bin.*.debhelper \
-	      $(MAINPKGDIR)-dev.*.debhelper \
-	      $(MAINPKGDIR)-gnomevfs.*.debhelper \
-	      $(MAINPKGDIR)-gtk-gnome.*.debhelper \
-	      $(MAINPKGDIR)-kde.*.debhelper \
-	      $(MAINPKGDIR)-java.*.debhelper \
-	      $(MAINPKGDIR)-dev.*.debhelper \
-	      $(MAINPKGDIR)-evolution.*.debhelper
+	# Copy files placed by ooo-build/bin/package-ooo	
+	for i in calc core draw impress math writer; do \
+	  rm -rf $(PKGDIR)-$$i $(PKGDIR)-$$i.*.debhelper ;\
+	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-$$i $(PKGDIR)-$$i || exit 1;\
+	done
+	
+	for i in "" -kde -gnome -evolution; do \
+	  rm -rf $(PKGDIR)$$i $(PKGDIR)$$i.*.debhelper ;\
+	done
 
 	dh_installdirs -a
-	sed -e s,@OS@,`dpkg-architecture -qDEB_HOST_ARCH_OS`, \
-		< $(MAINPKGDIR)-dev.links.in > $(MAINPKGDIR)-dev.links
-	dh_install $(DEBHELPER_OPTIONS) --sourcedir=debian/tmp -a
-
-	# move the OOo SDK binaries to a .bin so we can install our wrapper
-	# scripts from oo.o-d-f
-	cd $(MAINPKGDIR)-dev/$(OPENOFFICEDIR)/sdk/linux/bin && \
-		for i in *; do mv $$i $$i.bin; done
-
-	# install gnomevfs version of libtl,  We do it here, not in .install
-	# because of the output path 
-	install -m644 \
-	tools/$(ARCHBUILDDIR:.pro=.gnomevfs.pro)/lib/libtl$(BUILDNUM)$(LIBSUFFIX).so \
-	$(MAINPKGDIR)-gnomevfs/$(OPENOFFICEDIR)/program/libtl$(BUILDNUM)$(LIBSUFFIX).so
-
-# when we use external stlport we can just symlink to the "normal"
-# stlport development headers; otherwise we need to install them...
-ifeq "$(USE_SYSTEM_STLPORT)" "y"
-	cd $(MAINPKGDIR)-dev/usr/include/openoffice && \
-		ln -s /usr/include/stlport stl
-else
-	cp -ra $(CURDIR)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/inc/stl \
-		$(MAINPKGDIR)-dev/usr/include/openoffice
-endif
-
-ifneq "$(MOZILLA)" "n"
-ifeq "$(ARCH)" "i386"
-	for i in libmozab2.so libmozabdrv2.so; do \
-		cp -rf $(PKGOPENOFFICEDIR)/program/$$i \
-	   	  $(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program; \
-	done
-endif
-	for i in component.reg components libldap50.so libmozjs.so libmozz.so \
-	   libmsgbaseutil.so libnspr4.so libplc4.so libplds4.so libprldap50.so \
-	   libxpcom.so; do \
-		cp -rf $(PKGOPENOFFICEDIR)/program/$$i \
-	   	   $(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program; \
-	done
-endif
-
-ifeq "$(USE_INTERNAL_FREETYPE)" "y"
-	# Internal freetype (on Woody backport)
-	install -m755 \
-	  $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/lib/libfreetype.so.6.3.3 \
-	  $(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program/libfreetype.so.6
-endif
-
-ifneq "$(USE_SYSTEM_DB)" "y"
-	for i in libdb-$(D).so libdb_cxx-$(D).so; do \
-		cp -rf $(PKGOPENOFFICEDIR)/program/$$i \
-		  $(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program; \
-	done
-endif
-
-ifeq "$(PATCHSET)" "DebianWoody"
-	# Internal libcurl
-	cp -f $(PKGOPENOFFICEDIR)/program/libcurl.so \
-	  $(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program
-endif
+	#dh_install $(DEBHELPER_OPTIONS) --sourcedir=debian/tmp -a
 	
-# If building with a JDK, install the additional files to be diverted
+	mkdir -p -m755 $(PKGDIR)-kde/$(OODIR)/program
+	mkdir -p -m755 $(PKGDIR)-gnome/$(OODIR)/program
+	mkdir -p -m755 $(PKGDIR)-evolution/$(OODIR)/program
+	for f in kdefilepicker libfps_kde.so libvclplug_kde[0-9]*.so; do \
+	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-kde/$(OODIR)/program || exit 1 ;\
+	done
+	for f in libfps_gnome.so libvclplug_gtk[0-9]*.so; do \
+	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-gnome/$(OODIR)/program || exit 1;\
+	done
+	mv $(PKGDIR)-core/$(OODIR)/program/libevoab2.so $(PKGDIR)-evolution/$(OODIR)/program
+	
+	# Nasy menu icons hack, urgently needs better version
+	dirname="`cd ooo-build/build/src680-m$(MILESTONE)/sysui/unx*.pro/misc/gnome; pwd`" ;\
+	for p in writer calc impress draw math; do \
+		mkdir -p -m755 $(PKGDIR)-$$p/usr/share/applications ;\
+	    sed -e 's,Exec=<progpath_utf8>/program/s\(.*\) %U,Exec=oo\1$(VER) %U,' \
+		    -e 's,Icon=<progpath>/share/icons/\(ooo_.*\.png\),Icon=\1,' \
+			-e 's,<productname>,OpenOffice.org2,' \
+		   < $$dirname/ooo680$$p.desktop \
+		   > $(PKGDIR)-$$p/usr/share/applications/ooo$(VER)-$$p.desktop ;\
+	done
+	
+	touch $@
+	
+	
+# TODO If building with a JDK, install the additional files to be diverted
 ifeq "$(USE_JAVA)" "y"
 	. debian/java-lib.sh ;\
 	for FILE in $$java_diversions; do \
-	  echo mkdir -p $$(dirname $(MAINPKGDIR)-java/$$FILE) ;\
-	  mkdir -p $$(dirname $(MAINPKGDIR)-java/$$FILE) ;\
+	  echo mkdir -p $$(dirname $(PKGDIR)-java/$$FILE) ;\
+	  mkdir -p $$(dirname $(PKGDIR)-java/$$FILE) ;\
 	  cp -pf debian/tmp/$$FILE \
-	    $(MAINPKGDIR)-java/$$FILE ;\
+	    $(PKGDIR)-java/$$FILE  || exit 1;\
 	done
 
-ifneq "$(USE_SYSTEM_DB)" "y"
-	cp -rf $(PKGOPENOFFICEDIR)/program/libdb_java-$(D).so \
-	 $(MAINPKGDIR)-java/$(OPENOFFICEDIR)/program
 endif
-endif
-
-ifneq "$(USE_SYSTEM_STLPORT)" "y"
-	# Copy libstlport if we are using the internal library
-	cp -f $(PKGOPENOFFICEDIR)/program/libstlport_gcc.so \
-		$(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program
-endif
-
-	# Remove packaging prefix and set default install directory to ~/.openoffice/<version> in instdb.ins
-	for FILE in $(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program/instdb.ins ; do \
-	  sed -e 's#$(PKGOPENOFFICEDIR)#$(OPENOFFICEDIR)#g' \
-	      -e 's#\(DefaultDestPath *= *"\)OpenOffice.org#\1.openoffice/#' \
-	     "$$FILE" > "$$FILE".new; \
-	  mv "$$FILE".new "$$FILE"; \
-	done
 
 	# install regcomp and configimport utililities
-	install -m755 \
-	$(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/bin/regcomp \
-	$(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/bin/configimport.bin \
-		$(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program
-
-	# Disable desktop (KDE, GNOME, CDE) integration for user installs
-	# Copied from Mandrake.  Thanks, Gwenole!
-	for module in gid_Module_Optional_Gnome gid_Module_Optional_Kde \
-	gid_Module_Optional_Cde; do \
-	   perl -pi -e \
-	     "/^Module $$module/ .. /^End/ and s|(Installed.*)=.*|\1= NO;|" \
-	       $(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program/instdb.ins ;\
-	done
-
-	# Disable mailcap registration for user installs
-	perl -pi -e \
-	  "/^Custom gid_Custom_Regmimetypes/ .. /^End/ and s/WORKSTATION,\s+//" \
-	    $(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program/instdb.ins
-
-	sed -e s,@OO_SDK_HOME@,$(OPENOFFICEDIR)/sdk, \
-	    -e s,@OO_SDK_MAKE_HOME@,/usr/bin, \
-	    -e s,@OO_SDK_CPP_HOME@,/usr/bin, \
-	    -e s,@SDK_AUTO_DEPLOYMENT@,NO, \
-	    -e s,@OFFICE_HOME@,$(OPENOFFICEDIR), \
-	    -e s,@OO_SDK_NAME@,OpenOffice.org$(OOVERSIONNO)_SDK, \
-	    < odk/setsdkenv_unix.in \
-	    > $(MAINPKGDIR)-dev/$(OPENOFFICEDIR)/sdk/setsdkenv_unix && \
-	chmod 755 $(MAINPKGDIR)-dev/$(OPENOFFICEDIR)/sdk/setsdkenv_unix
-
-	# fix configure.pl to have a shebang line to shut up lintian
-	TMP=`mktemp -q` && \
-	  echo '#!/usr/bin/perl' > $$TMP && \
-	  cat $(MAINPKGDIR)-dev/$(OPENOFFICEDIR)/sdk/configure.pl >> $$TMP && \
-	  mv $$TMP $(MAINPKGDIR)-dev/$(OPENOFFICEDIR)/sdk/configure.pl && \
-	  chmod 755 $(MAINPKGDIR)-dev/$(OPENOFFICEDIR)/sdk/configure.pl
+	#install -m755 \
+	#$(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/bin/regcomp \
+	#$(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/bin/configimport.bin \
+	#	$(PKGDIR)-bin/$(OPENOFFICEDIR)/program
 	
 	touch $@
 
 # Install files generated by setup into arch-independent package directories
 install-indep: $(STAMP_DIR)/install
-$(STAMP_DIR)/install-indep: debian/openoffice.org$(VER).install 
-$(STAMP_DIR)/install-indep: debian/openoffice.org$(VER)-mimelnk.install 
-$(STAMP_DIR)/install-indep: debian/openoffice.org$(VER).dirs
-$(STAMP_DIR)/install-indep: $(OOO_BUILD)/fonts/opens___.ttf
-$(STAMP_DIR)/install-indep: $(STAMP_DIR)/manifest
-$(STAMP_DIR)/install-indep: $(STAMP_DIR)/extract-sdk
+#$(STAMP_DIR)/install-indep: debian/openoffice.org$(VER).install 
+#$(STAMP_DIR)/install-indep: debian/openoffice.org$(VER)-mimelnk.install 
+#$(STAMP_DIR)/install-indep: debian/openoffice.org$(VER).dirs
+$(STAMP_DIR)/install-indep: ooo-build/fonts/opens___.ttf
 	dh_testdir
 	dh_testroot
 	umask 022
 
-	# Remove package directories
-	rm -rf $(MAINPKGDIR) \
-		$(MAINPKGDIR)-mimelnk \
-		$(MAINPKGDIR)-dev-doc \
-		$(MAINPKGDIR)-dev-doc-java \
-		debian/ttf-opensymbol
-	rm -f $(MAINPKGDIR).*.debhelper \
-	      $(MAINPKGDIR)-dev-doc*.*.debhelper \
-	      debian/ttf-opensymbol.*.debhelper
+	# Copy files placed by ooo-build/bin/package-ooo	
+	for i in common; do \
+	  rm -rf $(PKGDIR)-$$i $(PKGDIR)-$$i.*.debhelper; \
+	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-$$i $(PKGDIR)-$$i || exit 1;\
+	done
+
+	# Remove files in langpack
+	for dir in program/resource share/registry/res/en-US; do \
+	  rm -rf $(PKGDIR)-common/usr/lib/openoffice$(VER)/$$dir ;\
+	done
+
+	#dh_install --sourcedir=debian/tmp -i
 
 	dh_installdirs -i
-	dh_install $(DEBHELPER_OPTIONS) --sourcedir=debian/tmp -i
 
-	# remove .desktop files already in KDE
-	cd $(MAINPKGDIR)-mimelnk/usr/share/mimelnk/application && \
-		for i in calc draw impress writer calc.template \
-			draw.template impress.template writer.template; do \
-			rm -f vnd.sun.xml.$$i.desktop; \
-		done && \
-		rm -f vnd.stardivision.*
+	# remove .desktop files already in KDE 3.2
+	#cd $(PKGDIR)-mimelnk/usr/share/mimelnk/application && \
+	#	for i in calc draw impress writer; do \
+	#		rm -f vnd.sun.xml.$$i.desktop; \
+	#	done
 
 	# remove the version number from the .desktop files
-	for i in $(MAINPKGDIR)/usr/share/applnk/*/*.desktop \
-		 $(MAINPKGDIR)/usr/share/applications/*.desktop \
-		 $(MAINPKGDIR)-mimelnk/usr/share/mimelnk/*/*.desktop; do \
-	    sed -e s/"$(OOVERSIONNO) "// -e s/" $(OOVERSIONNO)"// \
-		-e s/"$(OOVERSIONNO)-"/"-"/ < $$i > $$i.new; \
-	    mv $$i.new $$i; \
-	done && \
-	for i in $(MAINPKGDIR)/usr/share/applnk/*/.directory; do \
-	    sed -e s/" $(OOVERSIONNO)"// < $$i > $$i.new; \
-	    mv $$i.new $$i; \
-	done
-
-	# StartupNotify=true
-	for I in $(MAINPKGDIR)/usr/share/applications/*.desktop; do \
-		perl -pi -e 's/StartupNotify=.*/StartupNotify=true/' $$I; \
-	done
-
+	#for i in $(PKGDIR)/usr/share/applnk/*/*.desktop \
+	#	 $(PKGDIR)/usr/share/applications/*.desktop \
+	#	 $(PKGDIR)-mimelnk/usr/share/mimelnk/*/*.desktop; do \
+	#    sed -e s/"$(OOVERSIONNO) "// -e s/" $(OOVERSIONNO)"// \
+	#	-e s/"$(OOVERSIONNO)-"/"-"/ < $$i > $$i.new; \
+	#    mv $$i.new $$i; \
+	#done && \
+	#for i in $(PKGDIR)/usr/share/applnk/*/.directory; do \
+	#    sed -e s/" $(OOVERSIONNO)"// < $$i > $$i.new; \
+	#    mv $$i.new $$i; \
+	#done
+	 
 	# convert program/icon paths in desktop shortcuts
-	for I in $(MAINPKGDIR)/usr/share/applnk/*/*.desktop \
-	         $(MAINPKGDIR)/usr/share/applications/*.desktop; do \
-	    sed -e 's,Exec="\?/.*\(/usr/lib/openoffice$(VER)/program/setup\)"\?,Exec=\1,' \
-	        -e 's,Exec="\?/.*/usr/lib/openoffice$(VER)/program/s\?\([^"]*\)"\?,Exec=/usr/bin/oo\1$(VER),' \
-		-e 's,/oooffice ,/ooffice ,' \
-		-e 's,Icon=.*/\([^/]*\.png\),Icon=\1,' \
-		-e 's,Icon=ooo_\([cwdimt].*\),Icon=ximian-openoffice-\1,' \
-		-e 's,\.png,,' \
-	        < "$$I" > "$$I.new" ;\
-	    rm "$$I"; mv "$$I.new" "$$I" ;\
-	done
-
-	# move Printeradmin into Application;System;
-	perl -pi -e 's/Application;Office/Application;System/' \
-	 $(MAINPKGDIR)/usr/share/applications/ooo$(BUILDNUM)printeradmin.desktop
+	#for I in $(PKGDIR)/usr/share/applnk/*/*.desktop \
+	#         $(PKGDIR)/usr/share/applications/*.desktop; do \
+	#    sed -e 's,Exec="\?/.*\(/$(OODIR)/program/setup\)"\?,Exec=\1,' \
+	#        -e 's,Exec="\?/.*/$(OODIR)/program/s\?\([^"]*\)"\?,Exec=/usr/bin/oo\1$(VER),' \
+	#	-e 's,/oooffice ,/ooffice ,' \
+	#	-e 's,Icon=.*/\([^/]*\.png\),Icon=\1,' \
+	#	-e 's,\.png,,' \
+	#        < "$$I" > "$$I.new" ;\
+	#    rm "$$I"; mv "$$I.new" "$$I" ;\
+	#done
 
 	# insert NoDisplay=true to force the extra dir not being displayed
 	# on KDE 3.2
-	echo "NoDisplay=true" >> \
-		$(MAINPKGDIR)/usr/share/applnk/OpenOffice.org1.1/.directory
-
-ifneq "$(MOZILLA)" "n"
-	cp -rf $(PKGOPENOFFICEDIR)/program/defaults \
-		$(MAINPKGDIR)/$(OPENOFFICEDIR)/program
-endif
-
-	# there are some wrong permissions; fix them ourselves
-	#find $(MAINPKGDIR) $(MAINPKGDIR)-bin \
-	#	-type f \( -name "*.xpt" -o -name "*.js" -o -name "*en_US.*" \
-	#	        -o -name "component.reg" -o -name "xpti*.dat" \) -exec chmod ugo-x {} \;
-	for FILE in editpic poll savepic show webcast; do\
-	    chmod ugo+x $(MAINPKGDIR)/$(OPENOFFICEDIR)/share/config/webcast/$$FILE.pl ; \
-	done
-	for FILE in edit common index; do \
-	    chmod ugo-x $(MAINPKGDIR)/$(OPENOFFICEDIR)/share/config/webcast/$$FILE.pl; \
-	done
+	#echo "NoDisplay=true" >> \
+	#	$(PKGDIR)/usr/share/applnk/OpenOffice.org1.1/.directory
 
 	# install openoffice-xlate-lang
-	install -m755 debian/local/openoffice-xlate-lang \
-		$(MAINPKGDIR)/usr/share/openoffice$(VER)/bin
+	install -d -m755 $(PKGDIR)-common/usr/share/openoffice$(VER)/bin
+	install -m755 ooo-build/bin/openoffice-xlate-lang \
+		$(PKGDIR)-common/usr/share/openoffice$(VER)/bin
 
 	# install info file for update-openoffice-dicts
-	install -m644 debian/dictlistinfo \
-		$(MAINPKGDIR)-thesaurus-en-us/usr/share/myspell/infos/ooo/openoffice.org$(VER)-thesaurus-en-us
+	#install -m644 debian/dictlistinfo \
+	#	$(PKGDIR)-thesaurus-en-us/usr/share/myspell/infos/ooo/openoffice.org$(VER)-thesaurus-en-us
+		
 	# this is a hack. it is needed to get the dictionaries hook
 	# notice that we have a newer OOo and do not need to change
 	# dictionary.lst
-	touch $(MAINPKGDIR)/usr/share/myspell/infos/ooo/openoffice.org$(VER)
+	#touch $(PKGDIR)-common/usr/share/myspell/infos/ooo/openoffice.org$(VER)
 
-	mkdir -p debian/ttf-opensymbol/usr/share/fonts/truetype/openoffice
-	install -m644 $(OOO_BUILD)/fonts/opens___.ttf \
-		debian/ttf-opensymbol/usr/share/fonts/truetype/openoffice
-
-	cp debian/catalog.xml $(MAINPKGDIR)/$(OPENOFFICEDIR)/share/dtd/officedocument/1_0
-
-	cp $(OOO_BUILD)/desktop/*.png \
-		$(MAINPKGDIR)/usr/share/icons/hicolor/48x48/apps
-
-	touch $@
-
-# Install files generated by setup into package directories
-langpacks: $(STAMP_DIR)/langpacks
-$(STAMP_DIR)/langpacks: $(STAMP_DIR)/setupins debian/local/openoffice-xlate-lang
-
-	for ext in `echo $(LANGPACKISOS) |tr A-Z a-z` ; do \
-	  rm -rf $(MAINPKGDIR)-l10n-$$ext;\
-	  rm -rf $(MAINPKGDIR)-l10n-$$ext.*.debhelper;\
-	done
-
-	# Install the lang packs
-	for iso in $(LANGPACKISOS) ; do  \
-          echo "Unpack "`debian/local/openoffice-xlate-lang -l $$iso`" l10n..."; \
-          langiso=`echo $$iso | tr A-Z a-z`;      \
-	  prefix=`debian/local/openoffice-xlate-lang -p $$iso`;\
-	  debian/local/openoffice-dpack-lang                                        \
-                -d="debian/openoffice.org$(VER)-l10n-$$langiso$(OPENOFFICEDIR)"                     \
-                -i=$(SOURCE_TREE)/instsetoo/$(ARCHBUILDDIR)/$$prefix/normal/setup.ins \
-                -s=$(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR) || exit 1 \
-	        ;                                                           \
-	  rm -rf $(MAINPKGDIR)-l10n-$$langiso$(OPENOFFICEDIR)/help/main_transform.xsl;\
-	  if [ -f $(MAINPKGDIR)-l10n-$$langiso$(OPENOFFICEDIR)/program/resource/ooo$(BUILDNUM)$$prefix.res ]; then \
-	    ln -s ooo$(BUILDNUM)$$prefix.res \
-	        $(MAINPKGDIR)-l10n-$$langiso$(OPENOFFICEDIR)/program/resource/iso$(BUILDNUM)$$prefix.res ;\
-	  fi ;\
-	done
-
-	# remove files in -l10n-en that are needed for all languages and are
-	# therefore installed in openoffice.org
-	rm -rf debian/openoffice.org$(VER)-l10n-en$(OPENOFFICEDIR)/user
-
-	# remove files in -sl langauge pack conflicting with openoffice.org
-	rm -rf debian/openoffice.org$(VER)-l10n-sl$(OPENOFFICEDIR)/user/config
-
-ifeq "$(USE_JAVA)" "y"
-	# remove jvm$(BUILDNUM)??.res from the langpacks because it is supposed
-	# to be in -java only
-	for iso in $(LANGPACKISOS); do \
-          langiso=`echo $$iso | tr A-Z a-z`;      \
-	  prefix=`debian/local/openoffice-xlate-lang -p $$iso`;\
-	  rm -f $(MAINPKGDIR)-l10n-$$langiso$(OPENOFFICEDIR)/program/resource/jvm$(BUILDNUM)$$prefix.res; \
-	done
-endif
-	
-	chmod 755 ooo-build/bin/openoffice-xlate-lang
-	# create symlinks to the english wizard/bitmap directory for the
-	# language packs (english not needed because wizard/bitmap for english
-	# is in openoffice.org and we would get a "file" conflict anyhow...)
-	for iso in $(LANGPACKISOS); do \
-	  langiso=`echo $$iso | tr A-Z a-z`;\
-	  langname=`ooo-build/bin/openoffice-xlate-lang -l $$iso`; \
-	  if [ "$$langiso" != "en" ]; then \
-	    if [ ! -d $(MAINPKGDIR)-l10n-$$langiso$(OPENOFFICEDIR)/share/template/$$langname/wizard ]; then \
-	      mkdir -p $(MAINPKGDIR)-l10n-$$langiso$(OPENOFFICEDIR)/share/template/$$langname/wizard; \
-	    fi; \
-	    cd $(MAINPKGDIR)-l10n-$$langiso/$(OPENOFFICEDIR)/share/template && \
-	    rm -rf $$langname/wizard/bitmap && \
-	    ln -s ../../english/wizard/bitmap $$langname/wizard/bitmap && \
-	    cd $(CURDIR); \
-	  fi; \
-	done
+	#install -d -m755 debian/ttf-opensymbol/usr/share/fonts/truetype/openoffice
+	#install -m644 ooo-build/fonts/opens___.ttf \
+	#	debian/ttf-opensymbol/usr/share/fonts/truetype/openoffice
 
 	touch $@
 
@@ -1319,41 +444,31 @@ binary-common:
 	dh_installdocs
 	dh_installman
 	dh_installchangelogs
-	if [ -e $(MAINPKGDIR)/usr/share/doc/openoffice.org$(VER) ]; then \
-	 install -m644 $(OOO_BUILD)/ChangeLog \
-	   $(MAINPKGDIR)/usr/share/doc/openoffice.org/changelog.ooo-build \
+	if [ -e $(PKGDIR)/usr/share/doc/openoffice.org$(VER) ]; then \
+	 install -m644 ooo-build/ChangeLog \
+	   $(PKGDIR)-core/usr/share/doc/openoffice.org$(VER)-core/changelog.ooo-build \
 	 && gzip -f9 \
-	   $(MAINPKGDIR)/usr/share/doc/openoffice.org/changelog.ooo-build; \
+	   $(PKGDIR)-core/usr/share/doc/openoffice.org$(VER)-core/changelog.ooo-build; \
 	fi
-	uis="gtk-gnome"; if [ "$(BUILD_KDE)" = y ]; then uis="$$uis kde"; fi; \
-	for f in $$uis; do \
-	  ln -sf /usr/share/doc/openoffice.org/README.Debian.gz \
-	    $(MAINPKGDIR)-$$f/usr/share/doc/openoffice.org-$$f/README.Debian.gz; \
-	done
 	dh_installdebconf
 	dh_installmime
 	dh_installmenu
 	debian/scripts/installoverrides
 	dh_link
 	dh_strip
-	dh_perl
-	dh_python
-	dh_desktop
-	dh_installxmlcatalogs
 	dh_compress
 	dh_fixperms
 	dh_installdeb
-	dh_shlibdeps $(SHLIBS_OVERRIDE)
-	mkdir -p debian/openoffice.org-bin/usr/share/doc/openoffice.org-bin
+	dh_shlibdeps -X msgbox-gnome -X getstyle-gnome $(SHLIBS_OVERRIDE)
+	mkdir -p $(PKGDIR)-core/usr/share/doc/openoffice.org$(VER)-core
 	debian/scripts/gen_lib_list \
-	 > debian/openoffice.org-bin/usr/share/doc/openoffice.org-bin/used_libs
+	 > $(PKGDIR)-core/usr/share/doc/openoffice.org$(VER)-core/used_libs
 # This switch to dh_shlibdeps reduces the 'libXXX not found' warnings but
 # causes ldd crashes sometimes when used with fakeroot:
-#          -l $(MAINPKGDIR)-bin/$(OPENOFFICEDIR)/program 
+#          -l $(PKGDIR)-bin/$(OPENOFFICEDIR)/program 
 	dh_gencontrol -- \
-		-V'debconf-depends=debconf (>= $(MINDEBCONFVER)) | debconf-2.0' \
-		-V'java-additional-depends=$(JAVA_ADDITIONAL_DEPENDS)' \
-		-V'dev-stl-depends=${DEV_STL_DEPENDS}'
+		-V'python-depends=$(PYTHON_DEPENDS)' \
+		-V'java-additional-depends=$(JAVA_ADDITIONAL_DEPENDS)'
 #		-v1.1.1+1.1.2rc3-`dpkg-parsechangelog  | grep urgency \
 #		| awk '{print $$2}' | sed -e s/"("// -e s/")"// | cut -d"-" -f2`
 	dh_md5sums
@@ -1361,7 +476,7 @@ binary-common:
 
 # Build architecture independant packages using the common target.
 binary-indep: $(STAMP_DIR)/binary-indep
-$(STAMP_DIR)/binary-indep: $(STAMP_DIR)/install-indep $(STAMP_DIR)/langpacks debian/control $(STAMP_DIR)/maintscripts
+$(STAMP_DIR)/binary-indep: $(STAMP_DIR)/install-indep debian/control $(STAMP_DIR)/maintscripts $(STAMP_DIR)/langpacks
 	$(MAKE) -f debian/rules DH_OPTIONS="$(DEBHELPER_OPTIONS) -i" binary-common
 
 	touch $@
@@ -1411,20 +526,12 @@ environment:
 get-ooo-build:
 	# press enter at the password prompt
 	cvs -d:pserver:anonymous@anoncvs3.gnome.org:/cvs/gnome login
-	cvs -z3 -d:pserver:anonymous@anoncvs3.gnome.org:/cvs/gnome co \
-		-r ooo-build-1-3 -d ooo-build ooo-build
+	cvs -z3 -d:pserver:anonymous@anoncvs3.gnome.org:/cvs/gnome co ooo-build
+	cd ooo-build && ./autogen.sh $(CONFIGURE_FLAGS)
 
-# Download the latest icons
-get-ooo-icons:
-	test -d $(OOO_BUILD)/src || mkdir $(OOO_BUILD)/src
-	wget -O $(OOO_BUILD)/src/$(OOO_ICONS_VER).tar.gz $(OOO_ICONS_URI)/$(OOO_ICONS_VER).tar.gz
-	uuencode $(OOO_BUILD)/src/$(OOO_ICONS_VER).tar.gz $(OOO_ICONS_VER).tar.gz > $(OOO_BUILD)/src/$(OOO_ICONS_VER).tar.gz.uu
-
-# Download libwpd snapshot tarball 
-get-libwpd:
-	test -d $(SOURCE_TREE)/libwpd/download || mkdir -p $(SOURCE_TREE)/libwpd/download
-	wget -O $(SOURCE_TREE)/libwpd/download/$(LIBWPD_VER).tar.gz $(LIBWPD_URI)/$(LIBWPD_VER).tar.gz
-	uuencode $(SOURCE_TREE)/libwpd/download/$(LIBWPD_VER).tar.gz $(LIBWPD_VER).tar.gz > $(SOURCE_TREE)/libwpd/download/$(LIBWPD_VER).tar.gz.uu
+# Download the latest ooo-build sources
+download: $(STAMP_DIR)/configure
+	ooo-build/download	
 
 # Update debian and ooo-build directories from cvs
 cvsupdate:
@@ -1455,16 +562,16 @@ makebinariestar:
 ifeq "$(ARCH)" "i386"
 	cd $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR) && \
 	  find bin lib | xargs file | sed -n '/LSB \(executable\|shared object\),.* not stripped/ s/:.*$$//p' | \
-	  tar -T - -jcvf $(CURDIR)/../openoffice.org-binaries_$(SOURCE_VERSION)_$(ARCH).tar.bz2
+	  tar -T - -jcvf $(CURDIR)/../openoffice.org$(VER)-binaries_$(SOURCE_VERSION)_$(ARCH).tar.bz2
 else
   ifeq "$(ARCH)" "arm"
 	cd $(SOURCE_TREE)/sdolver/$(BUILDNUM)/$(ARCHBUILDDIR) && \
 	  find bin lib | xargs file | sed -n '/LSB \(executable\|shared object\),.* not stripped/ s/:.*$$//p' | \
-	  tar -T - -jcvf $(CURDIR)/../openoffice.org-binaries_$(SOURCE_VERSION)_$(ARCH).tar.bz2
+	  tar -T - -jcvf $(CURDIR)/../openoffice.org$(VER)-binaries_$(SOURCE_VERSION)_$(ARCH).tar.bz2
   else
 	cd $(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR) && \
 	  find bin lib | xargs file | sed -n '/MSB \(executable\|shared object\),.* not stripped/ s/:.*$$//p' | \
-	  tar -T - -jcvf $(CURDIR)/../openoffice.org-binaries_$(SOURCE_VERSION)_$(ARCH).tar.bz2
+	  tar -T - -jcvf $(CURDIR)/../openoffice.org$(VER)-binaries_$(SOURCE_VERSION)_$(ARCH).tar.bz2
   endif
 endif
 # -------------------------------------------------------

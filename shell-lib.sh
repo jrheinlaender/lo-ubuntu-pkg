@@ -18,7 +18,7 @@ trap "message;\
       message;\
       exit 1" 1 2 3 15
 
-VER=
+VER=2
 
 # call hook in openoffice.org-debian-files
 if [ -x /usr/share/openoffice.org${VER}-debian-files/install-hook ]; then
