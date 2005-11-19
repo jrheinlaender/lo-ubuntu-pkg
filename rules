@@ -51,7 +51,27 @@ else
 endif
 
 #ENABLE_MONO=y
-#PACKAGE_TESTTOOL=y
+PACKAGE_TESTTOOL=y
+PACKAGE_TTF_OPENSYMBOL=n
+ifneq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
+	DEBHELPER_OPTIONS+= -Nttf-opensymbol
+endif
+
+#USE_SYSTEM_STLPORT=y
+ifeq "$(USE_SYSTEM_STLPORT)" "y"
+	DEV_STL_DEPENDS=, libstlport4.6-dev
+endif
+
+# disabled. C++ ABI. 3.3 (KDE) vs. 3.4/4.0 (OOo)
+BUILD_KDE=n
+
+# build the binfilters?
+BUILD_BINFILTERS=y
+
+# we should be installed on sid/sarge, use libstdc++/libgcc_s internal for now
+# This won't help for -officebean which needs libgcj6 but for the "normal"
+# packages...
+INTERNAL_STDLIBS=y
 
 # Note that the first one here *has to be* en-US. the first one gets
 # gid_Module_Root as filelist later and the rest gid_Module_Root.$iso
@@ -61,7 +81,7 @@ endif
 #ISOS="$(shell ooo-build/bin/openoffice-xlate-lang -i all')"
 ISOS:="en-US de es fr it ja ko pt-BR ru sv zh-CN zh-TW"
 #HELPISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all') 
-#HELPISOS:=en-US de es fr it
+#HELPISOS:=en-US de es fr it ja ko pt-BR sv zh-CN zh-TW
 #LANGPACKISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
 LANGPACKISOS:=en-US de es fr it ja ko pt-BR ru sv zh-CN zh-TW
 
@@ -77,8 +97,26 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
 		 --mandir=/usr/share/man \
 		 --with-lang=$(ISOS)
 
+ifneq "$(HELPISOS)" ""
+		CONFIGURE_FLAGS+= --enable-gcj-dbtool
+endif
+
 ifeq "$(ENABLE_MONO)" "y"
 		 CONFIGURE_FLAGS+= --enable-mono
+endif
+ifeq "$(USE_SYSTEM_STLPORT)" "y"
+		 CONFIGURE_FLAGS+= --with-stlport4=/usr
+endif
+
+ifeq "$(BUILD_KDE)" "n"
+		  CONFIGURE_FLAGS+= --disable-kde
+		  DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-kde
+endif
+
+ifeq "$(BUILD_BINFILTERS)" "y"
+		CONFIGURE_FLAGS+= --enable-binfilter
+else
+		DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-filter-so52
 endif
 
 #		 --with-ooo-builddir=$(CURDIR) \
@@ -98,16 +136,21 @@ PYTHON_SITE:=debian/python-uno/usr/lib/python$(PYMAJOR).$(PYMINOR)/site-packages
 
 CURDIR ?= $(shell pwd)
 
-GCC_VERSION = 4.0
+ifeq "$(ARCH)-linux" "sparc-linux"
+	# use 32-bit compiler
+	CC_PREFIX=sparc-linux-
+endif
+
+GCC_VERSION = 3.4
 #GCC_VERSION = snapshot
 ifeq ($(GCC_VERSION),)
-	BUILD_PATH = $(CURDIR)/debian/usr/lib/jvm/java-1.4.2-gcj-4.0-1.4.2.0/bin:$$PATH
+	BUILD_PATH = /usr/lib/jvm/java-gcj/bin:$$PATH
 else
 ifeq ($(GCC_VERSION),snapshot)
-	BUILD_PATH = $(CURDIR)/debian/usr/lib/jvm/java-1.4.2-gcj-4.0-1.4.2.0/bin:/usr/lib/gcc-snapshot/bin:$$PATH
+	BUILD_PATH = /usr/lib/jvm/java-gcj/bin:/usr/lib/gcc-snapshot/bin:$$PATH
 	BUILD_LD_LIBRARY_PATH = /usr/lib/gcc-snapshot/lib:$$LD_LIBRARY_PATH
 else
-	BUILD_PATH = $(CURDIR)/debian/usr/lib/jvm/java-1.4.2-gcj-4.0-1.4.2.0/bin:$(CURDIR)/debian/usr/bin:$$PATH
+	BUILD_PATH = /usr/lib/jvm/java-gcj/bin:$(CURDIR)/debian/usr/bin:$$PATH
 endif
 endif
 
@@ -178,12 +221,11 @@ clean:
 	# remove generated symlinks / java wrappers
 	rm -rf debian/usr
 
-	rm -f debian/java-gcj-compat*.orig.tar.gz
-
 	# uuencode binary files
 	cd ooo-build ;\
 	  for f in fonts/opens___.ttf src/ooo_*_images*.bz2 src/extras*bz2 \
-	    src/evolocal.odb src/*.png src/*.bmp src/*.xcf test/macro/*.ods; do \
+	    src/evolocal.odb src/*.png src/*.bmp src/*.xcf test/macro/*.ods \
+	    src/*.gz; do \
 	  if [ -s $$f ]; then \
 	    uuencode $$f $$f > $$f.uu && \
             touch -r $$f.uu $$f ;\
@@ -264,47 +306,23 @@ ooo-build/config.status: ooo-build/configure
           fi ;\
 	done
 
-	# build java-gcj-compat
-	uudecode -o debian/java-gcj-compat_1.0.14.orig.tar.gz \
-		debian/java-gcj-compat_1.0.14.orig.tar.gz.uu
-	if [ ! -d ooo-build/build ]; then mkdir ooo-build/build; fi && \
-	tar xfvz debian/java-gcj-compat_1.0.14.orig.tar.gz -C ooo-build/build
-	cd ooo-build/build/java-gcj-compat-1.0.14 && \
-	JAVAC="gcj-4.0 -C" ./configure --prefix=$(CURDIR)/debian/usr && \
-	$(MAKE) && $(MAKE) install
-	# FIXME: why are these paths so weird? Find that out and remove this
-	# workaround
-	cd $(CURDIR)/debian/usr && \
-	  for i in ./bin/java ./lib/jvm/java-1.4.2-gcj-1.4.2.0/bin/java \
-	    ./lib/jvm/java-1.4.2-gcj-1.4.2.0/jre/bin/java \
-	    ./lib/jvm/java-1.4.2-gcj-1.4.2.0/bin/javac; do \
-		perl -pi -e 's,bin/gij,usr/bin/gij-4.0,' $$i; \
-	  done && \
-	  perl -pi -e 's,bin/fastjar,usr/bin/fastjar,' \
-		./lib/jvm/java-1.4.2-gcj-1.4.2.0/bin/jar && \
-	  perl -pi -e 's,bin/gcjh,usr/bin/gcjh-4.0,' \
-		./lib/jvm/java-1.4.2-gcj-1.4.2.0/bin/jar && \
-	  perl -pi -e 's,bin/gjdoc,usr/bin/gjdoc,' \
-		./lib/jvm/java-1.4.2-gcj-1.4.2.0/bin/javadoc && \
-	  perl -pi -e 's,bin/grmic,usr/bin/grmic-4.0,' \
-		./lib/jvm/java-1.4.2-gcj-1.4.2.0/bin/rmic && \
-	  for i in ./lib/jvm/java-1.4.2-gcj-1.4.2.0/bin/rmiregistry \
-	    ./lib/jvm/java-1.4.2-gcj-1.4.2.0/jre/bin/rmiregistry; do \
-		 perl -pi -e 's,bin/grmiregistry,usr/bin/grmiregistry-4.0,' \
-		    $$i; \
-	  done && \
-	  find . -type f -name "javac" | xargs rm
-	
 ifneq ($(GCC_VERSION),)
 ifneq ($(GCC_VERSION),snapshot)
 	# create links for gcc and g++ (and gij and gcj), ooo-build does not
 	# honour overriding CC and CC and we need to use gcc/g++ 4.0 or /
 	# ant.mk wants gcj at the moment...
 	mkdir -p $(CURDIR)/debian/usr/bin
-	ln -sf /usr/bin/gcc-$(GCC_VERSION) $(CURDIR)/debian/usr/bin/gcc
-	ln -sf /usr/bin/g++-$(GCC_VERSION) $(CURDIR)/debian/usr/bin/g++
-	ln -sf /usr/bin/gcj-$(GCC_VERSION) $(CURDIR)/debian/usr/bin/gcj
-	ln -sf /usr/bin/gij-$(GCC_VERSION) $(CURDIR)/debian/usr/bin/gij
+	ln -sf /usr/bin/$(CC_PREFIX)gcc-$(GCC_VERSION) $(CURDIR)/debian/usr/bin/gcc
+	ln -sf /usr/bin/$(CC_PREFIX)g++-$(GCC_VERSION) $(CURDIR)/debian/usr/bin/g++
+	#ln -sf /usr/bin/$(CC_PREFIX)gcj-$(GCC_VERSION) $(CURDIR)/debian/usr/bin/gcj
+	#ln -sf /usr/bin/gij-$(GCC_VERSION) $(CURDIR)/debian/usr/bin/gij
+else
+ifneq "$(CC_PREFIX)" ""
+	mkdir -p $(CURDIR)/debian/usr/bin
+	ln -s /usr/lib/gcc-snapshot/bin/$(CC_PREFIX)gcc $(CURDIR)/debian/usr/bin/gcc
+	ln -s /usr/lib/gcc-snapshot/bin/$(CC_PREFIX)g++ $(CURDIR)/debian/usr/bin/g++
+	ln -s /usr/lib/gcc-snapshot/bin/$(CC_PREFIX)gcj $(CURDIR)/debian/usr/bin/gcj
+endif
 endif
 endif
 
@@ -318,7 +336,8 @@ build: $(STAMP_DIR)/build
 $(STAMP_DIR)/build: ooo-build/config.status
 	dh_testdir
 	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 $(MAKE)
-	cd $(SOURCE_TREE)/sysui; . ../*.sh; RPM=rpmbuild PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ../solenv/bin/build.pl || true
+	cd $(SOURCE_TREE)/sdk_oo; . ../*.sh; PATH=$(BUILD_PATH) ../solenv/bin/build.pl && ../solenv/bin/deliver.pl
+	cd $(SOURCE_TREE)/sysui; . ../*.sh; RPM=rpmbuild PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ../solenv/bin/build.pl
 
 	touch $@
 
@@ -356,7 +375,13 @@ endif
 		   openoffice.org-base/$(OODIR)/share/registry/schema/org/openoffice/Office/UI; \
 		mv openoffice.org-common/$(OODIR)/share/xdg/base.desktop \
 		  openoffice.org-base/$(OODIR)/share/xdg/base.desktop
-	
+
+	# move .so to -dev
+	cd debian/tmp/pkg; \
+		mkdir -p -m755 openoffice.org-dev/$(OODIR)/program; \
+		mv openoffice.org-common/$(OODIR)/program/*.so \
+			openoffice.org-dev/$(OODIR)/program
+
 	touch $@
 
 #
@@ -412,9 +437,14 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/install ooo-build/bin/openoffice-xlate-lang
 	done
 
 ifneq "$(HELPISOS)" ""
-	# move the help out of the langpacks into the help packages...
+	# move the help out of the langpacks into the help packages/copy
+	# english help...
 	for iso in $(HELPISOS); do \
-	  if [ "$$iso" = "en-US" ]; then continue; fi ; \
+	  if [ "$$iso" = "en-US" ]; then \
+	    rm -rf $(PKGDIR)-help-en-us $(PKGDIR)-help-en-us.*.debhelper; \
+	    cp -r --preserve=mode debian/tmp/pkg/openoffice.org-help-en-us \
+		$(PKGDIR)-help-en-us || exit 1; continue; \
+	  fi ; \
 	  pkgiso=`echo $$iso | tr \[:upper:\] \[:lower:\]`; \
 	  rm -rf $(PKGDIR)-help-$$pkgiso; \
 	  mkdir -p $(PKGDIR)-help-$$pkgiso/$(OODIR); \
@@ -422,6 +452,16 @@ ifneq "$(HELPISOS)" ""
 		$(PKGDIR)-help-$$pkgiso/$(OODIR); \
 	done
 endif
+	
+	# remove empty uno_packages dirs somehow in the langpacks(?)
+	for iso in `echo $(LANGPACKISOS) | tr A-Z a-z`; do \
+		rm -rf $(PKGDIR)-l10n-$$iso/$(OODIR)/share/uno_packages; \
+	done
+	
+	# remove ooo dirs somehow in the langpacks(?)
+	for iso in `echo $(LANGPACKISOS) | tr A-Z a-z`; do \
+		rm -rf $(PKGDIR)-l10n-$$iso/$(OODIR)/share/dict/ooo; \
+	done
 
 	touch $@
 
@@ -443,18 +483,22 @@ $(STAMP_DIR)/install-arch: $(STAMP_DIR)/install
 	cp -r --preserve=mode debian/tmp/pkg/openoffice.org-base $(PKGDIR)-base || exit 1
 
 	rm -rf debian/mozilla-openoffice.org debian/mozilla-openoffice.org.*.debhelper
-	for i in "" -kde -evolution; do \
-	  rm -rf $(PKGDIR)$$i $(PKGDIR)$$i.*.debhelper ;\
-	done
+	rm -rf $(PKGDIR) $(PKGDIR).*.debhelper
+	rm -rf $(PKGDIR)-evolution $(PKGDIR)-evolution.*.debhelper
+ifeq "$(BUILD_KDE)" "y"
+	rm -rf $(PKGDIR)-kde $(PKGDIR)-kde.*.debhelper
+endif
 
 	dh_installdirs -a
 	#dh_install $(DEBHELPER_OPTIONS) --sourcedir=debian/tmp -a
 
+ifeq "$(BUILD_KDE)" "y"
 	mkdir -p -m755 $(PKGDIR)-kde/$(OODIR)/program
 	for f in kdefilepicker libfps_kde.so libvclplug_kde[0-9]*.so; do \
 	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-kde/$(OODIR)/program || exit 1 ;\
 	done
-	
+endif
+
 	# move the GNOME stuff which are *not* in gid_Module_Optional_Gnome
 	# (which is moved into -gnome in package-ooo) into -gnome
 	mkdir -p -m755 $(PKGDIR)-gnome/$(OODIR)/program
@@ -475,7 +519,8 @@ $(STAMP_DIR)/install-arch: $(STAMP_DIR)/install
 				ln -sf /$(OODIR)/program/libnpsoplugin.so \
 				   usr/lib/$$b/plugins/libnpsoplugin.so; \
 		done
-	
+
+ifeq "$(BUILD_BINFILTERS)" "y"
 	mkdir -p -m755 $(PKGDIR)-filter-so52/$(OODIR)/program
 	mv $(PKGDIR)-core/$(OODIR)/program/libbf_* \
 		$(PKGDIR)-filter-so52/$(OODIR)/program
@@ -485,6 +530,7 @@ $(STAMP_DIR)/install-arch: $(STAMP_DIR)/install
 		$(PKGDIR)-filter-so52/$(OODIR)/program
 	mv $(PKGDIR)-core/$(OODIR)/program/libbindet* \
 		$(PKGDIR)-filter-so52/$(OODIR)/program
+endif
 
 	# hack for splitting out -base. There's no gid_ for it...
 	mkdir -p -m755 $(PKGDIR)-base/$(OODIR)/program
@@ -503,9 +549,10 @@ $(STAMP_DIR)/install-arch: $(STAMP_DIR)/install
 	mv $(PKGDIR)-core/$(OODIR)/program/slideshow.uno.so \
 		$(PKGDIR)-impress/$(OODIR)/program
 	
-	mkdir -p -m755 $(PKGDIR)-officebean/$(OODIR)/program/classes
+	#mkdir -p -m755 $(PKGDIR)-officebean/$(OODIR)/usr/share/java/openoffice$(VER)
+	mkdir -p -m755 $(PKGDIR)-officebean/$(OODIR)/program
 	#mv $(PKGDIR)-common/$(OODIR)/program/classes/officebean.jar \
-	#	$(PKGDIR)-officebean/$(OODIR)/program/classes
+	#	$(PKGDIR)-officebean/usr/share/java/openoffice$(VER)
 	mv $(PKGDIR)-core/$(OODIR)/program/libofficebean.so \
 		$(PKGDIR)-officebean/$(OODIR)/program
 
@@ -515,12 +562,6 @@ $(STAMP_DIR)/install-arch: $(STAMP_DIR)/install
 	# we don't need the testtool in "normal" builds...
 ifneq "$(PACKAGE_TESTTOOL)" "y"
 	rm $(PKGDIR)-core/$(OODIR)/program/testtool*
-else
-ifeq "$(HELPISOS)" ""
-	# install hid.lst manually - we don't build helpcontents
-	cp $(SOURCE_TREE)/helpcontent2/helpers/hid.lst \
-		$(PKGDIR)-core/$(OODIR)/program
-endif
 endif
 
 	# Nasty menu icons hack, urgently needs better version
@@ -537,7 +578,7 @@ endif
 	#rm -r $(PKGDIR)-base
 
         # compress manpages
-	for i in calc math draw writer impress; do \
+	for i in calc math draw writer impress base; do \
 		find $(PKGDIR)-$$i -type f -name "*.1" | xargs gzip -9; \
 	done
 
@@ -580,6 +621,48 @@ endif
 	#$(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/bin/configimport.bin \
 	#	$(PKGDIR)-bin/$(OPENOFFICEDIR)/program
 
+	# install the SDK
+	rm -rf $(PKGDIR)-dev
+	cp -ra debian/tmp/pkg/openoffice.org-dev $(PKGDIR)-dev
+	mkdir -p $(PKGDIR)-dev/usr/include
+	mkdir -p $(PKGDIR)-dev/usr/share/xml
+	mkdir -p $(PKGDIR)-dev/usr/share/idl
+	mkdir -p $(PKGDIR)-dev/usr/share/doc/openoffice.org$(VER)-dev
+	mkdir -p $(PKGDIR)-dev/usr/share/java/openoffice$(VER)
+	tar xfvz $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/OpenOffice.org2.0_SDK.tar.gz --exclude OpenOffice.org2.0_SDK/docs --exclude OpenOffice.org2.0_SDK/examples --exclude OpenOffice.org2.0_SDK/LICENSE --exclude OpenOffice.org2.0_SDK/license.html \
+		-C $(PKGDIR)-dev/$(OODIR) && mv $(PKGDIR)-dev/$(OODIR)/OpenOffice.org2.0_SDK $(PKGDIR)-dev/$(OODIR)/sdk
+	mv $(PKGDIR)-dev/$(OODIR)/sdk/classes/com \
+		$(PKGDIR)-dev/usr/share/java/openoffice$(VER) && \
+	ln -s /usr/share/java/openoffice$(VER)/com \
+		$(PKGDIR)-dev/$(OODIR)/sdk/classes/com
+	mv $(PKGDIR)-dev/$(OODIR)/sdk/include $(PKGDIR)-dev/usr/include/openoffice$(VER) && \
+		ln -s /usr/include/openoffice$(VER) $(PKGDIR)-dev/$(OODIR)/sdk/include
+ifeq "$(USE_SYSTEM_STLPORT)" "y"
+	# when we use external stlport, we just can and should do a symlink
+	cd $(PKGDIR)-dev/usr/include/openoffice$(VER) && \
+		rm -rf stl && ln -s /usr/include/stlport stl
+endif
+	mv $(PKGDIR)-dev/$(OODIR)/sdk/xml $(PKGDIR)-dev/usr/share/xml/openoffice$(VER) && \
+		ln -s /usr/share/xml/openoffice$(VER) $(PKGDIR)-dev/$(OODIR)/sdk/xml
+	mv $(PKGDIR)-dev/$(OODIR)/sdk/idl $(PKGDIR)-dev/usr/share/idl/openoffice$(VER) && \
+		ln -s /usr/share/idl/openoffice$(VER) $(PKGDIR)-dev/$(OODIR)/sdk/idl
+	chmod 644 $(PKGDIR)-dev/$(OODIR)/sdk/configure.pl
+	# fix shebang
+	perl -pi -e 's,/usr/bin/csh,/bin/csh,'\
+		$(PKGDIR)-dev/$(OODIR)/sdk/setsdkenv_unix.csh.in
+	
+	# install th_gen_idx.pl, for people wanting to build thesaurui outside
+	# of OOo in own packages...
+	install -m644 $(SOURCE_TREE)/dictionaries/util/th_gen_idx.pl \
+		$(PKGDIR)-dev/$(OODIR)/program
+
+ifeq "$(INTERNAL_STDLIBS)" "y"
+	# we have to do this manually; specifying --without-system-stdlibs
+	# won't work because the odering of the configure arguments...
+	cp /usr/lib/libstdc++.so.6 $(PKGDIR)-core/$(OODIR)/program
+	cp /lib/libgcc_s.so.1 $(PKGDIR)-core/$(OODIR)/program
+endif
+
 	touch $@
 
 # Install files generated by setup into arch-independent package directories
@@ -605,7 +688,7 @@ ifneq "$(HELPISO)" ""
 endif
 
 	# create symlink wrt hsqldb
-	#cd $(PKGDIR)-common/$(OODIR)/program/classes && \
+	#cd $(PKGDIR)-common/usr/share/java/openoffice$(VER) && \
 	#	ln -s /usr/share/java/hsqldb.jar hsqldb.jar
 
 	# Remove files in langpack
@@ -696,14 +779,100 @@ ifeq "$(HELPISO)" ""
 		$(PKGDIR)-common/$(OODIR)/help
 endif
 
-	# install DicOOo...
-	#mkdir -p -m755 $(PKGDIR)-common/usr/share/myspell/dicts
-	#	cp $(SOURCE_TREE)/dictionaries/diclst/DicOOo.sxw \
-	#	  $(PKGDIR)-common/usr/share/myspell/dicts
-
 	# fix shebang
 	perl -pi -e 's,/bin/awk,/usr/bin/awk,'\
 		$(PKGDIR)-common/$(OODIR)/program/uri-encode
+
+	# install the SDK docs
+	rm -rf $(PKGDIR)-dev-doc
+	mkdir -p $(PKGDIR)-dev-doc/$(OODIR)
+	tar xfvz $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/OpenOffice.org2.0_SDK.tar.gz -C $(PKGDIR)-dev-doc/$(OODIR) OpenOffice.org2.0_SDK/docs OpenOffice.org2.0_SDK/examples \
+		&& mv $(PKGDIR)-dev-doc/$(OODIR)/OpenOffice.org2.0_SDK $(PKGDIR)-dev-doc/$(OODIR)/sdk
+	chmod 644 $(PKGDIR)-dev-doc/$(OODIR)/sdk/docs/images/bg_table2.gif
+	chmod 644 $(PKGDIR)-dev-doc/$(OODIR)/sdk/docs/images/bg_table3.gif
+
+	# move Java jars into /usr/share/java
+	mkdir -p $(PKGDIR)-common/usr/share/java/openoffice$(VER)
+	mv $(PKGDIR)-common/$(OODIR)/program/classes/* \
+		$(PKGDIR)-common/usr/share/java/openoffice$(VER)
+	rm -rf $(PKGDIR)-common/$(OODIR)/program/classes
+	ln -s /usr/share/java/openoffice$(VER)/classes \
+		$(PKGDIR)-common/$(OODIR)/program/classes
+	cd $(PKGDIR)-common/$(OODIR)/program && \
+	  for i in jvmfwk3rc setuprc unorc; do \
+	    perl -pi -e \
+	      's,\$$ORIGIN/classes,file:/usr/share/java/openoffice$(VER),g' $$i; \
+	  done
+
+	# fix permissions
+	for i in editpic poll savepic show webcast; do \
+		chmod 755 $(PKGDIR)-common/$(OODIR)/share/config/webcast/$$i.pl; \
+	done
+
+ifeq "$(HELPISOS)" ""
+	# install hid.lst manually - we don't build helpcontents
+	cp $(SOURCE_TREE)/helpcontent2/helpers/hid.lst \
+		$(PKGDIR)-common/$(OODIR)/program
+endif
+	if [ -x $(PKGDIR)-cmmon/$(OODIR)/program/hid.lst ]; then \
+		chmod 644 $(PKGDIR)-core/$(OODIR)/program/hid.lst; \
+	fi
+
+	rm -f $(PKGDIR)-common/$(OODIR)/LICENSE
+
+	# move uno_packages/cache to /var and create symlink for for
+	# documentation referencing it...
+	rm -rf $(PKGDIR)-common/$(OODIR)/share/uno_packages
+	mkdir -p $(PKGDIR)-common/var/spool/openoffice$(VER)/uno_packages_cache
+	ln -s /var/spool/openoffice$(VER)/uno_packages \
+		$(PKGDIR)-common/$(OODIR)/share/uno_packages
+	perl -pi -e \
+	      's,\$$UNO_SHARED_PACKAGES/cache,file:/var/spool/openoffice$(VER)/uno_packages/cache,g' $(PKGDIR)-common/$(OODIR)/program/unorc
+
+	# install DicOOo and FontOOo; we need to do this manually; the
+	# dictionaries/ module isn't built with --without-myspell-dicts
+	# and those two somehow (why?) are in there...
+	# disabled for now because of file conflicts with the "normal"
+	# openoffice.org
+	#mkdir -p $(PKGDIR)-common/usr/share/myspell/dicts
+	#install -m644 $(SOURCE_TREE)/dictionaries/dictlst/DicOOo.sxw \
+	#	$(PKGDIR)-common/usr/share/myspell/dicts
+	#install -m644 $(SOURCE_TREE)/dictionaries/dictlst/FontOOo.sxw \
+	#	$(PKGDIR)-common/usr/share/myspell/dicts
+
+	# install sensible-ooomua
+	mkdir -p $(PKGDIR)-common/usr/bin
+	install -m755 debian/sensible-ooomua $(PKGDIR)-common/usr/bin
+
+ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
+	mkdir -p debian/ttf-opensymbol/usr/share/fonts/truetype/openoffice
+	install -m644 ooo-build/fonts/opens___.ttf \
+		debian/ttf-opensymbol/usr/share/fonts/tuetype/openoffice
+endif
+
+	# dictionary symlink
+	rm -rf $(PKGDIR)-common/$(OODIR)/share/dict/ooo
+	ln -s /usr/share/myspell/dicts \
+		$(PKGDIR)-common/$(OODIR)/share/dict/ooo
+
+	# convert icons to xpm; we need them for the Debian menu policy...
+	cd $(PKGDIR)-common/usr/share/icons/gnome/32x32/apps && \
+	  for x in *.png; do convert $$x `basename $$x .png`.xpm; done
+
+	# install fixed splashscreen (sun logo and text only mentioning
+	# sun removed)
+	uudecode -o $(PKGDIR)-common/$(OODIR)/program/intro.bmp \
+		debian/ooonologonotextintro.bmp.uu
+
+	# we use system xt, xalan and xerces - symlink it...
+	ln -sf /usr/share/java/xt.jar \
+		$(PKGDIR)-common/usr/share/java/openoffice$(VER)/xt.jar
+	ln -sf /usr/share/java/xalan2.jar \
+		$(PKGDIR)-common/usr/share/java/openoffice$(VER)/xalan.jar
+	ln -sf /usr/share/java/jaxp-1.2.jar \
+		$(PKGDIR)-common/usr/share/java/openoffice$(VER)/xml-apis.jar
+	ln -sf /usr/share/java/xercesImpl.jar \
+		$(PKGDIR)-common/usr/share/java/openoffice$(VER)/xercesImpl.jar
 
 	touch $@
 
@@ -757,7 +926,8 @@ endif
 # causes ldd crashes sometimes when used with fakeroot:
 #          -l $(PKGDIR)-bin/$(OPENOFFICEDIR)/program 
 	dh_gencontrol -- \
-		-V'base-version=$(UPSTREAM_VERSION)'
+		-V'base-version=$(UPSTREAM_VERSION)' \
+		-V'dev-stl-depends=$(DEV_STL_DEPENDS)'
 #		-v1.1.1+1.1.2rc3-`dpkg-parsechangelog  | grep urgency \
 #		| awk '{print $$2}' | sed -e s/"("// -e s/")"// | cut -d"-" -f2`
 	dh_md5sums

@@ -1,0 +1,71 @@
+#! /usr/bin/python
+
+# Sensible OpenOffice.org Mail User Agent
+# call evolution or kmail based on some environment variables
+
+import os, sys, subprocess
+
+prog = os.path.basename(sys.argv[0])
+
+try:
+    os.environ['DISPLAY']
+except KeyError:
+    print >>sys.stderr, '%s: X session expected' % prog
+    sys.exit(1)
+
+
+def call_kmail():
+    # convert evolution to kmail syntax
+    import re
+    cmd = ['/usr/bin/kmail']
+    recipient = None
+    for arg in re.split('[?&]', sys.argv[1]):
+        if arg.startswith('mailto:'):
+            cmd.append('--composer')
+            var, value = arg.split(':', 1)
+            if value:
+                cmd.append(value)
+            continue
+        var, value = arg.split('=', 1)
+        if var == 'from':
+            continue
+        if var == 'to':
+            recipient = value
+        elif var == 'cc':
+            cmd.extend(['-c', value])
+        elif var == 'bcc':
+            cmd.extend(['-b', value])
+        elif var == 'subject':
+            cmd.extend(['-s', value])
+        elif var == 'attach':
+            cmd.extend(['--attach', value])
+        elif var == 'body':
+            cmd.extend(['--body', value])
+        else:
+            print >>sys.stderr, "ERROR", var, value
+    if recipient:
+        cmd.append(recipient)
+    rv = subprocess.call(cmd, shell=False)
+    sys.exit(rv)
+
+def call_evolution():
+    cmd = sys.argv[:]
+    cmd[0] = '/usr/bin/evolution'
+    rv = subprocess.call(cmd, shell=False)
+    sys.exit(rv)
+
+
+if os.environ.has_key('KDE_FULL_SESSION') and os.path.exists('/usr/bin/kmail'):
+    # assume KDE
+    call_kmail()
+elif os.environ.has_key('GNOME_DESKTOP_SESSION_ID') and os.path.exists('/usr/bin/evolution'):
+    # assume Gnome
+    call_evolution()
+elif os.path.exists('/usr/bin/evolution'):
+    # Default
+    call_evolution()
+else:
+    print >>sys.stderr, '%s: cannot find appropriate email client' % prog
+    sys.exit(1)
+
+sys.exit(0)
