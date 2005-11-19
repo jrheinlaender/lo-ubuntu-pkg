@@ -34,8 +34,6 @@ export DH_OPTIONS
 export DH_ALWAYS_EXCLUDE=CVS
 #export DH_VERBOSE=1
 
-SHLIBS_OVERRIDE=-- -Ldebian/shlibs.override.internal
-
 TAG=src680-m$(MILESTONE)
 SOURCE_TREE=ooo-build/build/$(TAG)
 STAMP_DIR=debian/stampdir
@@ -50,28 +48,54 @@ else
   PATCHSET=Debian
 endif
 
-#ENABLE_MONO=y
+BUILD_DEPS=
+
+ENABLE_MONO=n
+ifeq "$(ENABLE_MONO)" "y"
+       BUILD_DEPS += , mono-mcs, libmono-dev
+endif
+
 PACKAGE_TESTTOOL=y
 PACKAGE_TTF_OPENSYMBOL=n
+BUILD_JARS_NATIVE=y
+
 ifneq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 	DEBHELPER_OPTIONS+= -Nttf-opensymbol
 endif
 
-#USE_SYSTEM_STLPORT=y
+USE_SYSTEM_STLPORT=n
 ifeq "$(USE_SYSTEM_STLPORT)" "y"
+	BUILD_DEPS += , libstlport4.6-dev
 	DEV_STL_DEPENDS=, libstlport4.6-dev
 endif
 
+USE_EXTERNAL_CXXLIBS=n
+ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
+       BUILD_DEPS += , libmyspell-dev, libsablot0-dev (>= 1.0.2-1), libwpd8-dev
+endif
+
+SHLIBS_OVERRIDE = -- -Ldebian/shlibs.override.internal 
+
 # disabled. C++ ABI. 3.3 (KDE) vs. 3.4/4.0 (OOo)
 BUILD_KDE=n
+ifeq "$(BUILD_KDE)" "y"
+       BUILD_DEPS += , kdelibs4-dev
+endif
 
 # build the binfilters?
-BUILD_BINFILTERS=y
+ifeq "$(ARCH)" "amd64"
+	BUILD_BINFILTERS=n
+else
+	BUILD_BINFILTERS=y
+endif
 
 # we should be installed on sid/sarge, use libstdc++/libgcc_s internal for now
 # This won't help for -officebean which needs libgcj6 but for the "normal"
 # packages...
-INTERNAL_STDLIBS=y
+INTERNAL_STDLIBS=n
+ifeq "$(INTERNAL_STDLIBS)" "y"
+	SHLIBS_OVERRIDE+=-- -Ldebian/shlibs.override.stdlibs
+endif
 
 # Note that the first one here *has to be* en-US. the first one gets
 # gid_Module_Root as filelist later and the rest gid_Module_Root.$iso
@@ -99,18 +123,32 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
 
 ifneq "$(HELPISOS)" ""
 		CONFIGURE_FLAGS+= --enable-gcj-dbtool
+else
+ifeq "$(BUILD_JARS_NATIVE)" "y"
+		CONFIGURE_FLAGS+= --enable-gcj-dbtool
+endif
 endif
 
 ifeq "$(ENABLE_MONO)" "y"
 		 CONFIGURE_FLAGS+= --enable-mono
 endif
+
 ifeq "$(USE_SYSTEM_STLPORT)" "y"
-		 CONFIGURE_FLAGS+= --with-stlport4=/usr
+		 CONFIGURE_FLAGS+= --with-stlport4=$(CURDIR)/stlport4
+endif
+
+ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
+                CONFIGURE_FLAGS+= \
+                       --with-system-myspell \
+                       --with-system-boost \
+                       --with-system-sablot \
+                       --with-system-libwpd
 endif
 
 ifeq "$(BUILD_KDE)" "n"
 		  CONFIGURE_FLAGS+= --disable-kde
 		  DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-kde
+		  CONFIGURE_FLAGS+= --with-images="industrial crystal"
 endif
 
 ifeq "$(BUILD_BINFILTERS)" "y"
@@ -212,6 +250,7 @@ clean:
 			-o -name '*.wb2' -o -name '*.png' -o -name '*.WB2' \) -exec rm {} \; ;\
 	fi
 	rm -f ooo-build/fonts/symbols.xls
+	rm -rf ooo-build/desktop/*.desktop
 	rm -rf ooo-build/build
 
 	# remove xcf and bmp of the Debian splashscreen
@@ -220,6 +259,9 @@ clean:
 
 	# remove generated symlinks / java wrappers
 	rm -rf debian/usr
+
+	# stlport home
+	rm -rf $(CURDIR)/stlport4
 
 	# uuencode binary files
 	cd ooo-build ;\
@@ -238,6 +280,7 @@ clean:
 	# Files created in debian directory
 	rm -f debian/*.postinst debian/*.postrm debian/*.preinst debian/*.prerm
 	if [ -d "$(STAMP_DIR)" ]; then rm -rf "$(STAMP_DIR)"; fi
+	rm -f debian/shlibs.override.stdlibs
 
 	$(MAKE) -f debian/rules control
 
@@ -249,6 +292,7 @@ debian/control: debian/control.in debian/control.lang.in ooo-build/bin/openoffic
 	sed -e "s#openoffice.orgVER#openoffice.org$(VER)#g" \
 	    -e "s#%$(DIST)=\([^%]*\)%#, \1#g#" \
 	    -e "s#%[A-Za-z]*=[^%]*%##g#" \
+	    -e "s#%BUILD_DEPS%#$(shell echo $(BUILD_DEPS) | sed 's/ *,/,/g')#g" \
 	    < debian/control.in > debian/control
 
 	for LNUM in $(LANGPACKISOS) ; do \
@@ -326,6 +370,15 @@ endif
 endif
 endif
 
+ifeq "$(USE_SYSTEM_STLPORT)" "y"
+	# stlport home
+	if [ ! -d stlport4 ]; then
+		mkdir -p stlport4
+		ln -sf /usr/include/stlport stlport4/stlport
+		ln -sf /usr/lib stlport4/lib
+	fi
+endif
+
 	# Make sure we have /proc mounted - otherwise idlc will fail later.
 	test -r /proc/version
 
@@ -335,6 +388,14 @@ endif
 build: $(STAMP_DIR)/build
 $(STAMP_DIR)/build: ooo-build/config.status
 	dh_testdir
+ifeq "$(BUILD_KDE)" "n"
+	# hack to tell we want crystal icons nevertheless and they should be
+	# extracted...
+	cp ooo-build/bin/setup ooo-build/bin/setup.bak && \
+	cat ooo-build/bin/setup.bak \
+		| sed -e s/\'industrial/\'industrial\ crystal/ \
+		> ooo-build/bin/setup && rm ooo-build/bin/setup.bak
+endif
 	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 $(MAKE)
 	cd $(SOURCE_TREE)/sdk_oo; . ../*.sh; PATH=$(BUILD_PATH) ../solenv/bin/build.pl && ../solenv/bin/deliver.pl
 	cd $(SOURCE_TREE)/sysui; . ../*.sh; RPM=rpmbuild PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ../solenv/bin/build.pl
@@ -463,6 +524,12 @@ endif
 		rm -rf $(PKGDIR)-l10n-$$iso/$(OODIR)/share/dict/ooo; \
 	done
 
+	# remove extra license files
+	for iso in `echo $(LANGPACKISOS) | tr A-Z a-z`; do \
+		rm -rf $(PKGDIR)-l10n-$$iso/$(OODIR)/licenses; \
+		rm -rf $(PKGDIR)-l10n-$$iso/$(OODIR)/share/readme/LICENSE*; \
+	done
+
 	touch $@
 
 
@@ -530,6 +597,8 @@ ifeq "$(BUILD_BINFILTERS)" "y"
 		$(PKGDIR)-filter-so52/$(OODIR)/program
 	mv $(PKGDIR)-core/$(OODIR)/program/libbindet* \
 		$(PKGDIR)-filter-so52/$(OODIR)/program
+	mv $(PKGDIR)-core/$(OODIR)/program/legacy_binfilters.rdb \
+		$(PKGDIR)-filter-so52/$(OODIR)/program
 endif
 
 	# hack for splitting out -base. There's no gid_ for it...
@@ -548,7 +617,7 @@ endif
 		$(PKGDIR)-draw/$(OODIR)/program
 	mv $(PKGDIR)-core/$(OODIR)/program/slideshow.uno.so \
 		$(PKGDIR)-impress/$(OODIR)/program
-	
+
 	#mkdir -p -m755 $(PKGDIR)-officebean/$(OODIR)/usr/share/java/openoffice$(VER)
 	mkdir -p -m755 $(PKGDIR)-officebean/$(OODIR)/program
 	#mv $(PKGDIR)-common/$(OODIR)/program/classes/officebean.jar \
@@ -561,7 +630,7 @@ endif
 
 	# we don't need the testtool in "normal" builds...
 ifneq "$(PACKAGE_TESTTOOL)" "y"
-	rm $(PKGDIR)-core/$(OODIR)/program/testtool*
+	rm $(PKGDIR)-core/$(OODIR)/program/testtool.bin
 endif
 
 	# Nasty menu icons hack, urgently needs better version
@@ -629,7 +698,7 @@ endif
 	mkdir -p $(PKGDIR)-dev/usr/share/idl
 	mkdir -p $(PKGDIR)-dev/usr/share/doc/openoffice.org$(VER)-dev
 	mkdir -p $(PKGDIR)-dev/usr/share/java/openoffice$(VER)
-	tar xfvz $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/OpenOffice.org2.0_SDK.tar.gz --exclude OpenOffice.org2.0_SDK/docs --exclude OpenOffice.org2.0_SDK/examples --exclude OpenOffice.org2.0_SDK/LICENSE --exclude OpenOffice.org2.0_SDK/license.html \
+	tar xfvz $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/OpenOffice.org2.0_SDK.tar.gz --exclude OpenOffice.org2.0_SDK/docs --exclude OpenOffice.org2.0_SDK/examples --exclude OpenOffice.org2.0_SDK/LICENSE --exclude OpenOffice.org2.0_SDK/license.html --exclude OpenOffice.org2.0_SDK/classes/win \
 		-C $(PKGDIR)-dev/$(OODIR) && mv $(PKGDIR)-dev/$(OODIR)/OpenOffice.org2.0_SDK $(PKGDIR)-dev/$(OODIR)/sdk
 	mv $(PKGDIR)-dev/$(OODIR)/sdk/classes/com \
 		$(PKGDIR)-dev/usr/share/java/openoffice$(VER) && \
@@ -653,14 +722,25 @@ endif
 	
 	# install th_gen_idx.pl, for people wanting to build thesaurui outside
 	# of OOo in own packages...
-	install -m644 $(SOURCE_TREE)/dictionaries/util/th_gen_idx.pl \
+	mkdir -p $(PKGDIR)-dev/usr/share/openoffice$(VER)/bin
+	install -m755 $(SOURCE_TREE)/dictionaries/util/th_gen_idx.pl \
+		$(PKGDIR)-dev/usr/share/openoffice$(VER)/bin
+
+	# move gengal stuff into -dev
+	mv $(PKGDIR)-core/$(OODIR)/program/gengal* \
 		$(PKGDIR)-dev/$(OODIR)/program
 
 ifeq "$(INTERNAL_STDLIBS)" "y"
 	# we have to do this manually; specifying --without-system-stdlibs
 	# won't work because the odering of the configure arguments...
-	cp /usr/lib/libstdc++.so.6 $(PKGDIR)-core/$(OODIR)/program
-	cp /lib/libgcc_s.so.1 $(PKGDIR)-core/$(OODIR)/program
+	LIBSTDCPP=`readlink `PATH=$(BUILD_PATH) g++ --print-file-name=libstdc++.so``; \
+	LIBGCC=`readlink `PATH=$(BUILD_PATH) gcc --print-file-name=libgcc_s.so``; \
+	LIBSTDCPP_SOVER=`echo $$LIBSTDCPP | sed -e 's/.*\.//'`; \
+	LIBGCC_SOVER=`echo $$LIBGCC | sed -e 's/.*\.//'`; \
+	cp $$LIBSTDCPP $(PKGDIR)-core/$(OODIR)/program; \
+	cp $$LIBGCC $(PKGDIR)-core/$(OODIR)/program; \
+	echo "libstdc++	$$LIBSTDCPP_SOVER" > debian/shlibs.override.stdlibs; \
+	echo "libgcc_s	$$LIBGCC_SOVER" >> debian/shlibs.override.stdlibs
 endif
 
 	touch $@
@@ -796,7 +876,7 @@ endif
 	mv $(PKGDIR)-common/$(OODIR)/program/classes/* \
 		$(PKGDIR)-common/usr/share/java/openoffice$(VER)
 	rm -rf $(PKGDIR)-common/$(OODIR)/program/classes
-	ln -s /usr/share/java/openoffice$(VER)/classes \
+	ln -s /usr/share/java/openoffice$(VER) \
 		$(PKGDIR)-common/$(OODIR)/program/classes
 	cd $(PKGDIR)-common/$(OODIR)/program && \
 	  for i in jvmfwk3rc setuprc unorc; do \
@@ -815,7 +895,7 @@ ifeq "$(HELPISOS)" ""
 		$(PKGDIR)-common/$(OODIR)/program
 endif
 	if [ -x $(PKGDIR)-cmmon/$(OODIR)/program/hid.lst ]; then \
-		chmod 644 $(PKGDIR)-core/$(OODIR)/program/hid.lst; \
+		chmod 644 $(PKGDIR)-common/$(OODIR)/program/hid.lst; \
 	fi
 
 	rm -f $(PKGDIR)-common/$(OODIR)/LICENSE
@@ -823,7 +903,7 @@ endif
 	# move uno_packages/cache to /var and create symlink for for
 	# documentation referencing it...
 	rm -rf $(PKGDIR)-common/$(OODIR)/share/uno_packages
-	mkdir -p $(PKGDIR)-common/var/spool/openoffice$(VER)/uno_packages_cache
+	mkdir -p $(PKGDIR)-common/var/spool/openoffice$(VER)/uno_packages/cache
 	ln -s /var/spool/openoffice$(VER)/uno_packages \
 		$(PKGDIR)-common/$(OODIR)/share/uno_packages
 	perl -pi -e \
@@ -859,11 +939,12 @@ endif
 	cd $(PKGDIR)-common/usr/share/icons/gnome/32x32/apps && \
 	  for x in *.png; do convert $$x `basename $$x .png`.xpm; done
 
-	# install fixed splashscreen (sun logo and text only mentioning
-	# sun removed)
-	uudecode -o $(PKGDIR)-common/$(OODIR)/program/intro.bmp \
-		debian/ooonologonotextintro.bmp.uu
-
+	# install de-sun-ified splashscreen. normally done in
+	# instsetoo_native; but only if you build with EPM, which we
+	# don't do..
+	install -m644 $(SOURCE_TREE)/svx/res/ooonologointro.bmp \
+		$(PKGDIR)-common/$(OODIR)/program/intro.bmp	
+	
 	# we use system xt, xalan and xerces - symlink it...
 	ln -sf /usr/share/java/xt.jar \
 		$(PKGDIR)-common/usr/share/java/openoffice$(VER)/xt.jar
@@ -874,6 +955,12 @@ endif
 	ln -sf /usr/share/java/xercesImpl.jar \
 		$(PKGDIR)-common/usr/share/java/openoffice$(VER)/xercesImpl.jar
 
+	# remove extra license files
+	rm -rf $(PKGDIR)-commmon/$(OODIR)/licenses
+	rm -rf $(PKGDIR)-common/$(OODIR)/share/readme/LICENSE*
+	rm -f $(PKGDIR)-common/$(OODIR)/THIRDPARTYLICENSEREADME.html
+	rm -f $(PKGDIR)-common/$(OODIR)/LICENSE.html
+	
 	touch $@
 
 
