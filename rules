@@ -20,7 +20,11 @@ OODIR:=usr/lib/openoffice$(VER)
 
 SOURCE_VERSION:=$(shell head -1 debian/changelog | cut -d\( -f2 | cut -d\) -f1)
 UPSTREAM_VERSION:=$(shell echo "$(SOURCE_VERSION)"| cut -d- -f1)
+#BINARY_VERSION=$(SOURCE_VERSION)
+BINARY_VERSION=1.9.125+2.0beta2-$(shell dpkg-parsechangelog  | grep urgency \
+	| awk '{print $$2}' | sed -e s/"("// -e s/")"// | cut -d"-" -f2)
 MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)"| cut -d. -f3)
+
 ARCH := $(shell dpkg-architecture -qDEB_HOST_ARCH)
 # Dist we are building for
 DIST := $(shell lsb_release -is)
@@ -52,15 +56,12 @@ endif
 
 BUILD_DEPS=
 
-ifeq "$(DIST)" "Debian"
-	BUILD_DEPS += ant (>= 1.6.5-1)
-else
-	BUILD_DEPS += libant1.6-java
+ifeq "$(DIST)" "Ubuntu"
+	BUILD_AMD64=y
 endif
 
-ENABLE_MONO=n
-ifeq "$(ENABLE_MONO)" "y"
-       BUILD_DEPS += , mono-mcs, libmono-dev
+ifeq "$(DIST)" "Ubuntu"
+	BUILD_DEPS += , unixodbc-dev [!amd64], unixodbc-dev (>= 2.2.11) [amd64]
 endif
 
 ifeq "$(ARCH)" "amd64"
@@ -93,12 +94,6 @@ ifeq "$(USE_SYSTEM_STLPORT)" "y"
 endif
 
 SHLIBS_OVERRIDE = -- -Ldebian/shlibs.override.internal 
-
-# disabled. C++ ABI. 3.3 (KDE) vs. 3.4/4.0 (OOo)
-BUILD_KDE=n
-ifeq "$(BUILD_KDE)" "y"
-       BUILD_DEPS += , kdelibs4-dev
-endif
 
 # build the binfilters?
 ifeq "$(ARCH)" "amd64"
@@ -158,7 +153,9 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
 		 --with-binsuffix=2 \
 		 --mandir=/usr/share/man \
 		 --with-lang=$(ISOS) \
-		 --with-build-version="openoffice.org$(VER)-core $(SOURCE_VERSION), `date`"
+		 --with-build-version="openoffice.org$(VER)-core $(BINARY_VERSION), `date`" \
+		--disable-strip
+		 
 
 ifneq "$(HELPISOS)" ""
 		CONFIGURE_FLAGS+= --enable-gcj-dbtool
@@ -181,18 +178,27 @@ endif
 #endif
 BUILD_DEPS+= , libnss-dev (>= 1.7.5)
 
+ENABLE_MONO=n
 ifeq "$(ENABLE_MONO)" "y"
-		 CONFIGURE_FLAGS+= --enable-mono
+       BUILD_DEPS += , mono-mcs, libmono-dev
+else
+       CONFIGURE_FLAGS+= --disable-mono
 endif
 
-ENABLE_HUNSPELL=n
+ifeq "$(DIST)" "Ubuntu"
+	ENABLE_HUNSPELL=n
+else
+	ENABLE_HUNSPELL=y
+endif
 USE_SYSTEM_HUNSPELL=y
 ifeq "$(ENABLE_HUNSPELL)" "y"
 		CONFIGURE_FLAGS+= --enable-hunspell
 ifeq "$(USE_SYSTEM_HUNSPELL)" "y"
-		BUILD_DEP += libhunspell-dev (>= 1.0.8-3)
+		BUILD_DEPS += , libhunspell-dev (>= 1.0.8-3)
 		CONFIGURE_FLAGS+= --with-system-hunspell
 endif
+else
+		DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-hunspell
 endif
 
 ifeq "$(USE_SYSTEM_STLPORT)" "y"
@@ -206,11 +212,7 @@ ifeq "$(USE_SYSTEM_BOOST)" "y"
 endif
 
 
-ifeq "$(DIST)" "Debian"
-	USE_SYSTEM_PORTAUDIO=y
-else
-	USE_SYSTEM_PORTAUDIO=n
-endif
+USE_SYSTEM_PORTAUDIO=y
 ifeq "$(USE_SYSTEM_PORTAUDIO)" "y"
 	BUILD_DEPS += , libportaudio-dev
 	CONFIGURE_FLAGS += --with-system-portaudio
@@ -223,11 +225,7 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
 		--with-system-myspell \
                 --with-system-sablot \
                 --with-system-libwpd
-ifeq "$(DIST)" "Debian"
-	USE_EXTERNAL_MYTHES=y
-else
-	USE_EXTERNAL_MYTHES=n
-endif
+USE_EXTERNAL_MYTHES=y
 ifeq "$(USE_EXTERNAL_MYTHES)" "y"
 	BUILD_DEPS += , libmythes-dev (>= 1.0-2)
 	CONFIGURE_FLAGS += --with-system-mythes
@@ -238,26 +236,39 @@ BUILD_CAIROCANVAS=n
 USE_SYSTEM_CAIRO=y
 ifeq "$(BUILD_CAIROCANVAS)" "y"
   ifeq "$(USE_SYSTEM_CAIRO)" "y"
-    ifeq "$(DIST)" "Ubuntu"
-       BUILD_DEPS+= , libcairo1-dev (>= 0.6.0)
-    else
-       BUILD_DEPS+= , libcairo0.6.0-dev
-    endif
+    BUILD_DEPS+= , libcairo2-dev, libglitz-glx1-dev
     CONFIGURE_FLAGS+= --with-system-cairo
   endif
 else
   CONFIGURE_FLAGS+= --disable-cairo
 endif
 
-BUILD_MDBTOOLS=n
+BUILD_MDBTOOLS=y
+USE_SYSTEM_MDBTOOLS=y
 ifneq "$(BUILD_MDBTOOLS)" "y"
   CONFIGURE_FLAGS+= --disable-access
+else
+  ifeq "$(USE_SYSTEM_MDBTOOLS)" "y"
+    BUILD_DEPS += , mdbtools-dev (>= 0.5.99.0.6pre1.0.20050409-1)
+    CONFIGURE_FLAGS += --with-system-mdbtools
+  endif
 endif
 
+BUILD_KDE=y
 ifeq "$(BUILD_KDE)" "n"
 		  CONFIGURE_FLAGS+= --disable-kde
 		  DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-kde
-		  CONFIGURE_FLAGS+= --with-images="industrial crystal"
+		  CONFIGURE_FLAGS+= --with-images="industrial crystal hicontrast"
+else
+ifeq "$(DIST)" "Debian"
+# 02:59 < dato> _rene_: with kdelibs-dev 3.4.2-2, you should be able to install
+#          libgamin-dev now, instead of libfam-dev. as a workaround till the
+#          real solution comes, but some people would call it "the real
+#          solution" :)
+       BUILD_DEPS += , kdelibs4-dev (>= 3.4.2-2), libgamin-dev
+else
+       BUILD_DEPS += , kdelibs4-dev (>= 3.4.2)
+endif
 endif
 
 ifeq "$(BUILD_BINFILTERS)" "y"
@@ -275,6 +286,17 @@ ifeq "$(USE_SYSTEM_HSQLDB)" "y"
 	BUILD_DEPS += , libhsqldb-java (>= 1.8.0.0-2)
 	BASE_HSQLDB_DEPENDS = libhsqldb-java (>= 1.8.0.0-2)
 	CONFIGURE_FLAGS+= --with-system-hsqldb
+endif
+
+ifeq "$(DIST)" "Debian"
+	USE_SYSTEM_BSH=y
+else
+	USE_SYSTEM_BSH=n
+endif
+ifeq "$(USE_SYSTEM_BSH)" "y"
+	BUILD_DEPS += , bsh (>= 2.0b4-1)
+	COMMON_BSH_DEPENDS = bsh (>= 2.0b4-1)
+	CONFIGURE_FLAGS+= --with-system-beanshell
 endif
 
 
@@ -385,13 +407,14 @@ clean:
 		     \( -name '*.xls' -o -name '*.sx?' -o -name '*.doc' \
 			-o -name '*.123' -o -name '*.lwp' -o -name '*.ppt' \
 			-o -name '*.wb2' -o -name '*.png' -o -name '*.WB2' \
-			-o -name '*.odp' \) -exec rm {} \; ;\
+			-o -name '*.odp' -o -name '*.odt' \) -exec rm {} \; ;\
 	fi
 	rm -f ooo-build/fonts/symbols.xls
 	rm -rf ooo-build/desktop/*.desktop
 	rm -rf ooo-build/build
 	rm -f ooo-build/src/GSI*.sdf
 	rm -f ooo-build/po/.intltool-merge-cache
+	rm -rf ooo-build/autom4ate.cache
 
 	# remove generated symlinks / java wrappers
 	rm -rf debian/usr
@@ -437,21 +460,33 @@ clean:
 # Generate control file, because we have so many different languages
 # Based on script by Martin Quinson <Martin.Quinson@tuxfamily.org>
 control: debian/control
-debian/control: debian/control.in debian/control.lang.in ooo-build/bin/openoffice-xlate-lang
+debian/control: debian/control.in debian/control.lang.in ooo-build/bin/openoffice-xlate-lang debian/rules
 	sed -e "s#openoffice.orgVER#openoffice.org$(VER)#g" \
 	    -e "s#%$(DIST)=\([^%]*\)%#, \1#g#" \
 	    -e "s#%[A-Za-z]*=[^%]*%##g#" \
 	    -e "s#%BUILD_DEPS%#$(strip $(BUILD_DEPS))#g" \
 	    < debian/control.in > debian/control
 
+ifeq "$(BUILD_AMD64)" "y"
+	perl -pi -e "s/%AMD64%/amd64/g" debian/control
+else
+	perl -pi -e "s/%AMD64%//g" debian/control
+endif
+
 	for LNUM in $(LANGPACKISOS) ; do \
 	    LNAME=`ooo-build/bin/openoffice-xlate-lang -l $$LNUM | perl -e 'print ucfirst(<STDIN>);'`; \
 	    LCODE=`ooo-build/bin/openoffice-xlate-lang -i $$LNUM | tr A-Z a-z`; \
 	    CCODE=`echo $$LCODE | sed 's/-.*//'`; \
-	    SUGGESTS=; \
+	    case "$$LCODE" in \
+		bn|*-in) \
+			FONT_SUGGESTS=", ttf-`echo $$LNAME | tr A-Z a-z`-fonts"; \
+			;; \
+		*) \
+			FONT_SUGGESTS= ;; \
+	    esac; \
 	    sed -e "s|@LNAME@|$$LNAME|g" -e "s|@LCODE@|$$LCODE|g" \
 		-e "s|@CCODE@|$$CCODE|g" \
-	        -e "s|@SUGGESTS@|$$SUGGESTS|g" \
+	        -e "s|@FONT_SUGGESTS@|$$FONT_SUGGESTS|g" \
 			-e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 	        >> debian/control < debian/control.lang.in; \
 	done
@@ -468,8 +503,7 @@ ifeq "$(ENABLE_MONO)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.mono.in
 endif
-
-
+	
 .DELETE_ON_ERROR: debian/control
 
 build: build-arch build-indep
@@ -544,6 +578,8 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 ifneq "$(LANGPACKISOS)" "en-US"
 	# extract extra GSIs
 	find ooo-build/src -name "*.sdf.bz2" -exec bunzip2 -k \{\} \;
+	for i in `find ooo-build/src/*.sdf.gz`; do gunzip -dc "$$i" > \
+		ooo-build/src/`basename $$i .gz`; done
 endif
 endif
 
@@ -559,10 +595,12 @@ $(STAMP_DIR)/build: ooo-build/config.status
 ifeq "$(BUILD_KDE)" "n"
 	# hack to tell we want crystal icons nevertheless and they should be
 	# extracted...
-	cp ooo-build/bin/setup ooo-build/bin/setup.bak && \
-	cat ooo-build/bin/setup.bak \
-		| sed -e s/\'industrial/\'industrial\ crystal/ \
-		> ooo-build/bin/setup && rm ooo-build/bin/setup.bak
+	if ! grep -q crystal ooo-build/bin/setup; then \
+		cp ooo-build/bin/setup ooo-build/bin/setup.bak && \
+		cat ooo-build/bin/setup.bak \
+			| sed -e s/\'industrial/\'industrial\ crystal/ \
+			> ooo-build/bin/setup && rm ooo-build/bin/setup.bak; \
+	fi
 endif
 	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 $(MAKE)
 	cd $(SOURCE_TREE)/sdk_oo; . ../*.sh; PATH=$(BUILD_PATH) ../solenv/bin/build.pl && ../solenv/bin/deliver.pl
@@ -735,7 +773,7 @@ endif
 
 ifeq "$(BUILD_KDE)" "y"
 	mkdir -p -m755 $(PKGDIR)-kde/$(OODIR)/program
-	for f in kdefilepicker libfps_kde.so libvclplug_kde[0-9]*.so; do \
+	for f in kdefilepicker libfps_kde.so libvclplug_kde[0-9]*.so libkab*so; do \
 	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-kde/$(OODIR)/program || exit 1 ;\
 	done
 endif
@@ -912,10 +950,24 @@ endif
 	mv $(PKGDIR)-dev/$(OODIR)/sdk/idl $(PKGDIR)-dev/usr/share/idl/openoffice$(VER) && \
 		ln -s /usr/share/idl/openoffice$(VER) $(PKGDIR)-dev/$(OODIR)/sdk/idl
 	chmod 644 $(PKGDIR)-dev/$(OODIR)/sdk/configure.pl
+	for i in setsdkenv_unix.csh setsdkenv_unix.sh; do \
+		sed -e 's,@OO_SDK_NAME@,OpenOffice.org2.0_SDK,' \
+		    -e 's,@OO_SDK_HOME@,/usr/lib/openoffice$(VER)/sdk,' \
+		    -e 's,@OFFICE_HOME@,/usr/lib/openoffice$(VER),' \
+		    -e 's,@OO_SDK_MAKE_HOME@,/usr/bin,' \
+		    -e 's,@OO_SDK_ZIP_HOME@,/usr/bin,' \
+		    -e 's,@OO_SDK_CPP_HOME@,/usr/bin,' \
+		    -e 's,@OO_SDK_JAVA_HOME@,/usr/lib/jvm/java-gcj,' \
+		    -e 's,@SDK_AUTO_DEPLOYMENT@,NO,' \
+			< $(PKGDIR)-dev/$(OODIR)/sdk/$$i.in \
+			> $(PKGDIR)-dev/$(OODIR)/sdk/$$i; \
+	done
 	# fix shebang
-	perl -pi -e 's,/usr/bin/csh,/bin/csh,'\
-		$(PKGDIR)-dev/$(OODIR)/sdk/setsdkenv_unix.csh.in
-	
+	for i in csh csh.in; do \
+		perl -pi -e 's,/usr/bin/csh,/bin/csh,'\
+			$(PKGDIR)-dev/$(OODIR)/sdk/setsdkenv_unix.$$i; \
+	done
+
 	# move gengal stuff into -dev
 	mv $(PKGDIR)-core/$(OODIR)/program/gengal* \
 		$(PKGDIR)-dev/$(OODIR)/program
@@ -963,6 +1015,13 @@ endif
 		$(PKGDIR)-base/usr/share/doc/openoffice.org$(VER)-base
 	cp ooo-build/doc/data-from-remote-mysql-server.txt \
 		$(PKGDIR)-base/usr/share/doc/openoffice.org$(VER)-base
+
+ifeq "$(ENABLE_HUNSPELL)" "y"
+	# move hunspell component into own package
+	mkdir -p  $(PKGDIR)-hunspell/$(OODIR)/program
+	mv $(PKGDIR)-core/$(OODIR)/program/libhunspell* \
+		$(PKGDIR)-hunspell/$(OODIR)/program
+endif
 	
 	touch $@
 
@@ -998,13 +1057,13 @@ endif
 	dh_installdirs -i
 
 	# Icons
-	cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/debian/openofficeorg-debian-menus_$(UPSTREAM_VERSION)-1_all.deb/usr/share/icons &&\
+	cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin && dpkg --extract openoffice.org-debian-menus_$(UPSTREAM_VERSION)-1_all.deb . && cd usr/share/icons; \
 	for d in `find -type d`; do \
 	  install -d -m755 $(CURDIR)/$(PKGDIR)-common/usr/share/icons/$$d || exit 1 ;\
 	done &&\
 	for f in `find -type f`; do \
 	  install -m444 $$f $(CURDIR)/$(PKGDIR)-common/usr/share/icons/$$f || exit 1 ;\
-	done
+	done && cd ../../.. && rm -rf usr etc
 	
 	# remove .desktop files already in KDE 3.2
 	#cd $(PKGDIR)-mimelnk/usr/share/mimelnk/application && \
@@ -1140,7 +1199,7 @@ endif
 ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 	mkdir -p debian/ttf-opensymbol/usr/share/fonts/truetype/openoffice
 	install -m644 ooo-build/fonts/opens___.ttf \
-		debian/ttf-opensymbol/usr/share/fonts/tuetype/openoffice
+		debian/ttf-opensymbol/usr/share/fonts/truetype/openoffice
 endif
 
 	# dictionary symlink
@@ -1174,13 +1233,24 @@ endif
 	rm -f $(PKGDIR)-common/$(OODIR)/THIRDPARTYLICENSEREADME.html
 	rm -f $(PKGDIR)-common/$(OODIR)/LICENSE.html
 
-	cp debian/javasettings* \
-		$(PKGDIR)-common/$(OODIR)/share/config
-
 	mkdir -p /usr/share/icons/hicolor/48x48/apps
 	cp ooo-build/desktop/*.png \
 		$(PKGDIR)-common/usr/share/icons/hicolor/48x48/apps
 
+ifeq "$(USE_SYSTEM_BSH)" "y"
+	# link to system bsh
+	ln -sf /usr/share/java/bsh.jar \
+	        $(PKGDIR)-common/usr/share/java/openoffice$(VER)/bsh.jar
+endif
+
+	# add mysql and postgresql jdbc drivers to the clsspath
+	TMP=`mktemp -q`; \
+	sed -e 's|\(UNO_JAVA_JFW_CLASSPATH_URLS=.*\)|\1 file:///usr/share/java/mysql.jar|' \
+	    -e 's|\(UNO_JAVA_JFW_CLASSPATH_URLS=.*\)|\1 file:///usr/share/java/sapdbc-7.5.00.jar|' \
+	    -e 's|\(UNO_JAVA_JFW_CLASSPATH_URLS=.*\)|\1 file:///usr/share/java/postgresql.jar|' < $(PKGDIR)-common/$(OODIR)/program/jvmfwk3rc > $$TMP && \
+	mv $$TMP $(PKGDIR)-common/$(OODIR)/program/jvmfwk3rc
+
+	
 	touch $@
 
 
@@ -1228,13 +1298,13 @@ binary-common:
 	dh_compress
 	dh_fixperms
 	dh_installdeb
-#ifeq "$(ARCH)" "i386"
-#	# this LD_ASSUME_KERNEL is for working around some bug which makes
-#	# dh_shlibddeps report/find nothing with libc6-i686/TLS systems
-#	LD_ASSUME_KERNEL="2.4.27" dh_shlibdeps $(SHLIBS_OVERRIDE)
-#else
+ifeq "$(ARCH)" "i386"
+	# this LD_ASSUME_KERNEL is for working around some bug which makes
+	# dh_shlibddeps report/find nothing with libc6-i686/TLS systems
+	LD_ASSUME_KERNEL="2.4.27" dh_shlibdeps $(SHLIBS_OVERRIDE)
+else
 	dh_shlibdeps $(SHLIBS_OVERRIDE)
-#endif
+endif
 ifeq "$(ENABLE_MONO)" "y"
 	dh_clideps
 endif
@@ -1243,14 +1313,18 @@ endif
 	 > $(PKGDIR)-core/usr/share/doc/openoffice.org$(VER)-core/used_libs
 # This switch to dh_shlibdeps reduces the 'libXXX not found' warnings but
 # causes ldd crashes sometimes when used with fakeroot:
-#          -l $(PKGDIR)-bin/$(OPENOFFICEDIR)/program 
-	dh_gencontrol -- \
+#          -l $(PKGDIR)-bin/$(OPENOFFICEDIR)/program
+	dh_gencontrol -popenoffice.org$(VER)-hunspell -- \
+		-V'base-version=$(UPSTREAM_VERSION)' \
+		-v`echo $(SOURCE_VERSION) | sed -e s/$(UPSTREAM_VERSION)/1.1/`
+	dh_gencontrol -Nopenoffice.org$(VER)-hunspell -- \
 		-V'base-version=$(UPSTREAM_VERSION)' \
 		-V'dev-stl-depends=$(DEV_STL_DEPENDS)' \
 		-V'writer-pyuno-dep=$(WRITER_PYUNO_DEP)' \
-		-V'base-hsqldb-depends=$(BASE_HSQLDB_DEPENDS)'
-#		-v1.1.1+1.1.2rc3-`dpkg-parsechangelog  | grep urgency \
-#		| awk '{print $$2}' | sed -e s/"("// -e s/")"// | cut -d"-" -f2`
+		-V'base-hsqldb-depends=$(BASE_HSQLDB_DEPENDS)' \
+		-V'common-bsh-depends=$(COMMON_BSH_DEPENDS)' \
+		-V'Binary-Version=$(BINARY_VERSION)' \
+		-v$(BINARY_VERSION)
 	dh_md5sums
 	dh_builddeb
 
