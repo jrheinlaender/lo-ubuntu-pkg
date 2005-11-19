@@ -45,29 +45,32 @@ STAMP_DIR=debian/stampdir
 
 # Which patchset?
 ifeq ($(ARCH),amd64)
-  PATCHSET=Debian64
+  PATCHSET=$(DIST)64
 else
-  PATCHSET=Debian
+  PATCHSET=$(DIST)
 endif
 
 BUILD_DEPS=
 
-ifeq "$(DIST)" "Ubuntu"
-	USE_FIREFOX=y
+ifeq "$(DIST)" "Debian"
+	BUILD_DEPS += ant (>= 1.6.5-1)
 else
-	USE_FIREFOX=n
+	BUILD_DEPS += libant1.6-java
 endif
-ifeq "$(USE_FIREFOX)" "y"
-	CONFIGURE_FLAGS+= --with-firefox
-	BUILD_DEPS+= , firefox-dev
-else
-	BUILD_DEPS+= , mozilla-dev
-endif
-BUILD_DEPS+= , libnss-dev (>= 1.7.5)
 
 ENABLE_MONO=n
 ifeq "$(ENABLE_MONO)" "y"
        BUILD_DEPS += , mono-mcs, libmono-dev
+endif
+
+ifeq "$(ARCH)" "amd64"
+	BUILD_PYUNO=n
+else
+	BUILD_PYUNO=y
+	WRITER_PYUNO_DEP=, python-uno (>> $(UPSTREAM_VERSION))
+endif
+ifeq "$(BUILD_PYUNO)" "n"
+  DEBHELPER_OPTIONS+= -Npython-uno
 endif
 
 PACKAGE_TESTTOOL=y
@@ -87,11 +90,6 @@ USE_SYSTEM_STLPORT=y
 ifeq "$(USE_SYSTEM_STLPORT)" "y"
 	BUILD_DEPS += , libstlport4.6-dev (>= 4.6.2-3)
 	DEV_STL_DEPENDS=, libstlport4.6-dev (>= 4.6.2-3)
-endif
-
-USE_EXTERNAL_CXXLIBS=y
-ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
-       BUILD_DEPS += , libmyspell-dev (>= 3.1-12), libsablot0-dev (>= 1.0.2-4), libwpd8-dev (>= 0.8.2-2)
 endif
 
 SHLIBS_OVERRIDE = -- -Ldebian/shlibs.override.internal 
@@ -117,17 +115,37 @@ ifeq "$(INTERNAL_STDLIBS)" "y"
 	SHLIBS_OVERRIDE+=-- -Ldebian/shlibs.override.stdlibs
 endif
 
-# Note that the first one here *has to be* en-US. the first one gets
-# gid_Module_Root as filelist later and the rest gid_Module_Root.$iso
-# but we can't/shouldn't do dynamic switching, so let en-US be the first
-# one to that gid_Module_Root always is english and the other langpacks
-# have gid_Module_Root.$iso
-#ISOS="$(shell ooo-build/bin/openoffice-xlate-lang -i all')"
-ISOS:="en-US af be-BY bg bn bs cs cy da de en-GB es et fi fr gu-IN hr hu nb nl nn it ja ko lt pa-IN pl pt-BR ru sk sv tr xh zh-CN zh-TW zu"
-#HELPISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all') 
-#HELPISOS:=en-US cs de es et fr it ja ko pt-BR sv zh-CN zh-TW
-#LANGPACKISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
-LANGPACKISOS:=en-US af be-BY bg bn bs cs cy da de en-GB es et fi fr gu-IN hr hu nb nl nn it ja ko lt pa-IN pl pt-BR ru sk sv tr xh zh-CN zh-TW zu
+ifeq "$(DIST)" "Debian"
+  # we don't need to build all languages and the thesaurus on the buildds;
+  # they do binary-only builds anyway
+  ifeq (buildd,$(shell whoami))
+	BUILD_ONLY_EN_US=y
+  endif
+endif
+
+ifneq "$(BUILD_ONLY_EN_US)" "y"
+  ifeq (lang=,$(findstring lang=,$(DEB_BUILD_OPTIONS)))
+    ISOS="$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*lang=\([^,]*\),.*/\1/p')"
+    #HELPISOS="$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*lang=\([^,]*\),.*/\1/p')"
+    LANGPACKISOS=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*lang=\([^,]*\),.*/\1/p')
+  else
+    # Note that the first one here *has to be* en-US. the first one gets
+    # gid_Module_Root as filelist later and the rest gid_Module_Root.$iso
+    # but we can't/shouldn't do dynamic switching, so let en-US be the first
+    # one to that gid_Module_Root always is english and the other langpacks
+    # have gid_Module_Root.$iso
+    #ISOS="$(shell ooo-build/bin/openoffice-xlate-lang -i all')"
+    ISOS:="en-US af be-BY bg bn bs cs cy da de en-GB es et fi fr gu-IN hr hu nb nl nn it ja ko lt pa-IN pl pt-BR ru sk sv tr xh zh-CN zh-TW zu"
+    #HELPISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all') 
+    #HELPISOS:=en-US cs de es et fr it ja ko pt-BR sv zh-CN zh-TW
+    #LANGPACKISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
+    LANGPACKISOS:=en-US af be-BY bg bn bs cs cy da de en-GB es et fi fr gu-IN hr hu nb nl nn it ja ko lt pa-IN pl pt-BR ru sk sv tr xh zh-CN zh-TW zu
+  endif
+else
+  ISOS="en-US"
+  #HELPISOS="en-US"
+  LANGPACKISOS=en-US
+endif
 
 # Default flags to pass to configure of ooo-build
 CONFIGURE_FLAGS= --disable-post-install-scripts \
@@ -150,8 +168,31 @@ ifeq "$(BUILD_JARS_NATIVE)" "y"
 endif
 endif
 
+#ifeq "$(DIST)" "Ubuntu"
+#	USE_FIREFOX=y
+#else
+#	USE_FIREFOX=n
+#endif
+#ifeq "$(USE_FIREFOX)" "y"
+#	CONFIGURE_FLAGS+= --with-firefox
+#	BUILD_DEPS+= , firefox-dev, libnspr-dev
+#else
+	BUILD_DEPS+= , mozilla-dev
+#endif
+BUILD_DEPS+= , libnss-dev (>= 1.7.5)
+
 ifeq "$(ENABLE_MONO)" "y"
 		 CONFIGURE_FLAGS+= --enable-mono
+endif
+
+ENABLE_HUNSPELL=n
+USE_SYSTEM_HUNSPELL=y
+ifeq "$(ENABLE_HUNSPELL)" "y"
+		CONFIGURE_FLAGS+= --enable-hunspell
+ifeq "$(USE_SYSTEM_HUNSPELL)" "y"
+		BUILD_DEP += libhunspell-dev (>= 1.0.8-3)
+		CONFIGURE_FLAGS+= --with-system-hunspell
+endif
 endif
 
 ifeq "$(USE_SYSTEM_STLPORT)" "y"
@@ -164,17 +205,53 @@ ifeq "$(USE_SYSTEM_BOOST)" "y"
 	CONFIGURE_FLAGS += --with-system-boost
 endif
 
+
+ifeq "$(DIST)" "Debian"
+	USE_SYSTEM_PORTAUDIO=y
+else
+	USE_SYSTEM_PORTAUDIO=n
+endif
+ifeq "$(USE_SYSTEM_PORTAUDIO)" "y"
+	BUILD_DEPS += , libportaudio-dev
+	CONFIGURE_FLAGS += --with-system-portaudio
+endif
+
+USE_EXTERNAL_CXXLIBS=y
 ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
-                CONFIGURE_FLAGS+= \
-                       --with-system-myspell \
-                       --with-system-sablot \
-                       --with-system-libwpd
+       BUILD_DEPS += , libmyspell-dev (>= 3.1-12), libsablot0-dev (>= 1.0.2-4), libwpd8-dev (>= 0.8.2-2)
+       CONFIGURE_FLAGS+= \
+		--with-system-myspell \
+                --with-system-sablot \
+                --with-system-libwpd
+ifeq "$(DIST)" "Debian"
+	USE_EXTERNAL_MYTHES=y
+else
+	USE_EXTERNAL_MYTHES=n
+endif
+ifeq "$(USE_EXTERNAL_MYTHES)" "y"
+	BUILD_DEPS += , libmythes-dev (>= 1.0-2)
+	CONFIGURE_FLAGS += --with-system-mythes
+endif
 endif
 
 BUILD_CAIROCANVAS=n
+USE_SYSTEM_CAIRO=y
 ifeq "$(BUILD_CAIROCANVAS)" "y"
-	CONFIGURE_FLAGS+= --enable-cairo
-	BUILD_DEPS+= libcairo0.5.2-dev, libglitz-glx1-dev (>= 0.4.4)
+  ifeq "$(USE_SYSTEM_CAIRO)" "y"
+    ifeq "$(DIST)" "Ubuntu"
+       BUILD_DEPS+= , libcairo1-dev (>= 0.6.0)
+    else
+       BUILD_DEPS+= , libcairo0.6.0-dev
+    endif
+    CONFIGURE_FLAGS+= --with-system-cairo
+  endif
+else
+  CONFIGURE_FLAGS+= --disable-cairo
+endif
+
+BUILD_MDBTOOLS=n
+ifneq "$(BUILD_MDBTOOLS)" "y"
+  CONFIGURE_FLAGS+= --disable-access
 endif
 
 ifeq "$(BUILD_KDE)" "n"
@@ -188,6 +265,18 @@ ifeq "$(BUILD_BINFILTERS)" "y"
 else
 		DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-filter-so52
 endif
+
+ifeq "$(DIST)" "Debian"
+	USE_SYSTEM_HSQLDB=y
+else
+	USE_SYSTEM_HSQLDB=n
+endif
+ifeq "$(USE_SYSTEM_HSQLDB)" "y"
+	BUILD_DEPS += , libhsqldb-java (>= 1.8.0.0-2)
+	BASE_HSQLDB_DEPENDS = libhsqldb-java (>= 1.8.0.0-2)
+	CONFIGURE_FLAGS+= --with-system-hsqldb
+endif
+
 
 #		 --with-ooo-builddir=$(CURDIR) \
 #		 --with-src=$(CURDIR) \
@@ -295,7 +384,8 @@ clean:
 		find ooo-build/test ooo-build/doc -type f \
 		     \( -name '*.xls' -o -name '*.sx?' -o -name '*.doc' \
 			-o -name '*.123' -o -name '*.lwp' -o -name '*.ppt' \
-			-o -name '*.wb2' -o -name '*.png' -o -name '*.WB2' \) -exec rm {} \; ;\
+			-o -name '*.wb2' -o -name '*.png' -o -name '*.WB2' \
+			-o -name '*.odp' \) -exec rm {} \; ;\
 	fi
 	rm -f ooo-build/fonts/symbols.xls
 	rm -rf ooo-build/desktop/*.desktop
@@ -328,7 +418,7 @@ clean:
 		ooo-$$i.png > ooo-build/desktop/ooo-$$i.png.uu &&\
 	    touch -r ooo-build/desktop/ooo-$$i.png.uu \
 		ooo-build/desktop/ooo-$$i.png ;\
-	  fi; \
+	fi; \
 	done
 	rm -f ooo-build/desktop/*.png
 
@@ -450,9 +540,12 @@ ifeq "$(USE_SYSTEM_STLPORT)" "y"
 	fi
 endif
 
+ifneq "$(BUILD_ONLY_EN_US)" "y"
+ifneq "$(LANGPACKISOS)" "en-US"
 	# extract extra GSIs
-	cd ooo-build/src; \
-		for i in *.sdf.bz2; do bzcat $$i > `basename $$i .bz2`; done
+	find ooo-build/src -name "*.sdf.bz2" -exec bunzip2 -k \{\} \;
+endif
+endif
 
 	# Make sure we have /proc mounted - otherwise idlc will fail later.
 	test -r /proc/version
@@ -473,8 +566,6 @@ ifeq "$(BUILD_KDE)" "n"
 endif
 	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 $(MAKE)
 	cd $(SOURCE_TREE)/sdk_oo; . ../*.sh; PATH=$(BUILD_PATH) ../solenv/bin/build.pl && ../solenv/bin/deliver.pl
-	cd $(SOURCE_TREE)/sysui; . ../*.sh; DPKG=dpkg RPM=rpmbuild PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ../solenv/bin/build.pl
-
 	touch $@
 
 install: $(STAMP_DIR)/install
@@ -518,7 +609,7 @@ endif
 	# later
 	cd debian/tmp/pkg; \
 		mkdir -p openoffice.org-base/usr/share/java/openoffice$(VER); \
-		for i in hsqldb.jar sdbc_hsqldb.jar; do \
+		for i in *hsqldb.jar; do \
 			mv openoffice.org-common/$(OODIR)/program/classes/$$i \
 				openoffice.org-base/usr/share/java/openoffice$(VER); \
 		done
@@ -706,11 +797,17 @@ endif
 		mv $(PKGDIR)-core/$(OODIR)/program/lib$$i*so \
 			$(PKGDIR)-base/$(OODIR)/program; \
 	done
+ifeq "$(BUILD_MDBTOOLS)" "y"
+	mv $(PKGDIR)-core/$(OODIR)/program/libmdb*so \
+		$(PKGDIR)-base/$(OODIR)/program
+endif
 
+ifeq "$(USE_SYSTEM_HSQLDB)" "y"
 	# link to system hsqldb
 	ln -sf /usr/share/java/hsqldb.jar \
 	        $(PKGDIR)-base/usr/share/java/openoffice$(VER)/hsqldb.jar
-			
+endif
+
 	rm -rf $(PKGDIR)-officebean
 	mkdir -p -m755 $(PKGDIR)-officebean/$(OODIR)/program
 	mkdir -p -m755 $(PKGDIR)-officebean/usr/share/java
@@ -746,6 +843,7 @@ endif
 		find $(PKGDIR)-$$i -type f -name "*.1" | xargs gzip -9; \
 	done
 
+ifeq "$(BUILD_PYUNO)" "y"
 	# Pyuno packging
 	rm -rf debian/python-uno debian/python-uno.*.debhelper
 	cp -r --preserve=mode debian/tmp/pkg/python-uno debian/python-uno
@@ -773,6 +871,7 @@ endif
 	cd debian/python-uno/usr/share/doc/python-uno && \
 		find . -type d -name "CVS" | xargs rm -rf && \
 		find . -type f -name "*.orig" | xargs rm
+endif
 
 ifeq "$(ENABLE_MONO)" "y"
 	# Mono bindings
@@ -817,12 +916,6 @@ endif
 	perl -pi -e 's,/usr/bin/csh,/bin/csh,'\
 		$(PKGDIR)-dev/$(OODIR)/sdk/setsdkenv_unix.csh.in
 	
-	# install th_gen_idx.pl, for people wanting to build thesaurui outside
-	# of OOo in own packages...
-	mkdir -p $(PKGDIR)-dev/usr/share/openoffice$(VER)/bin
-	install -m755 $(SOURCE_TREE)/dictionaries/util/th_gen_idx.pl \
-		$(PKGDIR)-dev/usr/share/openoffice$(VER)/bin
-
 	# move gengal stuff into -dev
 	mv $(PKGDIR)-core/$(OODIR)/program/gengal* \
 		$(PKGDIR)-dev/$(OODIR)/program
@@ -838,6 +931,10 @@ ifeq "$(INTERNAL_STDLIBS)" "y"
 	cp $$LIBGCC $(PKGDIR)-core/$(OODIR)/program; \
 	echo "libstdc++	$$LIBSTDCPP_SOVER" > debian/shlibs.override.stdlibs; \
 	echo "libgcc_s	$$LIBGCC_SOVER" >> debian/shlibs.override.stdlibs
+endif
+ifeq "$(USE_SYSTEM_STLPORT)" "y"
+	# remove a eventually sneaked-in stlport...
+	rm -f $(PKGDIR)-core/$(OODIR)/program/libstlport*
 endif
 
 ifeq "$(BUILD_JARS_NATIVE)" "y"
@@ -891,10 +988,6 @@ ifneq "$(HELPISO)" ""
 	cp -r --preserve=mode debian/tmp/pkg/openoffice.org-help-en-us $(PKGDIR)-help-en-us || exit 1
 endif
 
-	# create symlink wrt hsqldb
-	#cd $(PKGDIR)-common/usr/share/java/openoffice$(VER) && \
-	#	ln -s /usr/share/java/hsqldb.jar hsqldb.jar
-
 	# Remove files in langpack
 	for dir in program/resource share/registry/res/en-US; do \
 	  rm -rf $(PKGDIR)-common/usr/lib/openoffice$(VER)/$$dir ;\
@@ -905,7 +998,7 @@ endif
 	dh_installdirs -i
 
 	# Icons
-	cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/redhat/usr/share/icons &&\
+	cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/debian/openofficeorg-debian-menus_$(UPSTREAM_VERSION)-1_all.deb/usr/share/icons &&\
 	for d in `find -type d`; do \
 	  install -d -m755 $(CURDIR)/$(PKGDIR)-common/usr/share/icons/$$d || exit 1 ;\
 	done &&\
@@ -953,10 +1046,6 @@ endif
 	install -d -m755 $(PKGDIR)-common/usr/share/openoffice$(VER)/bin
 	install -m755 ooo-build/bin/openoffice-xlate-lang \
 		$(PKGDIR)-common/usr/share/openoffice$(VER)/bin
-
-	# install info file for update-openoffice-dicts
-	#install -m644 debian/dictlistinfo \
-	#	$(PKGDIR)-thesaurus-en-us/usr/share/myspell/infos/ooo/openoffice.org$(VER)-thesaurus-en-us
 
 	# this is a hack. it is needed to get the dictionaries hook
 	# notice that we have a newer OOo and do not need to change
@@ -1139,13 +1228,13 @@ binary-common:
 	dh_compress
 	dh_fixperms
 	dh_installdeb
-ifeq "$(ARCH)" "i386"
-	# this LD_ASSUME_KERNEL is for working around some bug which makes
-	# dh_shlibddeps report/find nothing with libc6-i686/TLS systems
-	LD_ASSUME_KERNEL="2.4.27" dh_shlibdeps $(SHLIBS_OVERRIDE)
-else
+#ifeq "$(ARCH)" "i386"
+#	# this LD_ASSUME_KERNEL is for working around some bug which makes
+#	# dh_shlibddeps report/find nothing with libc6-i686/TLS systems
+#	LD_ASSUME_KERNEL="2.4.27" dh_shlibdeps $(SHLIBS_OVERRIDE)
+#else
 	dh_shlibdeps $(SHLIBS_OVERRIDE)
-endif
+#endif
 ifeq "$(ENABLE_MONO)" "y"
 	dh_clideps
 endif
@@ -1157,7 +1246,9 @@ endif
 #          -l $(PKGDIR)-bin/$(OPENOFFICEDIR)/program 
 	dh_gencontrol -- \
 		-V'base-version=$(UPSTREAM_VERSION)' \
-		-V'dev-stl-depends=$(DEV_STL_DEPENDS)'
+		-V'dev-stl-depends=$(DEV_STL_DEPENDS)' \
+		-V'writer-pyuno-dep=$(WRITER_PYUNO_DEP)' \
+		-V'base-hsqldb-depends=$(BASE_HSQLDB_DEPENDS)'
 #		-v1.1.1+1.1.2rc3-`dpkg-parsechangelog  | grep urgency \
 #		| awk '{print $$2}' | sed -e s/"("// -e s/")"// | cut -d"-" -f2`
 	dh_md5sums
