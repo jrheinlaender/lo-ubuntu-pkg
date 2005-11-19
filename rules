@@ -52,6 +52,19 @@ endif
 
 BUILD_DEPS=
 
+ifeq "$(DIST)" "Ubuntu"
+	USE_FIREFOX=y
+else
+	USE_FIREFOX=n
+endif
+ifeq "$(USE_FIREFOX)" "y"
+	CONFIGURE_FLAGS+= --with-firefox
+	BUILD_DEPS+= , firefox-dev
+else
+	BUILD_DEPS+= , mozilla-dev
+endif
+BUILD_DEPS+= , libnss-dev (>= 1.7.5)
+
 ENABLE_MONO=n
 ifeq "$(ENABLE_MONO)" "y"
        BUILD_DEPS += , mono-mcs, libmono-dev
@@ -70,20 +83,15 @@ ifneq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 	DEBHELPER_OPTIONS+= -Nttf-opensymbol
 endif
 
-USE_SYSTEM_STLPORT=n
+USE_SYSTEM_STLPORT=y
 ifeq "$(USE_SYSTEM_STLPORT)" "y"
-	BUILD_DEPS += , libstlport4.6-dev
-	DEV_STL_DEPENDS=, libstlport4.6-dev
+	BUILD_DEPS += , libstlport4.6-dev (>= 4.6.2-3)
+	DEV_STL_DEPENDS=, libstlport4.6-dev (>= 4.6.2-3)
 endif
 
 USE_EXTERNAL_CXXLIBS=y
 ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
        BUILD_DEPS += , libmyspell-dev (>= 3.1-12), libsablot0-dev (>= 1.0.2-4), libwpd8-dev (>= 0.8.2-2)
-endif
-
-USE_SYSTEM_BOOST=n
-ifeq "$(USE_SYSTEM_BOOST)" "y"
-	BUILD_DEPS += , libboost-dev
 endif
 
 SHLIBS_OVERRIDE = -- -Ldebian/shlibs.override.internal 
@@ -115,11 +123,11 @@ endif
 # one to that gid_Module_Root always is english and the other langpacks
 # have gid_Module_Root.$iso
 #ISOS="$(shell ooo-build/bin/openoffice-xlate-lang -i all')"
-ISOS:="en-US af be-BY bn bg cs cy da de en-GB es et fi fr gu-IN hr hu nb nl nn it ja ko pa-IN pl pt-BR ru sk sv tr xh zh-CN zh-TW zu"
+ISOS:="en-US af be-BY bg bn bs cs cy da de en-GB es et fi fr gu-IN hr hu nb nl nn it ja ko lt pa-IN pl pt-BR ru sk sv tr xh zh-CN zh-TW zu"
 #HELPISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all') 
-#HELPISOS:=en-US de es fr it ja ko pt-BR sv zh-CN zh-TW
+#HELPISOS:=en-US cs de es et fr it ja ko pt-BR sv zh-CN zh-TW
 #LANGPACKISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
-LANGPACKISOS:=en-US af be-BY bn bg cs cy da de en-GB es et fi fr gu-IN hr hu nb nl nn it ja ko pa-IN pl pt-BR ru sk sv tr xh zh-CN zh-TW zu
+LANGPACKISOS:=en-US af be-BY bg bn bs cs cy da de en-GB es et fi fr gu-IN hr hu nb nl nn it ja ko lt pa-IN pl pt-BR ru sk sv tr xh zh-CN zh-TW zu
 
 # Default flags to pass to configure of ooo-build
 CONFIGURE_FLAGS= --disable-post-install-scripts \
@@ -150,11 +158,23 @@ ifeq "$(USE_SYSTEM_STLPORT)" "y"
 		 CONFIGURE_FLAGS+= --with-stlport4=$(CURDIR)/stlport4
 endif
 
+USE_SYSTEM_BOOST=y
+ifeq "$(USE_SYSTEM_BOOST)" "y"
+	BUILD_DEPS += , libboost-dev
+	CONFIGURE_FLAGS += --with-system-boost
+endif
+
 ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
                 CONFIGURE_FLAGS+= \
                        --with-system-myspell \
                        --with-system-sablot \
                        --with-system-libwpd
+endif
+
+BUILD_CAIROCANVAS=n
+ifeq "$(BUILD_CAIROCANVAS)" "y"
+	CONFIGURE_FLAGS+= --enable-cairo
+	BUILD_DEPS+= libcairo0.5.2-dev, libglitz-glx1-dev (>= 0.4.4)
 endif
 
 ifeq "$(BUILD_KDE)" "n"
@@ -211,10 +231,12 @@ endif
 # default gcc / g++
 ifeq "$(GCC_VERSION)" ""
 ifeq "$(shell LANG='C' g++ --version | head -n 1 | cut -d' ' -f3 | cut -d'.' -f1)" "4"
-	BUILD_DEPS+= , binutils (>= 2.16-0) [!powerpc]
+#	BUILD_DEPS+= , binutils (>= 2.16-0) [!powerpc]
 # g++ does need too much memory on ppc for a file, use gcc-3.4 / g++ 3.4 for it
-	BUILD_DEPS+= , gcc-3.4 [powerpc], g++-3.4 [powerpc]
-	GCC_VERSION = 3.4
+#	BUILD_DEPS+= , gcc-3.4 [powerpc], g++-3.4 [powerpc]
+#ifeq "$(ARCH)" "powerpc"
+#	GCC_VERSION = 3.4
+#endif
 endif
 endif
 
@@ -265,7 +287,7 @@ clean:
 	fi
 
 	# we do not need them and they make problem with dpkg-source....
-	rm -f ooo-build/desktop/*.png ooo-build/www/*.png \
+	rm -f ooo-build/www/*.png \
 		ooo-build/www/images/*.png ooo-build/templates/*.s* \
 		ooo-build/www/l10n/*.gif
 
@@ -299,6 +321,19 @@ clean:
 	  rm -f $$f ;\
 	done
 
+        # uuencode Ximian desktop icons
+	for i in base calc draw impress math template web writer; do \
+	  if [ -s ooo-build/desktop/ooo-$$i.png ]; then \
+	    uuencode ooo-build/desktop/ooo-$$i.png \
+		ooo-$$i.png > ooo-build/desktop/ooo-$$i.png.uu &&\
+	    touch -r ooo-build/desktop/ooo-$$i.png.uu \
+		ooo-build/desktop/ooo-$$i.png ;\
+	  fi; \
+	done
+	rm -f ooo-build/desktop/*.png
+
+	rm -f ooo-build/src/GSI*err
+
 	dh_clean
 
 	# Files created in debian directory
@@ -322,8 +357,10 @@ debian/control: debian/control.in debian/control.lang.in ooo-build/bin/openoffic
 	for LNUM in $(LANGPACKISOS) ; do \
 	    LNAME=`ooo-build/bin/openoffice-xlate-lang -l $$LNUM | perl -e 'print ucfirst(<STDIN>);'`; \
 	    LCODE=`ooo-build/bin/openoffice-xlate-lang -i $$LNUM | tr A-Z a-z`; \
+	    CCODE=`echo $$LCODE | sed 's/-.*//'`; \
 	    SUGGESTS=; \
 	    sed -e "s|@LNAME@|$$LNAME|g" -e "s|@LCODE@|$$LCODE|g" \
+		-e "s|@CCODE@|$$CCODE|g" \
 	        -e "s|@SUGGESTS@|$$SUGGESTS|g" \
 			-e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 	        >> debian/control < debian/control.lang.in; \
@@ -372,6 +409,16 @@ ooo-build/config.status: ooo-build/configure
             uudecode -o $$orig $$uu ;\
             touch -r $$orig $$uu ;\
           fi ;\
+	done
+
+        # uudecode Ximian desktop icons
+	for i in base calc draw impress math template web writer; do \
+	  if [ ! -s ooo-build/desktop/ooo-$$i.png ]; then \
+	    uudecode -o ooo-build/desktop/ooo-$$i.png \
+		ooo-build/desktop/ooo-$$i.png.uu ;\
+	    touch -r ooo-build/desktop/ooo-$$i.png.uu \
+		ooo-build/desktop/ooo-$$i.png ;\
+	  fi; \
 	done
 
 ifneq ($(GCC_VERSION),)
@@ -662,7 +709,7 @@ endif
 
 	# link to system hsqldb
 	ln -sf /usr/share/java/hsqldb.jar \
-	        $(PKGDIR)-base/usr/share/java/openoffice$(VER)/hsqldb..jar
+	        $(PKGDIR)-base/usr/share/java/openoffice$(VER)/hsqldb.jar
 			
 	rm -rf $(PKGDIR)-officebean
 	mkdir -p -m755 $(PKGDIR)-officebean/$(OODIR)/program
@@ -686,7 +733,7 @@ endif
 	for p in writer calc impress draw math base; do \
 		mkdir -p -m755 $(PKGDIR)-$$p/usr/share/applications ;\
 		sed -e 's,Exec=openoffice.org-1.9 \(.*\) %U,Exec=ooffice$(VER) \1 %U,' \
-		    -e 's,Icon=<progpath>/share/icons/\(ooo_.*\.png\),Icon=\1,' \
+		    -e "s,Icon=openofficeorg-19-$$p,Icon=ooo-$$p," \
 			-e 's,Name=OpenOffice.org 1.9 ,Name=OpenOffice.org2 ,' \
 		   < $$dirname/$$p.desktop \
 		   > $(PKGDIR)-$$p/usr/share/applications/ooo$(VER)-$$p.desktop || exit 1 ;\
@@ -714,6 +761,9 @@ endif
 	  echo 'PYTHONPATH=$$PYTHONHOME $$PYTHONHOME/lib-dynload $$PYTHONHOME/lib-tk $$ORIGIN' \
 	) > debian/python-uno/$(OODIR)/program/pythonloader.unorc
 	chmod u-w debian/python-uno/$(OODIR)/program/pythonloader.unorc
+	chmod 755 debian/python-uno/$(OODIR)/program/mailmerge.py
+	perl -pi -e 's,/bin,/usr/bin,' \
+		 debian/python-uno/$(OODIR)/program/mailmerge.py
 
 	mkdir -p debian/python-uno/usr/share/doc/python-uno
 	for i in doc demo; do \
@@ -1038,6 +1088,10 @@ endif
 	cp debian/javasettings* \
 		$(PKGDIR)-common/$(OODIR)/share/config
 
+	mkdir -p /usr/share/icons/hicolor/48x48/apps
+	cp ooo-build/desktop/*.png \
+		$(PKGDIR)-common/usr/share/icons/hicolor/48x48/apps
+
 	touch $@
 
 
@@ -1056,6 +1110,18 @@ binary-common:
 
 	dh_installdocs
 	dh_installman
+	# fix manpage symlinks
+	for i in writer calc draw impress base math; do \
+		if [ "$$i" = "writer" ]; then \
+			for j in writer html web; do \
+				cd $(CURDIR)/$(PKGDIR)-$$i/usr/share/man/man1 && \
+					ln -sf openoffice$(VER).1.gz oo$${j}$(VER).1.gz; \
+			done; \
+		else \
+			cd $(CURDIR)/$(PKGDIR)-$$i/usr/share/man/man1 && \
+				ln -sf openoffice$(VER).1.gz oo$${i}$(VER).1.gz; \
+		fi; \
+	done
 	dh_installchangelogs
 	if [ -e $(PKGDIR)/usr/share/doc/openoffice.org$(VER) ]; then \
 	 install -m644 ooo-build/ChangeLog \
