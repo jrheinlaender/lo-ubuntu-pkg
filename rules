@@ -45,17 +45,24 @@ TAG=ooo680-m3
 SOURCE_TREE=ooo-build/build/$(TAG)
 STAMP_DIR=debian/stampdir
 
-JAVA_HOME=/usr/lib/jvm/java-gcj
-export JAVA_HOME
-
 # Read in architecture-specific variables of importance.
 #include debian/scripts/vars.$(ARCH)
+
+SARGE_BACKPORT=n
 
 # Which patchset?
 ifeq ($(ARCH),amd64)
   PATCHSET=$(DIST)64
 else
-  PATCHSET=$(DIST)
+  ifeq "$(DIST)" "Debian"
+    ifeq "$(SARGE_BACKPORT)" "y"
+      PATCHSET=$(DIST)Sarge
+    else
+      PATCHSET=$(DIST)
+    endif
+  else
+    PATCHSET=$(DIST)
+  endif
 endif
 
 BUILD_DEPS=
@@ -74,13 +81,14 @@ ifeq "$(BUILD_PYUNO)" "n"
   DEBHELPER_OPTIONS+= -Npython-uno
 endif
 
-PACKAGE_TESTTOOL=y
+PACKAGE_TESTTOOL=n
 PACKAGE_TTF_OPENSYMBOL=y
+
 #ifeq "$(ARCH)" "i386"
 #	BUILD_JARS_NATIVE=y
 #else
 	BUILD_JARS_NATIVE=n
-	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-jars-native
+	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-gcj
 #endif
 
 ifneq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
@@ -155,20 +163,28 @@ else
 	CONFIGURE_FLAGS += --with-binsuffix=$(VER)
 endif
 
-SARGE_BACKPORT=n
 ENABLE_JAVA=y
 ifeq "$(ARCH)" "sparc"
 	ENABLE_JAVA=n
 else
 ifneq "$(SARGE_BACKPORT)" "y"
 	ENABLE_JAVA=y
-else
-	ENABLE_JAVA=n
 endif
 endif
+
 ifeq "$(ENABLE_JAVA)" "y"
-	CONFIGURE_FLAGS += --with-jdk-home=$(JAVA_HOME) --with-java=gij
+ifneq "$(SARGE_BACKPORT)" "y"
+	JAVA_HOME=/usr/lib/jvm/java-gcj
+	CONFIGURE_FLAGS += --with-java=gij
+else
+	JAVA_HOME=/usr/lib/j2se/1.4
+endif
+export JAVA_HOME
+	CONFIGURE_FLAGS += --with-jdk-home=$(JAVA_HOME)
 	JAVA_COMMON_DEPENDS= , openoffice.org$(VER)-java-common
+  ifneq "$(SARGE_BACKPORT)" "y"
+	JAVA_COMMON_JAVA_DEPENDS= libxt-java, libxalan2-java (>= 2.6.0-1), libxerces2-java
+  endif
 else
 	CONFIGURE_FLAGS += --without-java
 	DEBHELPER_OPTIONS += -Nopenoffice.org$(VER)-officebean -Nopenoffice.org$(VER)-java-common
@@ -209,7 +225,11 @@ ifeq "$(DIST)" "Ubuntu"
 else
 	ENABLE_HUNSPELL=y
 endif
-USE_SYSTEM_HUNSPELL=y
+ifeq "$(SARGE_BACKPORT)" "y"
+	USE_SYSTEM_HUNSPELL=n
+else
+	USE_SYSTEM_HUNSPELL=y
+endif
 ifeq "$(ENABLE_HUNSPELL)" "y"
 		CONFIGURE_FLAGS+= --enable-hunspell
 ifeq "$(USE_SYSTEM_HUNSPELL)" "y"
@@ -239,7 +259,11 @@ ifeq "$(USE_SYSTEM_BOOST)" "y"
 endif
 
 
-USE_SYSTEM_PORTAUDIO=y
+ifeq "$(SARGE_BACKPORT)" "y"
+	USE_SYSTEM_PORTAUDIO=n
+else
+	USE_SYSTEM_PORTAUDIO=y
+endif
 ifeq "$(USE_SYSTEM_PORTAUDIO)" "y"
 	BUILD_DEPS += , libportaudio-dev
 	CONFIGURE_FLAGS += --with-system-portaudio
@@ -264,18 +288,18 @@ ifeq "$(USE_EXTERNAL_MYTHES)" "y"
 endif
 endif
 
-ifeq "$(DIST)" "Debian"
-	USE_SYSTEM_ICU=y
-else
-	USE_SYSTEM_ICU=n
-endif
+USE_SYSTEM_ICU=y
 ifeq "$(USE_SYSTEM_ICU)" "y"
 	BUILD_DEPS += , libicu34-dev
 	CONFIGURE_FLAGS += --with-system-icu
 endif
 
 ifeq "$(DIST)" "Debian"
+ifeq "$(SARGE_BACKPORT)" "y"
+	USE_SYSTEM_XMLSEC=n
+else
 	USE_SYSTEM_XMLSEC=y
+endif
 else
 	USE_SYSTEM_XMLSEC=n
 endif
@@ -286,7 +310,11 @@ else
 	SHLIBS_OVERRIDE += -Ldebian/shlibs.override.xmlsec
 endif
 
-BUILD_CAIROCANVAS=y
+ifeq "$(SARGE_BACKPORT)" "y"
+	BUILD_CAIROCANVAS=n
+else
+	BUILD_CAIROCANVAS=y
+endif
 USE_SYSTEM_CAIRO=y
 ifeq "$(BUILD_CAIROCANVAS)" "y"
   ifeq "$(USE_SYSTEM_CAIRO)" "y"
@@ -298,7 +326,11 @@ else
 endif
 
 BUILD_MDBTOOLS=y
-USE_SYSTEM_MDBTOOLS=y
+ifeq "$(SARGE_BACKPORT)" "y"
+	USE_SYSTEM_MDBTOOLS=n
+else
+	USE_SYSTEM_MDBTOOLS=y
+endif
 ifneq "$(BUILD_MDBTOOLS)" "y"
   CONFIGURE_FLAGS+= --disable-access
 else
@@ -332,7 +364,11 @@ else
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
-  USE_SYSTEM_HSQLDB=y
+  ifeq "$(SARGE_BACKPORT)" "y"
+	USE_SYSTEM_HSQLDB=n
+  else
+	USE_SYSTEM_HSQLDB=y
+  endif
   ifeq "$(USE_SYSTEM_HSQLDB)" "y"
 	BUILD_DEPS += , libhsqldb-java (>= 1.8.0.0-2)
 	BASE_HSQLDB_DEPENDS = libhsqldb-java (>= 1.8.0.0-2)
@@ -340,7 +376,11 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
 
   ifeq "$(DIST)" "Debian"
+    ifeq "$(SARGE_BACKPORT)" "y"
+	USE_SYSTEM_BSH=n
+    else
 	USE_SYSTEM_BSH=y
+    endif
   else
 	USE_SYSTEM_BSH=n
   endif
@@ -373,7 +413,11 @@ ifeq "$(ARCH)-linux" "sparc-linux"
 	CC_PREFIX=sparc-linux-gnu-
 endif
 
-GCC_VERSION =
+ifeq "$(SARGE_BACKPORT)" "y"
+	GCC_VERSION = 3.3
+else
+	GCC_VERSION =
+endif
 ifeq ($(GCC_VERSION),)
 	BUILD_PATH = /usr/lib/jvm/java-gcj/bin:$$PATH
 else
@@ -490,6 +534,10 @@ clean:
 
 ifeq "$(ENABLE_MONO)" "y"
 	rm -rf $(MONO_SHARED_DIR)/.wapi
+endif
+
+ifeq "$(HELPISOS)" ""
+	rm -rf images*
 endif
 
 	$(MAKE) -f debian/rules control
@@ -956,6 +1004,8 @@ endif
 	# we don't need the testtool in "normal" builds...
 ifneq "$(PACKAGE_TESTTOOL)" "y"
 	rm $(PKGDIR)-core/$(OODIR)/program/testtool.bin
+	rm $(PKGDIR)-core/$(OODIR)/program/libcommuni*
+	rm $(PKGDIR)-core/$(OODIR)/program/libsimplecm*
 endif
 
 	# Nasty menu icons hack, urgently needs better version
@@ -1095,26 +1145,26 @@ endif
 
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(BUILD_JARS_NATIVE)" "y"
-	rm -rf $(PKGDIR)-jars-native
-	mkdir -p $(PKGDIR)-jars-native/$(OODIR)/program/classes-native
+	rm -rf $(PKGDIR)-gcj
+	mkdir -p $(PKGDIR)-gcj/$(OODIR)/program/classes-native
 	cp $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/*.jar.so \
-		$(PKGDIR)-jars-native/$(OODIR)/program/classes-native
+		$(PKGDIR)-gcj/$(OODIR)/program/classes-native
 	# remove not needed ones
-	rm $(PKGDIR)-jars-native/$(OODIR)/program/classes-native/FCFGMerge.jar.so
-	rm $(PKGDIR)-jars-native/$(OODIR)/program/classes-native/unoloader.jar.so
-	rm $(PKGDIR)-jars-native/$(OODIR)/program/classes-native/schema.jar.so
+	rm $(PKGDIR)-gcj/$(OODIR)/program/classes-native/FCFGMerge.jar.so
+	rm $(PKGDIR)-gcj/$(OODIR)/program/classes-native/unoloader.jar.so
+	rm $(PKGDIR)-gcj/$(OODIR)/program/classes-native/schema.jar.so
 	# NetBeans crap
-	rm -f $(PKGDIR)-jars-native/$(OODIR)/program/classes-native/jhall.jar.so
-	rm -f $(PKGDIR)-jars-native/$(OODIR)/program/classes-native/nbantext.jar.so
-	rm -f $(PKGDIR)-jars-native/$(OODIR)/program/classes-native/openide.jar.so
-	rm -f $(PKGDIR)-jars-native/$(OODIR)/program/classes-native/jarpackager.jar.so
+	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/jhall.jar.so
+	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/nbantext.jar.so
+	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/openide.jar.so
+	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/jarpackager.jar.so
 	# not needed yet
-	rm $(PKGDIR)-jars-native/$(OODIR)/program/classes-native/javacanvas.uno.jar.so
+	rm $(PKGDIR)-gcj/$(OODIR)/program/classes-native/javacanvas.uno.jar.so
 	# create gcj classmap
-	mkdir -p $(PKGDIR)-jars-native/usr/share/gcj-4.0/classmap.d
+	mkdir -p $(PKGDIR)-gcj/usr/share/gcj-4.0/classmap.d
 	cd debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/classes && \
 	for i in `find . -type f -name "*.jar" | sed -e s,./,,g`; do \
-	  gcj-dbtool-4.0 -f $(CURDIR)/$(PKGDIR)-jars-native/usr/share/gcj-4.0/classmap.d/openoffice.org$(VER)-jars-native.db $$i /$(OODIR)/program/classes-native/$$i.so; \
+	  gcj-dbtool-4.0 -f $(CURDIR)/$(PKGDIR)-gcj/usr/share/gcj-4.0/classmap.d/openoffice.org$(VER)-gcj.db $$i /$(OODIR)/program/classes-native/$$i.so; \
 	done
   endif
 endif
@@ -1198,8 +1248,6 @@ endif
 	install -m644 $(SOURCE_TREE)/sysui/desktop/mimetypes/openoffice.applications \
 		$(PKGDIR)-common/usr/share/application-registry
 	mkdir -p $(PKGDIR)-common/usr/share/mime/packages && \
-	install -m644 $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare/openoffice.org.xml \
-		$(PKGDIR)-common/usr/share/mime/packages
 	mkdir -p $(PKGDIR)-common/usr/share/mime-info && \
 	install -m644 $(SOURCE_TREE)/sysui/desktop/mimetypes/openoffice.mime \
 		$(PKGDIR)-common/usr/share/mime-info && \
@@ -1207,6 +1255,8 @@ endif
 	for i in $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/debian/*.keys; do \
 		cat $$i >> $(PKGDIR)-common/usr/share/mime-info/openoffice.keys; \
 	done
+#	install -m644 $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare/openoffice.org.xml \
+#		$(PKGDIR)-common/usr/share/mime/packages
 
 	# remove .desktop files already in KDE 3.2
 	#cd $(PKGDIR)-mimelnk/usr/share/mimelnk/application && \
@@ -1381,6 +1431,7 @@ endif
 	  for x in *.png; do convert $$x `basename $$x .png`.xpm; done
 
 ifeq "$(ENABLE_JAVA)" "y"
+ifneq "$(SARGE_BACKPORT)" "y"
 	# we use system xt, xalan and xerces - symlink it...
 	ln -sf /usr/share/java/xt.jar \
 		$(PKGDIR)-java-common/usr/share/java/openoffice$(VER)/xt.jar
@@ -1390,6 +1441,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 		$(PKGDIR)-java-common/usr/share/java/openoffice$(VER)/xml-apis.jar
 	ln -sf /usr/share/java/xercesImpl.jar \
 		$(PKGDIR)-java-common/usr/share/java/openoffice$(VER)/xercesImpl.jar
+endif
 endif
 
 	# remove extra license files
@@ -1438,6 +1490,19 @@ endif
 	cat $(PKGDIR)-common/etc/openoffice$(VER)/sofficerc \
 		| perl -p -e 's/(.*)=(.*)/$$1=\$${\$$FHS_CONFIG_FILE:Bootstrap:$$1}/' \
 		>> $(PKGDIR)-common/$(OODIR)/program/sofficerc
+
+ifeq "$(HELPISOS)" ""
+	# the helpimgs are not included when we don't build with help here.
+	# Add them now because openoffice.org-help-* packaged in contrib or so
+	# will need them
+	for z in images.zip images_industrial.zip images_crystal.zip images_hicontrast.zip; do \
+		rm -rf $$z; mkdir $$z; cd $$z; \
+		unzip $(CURDIR)/$(PKGDIR)-common/$(OODIR)/share/config/$$z && \
+		cp -r $(CURDIR)/$(SOURCE_TREE)/default_images/res/helpimg res && \
+		zip -r $(CURDIR)/$(PKGDIR)-common/$(OODIR)/share/config/$$z *; \
+		cd ..; \
+	done
+endif
 
 	touch $@
 
@@ -1513,6 +1578,7 @@ endif
 		-V'base-hsqldb-depends=$(BASE_HSQLDB_DEPENDS)' \
 		-V'common-bsh-depends=$(COMMON_BSH_DEPENDS)' \
 		-V'java-common-depends=$(JAVA_COMMON_DEPENDS)' \
+		-V'java-common-java-depends=$(JAVA_COMMON_JAVA_DEPENDS)' \
 		-V'Binary-Version=$(BINARY_VERSION)' \
 		-v$(BINARY_VERSION)
 	dh_md5sums

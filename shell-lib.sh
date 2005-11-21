@@ -63,10 +63,5 @@ trap "message;\
 
 VER=
 
-# call hook in openoffice.org-debian-files
-if [ -x /usr/share/openoffice.org${VER}-debian-files/install-hook ]; then
-  /usr/share/openoffice.org${VER}-debian-files/install-hook $THIS_SCRIPT $THIS_PACKAGE "$@"
-fi
-
 #DEBHELPER#
 
