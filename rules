@@ -38,6 +38,8 @@ DUMMY:=$(shell debian/scripts/setperms)
 export DH_OPTIONS
 export DH_ALWAYS_EXCLUDE=CVS
 #export DH_VERBOSE=1
+# work around tcsh bugs.debian.org/339034: tcsh: Unknown colorls variable `su'
+unexport LS_COLORS
 
 #TAG=src680-m$(MILESTONE)
 #MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)"| cut -d. -f3)
@@ -315,6 +317,8 @@ endif
 ifeq "$(USE_SYSTEM_ICU)" "y"
 	BUILD_DEPS += , libicu34-dev
 	CONFIGURE_FLAGS += --with-system-icu
+	# ICU utils are in /usr/sbin (!)
+	PATH+=:/usr/sbin
 endif
 
 ifeq "$(DIST)" "Debian"
@@ -527,6 +531,8 @@ clean:
 
 	# stlport home
 	rm -rf $(CURDIR)/stlport4
+	# convenience link
+	rm -f build
 
 	# uuencode binary files
 	cd ooo-build ;\
@@ -713,6 +719,9 @@ ifneq "$(LANGPACKISOS)" "en-US"
 		ooo-build/src/`basename $$i .gz`; done
 endif
 endif
+
+	# Make convenience link
+	if [ ! -f build ]; then ln -s $(SOURCE_TREE) build ; fi
 
 	# Make sure we have /proc mounted - otherwise idlc will fail later.
 	test -r /proc/version
@@ -961,6 +970,7 @@ endif
 		done
 
 ifeq "$(BUILD_BINFILTERS)" "y"
+	rm -rf $(PKGDIR)-filter-so52/$(OODIR)/program
 	mkdir -p -m755 $(PKGDIR)-filter-so52/$(OODIR)/program
 	mv $(PKGDIR)-core/$(OODIR)/program/libbf_* \
 		$(PKGDIR)-filter-so52/$(OODIR)/program
@@ -1031,13 +1041,13 @@ endif
 
 	# we don't need the testtool in "normal" builds...
 ifneq "$(PACKAGE_TESTTOOL)" "y"
-	rm $(PKGDIR)-core/$(OODIR)/program/testtool.bin
-	rm $(PKGDIR)-core/$(OODIR)/program/libcommuni*
-	rm $(PKGDIR)-core/$(OODIR)/program/libsimplecm*
+	rm -f $(PKGDIR)-core/$(OODIR)/program/testtool.bin
+	rm -f $(PKGDIR)-core/$(OODIR)/program/libcommuni*
+	rm -f $(PKGDIR)-core/$(OODIR)/program/libsimplecm*
 endif
 
 	# Nasty menu icons hack, urgently needs better version
-	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare; pwd`" ;\
+	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare >/dev/null; pwd`" ;\
 	for p in writer calc impress draw math base; do \
 		mkdir -p -m755 $(PKGDIR)-$$p/usr/share/applications ;\
 		sed -e 's,Exec=openoffice.org-2.0 \(.*\) %U,Exec=ooffice$(VER) \1 %U,' \
