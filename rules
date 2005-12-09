@@ -43,7 +43,7 @@ unexport LS_COLORS
 
 #TAG=src680-m$(MILESTONE)
 #MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)"| cut -d. -f3)
-TAG=ooo680-m3
+TAG=src680-m143
 SOURCE_TREE=ooo-build/build/$(TAG)
 STAMP_DIR=debian/stampdir
 
@@ -249,6 +249,20 @@ ifeq "$(SARGE_BACKPORT)" "y"
        BUILD_DEPS += , libaltlinuxhyph-dev
 else
        BUILD_DEPS += , libaltlinuxhyph-dev (>= 0.1.1-7)
+endif
+
+ifeq "$(SARGE_BACKPORT)" "y"
+       SYSTEM_AGG=n
+else
+  ifeq "$(DIST)" "Debian"
+       SYSTEM_AGG=y
+  else
+       SYSTEM_AGG=n
+  endif
+endif
+ifeq "$(SYSTEM_AGG)" "y"
+       BUILD_DEPS += , libagg-dev (>= 2.3-2)
+       CONFIGURE_FLAGS += --with-system-agg
 endif
 
 USE_STLPORT=y
@@ -538,7 +552,7 @@ clean:
 	cd ooo-build ;\
 	  for f in fonts/opens___.ttf src/ooo_*_images*.bz2 src/extras*bz2 \
 	    src/evolocal.odb src/*.png src/*.bmp src/*.xcf test/macro/*.ods \
-	    src/*.gz src/GSI*bz2; do \
+	    doc/*.ods src/*.gz src/GSI*bz2; do \
 	  if [ -s $$f ]; then \
 	    uuencode $$f $$f > $$f.uu && \
             touch -r $$f.uu $$f ;\
@@ -746,7 +760,6 @@ endif
 	# DPKG is only set on with-EPM build what we don't do and the menu stuff
 	# is only built wenn DPKG is set..
 	cd $(SOURCE_TREE)/sysui; . $(CURDIR)/$(SOURCE_TREE)/*.sh; PATH=$(BUILD_PATH) DPKG="dpkg" ../solenv/bin/build.pl && ../solenv/bin/deliver.pl
-	cd $(SOURCE_TREE)/sdk_oo; . $(CURDIR)/$(SOURCE_TREE)/*.sh; PATH=$(BUILD_PATH) ../solenv/bin/build.pl && ../solenv/bin/deliver.pl
 ifneq "$(ENABLE_JAVA)" "y"
 	# we can build the javadoc stuff nevertheless and we need to do that
 	# because otherwise we'd have differences in a _all package (-dev-doc)
@@ -791,6 +804,14 @@ ifeq "$(BUILD_BINFILTERS)" "y"
 		mv openoffice.org-math/$(OODIR)/program/resource/bf_sm*en-US.res \
 			openoffice.org-common/$(OODIR)/program/resource
 endif
+	# ... same with base
+	cd debian/tmp/pkg; \
+	mv openoffice.org-base/$(OODIR)/program/resource/abp*en-US.res \
+		openoffice.org-common/$(OODIR)/program/resource && \
+	mv openoffice.org-base/$(OODIR)/program/resource/dbp*en-US.res \
+		openoffice.org-common/$(OODIR)/program/resource && \
+	mv openoffice.org-base/$(OODIR)/program/resource/dbu*en-US.res \
+		openoffice.org-common/$(OODIR)/program/resource
 
 ifeq "$(ENABLE_JAVA)" "y"
 	# move officebean.jar into -officebean (They will be moved out of -core
@@ -943,7 +964,7 @@ endif
 
 ifeq "$(BUILD_KDE)" "y"
 	mkdir -p -m755 $(PKGDIR)-kde/$(OODIR)/program
-	for f in kdefilepicker libfps_kde.so libvclplug_kde[0-9]*.so libkab*so; do \
+	for f in kdefilepicker libfps_kde.so libvclplug_kde[0-9]*.so libkab*so libeggtray* libqstart_gtk*; do \
 	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-kde/$(OODIR)/program || exit 1 ;\
 	done
 endif
@@ -1008,7 +1029,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 		   $(PKGDIR)-base/$(OODIR)/program; \
 	done
 endif
-	for i in flat abp; do \
+	for i in flat; do \
 		mv $(PKGDIR)-core/$(OODIR)/program/lib$$i*so \
 			$(PKGDIR)-base/$(OODIR)/program; \
 	done
@@ -1121,8 +1142,10 @@ endif
 ifeq "$(ENABLE_JAVA)" "y"
 	mkdir -p $(PKGDIR)-dev/usr/share/java/openoffice$(VER)
 endif
-	tar xfvz $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/OpenOffice.org2.0_SDK.tar.gz --exclude OpenOffice.org2.0_SDK/docs --exclude OpenOffice.org2.0_SDK/examples --exclude OpenOffice.org2.0_SDK/LICENSE --exclude OpenOffice.org2.0_SDK/license.html --exclude OpenOffice.org2.0_SDK/classes/win \
-		-C $(PKGDIR)-dev/$(OODIR) && mv $(PKGDIR)-dev/$(OODIR)/OpenOffice.org2.0_SDK $(PKGDIR)-dev/$(OODIR)/sdk
+	mkdir -p $(PKGDIR)-dev/$(OODIR)/sdk
+	unzip $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/odkcommon.zip -x docs/* -x classes/win/* -d $(PKGDIR)-dev/$(OODIR)/sdk
+	unzip $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/odkidl.zip -d $(PKGDIR)-dev/$(OODIR)/sdk
+	unzip $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/sdk_oo.zip settings/* -d $(PKGDIR)-dev/$(OODIR)/sdk
 ifeq "$(ENABLE_JAVA)" "y"
 	mv $(PKGDIR)-dev/$(OODIR)/sdk/classes/com \
 		$(PKGDIR)-dev/usr/share/java/openoffice$(VER) && \
@@ -1370,8 +1393,11 @@ endif
 	# install the SDK docs
 	rm -rf $(PKGDIR)-dev-doc
 	mkdir -p $(PKGDIR)-dev-doc/$(OODIR)
-	tar xfvz $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/OpenOffice.org2.0_SDK.tar.gz -C $(PKGDIR)-dev-doc/$(OODIR) OpenOffice.org2.0_SDK/docs OpenOffice.org2.0_SDK/examples \
-		&& mv $(PKGDIR)-dev-doc/$(OODIR)/OpenOffice.org2.0_SDK $(PKGDIR)-dev-doc/$(OODIR)/sdk
+	mkdir -p $(PKGDIR)-dev-doc/$(OODIR)/sdk
+	unzip $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/odkcommon.zip docs/* -d $(PKGDIR)-dev-doc/$(OODIR)/sdk
+	unzip $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/odk_oo.zip -d $(PKGDIR)-dev-doc/$(OODIR)/sdk
+	unzip $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/odkexamples.zip -d $(PKGDIR)-dev-doc/$(OODIR)/sdk
+	unzip -o $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/sdk_oo.zip -x settings/* -d $(PKGDIR)-dev-doc/$(OODIR)/sdk
 	chmod 644 $(PKGDIR)-dev-doc/$(OODIR)/sdk/docs/images/bg_table2.gif
 	chmod 644 $(PKGDIR)-dev-doc/$(OODIR)/sdk/docs/images/bg_table3.gif
 
