@@ -795,11 +795,11 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/build
 	rm -rf $(CURDIR)/debian/tmp
 	cd ooo-build ; DESTDIR=$(CURDIR)/debian/tmp $(MAKE) install
 ifneq "$(HELPISOS)" ""
-	# install *english* help; we can't do that later since this is in
+	# install help; we can't do that later since this is in
 	# arch-dep and arch-indep stuff..
 	cd debian/tmp/pkg; \
 		mkdir -p openoffice.org-help-en-us/$(OODIR)/help/en; \
-		for i in common calc math draw writer impress; do \
+		for i in common calc math draw writer impress base; do \
 			cp -r ./openoffice.org-$$i/$(OODIR)/help/en/* \
 			 ./openoffice.org-help-en-us/$(OODIR)/help/en && \
 			rm -rf ./openoffice.org-$$i/$(OODIR)/help/en; \
@@ -918,16 +918,9 @@ ifneq "$(HELPISOS)" ""
 	# move the help out of the langpacks into the help packages/copy
 	# english help...
 	for iso in $(HELPISOS); do \
-	  if [ "$$iso" = "en-US" ]; then \
-	    rm -rf $(PKGDIR)-help-en-us $(PKGDIR)-help-en-us.*.debhelper; \
-	    cp -r --preserve=mode debian/tmp/pkg/openoffice.org-help-en-us \
-		$(PKGDIR)-help-en-us || exit 1; continue; \
-	  fi ; \
-	  pkgiso=`echo $$iso | tr \[:upper:\] \[:lower:\]`; \
-	  rm -rf $(PKGDIR)-help-$$pkgiso; \
-	  mkdir -p $(PKGDIR)-help-$$pkgiso/$(OODIR); \
-	  mv $(PKGDIR)-l10n-$$pkgiso/$(OODIR)/help \
-		$(PKGDIR)-help-$$pkgiso/$(OODIR); \
+	  rm -rf $(PKGDIR)-help-en-us $(PKGDIR)-help-en-us.*.debhelper; \
+	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-help-en-us \
+	    $(PKGDIR)-help-en-us || exit 1; continue; \
 	done
 endif
 	
@@ -1305,6 +1298,18 @@ $(STAMP_DIR)/install-indep: ooo-build/fonts/opens___.ttf
 ifneq "$(HELPISOS)" ""
 	rm -rf $(PKGDIR)-help-en-us $(PKGDIR)-help-en-us.*.debhelper; \
 	cp -r --preserve=mode debian/tmp/pkg/openoffice.org-help-en-us $(PKGDIR)-help-en-us || exit 1
+ifneq "$(HELPISOS)" "en-US"
+	for iso in `echo $(HELPISOS) | grep -v en-US`; do \
+	  pkgiso=`echo $$iso | tr \[:upper:\] \[:lower:\]`; \
+	  diriso=`echo $$pkgiso | cut -d"-" -f1`; \
+	  if [ "$$pkgiso" = "pt-br" ]; then diriso=pt-BR; fi; \
+	  if [ "$$pkgiso" = "th-cn" ]; then diriso=zh-CN; fi; \
+	  if [ "$$pkgiso" = "zh-tw" ]; then diriso=zh-TW; fi; \
+	  mkdir -p $(PKGDIR)-help-$$pkgiso/$(OODIR)/help; \
+	  mv $(CURDIR)/debian/tmp/$(OODIR)/help/$$diriso \
+		$(PKGDIR)-help-$$pkgiso/$(OODIR)/help; \
+	done
+endif
 endif
 
 	# Remove files in langpack
