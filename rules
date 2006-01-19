@@ -18,6 +18,7 @@ default: environment
 PKGDIR:=debian/openoffice.org$(VER)
 OODIR:=usr/lib/openoffice$(VER)
 
+PACKAGES := $(shell dh_listpackages)
 SOURCE_VERSION:=$(shell head -1 debian/changelog | cut -d\( -f2 | cut -d\) -f1)
 UPSTREAM_VERSION:=$(shell echo "$(SOURCE_VERSION)"| cut -d- -f1)
 BINARY_VERSION=$(SOURCE_VERSION)
@@ -1629,7 +1630,9 @@ binary-common:
 	dh_installdocs
 	dh_installman
 	# fix manpage symlinks
+	pkgs=`dh_listpackages`; \
 	for i in writer calc draw impress base math; do \
+		echo $$pkgs | grep -q openoffice.org$(VER)-$$i || continue; \
 		if [ "$$i" = "writer" ]; then \
 			for j in writer html web; do \
 				cd $(CURDIR)/$(PKGDIR)-$$i/usr/share/man/man1 && \
@@ -1641,12 +1644,14 @@ binary-common:
 		fi; \
 	done
 	dh_installchangelogs
+ifneq "" "$(findstring openoffice.org$(VER)-core, $(PACKAGES))"
 	if [ -e $(PKGDIR)/usr/share/doc/openoffice.org$(VER) ]; then \
 	 install -m644 ooo-build/ChangeLog \
 	   $(PKGDIR)-core/usr/share/doc/openoffice.org$(VER)-core/changelog.ooo-build \
 	 && gzip -f9 \
 	   $(PKGDIR)-core/usr/share/doc/openoffice.org$(VER)-core/changelog.ooo-build; \
 	fi
+endif
 	dh_installdebconf
 	dh_installmime
 	dh_installmenu
