@@ -458,6 +458,11 @@ ifneq "$(SMALL_SYMBOLS)" ""
   CONFIGURE_FLAGS += --enable-symbols=SMALL
 endif
 
+# Restart build from a particular project?
+# DEB_BUILD_OPTIONS=from=projectname
+BUILD_FROM=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^\(.*,\)\?from=\([a-zA-Z0-9]\+\).*$$/\2/p')
+export BUILD_FROM
+
 # Build python depends from current python version
 PYMAJOR:=$(shell python -c "import sys; print sys.version_info[0]")
 PYMINOR:=$(shell python -c "import sys; print sys.version_info[1]")
@@ -530,7 +535,7 @@ clean:
 	dh_testdir
 
 	if [ -r ooo-build/Makefile ]; then \
-	  $(MAKE) -C ooo-build distclean ;\
+	  $(MAKE) -C ooo-build distclean || true ;\
 	fi
 
 	# we do not need them and they make problem with dpkg-source....
@@ -1762,16 +1767,16 @@ environment:
 get-ooo-build:
 	# press enter at the password prompt
 	cvs -d:pserver:anonymous@anoncvs3.gnome.org:/cvs/gnome login
-	cvs -z3 -d:pserver:anonymous@anoncvs3.gnome.org:/cvs/gnome co -r ooo-build-2-0 ooo-build
+	cvs -z3 -d:pserver:anonymous@anoncvs3.gnome.org:/cvs/gnome co -r ooo-build-2-0-1 ooo-build
 	cd ooo-build && ./autogen.sh $(CONFIGURE_FLAGS)
 
 # Download the latest ooo-build sources
 download: ooo-build/config.status
 	ooo-build/download	
 
-# Update debian and ooo-build directories from cvs
+# Update debian and ooo-build directories from version control
 cvsupdate:
-	cd debian && cvs -z3 -q update -dP
+	cd debian && baz update
 	cd ooo-build && cvs -z3 -q update -dP
 
 # Take a tarfile of all the non-stripped binaries in solver, for generating backtraces
