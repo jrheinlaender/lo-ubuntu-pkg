@@ -1,0 +1,55 @@
+#! /bin/bash
+
+basedir=debian/l10n
+
+_convert2po()
+{
+    local lc=${1#*_*}
+    lc=${lc%*.sdf}
+
+    rm -rf $basedir/$lc
+    mkdir -p $basedir/$lc
+    $basedir/../splitgsi $basedir/export/GSI_$lc.sdf $basedir/$lc
+    cd $basedir/$lc
+    for f in *.sdf; do
+	d=${f%*.sdf}
+	mkdir -p ../$d $d
+	if [ "$lc" = en-US ]; then
+	    oo2rpo -P --multifile=onefile $f -o $d
+	    mv $d/$d.pot ../$d/$d.pot
+	else
+	    oo2rpo --multifile=onefile -l en-US,$lc $f -o $d
+	    mv $d/$d.po ../$d/$lc.po
+	fi
+	rmdir $d
+    done
+    cd - >/dev/null
+    rm -rf $basedir/$lc
+}
+
+_convert2oo()
+{
+    local lc=$1
+    [ "$lc" = en-US ] && return
+    rm -rf $basedir/$lc
+    mkdir -p $basedir/$lc
+    $basedir/../splitgsi $basedir/export/GSI_$lc.sdf $basedir/$lc
+    cd $basedir/$lc
+    for f in *.sdf; do
+	d=${f%*.sdf}
+	echo $d
+	rm -rf $d
+	mkdir $d
+	cp -l ../$d/$lc.po $d/$d.po
+	rpo2oo --multifile=onefile -l $lc -i $d/ -o ${f}2 -t $f
+	rm -rf $d
+    done
+    cd - >/dev/null
+}
+
+convert=`basename $0`
+
+for lc in "$@"; do
+    echo $convert $lc
+    _$convert $lc
+done
