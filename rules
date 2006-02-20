@@ -43,7 +43,7 @@ unexport LS_COLORS
 
 #TAG=src680-m$(MILESTONE)
 #MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)"| cut -d. -f3)
-TAG=ooa680-m1
+TAG=oob680-m1
 SOURCE_TREE=ooo-build/build/$(TAG)
 STAMP_DIR=debian/stampdir
 
@@ -132,7 +132,7 @@ endif
 ifneq "$(BUILD_ONLY_EN_US)" "y"
   ifeq (lang=,$(findstring lang=,$(DEB_BUILD_OPTIONS)))
     ISOS="$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*lang=\([^,]*\),.*/\1/p')"
-    #HELPISOS="$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*lang=\([^,]*\),.*/\1/p')"
+    HELPISOS="$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*lang=\([^,]*\),.*/\1/p')"
     LANGPACKISOS=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*lang=\([^,]*\),.*/\1/p')
   else
     # Note that the first one here *has to be* en-US. the first one gets
@@ -143,13 +143,13 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
     #ISOS="$(shell ooo-build/bin/openoffice-xlate-lang -i all')"
     ISOS:="en-US af be-BY bg bn ca cs cy da de el en-GB en-ZA es et fi fr ga gu-IN he hi-IN hr hu nb nl nn it ja km ko lt pa-IN pl pt-BR ru rw sk sl sr-CS st sv th tn tr ts vi xh zh-CN zh-TW zu"
     #HELPISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all') 
-    #HELPISOS:=en-US cs de es et fr it ja ko pt-BR sv zh-CN zh-TW
+    HELPISOS:=en-US cs de es et fr it ja ko pt-BR sv zh-CN zh-TW
     #LANGPACKISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
     LANGPACKISOS:=en-US af be-BY bg bn ca cs cy da de el en-GB en-ZA es et fi fr ga gu-IN he hi-IN hr hu nb nl nn it ja km ko lt pa-IN pl pt-BR ru rw sk sl sr-CS st sv th tn tr ts vi xh zh-CN zh-TW zu
   endif
 else
   ISOS="en-US"
-  #HELPISOS="en-US"
+  HELPISOS="en-US"
   LANGPACKISOS=en-US
 endif
 
@@ -164,7 +164,8 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
 		 --mandir=/usr/share/man \
 		 --with-lang=$(ISOS) \
 		 --with-build-version="openoffice.org$(VER)-core $(BINARY_VERSION), `date`" \
-		--disable-strip
+		--disable-strip \
+		--disable-quickstart
 
 ifeq "$(VER)" ""
 	CONFIGURE_FLAGS += --with-binsuffix=no
@@ -185,21 +186,48 @@ ifeq "$(ENABLE_JAVA)" "y"
 ifneq "$(SARGE_BACKPORT)" "y"
 	JAVA_HOME=/usr/lib/jvm/java-gcj
 	CONFIGURE_FLAGS += --with-java=gij
-	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.28-8), libxt-java (>= 0.20050823-1), libxalan2-java (>= 2.6.0-1) [!sparc], libxerces2-java [!sparc], ant (>= 1.6.5) [!sparc]
+	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.28-8), ant (>= 1.6.5) [!sparc]
+	SYSTEM_XT=y
+	SYSTEM_XALAN=y
+	SYSTEM_XERCES=y
+	SYSTEM_XML_APIS=y
 else
 ifeq "$(ARCH)" "i386"
 	JAVA_HOME=/usr/lib/j2se/1.4
 else
 	JAVA_HOME=/usr/lib/j2sdk1.4-ibm
 endif
-	BUILD_DEPS += , j2sdk1.4 | j2sdk1.4-ibm, libxt-java, ant, libjaxp1.2-java [!sparc]
+	BUILD_DEPS += , j2sdk1.4 | j2sdk1.4-ibm, ant [!sparc], libjaxp1.2-java [!sparc]
+	CONFIGURE_FLAGS += --with-system-xml-apis
+	SYSTEM_XT=n
+	SYSTEM_XALAN=y
+	SYSTEM_XERCES=y
+	SYSTEM_XML_APIS=y
 endif
 export JAVA_HOME
 	CONFIGURE_FLAGS += --with-jdk-home=$(JAVA_HOME)
 	JAVA_COMMON_DEPENDS= , openoffice.org$(VER)-java-common
-	JAVA_COMMON_JAVA_DEPENDS= libxt-java
+  ifeq "$(SYSTEM_XT)" "y"
+	CONFIGURE_FLAGS += --with-system-xt	
+	JAVA_COMMON_JAVA_DEPENDS+= , libxt-java (>= 0.20050823)
+	BUILD_DEPS += , libxt-java (>= 0.20050823) [!sparc]
+  endif
+  ifeq "$(SYSTEM_XERCES)" "y"
+	CONFIGURE_FLAGS += --with-system-xerces
+	BUILD_DEPS += , libxerces2-java [!sparc]
+	JAVA_COMMON_JAVA_DEPENDS+= , liberces2-java
+  endif
+  ifeq "$(SYSTEM_XALAN)" "y"
+	CONFIGURE_FLAGS += --with-system-xalan
+	BUILD_DEPS += , libxalan2-java (>= 2.6.0-1) [!sparc]
+	JAVA_COMMON_JAVA_DEPENDS+= , libxalan2-java (>= 2.6.0-1)
+  endif
+  ifeq "$(SYSTEM_XML_APIS)" "y"
+	CONFIGURE_FLAGS += --with-system-xml-apis
+	BUILD_DEPS += , libjaxp1.2-java
+	JAVA_COMMON_JAVA_DEPENDS+= , libjaxp1.2-java
+  endif
   ifneq "$(SARGE_BACKPORT)" "y"
-	JAVA_COMMON_JAVA_DEPENDS+= , libxalan2-java (>= 2.6.0-1), libxerces2-java
 	BUILD_DEPS += , libdb4.2-java (>= 4.2.52-21) [!sparc]
   else
 	BUILD_DEPS += , libdb4.2-java [!sparc]
@@ -232,30 +260,19 @@ else
        CONFIGURE_FLAGS+= --disable-mono
 endif
 
-ifeq "$(DIST)" "Ubuntu"
-	ENABLE_HUNSPELL=n
-else
-	ENABLE_HUNSPELL=y
-ifeq "$(SARGE_BACKPORT)" "y"
-	USE_SYSTEM_HUNSPELL=n
-else
-	USE_SYSTEM_HUNSPELL=y
-endif
-endif
-ifeq "$(ENABLE_HUNSPELL)" "y"
-		CONFIGURE_FLAGS+= --enable-hunspell
 ifeq "$(USE_SYSTEM_HUNSPELL)" "y"
 		BUILD_DEPS += , libhunspell-dev (>= 1.0.8-3)
 		CONFIGURE_FLAGS+= --with-system-hunspell
 endif
-else
-		DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-hunspell
-endif
 
 ifeq "$(SARGE_BACKPORT)" "y"
-       BUILD_DEPS += , libaltlinuxhyph-dev
+       SYSTEM_ALTLINUXHYPH=n
 else
-       BUILD_DEPS += , libaltlinuxhyph-dev (>= 0.1.1-7)
+       SYSTEM_ALTLINUXHYPH=y
+endif
+ifeq "$(SYSTEM_ALTLINUXHYPH)" "y"
+	BUILD_DEPS += , libaltlinuxhyph-dev (>= 0.1.1-8)
+	CONFIGURE_FLAGS += --with-system-altlinuxhyph
 endif
 
 ifeq "$(SARGE_BACKPORT)" "y"
@@ -308,15 +325,12 @@ endif
 
 USE_EXTERNAL_CXXLIBS=y
 ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
-       BUILD_DEPS += , libmyspell-dev (>= 3.1-12)
   ifeq "$(SARGE_BACKPORT)" "y"
        BUILD_DEPS += , libwpd8-dev
   else
        BUILD_DEPS += , libwpd8-dev (>= 0.8.3-3)
   endif
-       CONFIGURE_FLAGS+= \
-		--with-system-myspell \
-                --with-system-libwpd
+       CONFIGURE_FLAGS+=  --with-system-libwpd
 USE_SYSTEM_SABLOT=n
 ifeq "$(USE_SYSTEM_SABLOT)" "y"
 	BUILD_DEPS += , libsablot0-dev (>= 1.0.2-4)
@@ -549,8 +563,13 @@ clean:
 	rm -f ooo-build/www/*.png \
 		ooo-build/www/images/*.png ooo-build/templates/*.s* \
 		ooo-build/www/l10n/*.gif \
-		ooo-build/src/*.png ooo-build/src/*.bmp ooo-build/src/*.xcf \
-		ooo-build/src/*.ico
+		ooo-build/src/open*.png ooo-build/src/*.bmp ooo-build/src/*.xcf \
+		ooo-build/src/*.ico \
+		ooo-build/scratch/scsolver/docs/class_diagram.odg \
+		ooo-build/scratch/scsolver/workben/test_run.ods \
+		ooo-build/src/Draft.jpg \
+		ooo-build/src/easter/*.png \
+		ooo-build/templates/*.o*
 
 	if [ -d ooo-build/test ]; then \
 		find ooo-build/test ooo-build/doc -type f \
@@ -578,7 +597,7 @@ clean:
 	# uuencode binary files
 	cd ooo-build ;\
 	  for f in fonts/opens___.ttf src/ooo_*_images*.bz2 src/extras*bz2 \
-	    src/evolocal.odb src/*.gz src/GSI*bz2; do \
+	    src/evolocal.odb src/*.gz src/GSI*bz2 src/xt*zip ; do \
 	  if [ -s $$f ]; then \
 	    uuencode $$f $$f > $$f.uu && \
             touch -r $$f.uu $$f ;\
@@ -794,8 +813,8 @@ ifeq "$(BUILD_KDE)" "n"
 endif
 	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 $(MAKE)
 	# DPKG is only set on with-EPM build what we don't do and the menu stuff
-	# is only built wenn DPKG is set..
-	cd $(SOURCE_TREE)/sysui; . $(CURDIR)/$(SOURCE_TREE)/*.sh; PATH=$(BUILD_PATH) DPKG="dpkg" ../solenv/bin/build.pl && ../solenv/bin/deliver.pl
+	# is only built wenn DPKG is set.. Same with PKGFORMAT.
+	cd $(SOURCE_TREE)/sysui; . $(CURDIR)/$(SOURCE_TREE)/*.sh; PATH=$(BUILD_PATH) DPKG="dpkg" PKGFORMAT="deb" ../solenv/bin/build.pl && ../solenv/bin/deliver.pl
 ifneq "$(ENABLE_JAVA)" "y"
 	# we can build the javadoc stuff nevertheless and we need to do that
 	# because otherwise we'd have differences in a _all package (-dev-doc)
@@ -1298,13 +1317,6 @@ endif
 	cp ooo-build/doc/data-from-remote-mysql-server.txt \
 		$(PKGDIR)-base/usr/share/doc/openoffice.org$(VER)-base
 
-ifeq "$(ENABLE_HUNSPELL)" "y"
-	# move hunspell component into own package
-	mkdir -p  $(PKGDIR)-hunspell/$(OODIR)/program
-	mv $(PKGDIR)-core/$(OODIR)/program/libhunspell* \
-		$(PKGDIR)-hunspell/$(OODIR)/program
-endif
-
 ifneq "$(USE_EXTERNAL_MYTHES)" "y"
 	# install libmythes and th_gen_idx.pl
 	rm -rf debian/libmythes-dev
@@ -1359,7 +1371,7 @@ $(STAMP_DIR)/install-indep: ooo-build/fonts/opens___.ttf
 	dh_installdirs -i
 
 	# Icons
-	cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin && dpkg --extract openoffice.org-debian-menus_*_all.deb . && cd usr/share/icons; \
+	cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/desktop-integration && dpkg --extract openoffice.org-debian-menus_*_all.deb . && cd usr/share/icons; \
 	for d in `find -type d`; do \
 	  install -d -m755 $(CURDIR)/$(PKGDIR)-common/usr/share/icons/$$d || exit 1 ;\
 	done &&\
@@ -1554,14 +1566,19 @@ endif
 	  for x in *.png; do convert $$x `basename $$x .png`.xpm; done
 
 ifeq "$(ENABLE_JAVA)" "y"
-	# we use system xt, xalan and xerces - symlink it...
+ifeq "$(SYSTEM_XT)" "y"
 	ln -sf /usr/share/java/xt.jar \
 		$(PKGDIR)-java-common/usr/share/java/openoffice$(VER)/xt.jar
-ifneq "$(SARGE_BACKPORT)" "y"
+endif
+ifeq "$(SYSTEM_XALAN)" "y"
 	ln -sf /usr/share/java/xalan2.jar \
 		$(PKGDIR)-java-common/usr/share/java/openoffice$(VER)/xalan.jar
+endif
+ifeq "$(SYSTEM_XML_APIS)" "y"
 	ln -sf /usr/share/java/jaxp-1.2.jar \
 		$(PKGDIR)-java-common/usr/share/java/openoffice$(VER)/xml-apis.jar
+endif
+ifeq "$(SYSTEM_XERCES)" "y"
 	ln -sf /usr/share/java/xercesImpl.jar \
 		$(PKGDIR)-java-common/usr/share/java/openoffice$(VER)/xercesImpl.jar
 endif
@@ -1701,10 +1718,7 @@ endif
 # This switch to dh_shlibdeps reduces the 'libXXX not found' warnings but
 # causes ldd crashes sometimes when used with fakeroot:
 #          -l $(PKGDIR)-bin/$(OPENOFFICEDIR)/program
-	dh_gencontrol -popenoffice.org$(VER)-hunspell -- \
-		-V'base-version=$(UPSTREAM_VERSION)' \
-		-v`echo $(SOURCE_VERSION) | sed -e s/$(UPSTREAM_VERSION)/1.2/`
-	dh_gencontrol -Nopenoffice.org$(VER)-hunspell -- \
+	dh_gencontrol -- \
 		-V'base-version=$(UPSTREAM_VERSION)' \
 		-V'dev-stl-depends=$(DEV_STL_DEPENDS)' \
 		-V'writer-pyuno-dep=$(WRITER_PYUNO_DEP)' \
@@ -1770,7 +1784,7 @@ environment:
 get-ooo-build:
 	# press enter at the password prompt
 	cvs -d:pserver:anonymous@anoncvs3.gnome.org:/cvs/gnome login
-	cvs -z3 -d:pserver:anonymous@anoncvs3.gnome.org:/cvs/gnome co -r ooo-build-2-0-1 ooo-build
+	cvs -z3 -d:pserver:anonymous@anoncvs3.gnome.org:/cvs/gnome co -r ooo-build
 	cd ooo-build && ./autogen.sh $(CONFIGURE_FLAGS)
 
 # Download the latest ooo-build sources
