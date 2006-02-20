@@ -47,7 +47,7 @@ unexport LS_COLORS
 
 #TAG=src680-m$(MILESTONE)
 #MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)"| cut -d. -f3)
-TAG=ooa680-m1
+TAG=oob680-m1
 SOURCE_TREE=ooo-build/build/$(TAG)
 STAMP_DIR=debian/stampdir
 
@@ -168,7 +168,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
     # one to that gid_Module_Root always is english and the other langpacks
     # have gid_Module_Root.$iso
     #ISOS="$(shell ooo-build/bin/openoffice-xlate-lang -i all')"
-    ISOS:="en-US af be-BY bg bn ca cs cy da de el en-GB en-ZA es et fi fr ga gu-IN he hi-IN hr hu nb nl nn it ja km ko lt pa-IN pl pt-BR ru rw sk sl sr-CS st sv th tn tr ts vi xh zh-CN zh-TW zu"
+    ISOS:=en-US af be-BY bg bn ca cs cy da de el en-GB en-ZA es et fi fr ga gu-IN he hi-IN hr hu nb nl nn it ja km ko lt pa-IN pl pt-BR ru rw sk sl sr-CS st sv th tn tr ts vi xh zh-CN zh-TW zu
     #HELPISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all') 
     #HELPISOS:=en-US cs de es et fr it ja ko pt-BR sv zh-CN zh-TW
     #LANGPACKISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
@@ -202,6 +202,7 @@ ifeq "$(DIST)" "Ubuntu"
 	# seems necessary to build en-US, or else the first language in the list of languages
 	# is dropped from the build. Don't package en-us.
 	#ISOS := $(filter-out en-US, $(ISOS))
+	ISOS:=en-US de el es fr
 	LANGPACKISOS := $(filter-out en-US, $(ISOS))
 	HELPISOS := $(filter-out af be-BY bn ca gu-IN hu nl nn pa-IN st zu, $(ISOS))
 	DEBHELPER_OPTIONS += $(foreach p, $(shell echo $(PACKAGES) | egrep -v l10n) openoffice.org$(VER)-l10n-en-us,-N$(p))
@@ -228,6 +229,7 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
 		 --with-installed-ooo-dirname=openoffice$(VER) \
 		 --mandir=/usr/share/man \
 		 --with-lang="$(ISOS)" \
+		 -x-libraries=/usr/lib \
 		 --with-build-version="openoffice.org$(VER)-core $(BINARY_VERSION), `date`" \
 		--disable-strip
 
@@ -248,8 +250,9 @@ endif
 
 ifeq "$(ENABLE_JAVA)" "y"
 ifneq "$(SARGE_BACKPORT)" "y"
-	JAVA_HOME=/usr/lib/jvm/java-gcj
+	export JAVA_HOME=/usr/lib/jvm/java-gcj
 	CONFIGURE_FLAGS += --with-java=gij
+	CONFIGURE_FLAGS += --with-system-xt --with-system-beanshell --with-system-xml-apis --with-system-xerces --with-system-xalan
 	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.28-8), libxt-java (>= 0.20050823-1), libxalan2-java (>= 2.6.0-1) [!sparc], libxerces2-java [!sparc], ant (>= 1.6.5) [!sparc]
 else
 ifeq "$(ARCH)" "i386"
@@ -265,7 +268,7 @@ export JAVA_HOME
 	JAVA_COMMON_JAVA_DEPENDS= libxt-java
   ifneq "$(SARGE_BACKPORT)" "y"
 	JAVA_COMMON_JAVA_DEPENDS+= , libxalan2-java (>= 2.6.0-1), libxerces2-java
-	BUILD_DEPS += , libdb4.2-java (>= 4.2.52-21) [!sparc]
+	BUILD_DEPS += , libdb4.3-java
   else
 	BUILD_DEPS += , libdb4.2-java [!sparc]
   endif
@@ -320,7 +323,7 @@ endif
 ifeq "$(SARGE_BACKPORT)" "y"
        BUILD_DEPS += , libaltlinuxhyph-dev
 else
-       BUILD_DEPS += , libaltlinuxhyph-dev (>= 0.1.1-7)
+#       BUILD_DEPS += , libaltlinuxhyph-dev (>= 0.1.1-7)
 endif
 
 ifeq "$(SARGE_BACKPORT)" "y"
@@ -545,6 +548,7 @@ NUM_CPUS := $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
 ifneq ($(NUM_CPUS),1)
   #CONFIGURE_FLAGS += --with-num-cpus=$(shell expr $(NUM_CPUS) + 1)
   #CONFIGURE_FLAGS += --with-num-cpus=$(NUM_CPUS)
+  #CONFIGURE_FLAGS += --with-num-cpus=2
 endif
 
 # Build python depends from current python version
@@ -624,7 +628,7 @@ clean:
 
 	# we do not need them and they make problem with dpkg-source....
 	rm -f ooo-build/www/*.png \
-		ooo-build/www/images/*.png ooo-build/templates/*.s* \
+		ooo-build/www/images/*.png \
 		ooo-build/www/l10n/*.gif \
 		ooo-build/src/*.png ooo-build/src/*.bmp ooo-build/src/*.xcf \
 		ooo-build/src/*.ico
@@ -637,6 +641,9 @@ clean:
 			-o -name '*.odp' -o -name '*.odt' -o -name "*.ods" \) \
 			-exec rm {} \; ;\
 	fi
+	find ooo-build/scratch ooo-build/src -type f \
+		     \( -name '*.ott' -o -name '*.ods' -o -name '*.odg' \) \
+			-exec rm {} \;
 	rm -f ooo-build/fonts/symbols.xls
 	rm -rf ooo-build/desktop/*.desktop
 	rm -rf ooo-build/build
@@ -656,7 +663,9 @@ clean:
 	set -e; \
 	cd ooo-build ;\
 	  for f in fonts/opens___.ttf src/ooo_*_images*.bz2 src/extras*bz2 \
-	    src/evolocal.odb src/*.gz src/GSI*bz2; do \
+	    src/easter/*.png \
+	    src/evolocal.odb src/*.gz src/GSI*bz2 src/Draft.jpg \
+	    templates/*.s* templates/*.ott; do \
 	  if [ -s $$f ]; then \
 	    uuencode $$f $$f > $$f.uu && \
             touch -r $$f.uu $$f ;\
@@ -792,8 +801,10 @@ ifeq "$(ENABLE_MONO)" "y"
 		>> debian/control < debian/control.mono.in
 endif
 ifeq "$(AMD64_EXPERIMENTAL)" "y"
+  ifeq "$(PKGSOURCE)" "openoffice.org$(VER)"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.experimental
+  endif
 endif
 	python debian/joinctrl.py < debian/control > debian/control.tmp
 #	awk -F: -f debian/joinlines.awk < debian/control > debian/control.awk
@@ -829,7 +840,7 @@ ooo-build/config.status: ooo-build/configure
 	mkdir -p $(STAMP_DIR)
 
 	# uudecode source files, omit GSI files, building only en-US
-	cd ooo-build; for uu in fonts/opens___.ttf.uu src/*.uu; do \
+	cd ooo-build; for uu in fonts/opens___.ttf.uu src/*.uu templates/*.uu src/easter/*.uu; do \
 	  case "$$uu" in GSI*) continue; esac; \
 	  orig="`echo "$$uu" |sed -e 's#.uu$$##'`" ;\
           if [ ! -s $$orig ]; then \
@@ -1152,10 +1163,11 @@ endif
 	# move the GNOME stuff which are *not* in gid_Module_Optional_Gnome
 	# (which is moved into -gnome in package-ooo) into -gnome
 	mkdir -p -m755 $(PKGDIR)-gnome/$(OODIR)/program
-	for f in gnome-open-url.bin fps_gnome.uno.so libvclplug_gtk[0-9]*.so libeggtray* libqstart_gtk*; do \
+#	for f in gnome-open-url.bin fps_gnome.uno.so libvclplug_gtk[0-9]*.so libeggtray* libqstart_gtk*; do \
+#
+	for f in gnome-open-url.bin fps_gnome.uno.so libvclplug_gtk[0-9]*.so libqstart_gtk*; do \
 	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-gnome/$(OODIR)/program || exit 1;\
 	done
-
 	mkdir -p -m755 $(PKGDIR)-evolution/$(OODIR)/program
 	mv $(PKGDIR)-core/$(OODIR)/program/libevoab2.so $(PKGDIR)-evolution/$(OODIR)/program
 
@@ -1452,6 +1464,7 @@ ifneq "$(USE_EXTERNAL_MYTHES)" "y"
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
+# FIXME missing sandbox
 	# install the UNO Java sources for e.g. eclipse
 	cd $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin && \
 		for i in juh jurt jut sandbox ridl unoloader; do \
@@ -1533,7 +1546,8 @@ $(STAMP_DIR)/install-indep: ooo-build/fonts/opens___.ttf
 	install -m644 $(SOURCE_TREE)/sysui/desktop/mimetypes/openoffice.mime \
 		$(PKGDIR)-common/usr/share/mime-info && \
 	rm -f $(PKGDIR)-common/usr/share/mime-info/openoffice.keys; \
-	for i in $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/debian/*.keys; do \
+# FIXME
+	-for i in $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/debian/*.keys; do \
 		cat $$i >> $(PKGDIR)-common/usr/share/mime-info/openoffice.keys; \
 	done
 #	install -m644 $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare/openoffice.org.xml \
@@ -1595,6 +1609,7 @@ $(STAMP_DIR)/install-indep: ooo-build/fonts/opens___.ttf
 
 	# compress manpages
 	find $(PKGDIR)-common -type f -name "*.1" | xargs gzip -9
+	mkdir -p $(PKGDIR)-common/usr/share/man/man1
 	ln -sf openoffice$(VER).1.gz $(PKGDIR)-common/usr/share/man/man1/ooffice$(VER).1.gz
 	ln -sf openoffice$(VER).1.gz $(PKGDIR)-common/usr/share/man/man1/ooo-wrapper$(VER).1.gz
 	ln -sf openoffice$(VER).1.gz $(PKGDIR)-common/usr/share/man/man1/oofromtemplate$(VER).1.gz
@@ -1701,10 +1716,6 @@ endif
 	#install -m644 $(SOURCE_TREE)/dictionaries/diclst/FontOOo.sxw \
 	#	$(PKGDIR)-common/usr/share/myspell/dicts
 
-	# install sensible-ooomua
-	mkdir -p $(PKGDIR)-common/usr/bin
-	install -m755 debian/sensible-ooomua $(PKGDIR)-common/usr/bin
-
 ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 	mkdir -p debian/ttf-opensymbol/usr/share/fonts/truetype/openoffice
 	install -m644 ooo-build/fonts/opens___.ttf \
@@ -1719,8 +1730,9 @@ endif
 	ln -s /etc/openoffice/dictionary.lst \
 		$(PKGDIR)-common/usr/share/myspell/dicts/dictionary.lst
 
+	# FIXME
 	# convert icons to xpm; we need them for the Debian menu policy...
-	cd $(PKGDIR)-common/usr/share/icons/gnome/32x32/apps && \
+	-cd $(PKGDIR)-common/usr/share/icons/gnome/32x32/apps && \
 	  for x in *.png; do convert $$x `basename $$x .png`.xpm; done
 
 ifeq "$(ENABLE_JAVA)" "y"
@@ -1743,7 +1755,7 @@ endif
 	rm -f $(PKGDIR)-common/$(OODIR)/THIRDPARTYLICENSEREADME.html
 	rm -f $(PKGDIR)-common/$(OODIR)/LICENSE.html
 
-	mkdir -p /usr/share/icons/hicolor/48x48/apps
+	mkdir -p $(PKGDIR)-common/usr/share/icons/hicolor/48x48/apps
 	cp ooo-build/desktop/*.png \
 		$(PKGDIR)-common/usr/share/icons/hicolor/48x48/apps
 
@@ -1771,7 +1783,8 @@ endif
 	# prepare a fake sofficerc in the place where OOo expects it
 	# which does nothing except reference the "normal" one
 	# which we put into /etc
-	mv $(PKGDIR)-common/$(OODIR)/program/sofficerc \
+	# FIXME
+	-mv $(PKGDIR)-common/$(OODIR)/program/sofficerc \
 		$(PKGDIR)-common/etc/openoffice$(VER)/sofficerc
 	( \
 	  echo "# *DO NOT* CHANGE THIS FILE. IT ONLY TAKES THE SETTINGS FROM"; \
@@ -1887,6 +1900,7 @@ binary-common:
 	pkgs=`dh_listpackages`; \
 	for i in writer calc draw impress base math; do \
 		echo $$pkgs | grep -q openoffice.org$(VER)-$$i || continue; \
+		mkdir -p $(CURDIR)/$(PKGDIR)-$$i$(EXPSUFFIX)/usr/share/man/man1; \
 		if [ "$$i" = "writer" ]; then \
 			for j in writer html web; do \
 				cd $(CURDIR)/$(PKGDIR)-$$i$(EXPSUFFIX)/usr/share/man/man1 && \
@@ -1967,7 +1981,7 @@ ifeq "$(DIST)-$(PKGSOURCE)" "Ubuntu-openoffice.org$(VER)$(EXPSUFFIX)"
 		mv $$i $${i%*.hidden}; \
 	done
 else
- 	dh_builddeb
+	dh_builddeb
 endif
 
 # Build architecture independant packages using the common target.

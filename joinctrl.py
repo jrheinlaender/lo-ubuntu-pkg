@@ -3,7 +3,7 @@
 import sys, fileinput
 
 def splitlines():
-    fields = ('Build-Depends', 'Depends', 'Replaces',
+    fields = ('Build-Depends', 'Build-Depends-Indep', 'Depends', 'Replaces',
               'Provides', 'Conflicts', 'Recommends', 'Suggests')
     for line in fileinput.input():
         line = line[:-1]
@@ -23,7 +23,7 @@ def splitlines():
 
     
 def joinlines():
-    fields = ('Build-Depends', 'Depends', 'Replaces',
+    fields = ('Build-Depends', 'Build-Depends-Indep', 'Depends', 'Replaces',
               'Provides', 'Conflicts', 'Recommends', 'Suggests')
     buffer = None
     for line in fileinput.input():
