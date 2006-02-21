@@ -47,7 +47,7 @@ unexport LS_COLORS
 
 #TAG=src680-m$(MILESTONE)
 #MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)"| cut -d. -f3)
-TAG=oob680-m1
+TAG=oob680-m2
 SOURCE_TREE=ooo-build/build/$(TAG)
 STAMP_DIR=debian/stampdir
 
@@ -191,14 +191,17 @@ LANGPACKISOS:= $(filter-out km rw tn ss nso ts ve, $(LANGPACKISOS))
 ifeq "$(DIST)" "Ubuntu"
   LANGUAGES := $(ISOS)
   ifeq "$(PKGSOURCE)" "openoffice.org$(VER)"
+	PATCHSET := Ubuntu
 	BUILD_ONLY_EN_US=y
 	ISOS := en-US
 	LANGPACKISOS := $(ISOS)
 	#HELPISOS := $(ISOS)
+	HELPISOS := 
 	#OOO_L10N_DIR = $(CURDIR)/debian/l10n
 	#GSI_EXPORT_STAMP = $(STAMP_DIR)/gsi-export
   endif
   ifeq "$(PKGSOURCE)" "openoffice.org$(VER)-l10n"
+	PATCHSET := UbuntuL10n
 	# seems necessary to build en-US, or else the first language in the list of languages
 	# is dropped from the build. Don't package en-us.
 	#ISOS := $(filter-out en-US, $(ISOS))
@@ -206,16 +209,6 @@ ifeq "$(DIST)" "Ubuntu"
 	LANGPACKISOS := $(filter-out en-US, $(ISOS))
 	HELPISOS := $(filter-out af be-BY bn ca gu-IN hu nl nn pa-IN st zu, $(ISOS))
 	DEBHELPER_OPTIONS += $(foreach p, $(shell echo $(PACKAGES) | egrep -v l10n) openoffice.org$(VER)-l10n-en-us,-N$(p))
-  endif
-  ifeq "$(PKGSOURCE)" "openoffice.org$(VER)-help"
-	# seems necessary to build en-US, or else the first language in the list of languages
-	# is dropped from the build. Don't package en-us.
-	#ISOS := $(filter-out en-US, $(ISOS))
-	LANGPACKISOS := $(filter-out en-US, $(ISOS))
-	# These languages don't build ...
-	HELPISOS := $(filter-out af be-BY bn ca gu-IN hu nl nn pa-IN st zu, $(ISOS))
-	DEBHELPER_OPTIONS += $(foreach p, $(shell echo $(PACKAGES) | grep -v help),-N$(p))
-        USE_NONFREE_JAVA_STUFF = y
   endif
 endif
 
@@ -232,7 +225,7 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
 		 -x-libraries=/usr/lib \
 		 --with-build-version="openoffice.org$(VER)-core $(BINARY_VERSION), `date`" \
 		--disable-strip \
-		--disable-quickstart
+		--enable-quickstart
 
 ifeq "$(VER)" ""
 	CONFIGURE_FLAGS += --with-binsuffix=no
@@ -336,6 +329,9 @@ ifeq "$(SARGE_BACKPORT)" "y"
         SYSTEM_ALTLINUXHYPH=n
 else
         SYSTEM_ALTLINUXHYPH=y
+endif
+ifeq "$(DIST)" "Ubuntu"
+        SYSTEM_ALTLINUXHYPH=n
 endif
 ifeq "$(SYSTEM_ALTLINUXHYPH)" "y"
 	BUILD_DEPS += , libaltlinuxhyph-dev (>= 0.1.1-8)
@@ -639,18 +635,6 @@ clean:
 	  $(MAKE) -C ooo-build distclean || true ;\
 	fi
 
-	# we do not need them and they make problem with dpkg-source....
-	rm -f ooo-build/www/*.png \
-		ooo-build/www/images/*.png \
-		ooo-build/www/l10n/*.gif \
-		ooo-build/src/open*.png ooo-build/src/*.bmp ooo-build/src/*.xcf \
-		ooo-build/src/*.ico \
-		ooo-build/scratch/scsolver/docs/class_diagram.odg \
-		ooo-build/scratch/scsolver/workben/test_run.ods \
-		ooo-build/src/Draft.jpg \
-		ooo-build/src/easter/*.png \
-		ooo-build/templates/*.o*
-
 	if [ -d ooo-build/test ]; then \
 		find ooo-build/test ooo-build/doc -type f \
 		     \( -name '*.xls' -o -name '*.sx?' -o -name '*.doc' \
@@ -681,8 +665,10 @@ clean:
 	set -e; \
 	cd ooo-build ;\
 	  for f in fonts/opens___.ttf src/ooo_*_images*.bz2 src/extras*bz2 \
-	    src/evolocal.odb src/*.gz src/GSI*bz2 src/xt*zip \
-	    src/Draft.jpg src/easter/*.png templates/*.s* templates/*.ott; do \
+	    src/evolocal.odb src/*.gz src/GSI*bz2 src/xt*zip src/go-oo-team.png \
+	    src/Draft.jpg src/easter/*.png templates/*.s* templates/*.ott \
+	    src/file-bug*.png ; \
+	  do \
 	  if [ -s $$f ]; then \
 	    uuencode $$f $$f > $$f.uu && \
             touch -r $$f.uu $$f ;\
@@ -700,6 +686,19 @@ clean:
 		ooo-build/desktop/ooo-$$i.png ;\
 	fi; \
 	done
+
+	# we do not need them and they make problem with dpkg-source....
+	rm -f ooo-build/www/*.png \
+		ooo-build/www/images/*.png \
+		ooo-build/www/l10n/*.gif \
+		ooo-build/src/open*.png ooo-build/src/file-bug*.png \
+		ooo-build/src/*.bmp ooo-build/src/*.xcf \
+		ooo-build/src/*.ico \
+		ooo-build/scratch/scsolver/docs/class_diagram.odg \
+		ooo-build/scratch/scsolver/workben/test_run.ods \
+		ooo-build/src/Draft.jpg \
+		ooo-build/src/easter/*.png
+
 	rm -f ooo-build/desktop/*.png
 
 	rm -f ooo-build/src/GSI*err
