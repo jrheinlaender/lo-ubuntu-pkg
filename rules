@@ -33,6 +33,12 @@ ARCH := $(shell dpkg-architecture -qDEB_HOST_ARCH)
 DIST := $(shell lsb_release -is)
 # Figure out who's building this package.
 BUILDER:=$(shell echo $$LOGNAME)
+OOO_VENDOR:=Debian
+ifeq "$(DIST)" "Ubuntu"
+OOO_VENDOR+= and Ubuntu
+endif
+#OOO_VENDOR+= ($(BUILDER))
+#export OOO_VENDOR
 
 # ensure that some scripts we need are executable.
 DUMMY:=$(shell if [ ! -x debian/scripts/setperms ]; then chmod 755 debian/scripts/setperms; fi)
@@ -100,7 +106,7 @@ BUILD_DEPS=
 
 ifeq "$(DIST)" "Ubuntu"
 	BUILD_AMD64=y
-	BUILD_DEPS += , translate-toolkit
+	BUILD_DEPS += , translate-toolkit (>= 0.8.rc6)
 endif
 
 ifeq "$(ARCH)" "amd64"
@@ -168,7 +174,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
     # one to that gid_Module_Root always is english and the other langpacks
     # have gid_Module_Root.$iso
     #ISOS="$(shell ooo-build/bin/openoffice-xlate-lang -i all')"
-    ISOS:=en-US af be-BY bg bn ca cs cy da de el en-GB en-ZA es et fi fr ga gu-IN he hi-IN hr hu nb nl nn it ja km ko lt pa-IN pl pt-BR ru rw sk sl sr-CS st sv th tn tr ts vi xh zh-CN zh-TW zu
+    ISOS:=en-US af be-BY bg bn ca cs cy da de el en-GB en-ZA es et fi fr ga gu-IN he hi-IN hr hu nb nl nn it ja km ko ku lt pa-IN pl pt-BR ru rw sk sl sr-CS st sv th tn tr ts vi xh zh-CN zh-TW zu
     #HELPISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all') 
     HELPISOS:=en-US cs de es et fr it ja ko pt-BR sv zh-CN zh-TW
     #LANGPACKISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
@@ -184,9 +190,9 @@ endif
 ISOS := $(subst ",,$(ISOS))
 #HELPISOS := $(subst ",,$(HELPISOS))
 LANGPACKISOS := $(subst ",,$(LANGPACKISOS))
-# filter out those languages, which require belocs (km rw tn ss nso ts ve).
-ISOS:= $(filter-out km rw tn ss nso ts ve, $(ISOS))
-LANGPACKISOS:= $(filter-out km rw tn ss nso ts ve, $(LANGPACKISOS))
+# filter out sr-CS, ne (syntax errors in GSI files)
+ISOS:= $(filter-out sr-CS ne, $(ISOS))
+LANGPACKISOS:= $(filter-out sr-CS ne, $(LANGPACKISOS))
 
 ifeq "$(DIST)" "Ubuntu"
   LANGUAGES := $(ISOS)
@@ -207,7 +213,7 @@ ifeq "$(DIST)" "Ubuntu"
 	#ISOS := $(filter-out en-US, $(ISOS))
 	#ISOS:=en-US de el es fr
 	#LANGPACKISOS := $(filter-out en-US, $(ISOS))
-	HELPISOS := $(filter-out af be-BY bn ca gu-IN hu nl nn pa-IN st zu, $(ISOS))
+	#HELPISOS := $(filter-out af be-BY bn ca gu-IN hu nl nn pa-IN st zu, $(ISOS))
 	DEBHELPER_OPTIONS += $(foreach p, $(shell echo $(PACKAGES) | egrep -v l10n) openoffice.org$(VER)-l10n-en-us,-N$(p))
   endif
 endif
@@ -225,6 +231,7 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
 		 -x-libraries=/usr/lib \
 		 --with-build-version="openoffice.org$(VER)-core $(BINARY_VERSION), `date`" \
 		--disable-strip \
+		--enable-atkbridge \
 		--enable-quickstart
 
 ifeq "$(VER)" ""
@@ -588,6 +595,8 @@ else
 	BUILD_PATH = /usr/lib/jvm/java-gcj/bin:$(CURDIR)/debian/usr/bin:$$PATH
 endif
 endif
+BUILD_PATH := $(CURDIR)/debian/usr/bin:$(BUILD_PATH)
+
 
 # Because of the stampdir magic, when you actually want to run a rule
 # over, you would have to remove the stamp manually.  Now, just do
@@ -850,6 +859,8 @@ ifeq "$(DIST)" "Ubuntu"
   ifeq "$(PKGSOURCE)" "openoffice.org$(VER)-l10n"
 	cp -p ooo-build/distro-configs/Ubuntu.conf.in ooo-build/distro-configs/UbuntuL10n.conf.in
   endif
+	mkdir -p debian/usr/bin
+	install -m 755 debian/scripts/gcj.py debian/usr/bin/gcj
 endif
 
 	# uudecode source files, omit GSI files, building only en-US
@@ -1474,7 +1485,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 # FIXME missing sandbox
 	# install the UNO Java sources for e.g. eclipse
 	cd $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin && \
-		for i in juh jurt jut sandbox ridl unoloader; do \
+		for i in juh jurt jut ridl unoloader; do \
 			cp $${i}_src.zip \
 			  $(CURDIR)/$(PKGDIR)-dev/usr/share/java/openoffice; \
 		done
@@ -1838,7 +1849,7 @@ ifeq "$(PKGSOURCE)" "openoffice.org$(VER)-l10n"
 	for i in $(OOO_L10N_DIR)/import/GSI*; do \
 	  [ -r $$i ] || continue; \
 	  lang=`basename $$i | sed 's,GSI_\(.*\)\.sdf.*,\1,'`; \
-	  [ $$lang = en-US ] && continue; \
+	  case "$$lang" in en-US|de) continue; esac; \
 	  echo "updating GSI file for language $$lang ..."; \
 	  case "$$i" in \
 	  *.bz2) bzcat $$i > ooo-build/src/GSI_$$lang.sdf;; \
@@ -1867,7 +1878,7 @@ ifneq "$(OOO_L10N_DIR)" ""
 	  echo exporting GSI file for pot file generation; \
 	  echo localize -e -l en-US -f $(OOO_L10N_DIR)/export/GSI_en-US.sdf; \
 	  localize -e -l en-US -f $(OOO_L10N_DIR)/export/GSI_en-US.sdf; \
-	  for i in $(filter-out en-US, $(LANGUAGES)); do \
+	  for i in $(filter-out en-US de, $(LANGUAGES)); do \
 	    if [ -f $(CURDIR)/ooo-build/src/GSI_$$i.sdf.bz2.uu ]; then \
 	      echo using existing GSI file for language $$i; \
 	      uudecode -o /dev/stdout $(CURDIR)/ooo-build/src/GSI_$$i.sdf.bz2.uu \
@@ -1882,7 +1893,7 @@ ifneq "$(OOO_L10N_DIR)" ""
 	      fi; \
 	    fi; \
 	  done
-	if [ -x /usr/bin/oo2rpo ]; then \
+	if [ -x /usr/bin/oo2po ]; then \
 	  chmod +x debian/splitgsi; \
 	  sh debian/convert2po $(LANGUAGES); \
 	fi
