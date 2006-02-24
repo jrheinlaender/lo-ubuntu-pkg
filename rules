@@ -176,7 +176,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
     #HELPISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all') 
     HELPISOS:=en-US cs de es et fr it ja ko pt-BR sv zh-CN zh-TW
     #LANGPACKISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
-    LANGPACKISOS:=en-US af be-BY bg bn ca cs cy da de el en-GB en-ZA es et fi fr ga gu-IN he hi-IN hr hu nb nl nn it ja km ko lt pa-IN pl pt-BR ru rw sk sl sr-CS st sv th tn tr ts vi xh zh-CN zh-TW zu
+    LANGPACKISOS:=en-US af be-BY bg bn ca cs cy da de el en-GB en-ZA es et fi fr ga gu-IN he hi-IN hr hu nb nl nn it ja km ko ku lt pa-IN pl pt-BR ru rw sk sl sr-CS st sv th tn tr ts vi xh zh-CN zh-TW zu
   endif
 else
   ISOS="en-US"
@@ -201,8 +201,8 @@ ifeq "$(DIST)" "Ubuntu"
 	LANGPACKISOS := $(ISOS)
 	#HELPISOS := $(ISOS)
 	HELPISOS := 
-	#OOO_L10N_DIR = $(CURDIR)/debian/l10n
-	#GSI_EXPORT_STAMP = $(STAMP_DIR)/gsi-export
+	OOO_L10N_DIR = $(CURDIR)/debian/l10n
+	GSI_EXPORT_STAMP = $(STAMP_DIR)/gsi-export
   endif
   ifeq "$(PKGSOURCE)" "openoffice.org$(VER)-l10n"
 	PATCHSET := UbuntuL10n
@@ -1040,6 +1040,10 @@ ifeq "$(ENABLE_JAVA)" "y"
 		done
 endif
 
+	# move ooqstart to -core
+	mv debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/ooqstart \
+	  debian/tmp/pkg/openoffice.org-core/$(OODIR)/program/
+
 	# move .so to -dev
 	cd debian/tmp/pkg; \
 		mkdir -p -m755 openoffice.org-dev/$(OODIR)/program; \
@@ -1874,9 +1878,11 @@ else
 endif
 
 GSI_LANGUAGES = $(filter-out de, $(LANGUAGES))
-gsi-export:
-	$(MAKE) -f debian/rules -j$(AVAIL_CPUS) $(STAMP_DIR)/gsi-export
-$(STAMP_DIR)/gsi-export: $(STAMP_DIR)/build $(foreach lang,$(GSI_LANGUAGES),$(STAMP_DIR)/gsi-export-$(lang))
+gsi-export: $(STAMP_DIR)/gsi-export
+$(STAMP_DIR)/gsi-export:
+	$(MAKE) -f debian/rules -j$(shell expr $(AVAIL_CPUS)+1) $(STAMP_DIR)/gsi-export-parallel
+	touch $@
+$(STAMP_DIR)/gsi-export-parallel: $(STAMP_DIR)/build $(foreach lang,$(GSI_LANGUAGES),$(STAMP_DIR)/gsi-export-$(lang))
 	touch $@
 $(STAMP_DIR)/gsi-export-en-US:
 	cd $(SOURCE_TREE); \
