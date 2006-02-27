@@ -121,12 +121,13 @@ PACKAGE_TESTTOOL=n
 PACKAGE_TTF_OPENSYMBOL=y
 PACKAGE_NPSOPLUGIN=n
 
-#ifeq "$(ARCH)" "i386"
-#	BUILD_JARS_NATIVE=y
-#else
+ifneq (,$(findstring $(ARCH), i386 powerpc))
+	BUILD_JARS_NATIVE=y
+	REBUILD_JARS_NATIVE=y
+else
 	BUILD_JARS_NATIVE=n
 	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-gcj
-#endif
+endif
 
 ifneq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 	DEBHELPER_OPTIONS+= -Nttf-opensymbol
@@ -230,6 +231,7 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
 		 --with-build-version="openoffice.org$(VER)-core $(BINARY_VERSION), `date`" \
 		--disable-strip \
 		--enable-atkbridge \
+		--enable-lockdown \
 		--enable-quickstart
 
 ifeq "$(VER)" ""
@@ -238,6 +240,8 @@ else
 	CONFIGURE_FLAGS += --with-binsuffix=$(VER)
 endif
 
+NO_JAVA_ARCHS = !hppa !sparc
+NO_JAVA_ARCHS = !hppa
 ENABLE_JAVA=y
 ifeq "$(ARCH)" "sparc"
 	ENABLE_JAVA=n
@@ -246,12 +250,13 @@ ifneq "$(SARGE_BACKPORT)" "y"
 	ENABLE_JAVA=y
 endif
 endif
+ENABLE_JAVA=y
 
 ifeq "$(ENABLE_JAVA)" "y"
 ifneq "$(SARGE_BACKPORT)" "y"
 	export JAVA_HOME=/usr/lib/jvm/java-gcj
 	CONFIGURE_FLAGS += --with-java=gij
-	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.28-8), ant (>= 1.6.5) [!sparc]
+	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.28-8), ant (>= 1.6.5) [$(NO_JAVA_ARCHS)]
 	SYSTEM_XT=y
 	SYSTEM_XALAN=y
 	SYSTEM_XERCES=y
@@ -262,7 +267,7 @@ ifeq "$(ARCH)" "i386"
 else
 	JAVA_HOME=/usr/lib/j2sdk1.4-ibm
 endif
-	BUILD_DEPS += , j2sdk1.4 | j2sdk1.4-ibm, ant [!sparc], libjaxp1.2-java [!sparc]
+	BUILD_DEPS += , j2sdk1.4 | j2sdk1.4-ibm, ant [$(NO_JAVA_ARCHS)], libjaxp1.2-java [$(NO_JAVA_ARCHS)]
 	CONFIGURE_FLAGS += --with-system-xml-apis
 	SYSTEM_XT=n
 	SYSTEM_XALAN=y
@@ -275,16 +280,16 @@ export JAVA_HOME
   ifeq "$(SYSTEM_XT)" "y"
 	CONFIGURE_FLAGS += --with-system-xt	
 	JAVA_COMMON_JAVA_DEPENDS+= , libxt-java (>= 0.20050823)
-	BUILD_DEPS += , libxt-java (>= 0.20050823) [!sparc]
+	BUILD_DEPS += , libxt-java (>= 0.20050823) [$(NO_JAVA_ARCHS)]
   endif
   ifeq "$(SYSTEM_XERCES)" "y"
 	CONFIGURE_FLAGS += --with-system-xerces
-	BUILD_DEPS += , libxerces2-java [!sparc]
+	BUILD_DEPS += , libxerces2-java [$(NO_JAVA_ARCHS)]
 	JAVA_COMMON_JAVA_DEPENDS+= , libxerces2-java
   endif
   ifeq "$(SYSTEM_XALAN)" "y"
 	CONFIGURE_FLAGS += --with-system-xalan
-	BUILD_DEPS += , libxalan2-java (>= 2.6.0-1) [!sparc]
+	BUILD_DEPS += , libxalan2-java (>= 2.6.0-1) [$(NO_JAVA_ARCHS)]
 	JAVA_COMMON_JAVA_DEPENDS+= , libxalan2-java (>= 2.6.0-1)
   endif
   ifeq "$(SYSTEM_XML_APIS)" "y"
@@ -295,7 +300,7 @@ export JAVA_HOME
   ifneq "$(SARGE_BACKPORT)" "y"
 	BUILD_DEPS += , libdb4.3-java
   else
-	BUILD_DEPS += , libdb4.2-java [!sparc]
+	BUILD_DEPS += , libdb4.2-java [$(NO_JAVA_ARCHS)]
   endif
 else
 	CONFIGURE_FLAGS += --without-java
@@ -391,8 +396,8 @@ ifeq "$(USE_SYSTEM_PORTAUDIO)" "y"
 	CONFIGURE_FLAGS += --with-system-portaudio
 endif
 
-USE_SABLOT=n
-USE_LIBXSLT=y
+USE_SABLOT=y
+USE_LIBXSLT=n
 
 USE_EXTERNAL_CXXLIBS=y
 ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
@@ -602,6 +607,7 @@ else
 	BUILD_PATH = /usr/lib/jvm/java-gcj/bin:$(CURDIR)/debian/usr/bin:$$PATH
 endif
 endif
+GCJ_VERSION := 4.1
 BUILD_PATH := $(CURDIR)/debian/usr/bin:$(BUILD_PATH)
 
 
@@ -977,6 +983,15 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/build
 	rm -rf $(CURDIR)/debian/tmp
 	cd ooo-build ; DESTDIR=$(CURDIR)/debian/tmp $(MAKE) install
 	-find debian/tmp ! -perm -200 | xargs chmod u+w
+
+	# no special ooqstart wrappers
+	install -m 755 build/ooo-wrapper \
+	  debian/tmp/pkg/openoffice.org-common/usr/bin/
+	for i in debian/tmp/pkg/*/usr/bin/oo*; do \
+	  case $$i in *wrapper) continue; esac; \
+	  ln -sf ooo-wrapper $$i; \
+	done
+
 ifeq (0,1)
 ifneq "$(HELPISOS)" ""
 	# save space by removing non-packaged localized help; we don't need
@@ -1039,10 +1054,6 @@ ifeq "$(ENABLE_JAVA)" "y"
 				openoffice.org-base/usr/share/java/openoffice$(VER); \
 		done
 endif
-
-	# move ooqstart to -core
-	mv debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/ooqstart \
-	  debian/tmp/pkg/openoffice.org-core/$(OODIR)/program/
 
 	# move .so to -dev
 	cd debian/tmp/pkg; \
@@ -1197,11 +1208,11 @@ endif
 	# move the GNOME stuff which are *not* in gid_Module_Optional_Gnome
 	# (which is moved into -gnome in package-ooo) into -gnome
 	mkdir -p -m755 $(PKGDIR)-gnome/$(OODIR)/program
-#	for f in gnome-open-url.bin fps_gnome.uno.so libvclplug_gtk[0-9]*.so libeggtray* libqstart_gtk*; do \
-#
-	for f in gnome-open-url.bin fps_gnome.uno.so libvclplug_gtk[0-9]*.so libqstart_gtk*; do \
+	for f in gnome-open-url.bin fps_gnome.uno.so libvclplug_gtk[0-9]*.so libeggtray* libqstart_gtk*; do \
 	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-gnome/$(OODIR)/program || exit 1;\
 	done
+	mv debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/ooqstart \
+	  $(PKGDIR)-gnome/$(OODIR)/program/
 
 	mkdir -p -m755 $(PKGDIR)-evolution/$(OODIR)/program
 	mv $(PKGDIR)-core/$(OODIR)/program/libevoab2.so $(PKGDIR)-evolution/$(OODIR)/program
@@ -1444,24 +1455,35 @@ ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(BUILD_JARS_NATIVE)" "y"
 	rm -rf $(PKGDIR)-gcj
 	mkdir -p $(PKGDIR)-gcj/$(OODIR)/program/classes-native
+  ifeq "$(REBUILD_JARS_NATIVE)" "y"
+	# recompiler the jar; the preferred way is to produce the binaries from
+	# the bytecode.
+	mkdir -p $(PKGDIR)-gcj/$(OODIR)/program/classes-native
+	for jar in debian/tmp/pkg/openoffice.org-common/usr/lib/openoffice/program/classes/*.jar $(PKGDIR)-common/$(OODIR)/program/classes/*.jar $(PKGDIR)-java-common/usr/share/java/openoffice/*.jar; \
+	do \
+	  [ -h "$$jar" -o ! -f "$$jar" ] && continue; \
+	  debian/scripts/aot-compile $$jar $(PKGDIR)-gcj/$(OODIR)/program/classes-native/$$(basename $$jar).so || exit $$?; \
+	done
+  else
 	cp $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/*.jar.so \
 		$(PKGDIR)-gcj/$(OODIR)/program/classes-native
+  endif
 	# remove not needed ones
-	rm $(PKGDIR)-gcj/$(OODIR)/program/classes-native/FCFGMerge.jar.so
-	rm $(PKGDIR)-gcj/$(OODIR)/program/classes-native/unoloader.jar.so
-	rm $(PKGDIR)-gcj/$(OODIR)/program/classes-native/schema.jar.so
+	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/FCFGMerge.jar.so
+	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/unoloader.jar.so
+	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/schema.jar.so
 	# NetBeans crap
 	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/jhall.jar.so
 	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/nbantext.jar.so
 	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/openide.jar.so
 	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/jarpackager.jar.so
 	# not needed yet
-	rm $(PKGDIR)-gcj/$(OODIR)/program/classes-native/javacanvas.uno.jar.so
+	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/javacanvas.uno.jar.so
 	# create gcj classmap
-	mkdir -p $(PKGDIR)-gcj/usr/share/gcj-4.0/classmap.d
+	mkdir -p $(PKGDIR)-gcj/usr/share/gcj-$(GCJ_VERSION)/classmap.d
 	cd debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/classes && \
 	for i in `find . -type f -name "*.jar" | sed -e s,./,,g`; do \
-	  gcj-dbtool-4.0 -f $(CURDIR)/$(PKGDIR)-gcj/usr/share/gcj-4.0/classmap.d/openoffice.org$(VER)-gcj.db $$i /$(OODIR)/program/classes-native/$$i.so; \
+	  gcj-dbtool-$(GCJ_VERSION) -f $(CURDIR)/$(PKGDIR)-gcj/usr/share/gcj-$(GCJ_VERSION)/classmap.d/openoffice.org$(VER)-gcj.db $$i /$(OODIR)/program/classes-native/$$i.so; \
 	done
   endif
 endif
@@ -1532,6 +1554,16 @@ ifeq "$(ARCH)" "amd64"
 endif
 
 	touch $@
+
+xxx:
+	# recompiler the jar; the preferred way is to produce the binaries from
+	# the bytecode.
+	mkdir -p $(PKGDIR)-gcj/$(OODIR)/program/classes-native
+	for jar in $(PKGDIR)-common/$(OODIR)/program/classes/*.jar $(PKGDIR)-java-common/usr/share/java/openoffice/*.jar; \
+	do \
+	  [ -h "$$jar" -o ! -f "$$jar" ] && continue; \
+	  debian/scripts/aot-compile $$jar $(PKGDIR)-gcj/$(OODIR)/program/classes-native/$$(basename $$jar).so || exit $$?; \
+	done
 
 # Install files generated by setup into arch-independent package directories
 install-indep: $(STAMP_DIR)/install-indep

@@ -4,13 +4,29 @@
 
 THIS_PACKAGE=openoffice.org-gcj
 THIS_SCRIPT=postrm
+gcjversion=4.1
+gcjdbtool=/usr/bin/gcj-dbtool-${gcjversion}
+classmapd=/usr/share/gcj-${gcjversion}/classmap.d
+classmaps=/var/lib/gcj-${gcjversion}/classmap.db
 
-set -e
 
-if [ "$1" = "remove" ]; then
-	find /usr/share/gcj-4.0/classmap.d -name "*.db" -print0 \
-		| gcj-dbtool-4.0 -0 -m /var/lib/gcj-4.0/classmap.db.tmp && \
-	mv /var/lib/gcj-4.0/classmap.db.tmp /var/lib/gcj-4.0/classmap.db
+if [ "$1" = "configure" ]; then
+    if [ ! -x $gcjdbtool ]; then
+        echo >&2 "skip classmap deregistration, $gcjdbtool not found".
+        return 0
+    fi
+    # Move into a temporary file to avoid editing the existing file.
+    # The existing file could be mmap()ed by gij processes.
+    find ${classmapd} -name '*.db' -print0 | ${gcjdbtool} -0 -m ${classmaps}.tmp
+    if [ $? -ne 0 ]; then
+	echo >&2 "$THIS_PACKAGE: error merging classmaps"
+	exit 1
+    fi
+    mv ${classmaps}.tmp ${classmaps}
+    if [ $? -ne 0 ]; then
+	echo >&2 "$THIS_PACKAGE: could not replace existing classmap database"
+	exit 1
+    fi
 fi
 
 exit 0

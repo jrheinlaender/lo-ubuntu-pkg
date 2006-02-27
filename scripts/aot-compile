@@ -1,0 +1,210 @@
+#!/usr/bin/env python
+
+import copy
+import os
+import string
+import sys
+import zipfile
+
+GCJ = "/usr/bin/gcj-4.1"
+GCJFLAGS = [ "-O2", "-fPIC", "-findirect-dispatch", "-fjni"]
+LDFLAGS = ["-Wl,-Bsymbolic"]
+
+class Error(Exception):
+    pass
+
+class JarFile(zipfile.ZipFile):
+    def isSubsetOf(self, other):
+        """Returns True if identical copies of all classes in this
+        jarfile exist in the other."""
+        for other_item in other.infolist():
+            if not other_item.filename.endswith(".class"):
+                continue
+            try:
+                self_item = self.getinfo(other_item.filename)
+            except KeyError:
+                return False
+            if self_item.CRC != other_item.CRC:
+                return False
+        return True
+
+    def numClasses(self):
+        """Return the number of classfiles within this jarfile."""
+        return len([
+            item for item in self.namelist() if item.endswith(".class")])
+
+    def classPrefix(self):
+        """Return the longest prefix common to all classes."""
+        return os.path.commonprefix([
+            item for item in self.namelist() if item.endswith(".class")])
+
+def strip_exclusions(jars, exclusions):
+    """Remove user-excluded jars from the list.  We're really strict
+    about this to ensure that dead options don't get left in
+    specfiles."""
+    jars = copy.copy(jars)
+    for exclusion in exclusions:
+        for jar in jars:
+            if jar.filename == exclusion:
+                jars.remove(jar)
+                break
+        else:
+            raise Error, "%s: file does not exist or is not a jar" % exclusion
+    return jars
+
+def weed_jars(jars):
+    """Remove any jarfiles that are completely contained within
+    another.  This is more common than you'd think, and we only
+    need one nativified copy of each class after all."""
+    jars = copy.copy(jars)
+    while True:
+        for jar1 in jars:
+            for jar2 in jars:
+                if jar1 is jar2:
+                    continue
+                if jar1.isSubsetOf(jar2):
+                    msg = "subsetted %s" % jar2.filename
+                    if jar2.isSubsetOf(jar1):
+                        msg += " (identical)"
+                    warn(msg)
+                    jars.remove(jar2)
+                    break
+            else:
+                continue
+            break
+        else:
+            break
+        continue
+    return jars
+
+def set_basenames(jars):
+    """Ensure that each jarfile has a different basename."""
+    names = {}
+    for jar in jars:
+        name = os.path.basename(jar.filename)
+        if not names.has_key(name):
+            names[name] = []
+        names[name].append(jar)
+    for name, set in names.items():
+        if len(set) == 1:
+            set[0].basename = name
+            continue
+        # prefix the jar filenames to make them unique
+        # XXX will not work in most cases -- needs generalising
+        set = [(jar.filename.split(os.sep), jar) for jar in set]
+        minlen = min([len(bits) for bits, jar in set])
+        set = [(bits[-minlen:], jar) for bits, jar in set]
+        bits = apply(zip, [bits for bits, jar in set])
+        while True:
+            row = bits[-2]
+            for bit in row[1:]:
+                if bit != row[0]:
+                    break
+            else:
+                del bits[-2]
+                continue
+            break
+        set = zip(
+            ["_".join(name) for name in apply(zip, bits[-2:])],
+            [jar for bits, jar in set])
+        for name, jar in set:
+            warn("building %s as %s" % (jar.filename, name))
+            jar.basename = name
+    # XXX keep this check until we're properly general
+    names = {}
+    for jar in jars:
+        name = jar.basename
+        if names.has_key(name):
+            raise Error, "%s: duplicate jarname" % name
+        names[name] = 1
+
+def aot_compile_jar(name, jar, soname, max_classes_per_jar = 1000):
+    """Generate the shared library and class mapping for one jarfile.
+    If the shared library already exists then it will not be
+    overwritten.  This is to allow optimizer failures and the like to
+    be worked around."""
+    dir = soname[:soname.rfind('/')]
+    if os.path.exists(soname):
+        warn("not recreating %s" % soname)
+    else:
+        cleanup = []
+        # prepare
+        if jar.numClasses() > max_classes_per_jar:
+            warn("splitting %s" % jar.filename)
+            sources = split_jarfile(jar, dir, max_classes_per_jar)
+            cleanup.extend(sources)
+        elif jar.filename.endswith(".jar"):
+            sources = [jar.filename]
+        else:
+            sources = [symlink_jarfile(jar.filename, dir)]
+            cleanup.extend(sources)
+        # compile and link
+        if len(sources) == 1:
+            system([GCJ, "-shared"] +
+                   GCJFLAGS + LDFLAGS +
+                   [sources[0], "-o", soname])
+        else:
+            objects = []
+            for source in sources:
+                object = os.path.join(dir, os.path.basename(source) + ".o")
+                system([GCJ, "-c"] +
+                       GCJFLAGS +
+                       [source, "-o", object])
+                objects.append(object)
+                cleanup.append(object)
+            system([GCJ, "-shared"] +
+                   GCJFLAGS + LDFLAGS +
+                   objects + ["-o", soname])
+        # clean up
+        for item in cleanup:
+            os.unlink(item)
+    # dbtool
+#    dbname = soname[:soname.rfind(".")] + ".db"
+#    soname = os.path.join(libdir, os.path.basename(soname))
+#    system([PATHS["dbtool"], "-n", dbname, "64"])
+#    system([PATHS["dbtool"], "-f", dbname, jar.filename, soname])
+
+def split_jarfile(src, dir, split):
+    """Split large jarfiles to avoid huge assembler files."""
+    jarfiles, dst = [], None
+    for item in src.infolist():
+        if (dst is None or item.filename.endswith(".class") and size >= split):
+            if dst is not None:
+                dst.close()
+            path = os.path.join(dir, "%s.%d.jar" % (
+                os.path.basename(src.filename), len(jarfiles) + 1))
+            jarfiles.append(path)
+            dst = zipfile.ZipFile(path, "w", zipfile.ZIP_STORED)
+            size = 0
+        dst.writestr(item, src.read(item.filename))
+        size += 1
+    dst.close()
+    return jarfiles
+
+def symlink_jarfile(src, dir):
+    """Symlink a jarfile with a '.jar' extension so gcj knows what it is."""
+    dst = os.path.join(dir, os.path.basename(src) + ".jar")
+    os.symlink(src, dst)
+    return dst
+
+def system(command):
+    """Execute a command."""
+    prefix = os.environ.get("PS4", "+ ")
+    prefix = prefix[0] + prefix
+    print >>sys.stderr, prefix + " ".join(command)
+
+    status = os.spawnv(os.P_WAIT, command[0], command)
+    if status > 0:
+        raise Error, "%s exited with code %d" % (command[0], status)
+    elif status < 0:
+        raise Error, "%s killed by signal %d" % (command[0], -status)
+
+def warn(msg):
+    """Print a warning message."""
+    print >>sys.stderr, "%s: warning: %s" % (
+        os.path.basename(sys.argv[0]), msg)
+
+if __name__ == "__main__":
+    jarpath = sys.argv[1]
+    jarname = jarpath[jarpath.rfind(os.sep)+1:]
+    aot_compile_jar(jarname, JarFile(jarpath, "r"), sys.argv[2])
