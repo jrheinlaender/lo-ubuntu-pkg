@@ -34,9 +34,9 @@ DIST := $(shell lsb_release -is)
 # Figure out who's building this package.
 BUILDER:=$(shell echo $$LOGNAME)
 OOO_VENDOR:=Debian
-ifeq "$(DIST)" "Ubuntu"
+#ifeq "$(DIST)" "Ubuntu"
 OOO_VENDOR+= and Ubuntu
-endif
+#endif
 
 # ensure that some scripts we need are executable.
 DUMMY:=$(shell if [ ! -x debian/scripts/setperms ]; then chmod 755 debian/scripts/setperms; fi)
@@ -51,7 +51,7 @@ unexport LS_COLORS
 
 #TAG=src680-m$(MILESTONE)
 #MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)"| cut -d. -f3)
-TAG=oob680-m4
+TAG=oob680-m5
 SOURCE_TREE=ooo-build/build/$(TAG)
 STAMP_DIR=debian/stampdir
 
@@ -189,9 +189,6 @@ endif
 ISOS := $(subst ",,$(ISOS))
 #HELPISOS := $(subst ",,$(HELPISOS))
 LANGPACKISOS := $(subst ",,$(LANGPACKISOS))
-# filter out sr-CS, ne (syntax errors in GSI files)
-ISOS:= $(filter-out sr-CS ne, $(ISOS))
-LANGPACKISOS:= $(filter-out sr-CS ne, $(LANGPACKISOS))
 
 ifeq "$(DIST)" "Ubuntu"
   LANGUAGES := $(ISOS)
@@ -926,10 +923,26 @@ endif
 
 ifneq "$(BUILD_ONLY_EN_US)" "y"
 ifneq "$(LANGPACKISOS)" "en-US"
+	cd ooo-build; for uu in src/GSI*.uu; do \
+	  orig="`echo "$$uu" |sed -e 's#.uu$$##'`" ;\
+	  if [ ! -s $$orig ]; then \
+	    uudecode -o $$orig $$uu ;\
+	    touch -r $$uu $$orig ;\
+	  fi ;\
+	done
 	# extract extra GSIs
 	find ooo-build/src -name "*.sdf.bz2" -exec bunzip2 -k \{\} \;
 	for i in `find ooo-build/src/*.sdf.gz`; do gunzip -dc "$$i" > \
 		ooo-build/src/`basename $$i .gz`; done
+	# work around broken stuff in the GSI breaking the build in svx
+	if "`echo $(LANGPACKISOS) | grep -q he`"; then \
+		TMP=`mktemp -q`; grep -v OOO_LICENSE ooo-build/src/GSI_he.sdf \
+			> $$TMP && mv $$TMP ooo-build/src/GSI_he.sdf
+	fi
+	if "`echo $(LANGPACKISOS) | grep -q sr-CS`"; then \
+		TMP=`mktemp -q`; grep -v OOO_LICENSE ooo-build/src/GSI_sr-CS.sdf \
+			> $$TMP && mv $$TMP ooo-build/src/GSI_sr-CS.sdf
+	fi
 endif
 endif
 
