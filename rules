@@ -23,6 +23,7 @@ UPSTREAM_VERSION:=$(shell echo "$(SOURCE_VERSION)"| cut -d- -f1)
 BINARY_VERSION=$(SOURCE_VERSION)
 #BINARY_VERSION=1.9.125+2.0beta2-$(shell dpkg-parsechangelog  | grep urgency \
 	| awk '{print $$2}' | sed -e s/"("// -e s/")"// | cut -d"-" -f2)
+PACKAGES := $(shell dh_listpackages)
 
 ARCH := $(shell dpkg-architecture -qDEB_HOST_ARCH)
 # Dist we are building for
@@ -1514,6 +1515,10 @@ $(STAMP_DIR)/install-indep: ooo-build/fonts/opens___.ttf
 
 	# compress manpages
 	find $(PKGDIR)-common -type f -name "*.1" | xargs gzip -9
+	mkdir -p $(PKGDIR)-common/usr/share/man/man1
+	ln -sf openoffice$(VER).1.gz $(PKGDIR)-common/usr/share/man/man1/ooffice$(VER).1.gz
+	ln -sf openoffice$(VER).1.gz $(PKGDIR)-common/usr/share/man/man1/ooo-wrapper$(VER).1.gz
+	ln -sf openoffice$(VER).1.gz $(PKGDIR)-common/usr/share/man/man1/oofromtemplate$(VER).1.gz
 
 ifneq "$(HELPISOS)" ""
 	# fix permisson
@@ -1734,6 +1739,8 @@ binary-common:
 	dh_installman
 	# fix manpage symlinks
 	for i in writer calc draw impress base math; do \
+		echo $(PACKAGES) | grep -q openoffice.org$(VER)-$$i || continue; \
+		mkdir -p $(CURDIR)/$(PKGDIR)-$$i/usr/share/man/man1; \
 		if [ "$$i" = "writer" ]; then \
 			for j in writer html web; do \
 				cd $(CURDIR)/$(PKGDIR)-$$i/usr/share/man/man1 && \
