@@ -25,8 +25,8 @@ UPSTREAM_VERSION:=$(shell echo "$(SOURCE_VERSION)"| cut -d- -f1)
 BINARY_VERSION=$(SOURCE_VERSION)
 #BINARY_VERSION=1.9.125+2.0beta2-$(shell dpkg-parsechangelog  | grep urgency \
 	| awk '{print $$2}' | sed -e s/"("// -e s/")"// | cut -d"-" -f2)
-BASE_VERSION=2.0.1
-NEXT_BASE_VERSION=2.1
+BASE_VERSION=2.0.1oob680m5
+NEXT_BASE_VERSION=2.0.3
 
 ARCH := $(shell dpkg-architecture -qDEB_HOST_ARCH)
 # Dist we are building for
@@ -117,7 +117,11 @@ ifeq "$(BUILD_PYUNO)" "n"
   DEBHELPER_OPTIONS+= -Npython-uno
 endif
 
-PACKAGE_TESTTOOL=n
+ifeq "$(DIST)" "Ubuntu"
+	PACKAGE_QA_TOOLS=y
+else
+	PACKAGE_QA_TOOLS=n
+endif
 PACKAGE_TTF_OPENSYMBOL=y
 PACKAGE_NPSOPLUGIN=n
 
@@ -129,6 +133,9 @@ else
 	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-gcj
 endif
 
+ifneq "$(PACKAGE_QA_TOOLS)" "y"
+	DEBHELPER_OPTIONS+= -Nopenoffice.org-testtool
+endif
 ifneq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 	DEBHELPER_OPTIONS+= -Nttf-opensymbol
 endif
@@ -200,7 +207,9 @@ ifeq "$(DIST)" "Ubuntu"
 	#HELPISOS := $(ISOS)
 	HELPISOS := 
 	OOO_L10N_DIR = $(CURDIR)/debian/l10n
+    ifeq (,$(findstring nogsi, $(DEB_BUILD_OPTIONS)))
 	GSI_EXPORT_STAMP = $(STAMP_DIR)/gsi-export
+    endif
   endif
   ifeq "$(PKGSOURCE)" "openoffice.org$(VER)-l10n"
 	PATCHSET := UbuntuL10n
@@ -238,8 +247,8 @@ else
 endif
 
 NO_JAVA_ARCHS = !hppa !sparc
-NO_JAVA_ARCHS = !hppa
-ENABLE_JAVA=y
+#NO_JAVA_ARCHS = !hppa
+#ENABLE_JAVA=y
 ifeq "$(ARCH)" "sparc"
 	ENABLE_JAVA=n
 else
@@ -572,6 +581,10 @@ ifneq "$(NUM_CPUS)" ""
   CONFIGURE_FLAGS += --with-num-cpus=$(NUM_CPUS)
 endif
 AVAIL_CPUS := $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
+# buildd problem?
+ifneq (,$(findstring $(ARCH), powerpc sparc))
+  AVAIL_CPUS := 1
+endif
 ifneq ($(AVAIL_CPUS),1)
   CONFIGURE_FLAGS += --with-num-cpus=$(shell expr $(AVAIL_CPUS) + 1)
 endif
@@ -924,6 +937,8 @@ endif
 ifneq "$(BUILD_ONLY_EN_US)" "y"
 ifneq "$(LANGPACKISOS)" "en-US"
 	cd ooo-build; for uu in src/GSI*.uu; do \
+	  iso=$$(echo $$uu | sed -n 's/.*GSI_\(.*\)\.sdf.*/\1/p'); \
+	  case " $(LANGPACKISOS) " in *\ $$iso\ *) ;; *) continue; esac; \
 	  orig="`echo "$$uu" |sed -e 's#.uu$$##'`" ;\
 	  if [ ! -s $$orig ]; then \
 	    uudecode -o $$orig $$uu ;\
@@ -937,11 +952,11 @@ ifneq "$(LANGPACKISOS)" "en-US"
 	# work around broken stuff in the GSI breaking the build in svx
 	if "`echo $(LANGPACKISOS) | grep -q he`"; then \
 		TMP=`mktemp -q`; grep -v OOO_LICENSE ooo-build/src/GSI_he.sdf \
-			> $$TMP && mv $$TMP ooo-build/src/GSI_he.sdf
+			> $$TMP && mv $$TMP ooo-build/src/GSI_he.sdf; \
 	fi
 	if "`echo $(LANGPACKISOS) | grep -q sr-CS`"; then \
 		TMP=`mktemp -q`; grep -v OOO_LICENSE ooo-build/src/GSI_sr-CS.sdf \
-			> $$TMP && mv $$TMP ooo-build/src/GSI_sr-CS.sdf
+			> $$TMP && mv $$TMP ooo-build/src/GSI_sr-CS.sdf; \
 	fi
 endif
 endif
@@ -1316,8 +1331,34 @@ endif
 	mkdir -p -m755 $(PKGDIR)-base/usr/share/applications \
 	               $(PKGDIR)-core/usr/share/applications
 
-	# we don't need the testtool in "normal" builds...
-ifneq "$(PACKAGE_TESTTOOL)" "y"
+ifeq "$(PACKAGE_QA_TOOLS)" "y"
+	mkdir -p -m755 $(PKGDIR)-qa-tools/usr/bin
+	install -m755 $(SOURCE_TREE)/ootestapi $(PKGDIR)-qa-tools/usr/bin
+	install -m755 $(SOURCE_TREE)/ootesttool $(PKGDIR)-qa-tools/usr/bin
+	install -m755 $(SOURCE_TREE)/oosmoketest $(PKGDIR)-qa-tools/usr/bin
+
+	mkdir -p -m755 $(PKGDIR)-qa-tools/$(OODIR)/program
+	for f in testtool.bin libcommuni* libsimplecm*; do \
+		mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-qa-tools/$(OODIR)/program; \
+	done
+
+	mkdir -p -m755 debian/openoffice.org-qa-tools/usr/share/java/openoffice$(VER)
+	cp $(SOURCE_TREE)/qadevOOo/unx*.pro/class/OOoRunnerLight.jar \
+		$(PKGDIR)-qa-tools/usr/share/java/openoffice$(VER)
+
+	mkdir -p -m755 $(PKGDIR)-qa-tools/$(OODIR)/smoketest
+	install -m755 $(SOURCE_TREE)/smoketestoo_native/smoketest.pl \
+		$(SOURCE_TREE)/smoketestoo_native/testlog.pl \
+		$(PKGDIR)-qa-tools/$(OODIR)/smoketest
+
+	mkdir -p -m755 $(PKGDIR)-qa-tools/$(OODIR)/presets/basic/Standard
+	install -m644 $(SOURCE_TREE)/smoketestoo_native/data/scripts/*.x* \
+		$(PKGDIR)-qa-tools/$(OODIR)/presets/basic/Standard
+
+	mkdir -p -m755 $(PKGDIR)-qa-tools/usr/share/doc/openoffice.org$(VER)-qa-tools
+	install -m644 debian/README.qa \
+		$(PKGDIR)-qa-tools/usr/share/doc/openoffice.org$(VER)-qa-tools
+else
 	rm -f $(PKGDIR)-core/$(OODIR)/program/testtool.bin
 	rm -f $(PKGDIR)-core/$(OODIR)/program/libcommuni*
 	rm -f $(PKGDIR)-core/$(OODIR)/program/libsimplecm*
@@ -1894,6 +1935,40 @@ ifeq "$(HELPISOS)" ""
 endif
 
 	cp debian/catalog.xml $(PKGDIR)-common/$(OODIR)/share/dtd/officedocument/1_0
+
+ifeq "$(PACKAGE_QA_TOOLS)" "y"
+	mkdir -p -m755 $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/tests/java
+	for d in objdsc testdocs; do \
+		cp -r $(SOURCE_TREE)/qadevOOo/$$d $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/$$d; \
+	done
+
+	cp -r $(SOURCE_TREE)/qadevOOo/tests/basic $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/tests; \
+	for d in mod ifc; do \
+		cp -r $(SOURCE_TREE)/qadevOOo/unx*.pro/class/$$d $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/tests/java; \
+	done
+
+	find $(PKGDIR)-qa-api-tests -type d -name "CVS" | xargs rm -rf
+	find $(PKGDIR)-qa-api-tests -type f | xargs chmod 0644
+
+	echo "TestBase=java_fat" > $(PKGDIR)-qa-api-tests/usr/lib/openoffice/qadevOOo/java.props
+	echo "TestBase=java_complex" > $(PKGDIR)-qa-api-tests/usr/lib/openoffice/qadevOOo/complex.props
+	echo "TestBase=basic_fat" > $(PKGDIR)-qa-api-tests/usr/lib/openoffice/qadevOOo/basic.props
+
+	echo "BASICBRIDGE=/$(OODIR)/qadevOOo/testdocs/BasicBridge.sxw" >> \
+		$(PKGDIR)-qa-api-tests/usr/lib/openoffice/qadevOOo/basic.props
+	echo "BASICRESPTH=/$(OODIR)/qadevOOo/tests/basic" >> \
+		$(PKGDIR)-qa-api-tests/usr/lib/openoffice/qadevOOo/basic.props
+
+	for i in java complex basic; do \
+		echo "DescriptionPath=/$(OODIR)/qadevOOo/objdsc" >> \
+			$(PKGDIR)-qa-api-tests/usr/lib/openoffice/qadevOOo/$$i.props; \
+		echo "TestDocumentPath=/$(OODIR)/qadevOOo/testdocs" >> \
+			$(PKGDIR)-qa-api-tests/usr/lib/openoffice/qadevOOo/$$i.props; \
+		echo "AppExecutionCommand=/$(OODIR)/program/soffice" \
+			"-norestore -nocrashreport -accept=socket,host=localhost,port=8100;urp;" >> \
+			$(PKGDIR)-qa-api-tests/usr/lib/openoffice/qadevOOo/$$i.props; \
+	done
+endif
 
 	touch $@
 
