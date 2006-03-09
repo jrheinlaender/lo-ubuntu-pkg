@@ -60,7 +60,7 @@ STAMP_DIR=debian/stampdir
 # Read in architecture-specific variables of importance.
 #include debian/scripts/vars.$(ARCH)
 
-AMD64_EXPERIMENTAL=y
+AMD64_EXPERIMENTAL=n
 ifeq "$(ARCH)" "amd64"
   PKGS_AMD64_NOEXP = openoffice.org$(VER) openoffice.org$(VER)-core \
 	openoffice.org$(VER) openoffice.org$(VER)-writer openoffice.org$(VER)-calc \
@@ -142,7 +142,7 @@ endif
 PACKAGE_TTF_OPENSYMBOL=y
 PACKAGE_NPSOPLUGIN=n
 
-ifneq (,$(findstring $(ARCH), i386 powerpc))
+ifneq (,$(findstring $(ARCH), i386 powerpc sparc))
 	BUILD_JARS_NATIVE=y
 	REBUILD_JARS_NATIVE=y
 else
@@ -269,7 +269,7 @@ endif
 # !m68k is just a placeholder to avoid syntax errors due to this being empty
 NO_JAVA_ARCHS = !m68k
 ENABLE_JAVA=y
-ifneq (,$findstring $(ARCH), $(NO_JAVA_ARCHS))
+ifneq (,$(findstring $(ARCH), $(NO_JAVA_ARCHS)))
 	ENABLE_JAVA=n
 else
 ifneq "$(SARGE_BACKPORT)" "y"
@@ -604,6 +604,7 @@ AVAIL_CPUS := $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
 ifneq (,$(findstring $(ARCH), powerpc sparc))
   AVAIL_CPUS := 1
 endif
+AVAIL_CPUS := 1
 ifneq ($(AVAIL_CPUS),1)
   CONFIGURE_FLAGS += --with-num-cpus=$(shell expr $(AVAIL_CPUS) + 1)
 endif
@@ -851,12 +852,14 @@ ifneq "$(HELPISOS)" ""
 	for LNUM in $(HELPISOS) ; do \
 	    LNAME=`ooo-build/bin/openoffice-xlate-lang -l $$LNUM | perl -e 'print ucfirst(<STDIN>);'`; \
 	    LCODE=`ooo-build/bin/openoffice-xlate-lang -i $$LNUM | tr A-Z a-z`; \
+	    CCODE=`echo $$LCODE | sed 's/-.*//'`; \
 	    sed -e "s|@LNAME@|$$LNAME|g" -e "s|@LCODE@|$$LCODE|g" \
 		-e "s|@CCODE@|$$CCODE|g" \
 			-e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 	        >> debian/control < debian/control.help.in; \
 	done
 endif
+ifeq "$(PKGSOURCE)" "openoffice.org$(VER)"
 ifeq "$(ENABLE_MONO)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.mono.in
@@ -881,10 +884,9 @@ else
 endif
 
 ifeq "$(AMD64_EXPERIMENTAL)" "y"
-  ifeq "$(PKGSOURCE)" "openoffice.org$(VER)"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.experimental
-  endif
+endif
 endif
 	python debian/joinctrl.py < debian/control > debian/control.tmp
 	mv debian/control.tmp debian/control
@@ -926,7 +928,7 @@ endif
 
 	# uudecode source files, omit GSI files, building only en-US
 	cd ooo-build; for uu in fonts/opens___.ttf.uu src/*.uu templates/*.uu src/easter/*.uu; do \
-	  case "$$uu" in GSI*) continue; esac; \
+	  case "$$uu" in src/GSI*) continue; esac; \
 	  orig="`echo "$$uu" |sed -e 's#.uu$$##'`" ;\
           if [ ! -s $$orig ]; then \
             uudecode -o $$orig $$uu ;\
@@ -2143,6 +2145,14 @@ endif
 			mv $$i `echo "$$i" | sed -e "s/\.gz$$//"`; \
 		done; \
 	fi
+	# dependency packages
+	for s in '' -gnome -kde -evolution -math -base -calc -writer -draw -impress; do \
+	  rm -f debian/openoffice.org2$$s.p*; \
+	  rm -rf debian/openoffice.org2$$s/usr/share/doc/openoffice.org2$$s; \
+	  ln -sf openoffice.org$$s debian/openoffice.org2$$s/usr/share/doc/openoffice.org2$$s; \
+	  sed "s/@PKGBASE@/openoffice.org$$s/g" debian/deppackage.postinst.in \
+	    > debian/openoffice.org2$$s.postinst; \
+	done
 	dh_installdeb
 ifeq "$(ARCH)" "i386"
 	# this LD_ASSUME_KERNEL is for working around some bug which makes
