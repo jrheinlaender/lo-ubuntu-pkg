@@ -1168,6 +1168,8 @@ maintscripts: $(STAMP_DIR)/maintscripts
 $(STAMP_DIR)/maintscripts: debian/shell-lib.sh debian/java-lib.sh debian/control
 	dh_testdir
 
+	SHELL=/bin/bash rm -f debian/*.{pre,post}{inst,rm}
+
 	# generate maintainer scripts from *.in
 	# or generate default script which calls hook in openoffice.org-debian-files package
 	for PKG in `dh_listpackages`; do \
@@ -1179,24 +1181,8 @@ $(STAMP_DIR)/maintscripts: debian/shell-lib.sh debian/java-lib.sh debian/control
 	      grep LIBSUFFIX debian/scripts/vars.$(ARCH) >> $$MAINTSCRIPT; \
 	      cat debian/shell-lib.sh >> $$MAINTSCRIPT; \
 	      sed -n '/^#INCLUDE_SHELL_LIB#$$/,$$p' < $$MAINTSCRIPT.in | sed -e '/^#INCLUDE_SHELL_LIB#$$/d' >> $$MAINTSCRIPT; \
-	    else \
-	      echo '#!/bin/sh' > $$MAINTSCRIPT ; \
-	      echo THIS_PACKAGE=$$PKG >> $$MAINTSCRIPT ;\
-	      echo THIS_SCRIPT=$$FILE >> $$MAINTSCRIPT ;\
-	      cat debian/shell-lib.sh >> $$MAINTSCRIPT; \
 	    fi; \
 	  done; \
-	done
-
-	# symlink doc dirs
-	for PKG in $(LANG_PACKAGES); do \
-	  case $$PKG in \
-	  *l10n-en-us) continue;; \
-	  *l10n-*) \
-	    rm -f debian/$$PKG.p*; \
-	    sed "s/@PKGNAME@/$$PKG/g;s/@PKGTARGET@/openoffice.org$(VER)-l10n-common/g" \
-	      debian/deppackage.postinst.in > debian/$$PKG.postinst; \
-	  esac; \
 	done
 
 	touch $@
@@ -1237,13 +1223,6 @@ endif
 	    fi; \
 	  done; \
 	done	
-
-	# symlink doc dirs
-	for PKG in $(HELP_PACKAGES); do \
-	  rm -f debian/$$PKG.p*; \
-	  sed "s/@PKGNAME@/$$PKG/g;s/@PKGTARGET@/openoffice.org$(VER)-l10n-common/g" \
-	    debian/deppackage.postinst.in > debian/$$PKG.postinst; \
-	done
 endif
 	touch $@
 
@@ -1299,7 +1278,7 @@ endif
 	done
 
 	# replace duplicate files in the langpacks with symlinks
-	fdupes --recurse --sameline --size \
+	fdupes --quiet --recurse --sameline --size \
 		debian/openoffice$(VER).org-common/$(OODIR) \
 		$(foreach d,$(shell echo $(LANGPACKISOS) | tr A-Z a-z),debian/openoffice.org$(VER)-l10n-$(d)/$(OODIR)) \
 		> l10n.fdupes
@@ -1469,9 +1448,10 @@ ifeq "$(PACKAGE_QA_TOOLS)" "y"
 	install -m644 $(SOURCE_TREE)/smoketestoo_native/data/scripts/*.x* \
 		$(PKGDIR)-qa-tools/$(OODIR)/presets/basic/Standard
 
-	mkdir -p -m755 $(PKGDIR)-qa-tools/usr/share/doc/openoffice.org$(VER)-qa-tools
+	# install QA docs (-core docdir)
+	mkdir -p -m755 $(PKGDIR)-qa-tools/usr/share/doc/openoffice.org$(VER)-core
 	install -m644 debian/README.qa \
-		$(PKGDIR)-qa-tools/usr/share/doc/openoffice.org$(VER)-qa-tools
+		$(PKGDIR)-qa-tools/usr/share/doc/openoffice.org$(VER)-core
 else
 	rm -f $(PKGDIR)-core/$(OODIR)/program/testtool.bin
 	rm -f $(PKGDIR)-core/$(OODIR)/program/libcommuni*
@@ -1653,12 +1633,19 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
 endif
 
-	# install some docs.
-	mkdir -p $(PKGDIR)-base/usr/share/doc/openoffice.org$(VER)-base
+	# install some docs (docdir of the -core package).
+	mkdir -p $(PKGDIR)-base/usr/share/doc/openoffice.org$(VER)-core
 	cp ooo-build/doc/using-mysql-databases.txt \
-		$(PKGDIR)-base/usr/share/doc/openoffice.org$(VER)-base
+		$(PKGDIR)-base/usr/share/doc/openoffice.org$(VER)-core
 	cp ooo-build/doc/data-from-remote-mysql-server.txt \
-		$(PKGDIR)-base/usr/share/doc/openoffice.org$(VER)-base
+		$(PKGDIR)-base/usr/share/doc/openoffice.org$(VER)-core
+
+	# README symlinks from -core -> -common
+	mkdir -p $(PKGDIR)-core/usr/share/doc/openoffice.org$(VER)-core
+	ln -sf ../openoffice.org$(VER)-common/README.gz \
+		$(PKGDIR)-core/usr/share/doc/openoffice.org$(VER)-core/README.gz
+	ln -sf ../openoffice.org$(VER)-common/README.html \
+		$(PKGDIR)-core/usr/share/doc/openoffice.org$(VER)-core/README.html
 
 ifneq "$(USE_EXTERNAL_MYTHES)" "y"
 	# install libmythes and th_gen_idx.pl
@@ -2194,13 +2181,17 @@ binary-common:
 		fi; \
 	done
 	dh_installchangelogs
+ifneq "" "$(findstring openoffice.org$(VER)-common$(EXPSUFFIX), $(PACKAGES))"
+	install -m644 debian/README.Debian \
+	  $(PKGDIR)-common$(EXPSUFFIX)/usr/share/doc/openoffice.org$(VER)-common$(EXPSUFFIX)/
+	install -m644 ooo-build/ChangeLog \
+	  $(PKGDIR)-common$(EXPSUFFIX)/usr/share/doc/openoffice.org$(VER)-common$(EXPSUFFIX)/changelog.ooo-build
+	gzip -f9 \
+	  $(PKGDIR)-common$(EXPSUFFIX)/usr/share/doc/openoffice.org$(VER)-common$(EXPSUFFIX)/changelog.ooo-build
+endif
 ifneq "" "$(findstring openoffice.org$(VER)-core$(EXPSUFFIX), $(PACKAGES))"
-	if [ -e $(PKGDIR)$(EXPSUFFIX)/usr/share/doc/openoffice.org$(VER) ]; then \
-	 install -m644 ooo-build/ChangeLog \
-	   $(PKGDIR)-core$(EXPSUFFIX)/usr/share/doc/openoffice.org$(VER)-core$(EXPSUFFIX)/changelog.ooo-build \
-	 && gzip -f9 \
-	   $(PKGDIR)-core$(EXPSUFFIX)/usr/share/doc/openoffice.org$(VER)-core$(EXPSUFFIX)/changelog.ooo-build; \
-	fi
+	ln -sf ../openoffice.org$(VER)-common$(EXPSUFFIX)/changelog.ooo-build.gz \
+	   $(PKGDIR)-core$(EXPSUFFIX)/usr/share/doc/openoffice.org$(VER)-core$(EXPSUFFIX)/changelog.ooo-build
 endif
 	dh_installdebconf
 	dh_installmime
@@ -2224,7 +2215,7 @@ endif
 			mv $$i `echo "$$i" | sed -e "s/\.gz$$//"`; \
 		done; \
 	fi
-	# l10 & help packages
+	# l10 & help packages (with docdir symlinks)
 	for PKG in $(HELP_PACKAGES) $(LANG_PACKAGES); do \
 	  case $$PKG in \
 	    *l10n-en-us) target=openoffice.org$(VER)-common; continue;; \
@@ -2237,15 +2228,43 @@ endif
 	  sed "s/@PKGNAME@/$$PKG/g;s/@PKGTARGET@/$$target/g" \
 	      debian/deppackage.postinst.in > debian/$$PKG.postinst; \
 	done
-	# dependency packages
-	for s in '' -gnome -kde -evolution -math -base -calc -writer -draw -impress; do \
-	  rm -f debian/openoffice.org2$$s.p*; \
-	  rm -rf debian/openoffice.org2$$s/usr/share/doc/openoffice.org2$$s; \
-	  mkdir -p debian/openoffice.org2$$s/usr/share/doc; \
-	  ln -sf openoffice.org$$s debian/openoffice.org2$$s/usr/share/doc/openoffice.org2$$s; \
-	  sed "s/@PKGNAME@/openoffice.org2$$s/g;s/@PKGTARGET@/openoffice.org$$s/g" \
-	    debian/deppackage.postinst.in > debian/openoffice.org2$$s.postinst; \
+
+	# arch dependent packages (with docdir symlinks)
+	for s in '' -gnome -kde -evolution -math -base -calc -writer -draw -impress -gcj -dev -qa-tools -filter-so52 -officebean; do \
+	  PKG=openoffice.org$(VER)$$s; \
+	  echo " $(PACKAGES) " | fgrep -q " $$PKG " || continue; \
+	  target=openoffice.org$(VER)-core; \
+	  rm -rf debian/$$PKG/usr/share/doc/$$PKG; \
+	  mkdir -p debian/$$PKG/usr/share/doc; \
+	  ln -sf $$target debian/$$PKG/usr/share/doc/$$PKG; \
+	  sed "s/@PKGNAME@/$$PKG/g;s/@PKGTARGET@/$$target/g" \
+	    debian/deppackage.postinst.in >> debian/$$PKG.postinst; \
 	done
+
+	# indep packages (with docdir symlinks)
+	for s in -dev-doc -gtk-gnome -java-common -qa-api-tests; do \
+	  PKG=openoffice.org$(VER)$$s; \
+	  echo " $(PACKAGES) " | fgrep -q " $$PKG " || continue; \
+	  target=openoffice.org$(VER)-common; \
+	  rm -rf debian/$$PKG/usr/share/doc/$$PKG; \
+	  mkdir -p debian/$$PKG/usr/share/doc; \
+	  ln -sf $$target debian/$$PKG/usr/share/doc/$$PKG; \
+	  sed "s/@PKGNAME@/$$PKG/g;s/@PKGTARGET@/$$target/g" \
+	    debian/deppackage.postinst.in >> debian/$$PKG.postinst; \
+	done
+
+	# dependency packages (with docdir symlinks)
+	for s in '' -gnome -kde -evolution -math -base -calc -writer -draw -impress; do \
+	  PKG=openoffice.org2$$s; \
+	  echo " $(PACKAGES) " | fgrep -q " $$PKG " || continue; \
+	  target=openoffice.org$$s; \
+	  rm -rf debian/$$PKG/usr/share/doc/$$PKG; \
+	  mkdir -p debian/$$PKG/usr/share/doc; \
+	  ln -sf $$target debian/$$PKG/usr/share/doc/$$PKG; \
+	  sed "s/@PKGNAME@/$$PKG/g;s/@PKGTARGET@/$$target/g" \
+	    debian/deppackage.postinst.in > debian/$$PKG.postinst; \
+	done
+
 	dh_installdeb
 ifeq "$(ARCH)" "i386"
 	# this LD_ASSUME_KERNEL is for working around some bug which makes
