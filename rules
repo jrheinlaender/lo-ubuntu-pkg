@@ -201,7 +201,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	he hi-IN hr hu nb nl nn it ja km ko ku lt pa-IN pl pt-BR ru rw sk sl sr-CS st sv \
 	th tn tr ts vi xh zh-CN zh-TW zu
     #HELPISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all') 
-    HELPISOS:=en-US cs da de en-GB es et fr it hr hu ja ko lt nl pt-BR sv zh-CN zh-TW
+    HELPISOS:=en-US cs da de en-GB es et fr it hu ja ko lt nl pt-BR sv zh-CN zh-TW
     #LANGPACKISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
     LANGPACKISOS := en-US af be-BY bg bn bs ca cs cy da de el en-GB en-ZA es et fi fr ga gu-IN \
 	he hi-IN hr hu nb nl nn it ja km ko ku lt pa-IN pl pt-BR ru rw sk sl sr-CS st sv \
@@ -244,8 +244,8 @@ ifeq "$(DIST)" "Ubuntu"
   endif
 endif
 
-HELP_PACKAGES = $(filter-out common, $(filter openoffice.org$(VER)-help-%, $(PACKAGES)))
-LANG_PACKAGES = $(filter-out common, $(filter openoffice.org$(VER)-l10n-%, $(PACKAGES)))
+HELP_PACKAGES = $(filter-out %-common, $(filter openoffice.org$(VER)-help-%, $(PACKAGES)))
+LANG_PACKAGES = $(filter-out %-common, $(filter openoffice.org$(VER)-l10n-%, $(PACKAGES)))
 
 # Default flags to pass to configure of ooo-build
 CONFIGURE_FLAGS= --disable-post-install-scripts \
@@ -836,11 +836,11 @@ endif
 	    if [ "$(DIST)" = Ubuntu ]; then \
 	        case "$$LCODE" in \
 		    en-us) ;; \
-		    *) L10N_COMMON='openoffice.orgVER-l10n-common (>> ${base-version}), '; \
+		    *) L10N_COMMON='openoffice.orgVER-l10n-common (>= $${base-version}), '; \
 		esac; \
-		LOCALES_DEPENDS="openoffice.org$(VER)-common (>> \$${base-version}) | language-support-$$CCODE, openoffice.org$(VER)-common (<< \$${next-base-version}) | language-support-$$CCODE"; \
+		LOCALES_DEPENDS="openoffice.org$(VER)-common (>= \$${base-version}) | language-support-$$CCODE, openoffice.org$(VER)-common (<< \$${next-base-version}) | language-support-$$CCODE"; \
 		if [ "$(AMD64_EXPERIMENTAL)" = y ]; then \
-		LOCALES_DEPENDS="openoffice.org$(VER)-common (>> \$${base-version}) | openoffice.org$(VER)-common-experimental (>> \$${base-version}) | language-support-$$CCODE, openoffice.org$(VER)-common (<< \$${next-base-version}) | openoffice.org$(VER)-common-experimental (<< \$${next-base-version}) | language-support-$$CCODE"; \
+		LOCALES_DEPENDS="openoffice.org$(VER)-common (>= \$${base-version}) | openoffice.org$(VER)-common-experimental (>= \$${base-version}) | language-support-$$CCODE, openoffice.org$(VER)-common (<< \$${next-base-version}) | openoffice.org$(VER)-common-experimental (<< \$${next-base-version}) | language-support-$$CCODE"; \
 		fi; \
 	    fi; \
 	    sed -e "s|@LNAME@|$$LNAME|g" -e "s|@LCODE@|$$LCODE|g" \
@@ -2182,6 +2182,7 @@ binary-common:
 	done
 	dh_installchangelogs
 ifneq "" "$(findstring openoffice.org$(VER)-common$(EXPSUFFIX), $(PACKAGES))"
+	mkdir -p $(PKGDIR)-common$(EXPSUFFIX)/usr/share/doc/openoffice.org$(VER)-common$(EXPSUFFIX)
 	install -m644 debian/README.Debian \
 	  $(PKGDIR)-common$(EXPSUFFIX)/usr/share/doc/openoffice.org$(VER)-common$(EXPSUFFIX)/
 	install -m644 ooo-build/ChangeLog \
@@ -2241,8 +2242,8 @@ endif
 	    debian/deppackage.postinst.in >> debian/$$PKG.postinst; \
 	done
 	# why?
-	rm -f $(PKGDIR)-base/usr/share/doc/openoffice.org-core/copyright
-	rm -f $(PKGDIR)-base/usr/share/doc/openoffice.org-core/changelog.Debian.gz
+	rm -f $(PKGDIR)-base$(EXPSUFFIX)/usr/share/doc/openoffice.org$(VER)-core$(EXPSUFFIX)/copyright
+	rm -f $(PKGDIR)-base$(EXPSUFFIX)/usr/share/doc/openoffice.org$(VER)-core$(EXPSUFFIX)/changelog.Debian.gz
 
 	# indep packages (with docdir symlinks)
 	for s in -dev-doc -gtk-gnome -java-common -qa-api-tests; do \
