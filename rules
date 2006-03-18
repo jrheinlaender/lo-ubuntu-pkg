@@ -26,7 +26,6 @@ BINARY_VERSION=$(SOURCE_VERSION)
 PACKAGES := $(shell dh_listpackages)
 
 ARCH := $(shell dpkg-architecture -qDEB_HOST_ARCH)
-# Dist we are building for
 DIST := $(shell lsb_release -is)
 # Figure out who's building this package.
 BUILDER:=$(shell echo $$LOGNAME)
@@ -61,6 +60,12 @@ STAMP_DIR=debian/stampdir
 #include debian/scripts/vars.$(ARCH)
 
 SARGE_BACKPORT=n
+
+ifeq "$(SARGE_BACKPORT)" "y"
+OS:= $(shell dpkg-architecture -qDEB_HOST_GNU_SYSTEM)
+else
+OS: = $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
+endif
 
 # Which patchset?
 ifeq ($(ARCH),amd64)
@@ -1414,7 +1419,16 @@ endif
 		perl -pi -e 's,/usr/bin/csh,/bin/csh,'\
 			$(PKGDIR)-dev/$(OODIR)/sdk/setsdkenv_unix.$$i; \
 	done
-	
+	# create wrapper scripts
+	cd $(PKGDIR)-dev/$(OODIR)/sdk/$(OS)/bin && \
+	for i in *; do \
+		mv $$i $$i.bin && \
+		echo "#!/bin/sh" > $$i && \
+		echo "# wrapper script for OOos SDK programs" >> $$i && \
+		echo "" >> $$i; \
+		echo 'LD_LIBRARY_PATH=/$(OODIR)/program /$(OODIR)/sdk/$(OS)/bin/`basename $$0`.bin $$@' >> $$i; \
+	done		
+
 	# move gengal stuff into -dev
 	mv $(PKGDIR)-core/$(OODIR)/program/gengal* \
 		$(PKGDIR)-dev/$(OODIR)/program
