@@ -3,12 +3,17 @@
 import sys
 
 map_fn = 'debian/module-po.map'
+help_submodules = set(['sbasic', 'scalc', 'schart', 'sdraw',
+                       'shared', 'simpress', 'smath', 'swriter'])
 
 def read_map(fn):
     modules = {}
     for line in file(fn):
         module, poname = line.split()
         modules[module] = poname
+    for submod in help_submodules:
+        modules['helpcontent2-' + submod] = 'ooo-help-' + submod
+        modules['helpcontent2-' + submod + '-guide'] = 'ooo-guide-' + submod
     return modules
 
 def split(fn, dir, modules):
@@ -18,7 +23,16 @@ def split(fn, dir, modules):
     polists['ooo-unknown'] = []
 
     for line in file(fn):
-        module = line.split(None, 1)[0]
+        module, source = line.split(None, 2)[:2]
+        if module == 'helpcontent2':
+            try:
+                submodule = source.split('\\')[2]
+                if submodule in help_submodules:
+                    module = module + '-' + submodule
+                    if '\\guide\\' in source:
+                        module = module + '-guide'
+            except:
+                pass
         polists[modules.get(module,'ooo-unknown')].append(line)
 
     if polists['ooo-unknown'] == []:
