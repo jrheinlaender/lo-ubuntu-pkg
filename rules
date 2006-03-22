@@ -29,7 +29,6 @@ BASE_VERSION=2.0.2
 NEXT_BASE_VERSION=2.0.3
 
 ARCH := $(shell dpkg-architecture -qDEB_HOST_ARCH)
-# Dist we are building for
 DIST := $(shell lsb_release -is)
 # Figure out who's building this package.
 BUILDER:=$(shell echo $$LOGNAME)
@@ -83,6 +82,12 @@ ifeq "$(ARCH)" "amd64"
 endif
 
 SARGE_BACKPORT=n
+
+ifeq "$(SARGE_BACKPORT)" "y"
+OS:= $(shell dpkg-architecture -qDEB_HOST_GNU_SYSTEM)
+else
+OS:= $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
+endif
 
 # Which patchset?
 ifeq ($(ARCH),amd64)
@@ -197,13 +202,13 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
     # one to that gid_Module_Root always is english and the other langpacks
     # have gid_Module_Root.$iso
     #ISOS="$(shell ooo-build/bin/openoffice-xlate-lang -i all')"
-    ISOS := en-US af be-BY bg bn bs ca cs cy da de el en-GB en-ZA es et fi fr ga gu-IN \
+    ISOS := en-US af be-BY bg bn br bs ca cs cy da de el en-GB en-ZA es et fi fr ga gu-IN \
 	he hi-IN hr hu nb nl nn it ja km ko ku lt pa-IN pl pt-BR ru rw sk sl sr-CS st sv \
 	th tn tr ts vi xh zh-CN zh-TW zu
     #HELPISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all') 
-    HELPISOS:=en-US cs da de en-GB es et fr it hu ja ko lt nl pt-BR sv zh-CN zh-TW
+    HELPISOS:=en-US br cs da de en-GB es et fr it hu ja ko lt nl pt-BR sv zh-CN zh-TW
     #LANGPACKISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
-    LANGPACKISOS := en-US af be-BY bg bn bs ca cs cy da de el en-GB en-ZA es et fi fr ga gu-IN \
+    LANGPACKISOS := en-US af be-BY bg bn br bs ca cs cy da de el en-GB en-ZA es et fi fr ga gu-IN \
 	he hi-IN hr hu nb nl nn it ja km ko ku lt pa-IN pl pt-BR ru rw sk sl sr-CS st sv \
 	th tn tr ts vi xh zh-CN zh-TW zu
   endif
@@ -359,6 +364,14 @@ else
        CONFIGURE_FLAGS+= --disable-mono
 endif
 
+ifeq "$(SARGE_BACKPORT)" "y"
+	USE_SYSTEM_HUNSPELL=n
+else
+	USE_SYSTEM_HUNSPELL=y
+endif
+ifeq "$(DIST)" "Ubuntu"
+	USE_SYSTEM_HUNSPELL=n
+endif
 ifeq "$(USE_SYSTEM_HUNSPELL)" "y"
 		BUILD_DEPS += , libhunspell-dev (>= 1.0.8-3)
 		CONFIGURE_FLAGS+= --with-system-hunspell
@@ -425,9 +438,6 @@ ifeq "$(USE_SYSTEM_PORTAUDIO)" "y"
 	CONFIGURE_FLAGS += --with-system-portaudio
 endif
 
-USE_SABLOT=y
-USE_LIBXSLT=n
-
 USE_EXTERNAL_CXXLIBS=y
 ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
   ifeq "$(SARGE_BACKPORT)" "y"
@@ -436,12 +446,10 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
        BUILD_DEPS += , libwpd8-dev (>= 0.8.3-3)
   endif
        CONFIGURE_FLAGS+=  --with-system-libwpd
-ifeq "$(USE_SABLOT)" "y"
 USE_SYSTEM_SABLOT=n
 ifeq "$(USE_SYSTEM_SABLOT)" "y"
 	BUILD_DEPS += , libsablot0-dev (>= 1.0.2-4)
 	CONFIGURE_FLAGS += --with-system-sablot
-endif
 endif
 USE_EXTERNAL_MYTHES=n
 ifeq "$(USE_EXTERNAL_MYTHES)" "y"
@@ -449,12 +457,6 @@ ifeq "$(USE_EXTERNAL_MYTHES)" "y"
 	CONFIGURE_FLAGS += --with-system-mythes
 	DEBHELPER_OPTIONS+= -Nlibmythes-dev
 endif
-endif
-
-ifeq "$(USE_LIBXSLT)" "y"
-	# there's only system-libxslt possible atm.
-	CONFIGURE_FLAGS += --with-system-libxslt
-	BUILD_DEPS += , libxslt1-dev
 endif
 
 ifeq "$(SARGE_BACKPORT)" "y"
@@ -1589,7 +1591,17 @@ endif
 		perl -pi -e 's,/usr/bin/csh,/bin/csh,'\
 			$(PKGDIR)-dev/$(OODIR)/sdk/setsdkenv_unix.$$i; \
 	done
-	
+	# create wrapper scripts
+	cd $(PKGDIR)-dev/$(OODIR)/sdk/$(OS)/bin && \
+	for i in *; do \
+		mv $$i $$i.bin && \
+		echo "#!/bin/sh" > $$i && \
+		echo "# wrapper script for OOos SDK programs" >> $$i && \
+		echo "" >> $$i; \
+		echo 'LD_LIBRARY_PATH=/$(OODIR)/program /$(OODIR)/sdk/$(OS)/bin/`basename $$0`.bin $$@' >> $$i; \
+		chmod 755 $$i; \
+	done		
+
 	# move gengal stuff into -dev
 	mv $(PKGDIR)-core/$(OODIR)/program/gengal* \
 		$(PKGDIR)-dev/$(OODIR)/program
@@ -2148,6 +2160,10 @@ $(STAMP_DIR)/gsi-export-%:
 	    echo using existing GSI file for language $$i; \
 	    uudecode -o /dev/stdout $(CURDIR)/ooo-build/src/GSI_$$i.sdf.bz2.uu \
 	      | bzcat - > $(OOO_L10N_DIR)/export/GSI_$$i.sdf; \
+	  elif [ -f $(CURDIR)/ooo-build/src/GSI_$$i.sdf.gz.uu ]; then \
+	    echo using existing GSI file for language $$i; \
+	    uudecode -o /dev/stdout $(CURDIR)/ooo-build/src/GSI_$$i.sdf.gz.uu \
+	      | zcat - > $(OOO_L10N_DIR)/export/GSI_$$i.sdf; \
 	  else \
 	    echo exporting GSI file for language $$i; \
 	    echo localize -e -l en-US,$$i=en-US -f $(OOO_L10N_DIR)/export/GSI_$$i.sdf; \
@@ -2292,6 +2308,10 @@ ifeq "$(ARCH)" "i386"
 else
 	dh_shlibdeps $(SHLIBS_OVERRIDE)
 endif
+ifeq "$(BUILD_JARS_NATIVE)" "y"
+	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
+		>> debian/control < debian/control.gcj.in
+endif
 ifeq "$(ENABLE_MONO)" "y"
 	dh_clideps
 endif
@@ -2398,7 +2418,7 @@ environment:
 get-ooo-build:
 	# press enter at the password prompt
 	cvs -d:pserver:anonymous@anoncvs3.gnome.org:/cvs/gnome login
-	cvs -z3 -d:pserver:anonymous@anoncvs3.gnome.org:/cvs/gnome co -r ooo-build
+	cvs -z3 -d:pserver:anonymous@anoncvs3.gnome.org:/cvs/gnome co -r ooo-build-2-0-2 ooo-build
 	cd ooo-build && ./autogen.sh $(CONFIGURE_FLAGS)
 
 # Download the latest ooo-build sources
