@@ -290,7 +290,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 ifneq "$(SARGE_BACKPORT)" "y"
 	export JAVA_HOME=/usr/lib/jvm/java-gcj
 	CONFIGURE_FLAGS += --with-java=gij
-	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.28-8), ant (>= 1.6.5) [$(NO_JAVA_ARCHS)]
+	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.28-8) [$(NO_JAVA_ARCHS)], ant (>= 1.6.5) [$(NO_JAVA_ARCHS)]
 	SYSTEM_XT=y
 	SYSTEM_XALAN=y
 	SYSTEM_XERCES=y
@@ -556,7 +556,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 	USE_SYSTEM_HSQLDB=y
   endif
   ifeq "$(USE_SYSTEM_HSQLDB)" "y"
-	BUILD_DEPS += , libhsqldb-java (>= 1.8.0.0-2)
+	BUILD_DEPS += , libhsqldb-java (>= 1.8.0.0-2) [$(NO_JAVA_ARCHS)]
 	BASE_HSQLDB_DEPENDS = libhsqldb-java (>= 1.8.0.0-2)
 	CONFIGURE_FLAGS+= --with-system-hsqldb
   endif
@@ -574,7 +574,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 	USE_SYSTEM_BSH=y
   endif
   ifeq "$(USE_SYSTEM_BSH)" "y"
-	BUILD_DEPS += , bsh (>= 2.0b4-1)
+	BUILD_DEPS += , bsh (>= 2.0b4-1) [$(NO_JAVA_ARCHS)]
 	COMMON_BSH_DEPENDS = bsh (>= 2.0b4-1)
 	CONFIGURE_FLAGS+= --with-system-beanshell
   endif
@@ -1072,12 +1072,6 @@ endif
 	# DPKG is only set on with-EPM build what we don't do and the menu stuff
 	# is only built wenn DPKG is set.. Same with PKGFORMAT.
 	cd $(SOURCE_TREE)/sysui; . $(CURDIR)/$(SOURCE_TREE)/*.sh; PATH=$(BUILD_PATH) DPKG="dpkg" PKGFORMAT="deb" ../solenv/bin/build.pl && ../solenv/bin/deliver.pl
-ifneq "$(ENABLE_JAVA)" "y"
-	# we can build the javadoc stuff nevertheless and we need to do that
-	# because otherwise we'd have differences in a _all package (-dev-doc)
-	# depending on the arch we build it on...
-	cd $(SOURCE_TREE)/odk/pack/gendocu; . $(CURDIR)/$(SOURCE_TREE)/*.sh; export SOLAR_JAVA="YES"; PATH="$(BUILD_PATH)" dmake
-endif
 ifneq "$(USE_EXTERNAL_MYTHES)" "y"
 	# build non-PIC version of libmythes
 	cd $(SOURCE_TREE)/lingucomponent/source/thesaurus/mythes && \
@@ -2385,6 +2379,11 @@ endif
 # Build architecture independant packages using the common target.
 binary-indep: $(GSI_EXPORT_STAMP) $(STAMP_DIR)/binary-indep
 $(STAMP_DIR)/binary-indep: $(STAMP_DIR)/install-indep debian/control $(STAMP_DIR)/maintscripts $(STAMP_DIR)/langpacks $(STAMP_DIR)/helppacks
+ifeq $($(ARCH),$(findstring $(ARCH),$(NO_JAVA_ARCHS)))
+	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+	echo "For uploads with binary-all packages, please use arches where Java is enabled!!!!!"
+	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+endif
 	$(MAKE) -f debian/rules DH_OPTIONS="$(DEBHELPER_OPTIONS) -i" binary-common
 
 	touch $@
