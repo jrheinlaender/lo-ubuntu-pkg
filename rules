@@ -734,6 +734,17 @@ clean:
 	  rm -f $$f ;\
 	done
 
+	# uuencode binary files
+	for f in ubuntu/*.otp; do \
+	  if [ -s $$f ]; then \
+	    uuencode $$f $$f > $$f.uu.tmp && \
+	    debian/scripts/move-if-change $$f.uu.tmp $$f.uu; \
+            touch -r $$f $$f.uu ;\
+	  fi ;\
+	  rm -f $$f ;\
+	done
+	rm -f ubuntu/*.otp
+
         # uuencode Ximian desktop icons
 	set -e; \
 	for i in base calc draw impress math template web writer; do \
@@ -874,6 +885,10 @@ ifneq "$(HELPISOS)" ""
 	done
 endif
 ifeq "$(PKGSOURCE)" "openoffice.org$(VER)"
+ifeq "$(BUILD_JARS_NATIVE)" "y"
+	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
+		>> debian/control < debian/control.gcj.in
+endif
 ifeq "$(ENABLE_MONO)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.mono.in
@@ -943,6 +958,15 @@ endif
 	# uudecode source files, omit GSI files, building only en-US
 	cd ooo-build; for uu in fonts/opens___.ttf.uu src/*.uu templates/*.uu src/easter/*.uu; do \
 	  case "$$uu" in src/GSI*) continue; esac; \
+	  orig="`echo "$$uu" |sed -e 's#.uu$$##'`" ;\
+          if [ ! -s $$orig ]; then \
+            uudecode -o $$orig $$uu ;\
+            touch -r $$uu $$orig ;\
+          fi ;\
+	done
+
+	# uudecode ubuntu templates
+	for uu in ubuntu/*.uu; do \
 	  orig="`echo "$$uu" |sed -e 's#.uu$$##'`" ;\
           if [ ! -s $$orig ]; then \
             uudecode -o $$orig $$uu ;\
@@ -1297,6 +1321,18 @@ endif
 		> l10n.fdupes
 	#debian/scripts/cleandupes --prefix=debian/tmp/pkg --verbose --dry-run < l10n.fdupes
 	debian/scripts/cleandupes --prefix=debian < l10n.fdupes
+
+	# install Ubuntu templates
+	odts=`cd ubuntu; echo *.odt`; \
+	for iso in $(LANGPACKISOS); do \
+	  [ "$$iso" = "en-US" ] && continue; \
+	  pkgiso=`echo $$iso | tr \[:upper:\] \[:lower:\]`; \
+	  mkdir -p $(PKGDIR)-l10n-$$pkgiso/$(OODIR)/share/template/$$iso/presnt; \
+	  for odt in $$odts; do \
+	    ln -sf ../../en-US/presnt/$$odt \
+	      $(PKGDIR)-l10n-$$pkgiso/$(OODIR)/share/template/$$iso/presnt/$$odt; \
+	  done; \
+	done
 
 	touch $@
 
@@ -2104,6 +2140,10 @@ endif
 			$(PKGDIR)-common/usr/share/doc/openoffice.org$(VER)-common; \
 	done
 
+	# install Ubuntu templates
+	mkdir -p $(PKGDIR)-common/$(OODIR)/share/template/en-US/presnt
+	install -m644 ubuntu/*.odt $(PKGDIR)-common/$(OODIR)/share/template/en-US/presnt/
+
 	touch $@
 
 gsi-import:
@@ -2307,10 +2347,6 @@ ifeq "$(ARCH)" "i386"
 	LD_ASSUME_KERNEL="2.4.27" dh_shlibdeps $(SHLIBS_OVERRIDE)
 else
 	dh_shlibdeps $(SHLIBS_OVERRIDE)
-endif
-ifeq "$(BUILD_JARS_NATIVE)" "y"
-	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
-		>> debian/control < debian/control.gcj.in
 endif
 ifeq "$(ENABLE_MONO)" "y"
 	dh_clideps
