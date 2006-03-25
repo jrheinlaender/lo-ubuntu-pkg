@@ -167,7 +167,7 @@ endif
 ifneq "$(BUILD_ONLY_EN_US)" "y"
   ifeq (lang=,$(findstring lang=,$(DEB_BUILD_OPTIONS)))
     ISOS="$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*lang=\([^,]*\),.*/\1/p')"
-    HELPISOS="$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*lang=\([^,]*\),.*/\1/p')"
+    HELPISOS=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*lang=\([^,]*\),.*/\1/p')
     LANGPACKISOS=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*lang=\([^,]*\),.*/\1/p')
   else
     # Note that the first one here *has to be* en-US. the first one gets
@@ -184,7 +184,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
   endif
 else
   ISOS="en-US"
-  HELPISOS="en-US"
+  HELPISOS=en-US
   LANGPACKISOS=en-US
 endif
 
@@ -680,6 +680,8 @@ ifeq "$(HELPISOS)" ""
 	rm -rf images*
 endif
 
+	rm -f l10n.fdupes
+
 	$(MAKE) -f debian/rules control
 
 
@@ -947,6 +949,12 @@ ifneq "$(HELPISOS)" ""
 			cp -r ./openoffice.org-$$i/$(OODIR)/help/en/* \
 			 ./openoffice.org-help-en-us/$(OODIR)/help/en && \
 			rm -rf ./openoffice.org-$$i/$(OODIR)/help/en; \
+		done && \
+		for iso in $(HELPISOS); do \
+			if [ "$$iso" = "en-US" ]; then continue; fi; \
+			mkdir -p ./openoffice.org-help-$$iso/$(OODIR)/help && \
+			mv ./openoffice.org-l10n-$$iso/$(OODIR)/help/$$iso \
+				./openoffice.org-help-$$iso/$(OODIR)/help; \
 		done
 endif
 
@@ -1135,7 +1143,9 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/install $(STAMP_DIR)/install-indep ooo-buil
 		rm -rf $(PKGDIR)-l10n-$$iso/$(OODIR)/share/readme/README*; \
 	done
 
-	# remove empty help directories
+	# remove empty help directories / help directories we didn't move
+	# and don't want. since they should be in -help-* anyway we can
+	# do this unconditionally here
 	for iso in `echo $(LANGPACKISOS) | tr A-Z a-z`; do \
 		rm -rf $(PKGDIR)-l10n-$$iso/$(OODIR)/help; \
 	done
