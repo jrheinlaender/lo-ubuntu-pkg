@@ -193,7 +193,7 @@ endif
 ifneq "$(BUILD_ONLY_EN_US)" "y"
   ifeq (lang=,$(findstring lang=,$(DEB_BUILD_OPTIONS)))
     ISOS="$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*lang=\([^,]*\),.*/\1/p')"
-    HELPISOS="$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*lang=\([^,]*\),.*/\1/p')"
+    HELPISOS=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*lang=\([^,]*\),.*/\1/p')
     LANGPACKISOS=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*lang=\([^,]*\),.*/\1/p')
   else
     # Note that the first one here *has to be* en-US. the first one gets
@@ -216,7 +216,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
   endif
 else
   ISOS="en-US"
-  HELPISOS="en-US"
+  HELPISOS=en-US
   LANGPACKISOS=en-US
 endif
 
@@ -793,6 +793,8 @@ ifeq "$(HELPISOS)" ""
 	rm -rf images*
 endif
 
+	rm -f l10n.fdupes
+
 	$(MAKE) -f debian/rules control
 
 
@@ -924,11 +926,6 @@ ifeq "$(AMD64_EXPERIMENTAL)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.experimental
 endif
-	if `echo $(LANGPACKISOS) | grep -q lo`; then \
-		TMP=`mktemp -q`; grep -v OOO_LICENSE ooo-build/src/GSI_lo.sdf \
-			> $$TMP && mv $$TMP ooo-build/src/GSI_lo.sdf; \
-	fi
-endif
 endif
 	python debian/joinctrl.py < debian/control > debian/control.tmp
 	mv debian/control.tmp debian/control
@@ -1055,6 +1052,10 @@ ifneq "$(LANGPACKISOS)" "en-US"
   ifneq (,$(filter sr-CS, $(LANGPACKISOS)))
 	TMP=`mktemp -q`; grep -v OOO_LICENSE ooo-build/src/GSI_sr-CS.sdf \
 		> $$TMP && mv $$TMP ooo-build/src/GSI_sr-CS.sdf
+  endif
+  ifneq (,$(filter lo, $(LANGPACKISOS)))
+	TMP=`mktemp -q`; grep -v OOO_LICENSE ooo-build/src/GSI_lo.sdf \
+		> $$TMP && mv $$TMP ooo-build/src/GSI_lo.sdf
   endif
 endif
 endif
@@ -1199,6 +1200,13 @@ endif
 	mv debian/tmp/pkg/openoffice.org-common/$(OODIR)/share/xdg/qstart.desktop \
 		debian/tmp/pkg/openoffice.org-gnome/$(OODIR)/share/xdg
 
+	# move gengal stuff into -dev
+	mkdir -p debian/tmp/openoffice.org-dev/$(OODIR)/program
+	mv debian/tmp/pkg/openoffice.org-core/$(OODIR)/program/gengal* \
+		debian/tmp/openoffice.org-dev/$(OODIR)/program
+	mv debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/gengal  \
+		debian/tmp/openoffice.org-dev/$(OODIR)/program
+	
 	touch $@
 
 #
@@ -1644,10 +1652,6 @@ endif
 		echo 'LD_LIBRARY_PATH=/$(OODIR)/program /$(OODIR)/sdk/$(OS)/bin/`basename $$0`.bin $$@' >> $$i; \
 		chmod 755 $$i; \
 	done		
-
-	# move gengal stuff into -dev
-	mv $(PKGDIR)-core/$(OODIR)/program/gengal* \
-		$(PKGDIR)-dev/$(OODIR)/program
 
 ifeq "$(INTERNAL_STDLIBS)" "y"
 	# we have to do this manually; specifying --without-system-stdlibs
