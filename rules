@@ -1201,12 +1201,23 @@ endif
 		debian/tmp/pkg/openoffice.org-gnome/$(OODIR)/share/xdg
 
 	# move gengal stuff into -dev
-	mkdir -p debian/tmp/openoffice.org-dev/$(OODIR)/program
+	mkdir -p debian/tmp/pkg/openoffice.org-dev/$(OODIR)/program
 	mv debian/tmp/pkg/openoffice.org-core/$(OODIR)/program/gengal* \
-		debian/tmp/openoffice.org-dev/$(OODIR)/program
+		debian/tmp/pkg/openoffice.org-dev/$(OODIR)/program
 	mv debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/gengal  \
-		debian/tmp/openoffice.org-dev/$(OODIR)/program
-	
+		debian/tmp/pkg/openoffice.org-dev/$(OODIR)/program
+
+	# install gsicheck into -dev
+	install -m755 $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD/$$OUTPATH$$PROEXT)/bin/gsicheck \
+		debian/tmp/pkg/openoffice.org-dev/$(OODIR)/program/gsicheck.bin
+	( \
+	  echo '#! /bin/sh'; \
+	  echo 'LD_LIBRARY_PATH=$${LD_LIBRARY_PATH:+$$LD_LIBRARY_PATH:}/$(OODIR)/program'; \
+	  echo 'export LD_LIBRARY_PATH'; \
+	  echo 'exec /$(OODIR)/program/gsicheck.bin "$$@"'; \
+	) > debian/tmp/pkg/openoffice.org-dev/$(OODIR)/program/gsicheck
+	chmod 755 debian/tmp/pkg/openoffice.org-dev/$(OODIR)/program/gsicheck
+
 	touch $@
 
 #
@@ -1539,6 +1550,9 @@ endif
 	for f in `find debian -name '*.desktop'`; do \
 		sed -i -e '/^Comment\[de\]/s/- *\([a-zA-Z0-9]*\) *macht.*glich.*$$/mit \1/' $$f; \
 	done
+	sed -i -e '/^MimeType/s,text/rtf,text/rtf;application/rtf,' \
+		$(PKGDIR)-writer/usr/share/applications/ooo-writer.desktop
+
 	#mv $(PKGDIR)-base/usr/share/applications/ooo$(VER)-base.desktop $(PKGDIR)-core/usr/share/applications
 	#rm -r $(PKGDIR)-base
 
@@ -1602,9 +1616,9 @@ ifeq "$(ENABLE_JAVA)" "y"
 	mkdir -p $(PKGDIR)-dev/usr/share/java/openoffice$(VER)
 endif
 	mkdir -p $(PKGDIR)-dev/$(OODIR)/sdk
-	unzip $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/odkcommon.zip -x docs/* -x classes/win/* -d $(PKGDIR)-dev/$(OODIR)/sdk
-	unzip $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/odkidl.zip -d $(PKGDIR)-dev/$(OODIR)/sdk
-	unzip $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/sdk_oo.zip settings/* -d $(PKGDIR)-dev/$(OODIR)/sdk
+	unzip -q $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/odkcommon.zip -x docs/* -x classes/win/* -d $(PKGDIR)-dev/$(OODIR)/sdk
+	unzip -q $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/odkidl.zip -d $(PKGDIR)-dev/$(OODIR)/sdk
+	unzip -q $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/sdk_oo.zip settings/* -d $(PKGDIR)-dev/$(OODIR)/sdk
 ifeq "$(ENABLE_JAVA)" "y"
 	mv $(PKGDIR)-dev/$(OODIR)/sdk/classes/com \
 		$(PKGDIR)-dev/usr/share/java/openoffice$(VER) && \
@@ -1778,6 +1792,7 @@ ifeq "$(ARCH)" "amd64"
 
   endif
 endif
+	-find debian -name gengal*
 
 	touch $@
 
@@ -2153,7 +2168,7 @@ endif
 
 	# install Ubuntu templates
 	mkdir -p $(PKGDIR)-common/$(OODIR)/share/template/en-US/presnt
-	install -m644 ubuntu/*.odt $(PKGDIR)-common/$(OODIR)/share/template/en-US/presnt/
+	install -m644 ubuntu/*.otp $(PKGDIR)-common/$(OODIR)/share/template/en-US/presnt/
 
 	touch $@
 
@@ -2218,7 +2233,7 @@ $(STAMP_DIR)/gsi-export-%:
 	  else \
 	    echo exporting GSI file for language $$i; \
 	    echo localize -e -l en-US,$$i=en-US -f $(OOO_L10N_DIR)/export/GSI_$$i.sdf; \
-	    localize -e -l en-US,$$i=en-US -f $(OOO_L10N_DIR)/export/GSI_$$i.sdf; \
+	    localize -e -l en-US,$$i -f $(OOO_L10N_DIR)/export/GSI_$$i.sdf; \
 	    if [ $$i = de ]; then \
 	      awk 'NR % 3' $(OOO_L10N_DIR)/export/GSI_$$i.sdf > $(OOO_L10N_DIR)/export/GSI_$$i.sdf.new; \
 	      mv -f $(OOO_L10N_DIR)/export/GSI_$$i.sdf.new $(OOO_L10N_DIR)/export/GSI_$$i.sdf; \
@@ -2308,6 +2323,8 @@ endif
 	  mkdir -p debian/$$PKG/usr/share/doc; \
 	  ln -sf $$target debian/$$PKG/usr/share/doc/$$PKG; \
 	  rm -f debian/$$PKG.p*; \
+	  rm -f debian/$$PKG/usr/share/doc/$$target/copyright; \
+	  rm -f debian/$$PKG/usr/share/doc/$$target/changelog.Debian*; \
 	  sed "s/@PKGNAME@/$$PKG/g;s/@PKGTARGET@/$$target/g" \
 	      debian/deppackage.postinst.in > debian/$$PKG.postinst; \
 	done
@@ -2318,14 +2335,13 @@ endif
 	  echo " $(PACKAGES) " | fgrep -q " $$PKG " || continue; \
 	  target=openoffice.org$(VER)-core; \
 	  rm -rf debian/$$PKG/usr/share/doc/$$PKG; \
+	  rm -f debian/$$PKG/usr/share/doc/$$target/copyright; \
+	  rm -f debian/$$PKG/usr/share/doc/$$target/changelog.Debian*; \
 	  mkdir -p debian/$$PKG/usr/share/doc; \
 	  ln -sf $$target debian/$$PKG/usr/share/doc/$$PKG; \
 	  sed "s/@PKGNAME@/$$PKG/g;s/@PKGTARGET@/$$target/g" \
 	    debian/deppackage.postinst.in >> debian/$$PKG.postinst; \
 	done
-	# why?
-	rm -f $(PKGDIR)-base$(EXPSUFFIX)/usr/share/doc/openoffice.org$(VER)-core$(EXPSUFFIX)/copyright
-	rm -f $(PKGDIR)-base$(EXPSUFFIX)/usr/share/doc/openoffice.org$(VER)-core$(EXPSUFFIX)/changelog.Debian.gz
 
 	# indep packages (with docdir symlinks)
 	for s in -dev-doc -gtk-gnome -java-common -qa-api-tests; do \
@@ -2333,6 +2349,8 @@ endif
 	  echo " $(PACKAGES) " | fgrep -q " $$PKG " || continue; \
 	  target=openoffice.org$(VER)-common; \
 	  rm -rf debian/$$PKG/usr/share/doc/$$PKG; \
+	  rm -f debian/$$PKG/usr/share/doc/$$target/copyright; \
+	  rm -f debian/$$PKG/usr/share/doc/$$target/changelog.Debian*; \
 	  mkdir -p debian/$$PKG/usr/share/doc; \
 	  ln -sf $$target debian/$$PKG/usr/share/doc/$$PKG; \
 	  sed "s/@PKGNAME@/$$PKG/g;s/@PKGTARGET@/$$target/g" \
