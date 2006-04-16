@@ -37,6 +37,7 @@ ifneq "$(BUILDER)" "buildd"
 OOO_VENDOR+= ($(BUILDER))
 endif
 export OOO_VENDOR
+OOO_ARCHS:= i386 powerpc sparc
 
 # ensure that some scripts we need are executable.
 DUMMY:=$(shell if [ ! -x debian/scripts/setperms ]; then chmod 755 debian/scripts/setperms; fi)
@@ -62,7 +63,7 @@ STAMP_DIR=debian/stampdir
 SARGE_BACKPORT=n
 
 ifneq "$(USE_EXTERNAL_MYTHES)" "y"
-  ifeq ($(ARCH),$(findstring $(ARCH), $(shell dpkg-architecture -L | sed -e s/i386\ // -e s/powerpc\ // -e s/sparc\ //)))
+  ifeq ($(ARCH),$(findstring $(ARCH), $(filter-out $(OOO_ARCHS),$(shell dpkg-architecture -L))))
        BUILD_ONLY_LIBMYTHES=y
   else
     ifeq "$(ARCH)" "amd64"
@@ -98,6 +99,7 @@ BUILD_DEPS=
 
 ifeq "$(DIST)" "Ubuntu"
 	BUILD_AMD64=y
+	OOO_ARCHS+= amd64
 endif
 
 ifeq "$(ARCH)" "amd64"
@@ -1005,7 +1007,7 @@ ifneq "$(HELPISOS)" ""
 	# save space by removing non-packaged localized help; we don't need
 	# them anyway
 	cd debian/tmp/pkg && \
-		for iso in `echo $(LANGPACKISOS) | sed -e s/en-US//`; do \
+		for iso in $(filter-out en-US,$(LANGPACKISOS)); do \
 			if ! `echo $(HELPISOS) | grep -q $$iso`; then \
 				rm -rf openoffice.org-help-$$iso; \
 			fi; \
@@ -1130,7 +1132,7 @@ ifneq "$(HELPISOS)" ""
 	rm -rf $(PKGDIR)-help-en-us $(PKGDIR)-help-en-us.*.debhelper; \
 	cp -r --preserve=mode debian/tmp/pkg/openoffice.org-help-en-us $(PKGDIR)-help-en-us || exit 1
 ifneq "$(HELPISOS)" "en-US"
-	for iso in `echo $(HELPISOS) | sed -e s/en-US//`; do \
+	for iso in $(filter-out en-US,$(HELPISOS)); do \
 	  pkgiso=`echo $$iso | tr \[:upper:\] \[:lower:\]`; \
 	  diriso=`echo $$pkgiso | cut -d"-" -f1`; \
 	  if [ "$$pkgiso" = "pt-br" ]; then diriso=pt-BR; fi; \
