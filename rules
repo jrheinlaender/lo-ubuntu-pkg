@@ -61,6 +61,18 @@ STAMP_DIR=debian/stampdir
 
 SARGE_BACKPORT=n
 
+ifneq "$(USE_EXTERNAL_MYTHES)" "y"
+  ifeq ($(ARCH),$(findstring $(ARCH), $(shell dpkg-architecture -L | sed -e s/i386\ // -e s/powerpc\ // -e s/sparc\ //)))
+       BUILD_ONLY_LIBMYTHES=y
+  else
+    ifeq "$(ARCH)" "amd64"
+      ifneq "$(BUILD_AMD64)" "y"
+               BUILD_ONLY_LIBMYTHES=y
+      endif
+    endif
+  endif
+endif
+
 ifeq "$(SARGE_BACKPORT)" "y"
 OS:= $(shell dpkg-architecture -qDEB_HOST_GNU_SYSTEM)
 else
@@ -562,6 +574,61 @@ else
 endif
 endif
 
+ifeq "$(BUILD_ONLY_LIBMYTHES)" "y"
+clean:
+	dh_testdir
+	dh_testroot
+
+	rm -rf ooo-build/build
+	rm -rf debian/libmythes-dev
+	
+	dh_clean
+
+build:
+	mkdir -p ooo-build/build
+	cd ooo-build/build && \
+		tar xfvj ../src/$(TAG)-core.tar.bz2 $(TAG)/lingucomponent/source/thesaurus/mythes && \
+		tar xfvj ../src/$(TAG)-system.tar.bz2 $(TAG)/dictionaries/util
+	cd $(SOURCE_TREE)/lingucomponent/source/thesaurus/mythes && \
+		$(CXX) -O2 -Wall -ansi -pedantic -I. -c mythes.cxx && \
+		ar rc libmythes.a mythes.o && ranlib libmythes.a && \
+		mv libmythes.a $(CURDIR)/ooo-build/build
+	cd $(SOURCE_TREE)/lingucomponent/source/thesaurus/mythes && \
+		$(CXX) -fPIC -O2 -Wall -ansi -pedantic -I. -c mythes.cxx && \
+		ar rc libmythes_pic.a mythes.o && ranlib libmythes_pic.a && \
+		mv libmythes_pic.a $(CURDIR)/ooo-build/build
+
+install: build
+	mkdir -p debian/libmythes-dev/usr/lib
+	mkdir -p debian/libmythes-dev/usr/include
+	mkdir -p debian/libmythes-dev/usr/share/mythes
+	install -m644 \
+		$(CURDIR)/ooo-build/build/libmythes.a \
+		debian/libmythes-dev/usr/lib/libmythes.a
+	install -m644 \
+		$(CURDIR)/ooo-build/build/libmythes_pic.a \
+		debian/libmythes-dev/usr/lib/libmythes_pic.a
+	install -m644 $(SOURCE_TREE)/lingucomponent/source/thesaurus/mythes/mythes.hxx \
+		debian/libmythes-dev/usr/include
+	install -m755 $(SOURCE_TREE)/dictionaries/util/th_gen_idx.pl \
+		debian/libmythes-dev/usr/share/mythes/th_gen_idx.pl
+
+binary: binary-arch
+
+binary-arch: install
+	dh_testdir
+	dh_testroot
+	dh_installdocs -plibmythes-dev
+	dh_installchangelogs -plibmythes-dev
+	debian/scripts/installoverrides
+	dh_link -plibmythes-dev
+	dh_fixperms -plibmythes-dev
+	dh_compress -plibmythes-dev
+	dh_installdeb -plibmythes-dev
+	dh_gencontrol -plibmythes-dev
+	dh_md5sums -plibmythes-dev
+	dh_builddeb -plibmythes-dev
+else
 # Because of the stampdir magic, when you actually want to run a rule
 # over, you would have to remove the stamp manually.  Now, just do
 # 'debian/rules <target> <target> ... FORCE=1', and the stamp files
@@ -2102,5 +2169,6 @@ endif
 .PHONY: clean-debdir clean-instsetoo clean-objectdirs clean default configure
 .PHONY: build build-indep build-arch install-arch install-indep
 .PHONY: $(stampdir_targets)
+endif
 
 # vim:set noet ai sts=8 sw=8 tw=0:
