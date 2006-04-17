@@ -1,14 +1,12 @@
 OpenOffice build system
 -----------------------
 
-** WARNING: This file is out of date and is not updated yet for 2.0
-
 Building the packages from source
 =================================
 Overview:
   apt-get source openoffice.org
-  [install moz zips if building for powerpc, s390 or sparc]
   apt-get build-dep openoffice.org (to install build dependencies)
+    [ somehow broken yet, probably because of the various |'s ]
   cd <source directory>
   debuild
 
@@ -18,9 +16,6 @@ These options are supported:
 
   debug     - enable debug build.  See the buildprj target for instructions
               about building individual modules with debug.
-
-  nostrip   - do not strip debugging symbols from the binaries before building
-              the .deb.
 
   ccache    - enable the use of ccache during the build.  This is highly
 	      recommended if you plan on building the package more than once,
@@ -41,84 +36,32 @@ These options are supported:
             - Resume build from the specified project.  Useful if a build is 
 	      interrupted.
 
-  build=    - pass arbitary command line parameters to build.pl.
-
-  deloutput - delete the contents of each project once it has been built and
-	      delivered.  This reduces the amount of disk space needed to build
-	      the packages, but slows down rebuilds.  You can get a good
-	      compromise by using 'ccache' and 'deloutput' together - this will
-	      cache the object files using ccache (needs about 200mb in total)
-	      but remove all other files.
-
-  jdkhome=/absolute/path/to/jdk - use the JDK installed in this path.  
-
   lang=<code>
-  	    - Build only the specified language number
-
-JDK Support
------------
-
-The official Debian packages of OpenOffice.org are built without a JDK.  This
-disables support for some features which require a JDK at runtime.  In order
-to enable these features, a JDK must be present at build time.  To build the
-packages from source using a JDK, add jdkhome=/absolute/path/to/jdk to
-DEB_BUILD_OPTIONS.  You will also need libcrimson-java, libxalan-java, and
-libxalan2-java, in addition to the standard build dependencies.
-
-We are working on adding support for other JDKs to OOo.  See this issue for
-progress:
-    http://www.openoffice.org/issues/show_bug.cgi?id=10477
+  	    - Build only the specified language
 
 The targets that are built during the package build
 ---------------------------------------------------
 
 - targets run during the package build -
 
-build.prepare - Applies any workarounds/modifications needed to the build tree
-		once the source is unpacked.  Currently: create a fake
-		libstlport tree, fix some file permissions.
+configure          - Does prerequisites for the build like unpacking extra
+                     stuff and run configure in ooo-build. 
 
-configure     - Run configure in config_office.  This creates the settings file
-                in the build root, which is sourced by the other targets in
-                tcsh.
+build              - as the name says
 
-bootstrap     - Bootstrap the solver environment, by building these projects:
-                dmake, external, xml2cmp, sal, vos, soltools.
+install            - Copy files from debian/tmp/pkg into the correct locations
+                     for the final package layout in debian/openoffice.org*
+	             where we need to do that here because it affects arch-dep
+		     and arch-indep stuff and therefore cannot be done in
+		     install-arch / install-indep.
 
-solver        - The main build processo to create the solver tree.  All
-		projects are built except for the installation sets.
+install-arch       - installs arch-dependent stuff into the arch-dep. packages
+install-indep      -  "       "-independent   "     "   "    "-indep. packages
 
-instsetoo     - Build a complete installation set for the language BUILDLANG.
-		This is the install set that is distributed by upstream in
-		tar.gz format.
+langpackgs         - Installs the language packgs
+helppkgs           - Installs the help packages
 
-setupins      - For all other languages, build just the 'setup.ins', which is
-                used to generate language packs by our scripts.
-
-setup    - Run OOo network install from the instsetoo directory,
-           installing to debian/tmp
-
-install  - Copy files from tmp into the correct locations for the
-           final package layout in debian/openoffice.org and
-           debian/openoffice.org-bin, and make adjustments to file paths,
-           desktop files etc.
-
-langpack - Extract language-specific files from the 'solver'
-	   directories and link/unzip into the langpack directories
-	   debian/openoffice.org-l10n-XX
-
-binary-arch  - Build openoffice.org-bin package
-
-binary-indep - Build non-archspecific packages: openoffice.org and the
-               language packs
-
-You can also generate a single package with the command:
-
-   fakeroot debian/rules binary-<packagename>
-
-e.g. fakeroot debian/rules binary-openoffice.org-l10n-en
-
-build-project -
+maintscripts       - Generates  the maintainer scripts
 
 - clean targets -
 
@@ -139,17 +82,26 @@ clean-objectdirs   - Clean compilation results, but leave solver (cleans about
 
 - other targets -
 
-builduntil-<prjname> Build a particular project, including all its
-		     prerequesites. For example, to build localize and the
-		     tools needed for translation in the transex3 project,
-		     execute:
-		       debian/rules builduntil-transex3
+get-ooo-build      - get ooo-build
+download           - downloads needed files from ooo.ximian.com, normally
+                     not needed, already done
+cvsupdate          - as the name says ;-)
 
-buildprj	   - Build only one a particular project.  Set PRJ to the name
-		     of the project:
-		       debian/rules buildprj PRJ=tools
+environment        - show build environment
+
+makebinariestar    - make tarball of binaries in the output tree
 
 Build system file layout
 ========================
-scripts:
-  Directory containing various build-related scripts.
+debian/scripts:
+  Directory containing various debian-specific build-related scripts.
+
+ooo-build/:
+  Checkout of ooo-build; containing the build scripts and the shared
+  patches (patches/); also the installation scripts for installing into
+  debian/tmp/pkg (-> ooinstall, package-ooo).
+
+  For adding patches; please do so in ooo-build.
+
+  See README and www/* for documentation.
+
