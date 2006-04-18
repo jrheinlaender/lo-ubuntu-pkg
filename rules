@@ -108,7 +108,7 @@ BUILD_DEPS=
 
 ifeq "$(DIST)" "Ubuntu"
 	BUILD_AMD64=y
-	BUILD_DEPS += , translate-toolkit (>= 0.8.rc6)
+	BUILD_DEPS += , translate-toolkit (>= 0.8.rel)
 endif
 
 ifeq "$(ARCH)" "amd64"
@@ -202,17 +202,20 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
     # one to that gid_Module_Root always is english and the other langpacks
     # have gid_Module_Root.$iso
     #ISOS="$(shell ooo-build/bin/openoffice-xlate-lang -i all')"
-    ISOS := en-US af ar be-BY bg bn br bs ca cs cy da de el \
+    ISOS := en-US af ar as-IN be-BY bg bn br bs ca cs cy da de el \
 	en-GB en-ZA es et fi fr ga gu-IN he hi-IN hr hu nb nl nn it ja \
-	km ko ku lo lt mk pa-IN pl pt-BR ru rw sk sl sr-CS st sv \
-	th tn tr ts vi xh zh-CN zh-TW zu
+	km ko ku lo lt mk ml-IN mr-IN or-IN pa-IN pl pt-BR ru rw \
+	sk sl sr-CS st sv \
+	th tn tr ts ur-IN vi xh zh-CN zh-TW zu
     #HELPISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all') 
-    HELPISOS:=en-US br cs da de en-GB es et fr it hu ja ko lt nl pt-BR sv zh-CN zh-TW
+    HELPISOS:=en-US br cs da de en-GB es et fr it hu ja ko nl pt-BR \
+	sv ur-IN zh-CN zh-TW
     #LANGPACKISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
-    LANGPACKISOS := en-US af ar be-BY bg bn br bs ca cs cy da de el \
+    LANGPACKISOS := en-US af ar as-IN be-BY bg bn br bs ca cs cy da de el \
 	en-GB en-ZA es et fi fr ga gu-IN he hi-IN hr hu nb nl nn it ja \
-	km ko ku lo lt mk pa-IN pl pt-BR ru rw sk sl sr-CS st sv \
-	th tn tr ts vi xh zh-CN zh-TW zu
+	km ko ku lo lt mk ml-IN mr-IN or-IN pa-IN pl pt-BR ru rw \
+	sk sl sr-CS st sv \
+	th tn tr ts ur-IN vi xh zh-CN zh-TW zu
   endif
 else
   ISOS="en-US"
@@ -823,7 +826,7 @@ endif
 	    LCODE=`ooo-build/bin/openoffice-xlate-lang -i $$LNUM | tr A-Z a-z`; \
 	    CCODE=`echo $$LCODE | sed 's/-.*//'`; \
 	    case "$$LCODE" in \
-		bn|gu-in|pa-in) \
+		bn|gu-in|pa-in|ma-IN|or-IN) \
 			FONT_SUGGESTS=", ttf-`echo $$LNAME | tr A-Z a-z`-fonts"; \
 			;; \
 		hi-in) \
@@ -1106,11 +1109,11 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/build
 	-find debian/tmp ! -perm -200 | xargs chmod u+w
 
 	# no special ooqstart wrappers
-	install -m 755 build/ooo-wrapper \
+	install -m 755 build/ooo-wrapper$(VER) \
 	  debian/tmp/pkg/openoffice.org-common/usr/bin/
 	for i in debian/tmp/pkg/*/usr/bin/oo*; do \
-	  case $$i in *wrapper) continue; esac; \
-	  ln -sf ooo-wrapper $$i; \
+	  case $$i in *wrapper*) continue; esac; \
+	  ln -sf ooo-wrapper$(VER) $$i; \
 	done
 
 ifeq (0,1)
@@ -1549,9 +1552,10 @@ endif
 	done
 	for f in `find debian -name '*.desktop'`; do \
 		sed -i -e '/^Comment\[de\]/s/- *\([a-zA-Z0-9]*\) *macht.*glich.*$$/mit \1/' $$f; \
+		echo 'X-KDE-Protocols=file,http,smb' >> $$f; \
 	done
 	sed -i -e '/^MimeType/s,text/rtf,text/rtf;application/rtf,' \
-		$(PKGDIR)-writer/usr/share/applications/ooo-writer.desktop
+		$(PKGDIR)-writer/usr/share/applications/ooo$(VER)-writer.desktop
 
 	#mv $(PKGDIR)-base/usr/share/applications/ooo$(VER)-base.desktop $(PKGDIR)-core/usr/share/applications
 	#rm -r $(PKGDIR)-base
@@ -1929,10 +1933,10 @@ endif
 	rm -rf $(PKGDIR)-dev-doc
 	mkdir -p $(PKGDIR)-dev-doc/$(OODIR)
 	mkdir -p $(PKGDIR)-dev-doc/$(OODIR)/sdk
-	unzip $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/odkcommon.zip docs/* -d $(PKGDIR)-dev-doc/$(OODIR)/sdk
-	unzip $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/odk_oo.zip -d $(PKGDIR)-dev-doc/$(OODIR)/sdk
-	unzip $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/odkexamples.zip -d $(PKGDIR)-dev-doc/$(OODIR)/sdk
-	unzip -o $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/sdk_oo.zip -x settings/* -d $(PKGDIR)-dev-doc/$(OODIR)/sdk
+	unzip -q $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/odkcommon.zip docs/* -d $(PKGDIR)-dev-doc/$(OODIR)/sdk
+	unzip -q $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/odk_oo.zip -d $(PKGDIR)-dev-doc/$(OODIR)/sdk
+	unzip -q $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/odkexamples.zip -d $(PKGDIR)-dev-doc/$(OODIR)/sdk
+	unzip -q -o $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/sdk_oo.zip -x settings/* -d $(PKGDIR)-dev-doc/$(OODIR)/sdk
 	chmod 644 $(PKGDIR)-dev-doc/$(OODIR)/sdk/docs/images/bg_table2.gif
 	chmod 644 $(PKGDIR)-dev-doc/$(OODIR)/sdk/docs/images/bg_table3.gif
 	chmod 644 $(PKGDIR)-dev-doc/$(OODIR)/sdk/examples/DevelopersGuide/ScriptingFramework/ScriptSelector/build.xml
@@ -2117,7 +2121,7 @@ ifeq "$(HELPISOS)" ""
 		unzip -q $(CURDIR)/$(PKGDIR)-common/$(OODIR)/share/config/$$z && \
 		cp -r $(CURDIR)/$(SOURCE_TREE)/default_images/res/helpimg res && \
 		chmod +w $(CURDIR)/$(PKGDIR)-common/$(OODIR)/share/config/$$z && \
-		zip -r $(CURDIR)/$(PKGDIR)-common/$(OODIR)/share/config/$$z *; \
+		zip -q -r $(CURDIR)/$(PKGDIR)-common/$(OODIR)/share/config/$$z *; \
 		cd ..; \
 		rm -rf $$z; \
 	done
@@ -2197,7 +2201,7 @@ else
 	@echo "nothing to import, OOO_L10N_DIR is not set"
 endif
 
-GSI_LANGUAGES = $(filter-out de, $(LANGUAGES))
+GSI_LANGUAGES = $(LANGUAGES)
 gsi-export: $(STAMP_DIR)/gsi-export
 $(STAMP_DIR)/gsi-export:
 	$(MAKE) -f debian/rules -j$(shell expr $(AVAIL_CPUS) + 1) $(STAMP_DIR)/gsi-export-parallel
@@ -2232,12 +2236,8 @@ $(STAMP_DIR)/gsi-export-%:
 	      | zcat - > $(OOO_L10N_DIR)/export/GSI_$$i.sdf; \
 	  else \
 	    echo exporting GSI file for language $$i; \
-	    echo localize -e -l en-US,$$i=en-US -f $(OOO_L10N_DIR)/export/GSI_$$i.sdf; \
+	    echo localize -e -l en-US,$$i -f $(OOO_L10N_DIR)/export/GSI_$$i.sdf; \
 	    localize -e -l en-US,$$i -f $(OOO_L10N_DIR)/export/GSI_$$i.sdf; \
-	    if [ $$i = de ]; then \
-	      awk 'NR % 3' $(OOO_L10N_DIR)/export/GSI_$$i.sdf > $(OOO_L10N_DIR)/export/GSI_$$i.sdf.new; \
-	      mv -f $(OOO_L10N_DIR)/export/GSI_$$i.sdf.new $(OOO_L10N_DIR)/export/GSI_$$i.sdf; \
-	    fi; \
 	  fi
 	if [ -x /usr/bin/oo2po ]; then \
 	  chmod +x debian/splitgsi; \
