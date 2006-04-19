@@ -110,6 +110,7 @@ BUILD_DEPS=
 ifeq "$(DIST)" "Ubuntu"
 	BUILD_AMD64=y
 	BUILD_DEPS += , translate-toolkit (>= 0.8.rel)
+	OOO_ARCHS+= amd64
 endif
 
 ifeq "$(ARCH)" "amd64"
@@ -209,7 +210,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	sk sl sr-CS st sv \
 	th tn tr ts ur-IN vi xh zh-CN zh-TW zu
     #HELPISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all') 
-    HELPISOS:=en-US br cs da de en-GB es et fr it hu ja ko nl pt-BR \
+    HELPISOS:=en-US br cs da de en-GB es et fr hu it ja ko nl pt-BR \
 	sv ur-IN zh-CN zh-TW
     #LANGPACKISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
     LANGPACKISOS := en-US af ar as-IN be-BY bg bn br bs ca cs cy da de el \
@@ -228,6 +229,7 @@ endif
 ISOS := $(subst ",,$(ISOS))
 HELPISOS := $(subst ",,$(HELPISOS))
 LANGPACKISOS := $(subst ",,$(LANGPACKISOS))
+# dummy "
 
 ifeq "$(DIST)" "Ubuntu"
   LANGUAGES := $(ISOS)
@@ -287,9 +289,7 @@ ENABLE_JAVA=y
 ifneq (,$(findstring $(ARCH), $(NO_JAVA_ARCHS)))
 	ENABLE_JAVA=n
 else
-ifneq "$(SARGE_BACKPORT)" "y"
 	ENABLE_JAVA=y
-endif
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
@@ -297,6 +297,9 @@ ifneq "$(SARGE_BACKPORT)" "y"
 	export JAVA_HOME=/usr/lib/jvm/java-gcj
 	CONFIGURE_FLAGS += --with-java=gij
 	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.28-8) [$(NO_JAVA_ARCHS)], ant (>= 1.6.5) [$(NO_JAVA_ARCHS)]
+  ifeq (,$(findstring sparc,$(NO_JAVA_ARCHS)))
+		BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.54-0) [sparc]
+  endif
 	SYSTEM_XT=y
 	SYSTEM_XALAN=y
 	SYSTEM_XERCES=y
@@ -307,7 +310,7 @@ ifeq "$(ARCH)" "i386"
 else
 	JAVA_HOME=/usr/lib/j2sdk1.4-ibm
 endif
-	BUILD_DEPS += , j2sdk1.4 | j2sdk1.4-ibm, ant [$(NO_JAVA_ARCHS)]
+	BUILD_DEPS += , j2sdk1.4 [i386], j2sdk1.4-ibm [powerpc], ant [$(NO_JAVA_ARCHS)]
 	CONFIGURE_FLAGS += --with-system-xml-apis
 	SYSTEM_XT=n
 	SYSTEM_XALAN=y
@@ -1001,7 +1004,7 @@ endif
 ifneq ($(GCC_VERSION),)
 ifneq ($(GCC_VERSION),snapshot)
 	# create links for gcc and g++ (and gij and gcj), ooo-build does not
-	# honour overriding CC and CC and we need to use gcc/g++ 4.0 or /
+	# honour overriding CC and CXX and we need to use gcc/g++ 4.0 or /
 	# ant.mk wants gcj at the moment...
 	mkdir -p $(CURDIR)/debian/usr/bin
 	ln -sf /usr/bin/$(CC_PREFIX)gcc-$(GCC_VERSION) $(CURDIR)/debian/usr/bin/gcc
@@ -1014,6 +1017,7 @@ ifneq "$(CC_PREFIX)" ""
 	ln -s /usr/lib/gcc-snapshot/bin/$(CC_PREFIX)gcc $(CURDIR)/debian/usr/bin/gcc
 	ln -s /usr/lib/gcc-snapshot/bin/$(CC_PREFIX)g++ $(CURDIR)/debian/usr/bin/g++
 	ln -s /usr/lib/gcc-snapshot/bin/$(CC_PREFIX)gcj $(CURDIR)/debian/usr/bin/gcj
+	ln -s /usr/lib/gcc-snapshot/bin/$(CC_PREFIX)gcj $(CURDIR)/debian/usr/bin/gij
 endif
 endif
 endif
@@ -1071,11 +1075,13 @@ endif
 	test -r /proc/version
 
 	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ../ooo-build/configure $(CONFIGURE_FLAGS)
+
 	touch $@
 
 build: $(STAMP_DIR)/build
 $(STAMP_DIR)/build: ooo-build/config.status
 	dh_testdir
+
 ifeq "$(BUILD_KDE)" "n"
 	# hack to tell we want crystal icons nevertheless and they should be
 	# extracted...
@@ -1086,10 +1092,13 @@ ifeq "$(BUILD_KDE)" "n"
 			> ooo-build/bin/setup && rm ooo-build/bin/setup.bak; \
 	fi
 endif
+
 	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 $(MAKE)
+
 	# DPKG is only set on with-EPM build what we don't do and the menu stuff
 	# is only built wenn DPKG is set.. Same with PKGFORMAT.
 	cd $(SOURCE_TREE)/sysui; . $(CURDIR)/$(SOURCE_TREE)/*.sh; PATH=$(BUILD_PATH) DPKG="dpkg" PKGFORMAT="deb" ../solenv/bin/build.pl && ../solenv/bin/deliver.pl
+
 ifneq "$(USE_EXTERNAL_MYTHES)" "y"
 	# build non-PIC version of libmythes
 	cd $(SOURCE_TREE)/lingucomponent/source/thesaurus/mythes && \
@@ -1122,7 +1131,7 @@ ifneq "$(HELPISOS)" ""
 	# save space by removing non-packaged localized help; we don't need
 	# them anyway
 	cd debian/tmp/pkg && \
-		for iso in `echo $(LANGPACKISOS) | sed -e s/en-US//`; do \
+		for iso in $(filter-out en-US,$(LANGPACKISOS)); do \
 			if ! `echo $(HELPISOS) | grep -q $$iso`; then \
 				rm -rf openoffice.org$(VER)-help-$$iso; \
 			fi; \
@@ -1197,6 +1206,7 @@ ifeq "$(ENABLE_MONO)" "y"
 	fi
 endif
 
+	# ooqstart should go into -gnome; we have a glib dependency
 	mkdir -p debian/tmp/pkg/openoffice.org-common/$(OODIR)/program
 	mv debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/ooqstart \
 		debian/tmp/pkg/openoffice.org-gnome/$(OODIR)/program
@@ -1253,14 +1263,14 @@ $(STAMP_DIR)/maintscripts: debian/shell-lib.sh debian/java-lib.sh debian/control
 helppacks: $(STAMP_DIR)/helppacks
 $(STAMP_DIR)/helppacks: $(STAMP_DIR)/install ooo-build/bin/openoffice-xlate-lang
 
+ifneq "$(HELPISOS)" ""
 	# we assume here that when we want to build/package help here we want
 	# to do that with en-US anyway...
-ifneq "$(HELPISOS)" ""
 	rm -rf $(PKGDIR)-help-en-us $(PKGDIR)-help-en-us.*.debhelper; \
 	cp -r --preserve=mode debian/tmp/pkg/openoffice.org-help-en-us $(PKGDIR)-help-en-us || exit 1
 ifneq "$(HELPISOS)" "en-US"
 	set -e; \
-	for iso in `echo $(HELPISOS) | sed -e s/en-US//`; do \
+	for iso in $(filter-out en-US,$(HELPISOS)); do \
 	  pkgiso=`echo $$iso | tr \[:upper:\] \[:lower:\]`; \
 	  diriso=`echo $$pkgiso | cut -d"-" -f1`; \
 	  if [ "$$pkgiso" = "pt-br" ]; then diriso=pt-BR; fi; \
@@ -1271,6 +1281,7 @@ ifneq "$(HELPISOS)" "en-US"
 		$(PKGDIR)-help-$$pkgiso; \
 	done
 endif
+
 	# quick hack to reduce the size of the help packages
 	for iso in $(HELPISOS); do \
 	  pkgiso=`echo $$iso | tr \[:upper:\] \[:lower:\]`; \
@@ -1307,7 +1318,6 @@ ifneq "$(findstring en-US,$(ISOS))" ""
 endif
 
 	# ... and install the rest of the langpacks
-	# FIXME: Filter stuff out which are doubled...
 	for iso in $(LANGPACKISOS); do \
 	  if [ "$$iso" = "en-US" ]; then continue; fi ; \
 	  pkgiso=`echo $$iso | tr \[:upper:\] \[:lower:\]`; \
@@ -1388,7 +1398,6 @@ ifeq "$(BUILD_KDE)" "y"
 endif
 
 	dh_installdirs -a
-	#dh_install $(DEBHELPER_OPTIONS) --sourcedir=debian/tmp -a
 
 ifeq "$(BUILD_KDE)" "y"
 	mkdir -p -m755 $(PKGDIR)-kde/$(OODIR)/program
@@ -1474,10 +1483,9 @@ ifeq "$(ENABLE_JAVA)" "y"
 	ln $(PKGDIR)-base/$(OODIR)/program/libhsqldb2.so \
 		$(PKGDIR)-base/$(OODIR)/program/libhsqldb2
 endif
-	for i in flat; do \
-		mv $(PKGDIR)-core/$(OODIR)/program/lib$$i*so \
-			$(PKGDIR)-base/$(OODIR)/program; \
-	done
+	mv $(PKGDIR)-core/$(OODIR)/program/libflat*so \
+		$(PKGDIR)-base/$(OODIR)/program; \
+
 ifeq "$(BUILD_MDBTOOLS)" "y"
 	mv $(PKGDIR)-core/$(OODIR)/program/libmdb*so \
 		$(PKGDIR)-base/$(OODIR)/program
@@ -1490,7 +1498,6 @@ endif
 			$(PKGDIR)-calc/$(OODIR)/program; \
 	done
 
-	# scsolver belongs into -calc
 	mv $(PKGDIR)-core/$(OODIR)/program/scsolver.uno.so \
 		$(PKGDIR)-calc/$(OODIR)/program
 
@@ -1550,13 +1557,12 @@ else
 	rm -f $(PKGDIR)-core/$(OODIR)/program/libsimplecm*
 endif
 
-	# Nasty menu icons hack, urgently needs better version
 	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare >/dev/null; pwd`" ;\
 	for p in writer calc impress draw math base; do \
 		mkdir -p -m755 $(PKGDIR)-$$p/usr/share/applications ;\
 		sed -e 's,Exec=openoffice.org-2.0 \(.*\) %U,Exec=ooffice$(VER) \1 %U,' \
 		    -e "s,Icon=openofficeorg-20-$$p,Icon=ooo-$$p," \
-			-e 's,Name=OpenOffice.org 2.0 ,Name=OpenOffice.org$(VER) ,' \
+			-e 's,Name=OpenOffice.org 2.0 ,Name=OpenOffice.org $(VER),' \
 		   < $$dirname/$$p.desktop \
 		   > $(PKGDIR)-$$p/usr/share/applications/ooo$(VER)-$$p.desktop || exit 1 ;\
 	done
@@ -1567,6 +1573,7 @@ endif
 	sed -i -e '/^MimeType/s,text/rtf,text/rtf;application/rtf,' \
 		$(PKGDIR)-writer/usr/share/applications/ooo$(VER)-writer.desktop
 
+	sed -i -e 's/Office;/Office;Graphics;/' $(PKGDIR)-draw/usr/share/applications/ooo$(VER)-draw.desktop
 	#mv $(PKGDIR)-base/usr/share/applications/ooo$(VER)-base.desktop $(PKGDIR)-core/usr/share/applications
 	#rm -r $(PKGDIR)-base
 
@@ -1576,7 +1583,7 @@ endif
 	done
 
 ifeq "$(BUILD_PYUNO)" "y"
-	# Pyuno packging
+	# PyUNO packging
 	rm -rf debian/python-uno debian/python-uno.*.debhelper
 	cp -r --preserve=mode debian/tmp/pkg/python-uno debian/python-uno
 	
@@ -1612,12 +1619,6 @@ ifeq "$(ENABLE_MONO)" "y"
 	mv $(PKGDIR)-core/$(OODIR)/program/cli_*.dll \
 		debian/libuno-cil/$(OODIR)/program
 endif
-
-	# install regcomp and configimport utililities
-	#install -m755 \
-	#$(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/bin/regcomp \
-	#$(SOURCE_TREE)/solver/$(BUILDNUM)/$(ARCHBUILDDIR)/bin/configimport.bin \
-	#	$(PKGDIR)-bin/$(OPENOFFICEDIR)/program
 
 	# install the SDK
 	rm -rf $(PKGDIR)-dev
@@ -1665,7 +1666,6 @@ endif
 			> $(PKGDIR)-dev/$(OODIR)/sdk/$$i; \
 			chmod 755 $(PKGDIR)-dev/$(OODIR)/sdk/$$i; \
 	done
-	# fix shebang
 	for i in csh csh.in; do \
 		perl -pi -e 's,/usr/bin/csh,/bin/csh,'\
 			$(PKGDIR)-dev/$(OODIR)/sdk/setsdkenv_unix.$$i; \
@@ -1703,7 +1703,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 	rm -rf $(PKGDIR)-gcj
 	mkdir -p $(PKGDIR)-gcj/$(OODIR)/program/classes-native
   ifeq "$(REBUILD_JARS_NATIVE)" "y"
-	# recompiler the jar; the preferred way is to produce the binaries from
+	# recompile the jar; the preferred way is to produce the binaries from
 	# the bytecode.
 	mkdir -p $(PKGDIR)-gcj/$(OODIR)/program/classes-native
 	for jar in debian/tmp/pkg/openoffice.org-common/usr/lib/openoffice/program/classes/*.jar $(PKGDIR)-common/$(OODIR)/program/classes/*.jar $(PKGDIR)-java-common/usr/share/java/openoffice/*.jar; \
@@ -1750,7 +1750,7 @@ endif
 		$(PKGDIR)-core/usr/share/doc/openoffice.org$(VER)-core/README.html
 
 ifneq "$(USE_EXTERNAL_MYTHES)" "y"
-	# install libmythes and th_gen_idx.pl
+	# install libmythes and th_gen_idx.pl (on archs where we build OOo)
 	rm -rf debian/libmythes-dev
 	mkdir -p debian/libmythes-dev/usr/lib
 	mkdir -p debian/libmythes-dev/usr/include
@@ -1810,7 +1810,6 @@ endif
 
 	touch $@
 
-
 # Install files generated by setup into arch-independent package directories
 install-indep: $(STAMP_DIR)/install-indep
 #$(STAMP_DIR)/install-indep: debian/openoffice.org$(VER).install 
@@ -1832,17 +1831,15 @@ $(STAMP_DIR)/install-indep: ooo-build/fonts/opens___.ttf
 	  rm -rf $(PKGDIR)-common/usr/lib/openoffice$(VER)/$$dir ;\
 	done
 
-	#dh_install --sourcedir=debian/tmp -i
-
 	dh_installdirs -i
 
-	# Icons
+	# Extract and install icons
 	cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/desktop-integration && dpkg --extract openoffice.org-debian-menus_*_all.deb . && cd usr/share/icons; \
 	for d in `find -type d`; do \
 	  install -d -m755 $(CURDIR)/$(PKGDIR)-common/usr/share/icons/$$d || exit 1 ;\
 	done &&\
 	for f in `find -type f`; do \
-	  install -m444 $$f $(CURDIR)/$(PKGDIR)-common/usr/share/icons/$$f || exit 1 ;\
+	  install -m644 $$f $(CURDIR)/$(PKGDIR)-common/usr/share/icons/$$f || exit 1 ;\
 	done && cd ../../.. && rm -rf usr etc
 
 	# install .applications, .keys and .mime
@@ -1861,42 +1858,6 @@ $(STAMP_DIR)/install-indep: ooo-build/fonts/opens___.ttf
 #	install -m644 $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare/openoffice.org.xml \
 #		$(PKGDIR)-common/usr/share/mime/packages
 
-	# remove .desktop files already in KDE 3.2
-	#cd $(PKGDIR)-mimelnk/usr/share/mimelnk/application && \
-	#	for i in calc draw impress writer; do \
-	#		rm -f vnd.sun.xml.$$i.desktop; \
-	#	done
-
-	# remove the version number from the .desktop files
-	#for i in $(PKGDIR)/usr/share/applnk/*/*.desktop \
-	#	 $(PKGDIR)/usr/share/applications/*.desktop \
-	#	 $(PKGDIR)-mimelnk/usr/share/mimelnk/*/*.desktop; do \
-	#    sed -e s/"$(OOVERSIONNO) "// -e s/" $(OOVERSIONNO)"// \
-	#	-e s/"$(OOVERSIONNO)-"/"-"/ < $$i > $$i.new; \
-	#    mv $$i.new $$i; \
-	#done && \
-	#for i in $(PKGDIR)/usr/share/applnk/*/.directory; do \
-	#    sed -e s/" $(OOVERSIONNO)"// < $$i > $$i.new; \
-	#    mv $$i.new $$i; \
-	#done
-	 
-	# convert program/icon paths in desktop shortcuts
-	#for I in $(PKGDIR)/usr/share/applnk/*/*.desktop \
-	#         $(PKGDIR)/usr/share/applications/*.desktop; do \
-	#    sed -e 's,Exec="\?/.*\(/$(OODIR)/program/setup\)"\?,Exec=\1,' \
-	#        -e 's,Exec="\?/.*/$(OODIR)/program/s\?\([^"]*\)"\?,Exec=/usr/bin/oo\1$(VER),' \
-	#	-e 's,/oooffice ,/ooffice ,' \
-	#	-e 's,Icon=.*/\([^/]*\.png\),Icon=\1,' \
-	#	-e 's,\.png,,' \
-	#        < "$$I" > "$$I.new" ;\
-	#    rm "$$I"; mv "$$I.new" "$$I" ;\
-	#done
-
-	# insert NoDisplay=true to force the extra dir not being displayed
-	# on KDE 3.2
-	#echo "NoDisplay=true" >> \
-	#	$(PKGDIR)/usr/share/applnk/OpenOffice.org1.1/.directory
-
 	mkdir -p $(PKGDIR)-common/usr/share/applications
 	sed 's/@VER@/$(VER)/g' debian/template.desktop.in \
 		> $(PKGDIR)-common/usr/share/applications/template.desktop
@@ -1905,15 +1866,6 @@ $(STAMP_DIR)/install-indep: ooo-build/fonts/opens___.ttf
 	install -d -m755 $(PKGDIR)-common/usr/share/openoffice$(VER)/bin
 	install -m755 ooo-build/bin/openoffice-xlate-lang \
 		$(PKGDIR)-common/usr/share/openoffice$(VER)/bin
-
-	# this is a hack. it is needed to get the dictionaries hook
-	# notice that we have a newer OOo and do not need to change
-	# dictionary.lst
-	#touch $(PKGDIR)-common/usr/share/myspell/infos/ooo/openoffice.org$(VER)
-
-	#install -d -m755 debian/ttf-opensymbol/usr/share/fonts/truetype/openoffice
-	#install -m644 ooo-build/fonts/opens___.ttf \
-	#	debian/ttf-opensymbol/usr/share/fonts/truetype/openoffice
 
 	# compress manpages
 	find $(PKGDIR)-common -type f -name "*.1" | xargs gzip -9
@@ -1927,9 +1879,9 @@ ifneq "$(HELPISOS)" ""
 	chmod ugo-x $(PKGDIR)-common/$(OODIR)/program/hid.lst
 endif
 
-# when we don't build helpcontent2 here we are missing helpxsl.zip so this file
-# doesn't get installed either. Do it manually..
 ifeq "$(HELPISOS)" ""
+	# when we don't build helpcontent2 here we are missing helpxsl.zip so
+	# this file doesn't get installed either. Do it manually..
 	mkdir -p -m755 $(PKGDIR)-common/$(OODIR)/help && \
 	cp $(SOURCE_TREE)/helpcontent2/source/auxiliary/main_transform.xsl \
 		$(PKGDIR)-common/$(OODIR)/help
@@ -1952,12 +1904,8 @@ endif
 	chmod 644 $(PKGDIR)-dev-doc/$(OODIR)/sdk/examples/DevelopersGuide/ScriptingFramework/ScriptSelector/build.xml
 	chmod 644 $(PKGDIR)-dev-doc/$(OODIR)/sdk/examples/DevelopersGuide/ScriptingFramework/SayHello/build.xml
 
-ifneq "$(ENABLE_JAVA)" "y"
-	# install the javadoc stuff manually
-	cp -r $(SOURCE_TREE)/odk/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/odk$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/docs/java \
-		$(PKGDIR)-dev-doc/$(OODIR)/sdk/docs
-endif
-	# replace href's to the non-free DevelopersGuide with links to the online docs
+	# replace href's to the non-free DevelopersGuide with links to the
+	# online docs
 	find $(PKGDIR)-dev-doc/$(OODIR)/sdk/docs -name '*.html' \
 	  | xargs sed -ri 's,href="[^"]*DevelopersGuide/([^"]*\.(xhtml|pdf)[^"]*)".*,href="http://api.openoffice.org/docs/DevelopersGuide/\1,g'
 
@@ -1978,21 +1926,19 @@ ifeq "$(ENABLE_JAVA)" "y"
 	  mv $(PKGDIR)-common/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Types/fcfg_$${i}_types.xcu \
 	    $(PKGDIR)-java-common/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Types; \
 	done
-
-	# move Java jars into /usr/share/java and into -java-common
 	mkdir -p $(PKGDIR)-java-common/usr/share/java/openoffice$(VER)
 	mv $(PKGDIR)-common/$(OODIR)/program/classes/* \
 		$(PKGDIR)-java-common/usr/share/java/openoffice$(VER)
 	rm -rf $(PKGDIR)-common/$(OODIR)/program/classes
 	ln -s /usr/share/java/openoffice$(VER) \
 		$(PKGDIR)-java-common/$(OODIR)/program/classes
-endif
-
 	cd $(PKGDIR)-common/$(OODIR)/program && \
 	  for i in jvmfwk3rc setuprc unorc; do \
 	    perl -pi -e \
-	      's,\$$ORIGIN/classes,file:///usr/share/java/openoffice$(VER),g' $$i; \
+	      's,\$$ORIGIN/classes,file:///usr/share/java/openoffice$(VER),g' \
+		$$i; \
 	  done
+endif
 
 	# fix permissions
 	for i in editpic poll savepic show webcast; do \
@@ -2017,7 +1963,8 @@ endif
 	ln -s /var/spool/openoffice$(VER)/uno_packages/cache \
 		$(PKGDIR)-common/$(OODIR)/share/uno_packages/cache
 	perl -pi -e \
-	      's,\$$UNO_SHARED_PACKAGES/cache,file:///var/spool/openoffice$(VER)/uno_packages/cache,g' $(PKGDIR)-common/$(OODIR)/program/unorc
+	      's,\$$UNO_SHARED_PACKAGES/cache,file:///var/spool/openoffice$(VER)/uno_packages/cache,g' \
+		$(PKGDIR)-common/$(OODIR)/program/unorc
 
 	# install DicOOo and FontOOo; we need to do this manually; the
 	# dictionaries/ module isn't built with --without-myspell-dicts
@@ -2033,6 +1980,8 @@ ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 	rm -f $(PKGDIR)-common/$(OODIR)/share/fonts/truetype/opens___.ttf
 	install -m644 ooo-build/fonts/opens___.ttf \
 		debian/ttf-opensymbol/usr/share/fonts/truetype/openoffice
+else
+	rm -f $(PKGDIR)-common/$(OODIR)/share/fonts/truetype/opens___.ttf
 endif
 
 	# dictionary symlink
@@ -2049,6 +1998,7 @@ endif
 	  for x in *.png; do convert $$x `basename $$x .png`.xpm; done
 
 ifeq "$(ENABLE_JAVA)" "y"
+	# symlink jars we use externally
 ifeq "$(SYSTEM_XT)" "y"
 	ln -sf /usr/share/java/xt.jar \
 		$(PKGDIR)-java-common/usr/share/java/openoffice$(VER)/xt.jar
@@ -2065,6 +2015,10 @@ ifeq "$(SYSTEM_XERCES)" "y"
 	ln -sf /usr/share/java/xercesImpl.jar \
 		$(PKGDIR)-java-common/usr/share/java/openoffice$(VER)/xercesImpl.jar
 endif
+ifeq "$(USE_SYSTEM_BSH)" "y"
+	ln -sf /usr/share/java/bsh.jar \
+	        $(PKGDIR)-java-common/usr/share/java/openoffice$(VER)/bsh.jar
+endif
 endif
 
 	# remove extra license files
@@ -2077,17 +2031,12 @@ endif
 	rm -rf $(PKGDIR)-common/$(OODIR)/readmes
 	rm -rf $(PKGDIR)-common/$(OODIR)/share/readme/README*
 
+	# install Ximian desktop icons
 	mkdir -p $(PKGDIR)-common/usr/share/icons/hicolor/48x48/apps
 	cp ooo-build/desktop/*.png \
 		$(PKGDIR)-common/usr/share/icons/hicolor/48x48/apps
 
-ifeq "$(USE_SYSTEM_BSH)" "y"
-	# link to system bsh
-	ln -sf /usr/share/java/bsh.jar \
-	        $(PKGDIR)-java-common/usr/share/java/openoffice$(VER)/bsh.jar
-endif
-
-	# add mysql, maxdb and postgresql jdbc drivers to the clsspath
+	# add MySQL, MaxDB and PostgreSQ LJDBC drivers to OOos CLASSPATH
 	TMP=`mktemp -q`; \
 	sed -e 's|\(UNO_JAVA_JFW_CLASSPATH_URLS=.*\)|\1 file:///usr/share/java/mysql.jar|' \
 	    -e 's|\(UNO_JAVA_JFW_CLASSPATH_URLS=.*\)|\1 file:///usr/share/java/sapdbc.jar|' \
@@ -2102,6 +2051,7 @@ endif
 		$(PKGDIR)-common/etc/openoffice$(VER)
 	ln -s /etc/openoffice$(VER)/psprint.conf \
 		$(PKGDIR)-common/$(OODIR)/share/psprint/psprint.conf
+
 	# prepare a fake sofficerc in the place where OOo expects it
 	# which does nothing except reference the "normal" one
 	# which we put into /etc
@@ -2183,6 +2133,9 @@ endif
 	# install Ubuntu templates
 	mkdir -p $(PKGDIR)-common/$(OODIR)/share/template/en-US/presnt
 	install -m644 ubuntu/*.otp $(PKGDIR)-common/$(OODIR)/share/template/en-US/presnt/
+
+	# add "openoffice" symlink
+	cd $(PKGDIR)-common/usr/bin && ln -s ooo-wrapper openoffice
 
 	touch $@
 
