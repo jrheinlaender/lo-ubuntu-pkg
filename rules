@@ -223,10 +223,11 @@ else
 endif
 
 # !m68k is just a placeholder to avoid syntax errors due to this being empty
-NO_JAVA_ARCHS = !m68k
+NO_JAVA_ARCHS = !m68k !sparc
 ifeq "$(ARCH)" "sparc"
   ifneq "$(SARGE_BACKPORT)" "y"
-	ENABLE_JAVA=y
+	# n util we have the needed java-gcj-compat-dev in sid
+	ENABLE_JAVA=n
   else
 	ENABLE_JAVA=n
   endif
@@ -620,7 +621,7 @@ binary-arch: install
 	dh_testdir
 	dh_testroot
 	dh_installdocs -plibmythes-dev
-	dh_installchangelogs -plibmythes-dev
+	dh_installchangelogs -plibmythes-dev -XNEWS
 	debian/scripts/installoverrides
 	dh_link -plibmythes-dev
 	dh_fixperms -plibmythes-dev
@@ -1938,7 +1939,7 @@ binary-common:
 	  rm -rf debian/$$pkg/DEBIAN;\
 	done
 
-	dh_installdocs
+	dh_installdocs -A debian/README.Debian
 	dh_installman
 	# fix manpage symlinks
 	for i in writer calc draw impress base math; do \
@@ -1954,13 +1955,16 @@ binary-common:
 				ln -sf openoffice$(VER).1.gz oo$${i}$(VER).1.gz; \
 		fi; \
 	done
-	dh_installchangelogs
-	if [ -e $(PKGDIR)/usr/share/doc/openoffice.org$(VER) ]; then \
-	 install -m644 ooo-build/ChangeLog \
-	   $(PKGDIR)-core/usr/share/doc/openoffice.org$(VER)-core/changelog.ooo-build \
-	 && gzip -f9 \
-	   $(PKGDIR)-core/usr/share/doc/openoffice.org$(VER)-core/changelog.ooo-build; \
-	fi
+	dh_installchangelogs -Nlibmythes-dev ooo-build/ChangeLog
+ifneq "$(USE_EXTERNAL_MYTHES)" "y"
+	dh_installchangelogs -plibmythes-dev -XNEWS
+endif
+	#if [ -e $(PKGDIR)/usr/share/doc/openoffice.org$(VER) ]; then \
+	# install -m644 ooo-build/ChangeLog \
+	#   $(PKGDIR)-core/usr/share/doc/openoffice.org$(VER)-core/changelog.ooo-build \
+	# && gzip -f9 \
+	#   $(PKGDIR)-core/usr/share/doc/openoffice.org$(VER)-core/changelog.ooo-build; \
+	#fi
 	dh_installdebconf
 	dh_installmime
 	dh_installmenu
