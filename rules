@@ -219,7 +219,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	pl pt-BR ru rw sh-YU sk sl sr-CS st sv \
 	th tn tr ts ur-IN vi xh zh-CN zh-TW zu
 
-    REMOVE_HELP := bs cy fi lt sr-CS ur-IN
+    REMOVE_HELP := bs cy fi lt lv sh-YU sr-CS ur-IN
     FILTER_HELP := ga hr pl rw sk th tr vi
 
   endif
@@ -1057,18 +1057,12 @@ ifneq "$(LANGPACKISOS)" "en-US"
 	for i in `find ooo-build/src/*.sdf.gz`; do gunzip -dc "$$i" > \
 		ooo-build/src/`basename $$i .gz`; done
 	# work around broken stuff in the GSI breaking the build in svx
-  ifneq (,$(filter he, $(LANGPACKISOS)))
-	TMP=`mktemp -q`; grep -v OOO_LICENSE ooo-build/src/GSI_he.sdf \
-		> $$TMP && mv $$TMP ooo-build/src/GSI_he.sdf
-  endif
-  ifneq (,$(filter sr-CS, $(LANGPACKISOS)))
-	TMP=`mktemp -q`; grep -v OOO_LICENSE ooo-build/src/GSI_sr-CS.sdf \
-		> $$TMP && mv $$TMP ooo-build/src/GSI_sr-CS.sdf
-  endif
-  ifneq (,$(filter lo, $(LANGPACKISOS)))
-	TMP=`mktemp -q`; grep -v OOO_LICENSE ooo-build/src/GSI_lo.sdf \
-		> $$TMP && mv $$TMP ooo-build/src/GSI_lo.sdf
-  endif
+	for iso in as-IN he lo lv ml-IN mr-IN nb or-IN sh-YU sr-CS ur-IN; do \
+	  case " $(LANGPACKISOS) " in *\ $$iso\ *) ;; *) continue; esac; \
+	  TMP=`mktemp -q`; \
+	  grep -v OOO_LICENSE ooo-build/src/GSI_$$iso.sdf \
+	    > $$TMP && mv $$TMP ooo-build/src/GSI_$$iso.sdf; \
+	done
 endif
 endif
 
@@ -2210,17 +2204,17 @@ $(STAMP_DIR)/gsi-export-%:
 	  fi
 	case " $(REMOVE_HELP) " in *\ $*\ *) \
 	  echo "Removing help ($*)"; \
-	  grep '^helpcontent2' $(OOO_L10N_DIR)/export/GSI_$$i.sdf \
-		> $(OOO_L10N_DIR)/export/GSI_$$i.tmp \;
-	  debian/scripts/move-if-change $(OOO_L10N_DIR)/export/GSI_$$i.tmp \
-		$(OOO_L10N_DIR)/export/GSI_$$i.sdf; \
+	  grep -v '^helpcontent2' $(OOO_L10N_DIR)/export/GSI_$*.sdf \
+		> $(OOO_L10N_DIR)/export/GSI_$*.sdf.tmp; \
+	  debian/scripts/move-if-change $(OOO_L10N_DIR)/export/GSI_$*.sdf.tmp \
+		$(OOO_L10N_DIR)/export/GSI_$*.sdf; \
 	esac
 
 	case " $(FILTER_HELP) " in *\ $*\ *) \
 	  echo "Filtering untranslated messages from help ($*)"; \
-	  python debian/gsifilter.py $(OOO_L10N_DIR)/export/GSI_$$i.sdf; \
-	  debian/scripts/move-if-change $(OOO_L10N_DIR)/export/GSI_$$i.tmp \
-		$(OOO_L10N_DIR)/export/GSI_$$i.sdf; \
+	  python debian/gsifilter.py $(OOO_L10N_DIR)/export/GSI_$*.sdf; \
+	  debian/scripts/move-if-change $(OOO_L10N_DIR)/export/GSI_$*.sdf.tmp \
+		$(OOO_L10N_DIR)/export/GSI_$*.sdf; \
 	esac
 
 	if [ -x /usr/bin/oo2po ]; then \
