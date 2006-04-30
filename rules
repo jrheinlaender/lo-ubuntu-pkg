@@ -207,6 +207,7 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
 		 --enable-package-directories \
 		 --with-installed-ooo-dirname=openoffice$(VER) \
 		 --mandir=/usr/share/man \
+		 --with-docdir=/usr/share/doc/openoffice.org \
 		 --with-lang=$(ISOS) \
 		 --with-build-version="openoffice.org$(VER)-core $(BINARY_VERSION), `date`" \
 		--disable-strip \
@@ -1097,7 +1098,16 @@ endif
 		debian/tmp/pkg/openoffice.org-dev/$(OODIR)/program
 	mv debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/gengal  \
 		debian/tmp/pkg/openoffice.org-dev/$(OODIR)/program
-	
+
+	# move SDK documentation into own package
+	rm -rf debian/tmp/pkg/openoffice.org-dev-doc
+	mkdir -p debian/tmp/pkg/openoffice.org-dev-doc/usr/share/doc
+	mv debian/tmp/pkg/openoffice.org-dev/usr/share/doc/openoffice.org \
+		debian/tmp/pkg/openoffice.org-dev-doc/usr/share/doc/openoffice.org-dev-doc
+	mkdir -p debian/tmp/pkg/openoffice.org-dev-doc/$(OODIR)/sdk
+	mv debian/tmp/pkg/openoffice.org-dev/$(OODIR)/sdk/examples \
+		debian/tmp/pkg/openoffice.org-dev-doc/$(OODIR)/sdk
+
 	touch $@
 
 #
@@ -1238,7 +1248,7 @@ $(STAMP_DIR)/install-arch: $(STAMP_DIR)/install
 	umask 022
 
 	# Copy files placed by ooo-build/bin/package-ooo	
-	for i in base calc core draw impress math writer gnome; do \
+	for i in base calc core draw impress math writer gnome dev; do \
 	  rm -rf $(PKGDIR)-$$i $(PKGDIR)-$$i.*.debhelper ;\
 	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-$$i $(PKGDIR)-$$i || exit 1;\
 	done
@@ -1459,52 +1469,22 @@ ifeq "$(ENABLE_MONO)" "y"
 		debian/libuno-cil/$(OODIR)/program
 endif
 
-	# install the SDK
-	rm -rf $(PKGDIR)-dev
-	cp -ra debian/tmp/pkg/openoffice.org-dev $(PKGDIR)-dev
-	mkdir -p $(PKGDIR)-dev/usr/include
-	mkdir -p $(PKGDIR)-dev/usr/share/xml
-	mkdir -p $(PKGDIR)-dev/usr/share/idl
-	mkdir -p $(PKGDIR)-dev/usr/share/doc/openoffice.org$(VER)-dev
-ifeq "$(ENABLE_JAVA)" "y"
-	mkdir -p $(PKGDIR)-dev/usr/share/java/openoffice$(VER)
-endif
-	mkdir -p $(PKGDIR)-dev/$(OODIR)/sdk
-	unzip $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/odkcommon.zip -x docs/* -x classes/win/* -d $(PKGDIR)-dev/$(OODIR)/sdk
-	unzip $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/odkidl.zip -d $(PKGDIR)-dev/$(OODIR)/sdk
-	unzip $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/sdk_oo.zip settings/* -d $(PKGDIR)-dev/$(OODIR)/sdk
-ifeq "$(ENABLE_JAVA)" "y"
-	mv $(PKGDIR)-dev/$(OODIR)/sdk/classes/com \
-		$(PKGDIR)-dev/usr/share/java/openoffice$(VER) && \
-	ln -s /usr/share/java/openoffice$(VER)/com \
-		$(PKGDIR)-dev/$(OODIR)/sdk/classes/com
-endif
-	mv $(PKGDIR)-dev/$(OODIR)/sdk/include $(PKGDIR)-dev/usr/include/openoffice$(VER) && \
-		ln -s /usr/include/openoffice$(VER) $(PKGDIR)-dev/$(OODIR)/sdk/include
 ifeq "$(USE_SYSTEM_STLPORT)" "y"
 	# when we use external stlport, we just can and should do a symlink
+	# for the SDK includes
 	cd $(PKGDIR)-dev/usr/include/openoffice$(VER) && \
 		rm -rf stl && ln -s /usr/include/stlport stl
 endif
-	mv $(PKGDIR)-dev/$(OODIR)/sdk/xml $(PKGDIR)-dev/usr/share/xml/openoffice$(VER) && \
-		ln -s /usr/share/xml/openoffice$(VER) $(PKGDIR)-dev/$(OODIR)/sdk/xml
-	mv $(PKGDIR)-dev/$(OODIR)/sdk/idl $(PKGDIR)-dev/usr/share/idl/openoffice$(VER) && \
-		ln -s /usr/share/idl/openoffice$(VER) $(PKGDIR)-dev/$(OODIR)/sdk/idl
+	# move SDK Java stuff into /usr/share/java/openoffice
+	rm -f $(PKGDIR)-dev/$(OODIR)/sdk/classes
+	mkdir -p $(PKGDIR)-dev/usr/share/java/openoffice$(VER)
+	mkdir -p $(PKGDIR)-dev/$(OODIR)/sdk/classes
+	mv $(PKGDIR)-dev/usr/share/openoffice/sdk/classes/com \
+		$(PKGDIR)-dev/usr/share/java/openoffice && \
+	cd $(PKGDIR)-dev/$(OODIR)/sdk/classes && \
+		ln -s /usr/share/java/openoffice/com com
+	rm -rf $(PKGDIR)-dev/usr/share/openoffice/sdk
 	chmod 644 $(PKGDIR)-dev/$(OODIR)/sdk/configure.pl
-	for i in setsdkenv_unix.csh setsdkenv_unix.sh; do \
-		sed -e 's,@OO_SDK_NAME@,OpenOffice.org2.0_SDK,' \
-		    -e 's,@OO_SDK_HOME@,/usr/lib/openoffice$(VER)/sdk,' \
-		    -e 's,@OO_SDK_URE_HOME@,,' \
-		    -e 's,@OFFICE_HOME@,/usr/lib/openoffice$(VER),' \
-		    -e 's,@OO_SDK_MAKE_HOME@,/usr/bin,' \
-		    -e 's,@OO_SDK_ZIP_HOME@,/usr/bin,' \
-		    -e 's,@OO_SDK_CPP_HOME@,/usr/bin,' \
-		    -e 's,@OO_SDK_JAVA_HOME@,$(JAVA_HOME),' \
-		    -e 's,@SDK_AUTO_DEPLOYMENT@,NO,' \
-			< $(PKGDIR)-dev/$(OODIR)/sdk/$$i.in \
-			> $(PKGDIR)-dev/$(OODIR)/sdk/$$i; \
-			chmod 755 $(PKGDIR)-dev/$(OODIR)/sdk/$$i; \
-	done
 	for i in csh csh.in; do \
 		perl -pi -e 's,/usr/bin/csh,/bin/csh,'\
 			$(PKGDIR)-dev/$(OODIR)/sdk/setsdkenv_unix.$$i; \
@@ -1601,6 +1581,7 @@ endif
 
 ifeq "$(ENABLE_JAVA)" "y"
 	# install the UNO Java sources for e.g. eclipse
+	mkdir -p $(CURDIR)/$(PKGDIR)-dev/usr/share/java/openoffice$(VER)
 	cd $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin && \
 		for i in juh jurt jut ridl unoloader; do \
 			cp $${i}_src.zip \
@@ -1621,9 +1602,11 @@ $(STAMP_DIR)/install-indep: ooo-build/fonts/opens___.ttf
 	dh_testroot
 	umask 022
 
-	# Copy files placed by ooo-build/bin/package-ooo	
+	# Copy files placed by ooo-build/bin/package-ooo/install
 	rm -rf $(PKGDIR)-common $(PKGDIR)-common.*.debhelper; \
 	cp -r --preserve=mode debian/tmp/pkg/openoffice.org-common $(PKGDIR)-common || exit 1
+	rm -rf $(PKGDIR)-dev-doc $(PKGDIR)-dev-doc.*.debhelper; \
+	cp -r --preserve=mode debian/tmp/pkg/openoffice.org-dev-doc $(PKGDIR)-dev-doc || exit 1
 
 	# Remove files in langpack
 	for dir in program/resource share/registry/res/en-US; do \
@@ -1685,22 +1668,19 @@ endif
 	perl -pi -e 's,/bin/awk,/usr/bin/awk,'\
 		$(PKGDIR)-common/$(OODIR)/program/uri-encode
 
-	# install the SDK docs
-	rm -rf $(PKGDIR)-dev-doc
-	mkdir -p $(PKGDIR)-dev-doc/$(OODIR)
-	mkdir -p $(PKGDIR)-dev-doc/$(OODIR)/sdk
-	unzip $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/odkcommon.zip docs/* -d $(PKGDIR)-dev-doc/$(OODIR)/sdk
-	unzip $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/odk_oo.zip -d $(PKGDIR)-dev-doc/$(OODIR)/sdk
-	unzip $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/odkexamples.zip -d $(PKGDIR)-dev-doc/$(OODIR)/sdk
-	unzip -o $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/sdk_oo.zip -x settings/* -d $(PKGDIR)-dev-doc/$(OODIR)/sdk
-	chmod 644 $(PKGDIR)-dev-doc/$(OODIR)/sdk/docs/images/bg_table2.gif
-	chmod 644 $(PKGDIR)-dev-doc/$(OODIR)/sdk/docs/images/bg_table3.gif
+	chmod 644 $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev-doc/sdk/docs/images/bg_table2.gif
+	chmod 644 $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev-doc/sdk/docs/images/bg_table3.gif
 	chmod 644 $(PKGDIR)-dev-doc/$(OODIR)/sdk/examples/DevelopersGuide/ScriptingFramework/ScriptSelector/build.xml
 	chmod 644 $(PKGDIR)-dev-doc/$(OODIR)/sdk/examples/DevelopersGuide/ScriptingFramework/SayHello/build.xml
+	rm -f $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev-doc/sdk/LICENSE
+
+	mkdir -p $(PKGDIR)-dev-doc/$(OODIR)/sdk
+	cd $(PKGDIR)-dev-doc/$(OODIR)/sdk && \
+		ln -sf /usr/share/doc/openoffice.org-dev-doc/sdk/docs docs
 
 	# replace href's to the non-free DevelopersGuide with links to the
 	# online docs
-	find $(PKGDIR)-dev-doc/$(OODIR)/sdk/docs -name '*.html' \
+	find $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev-doc/sdk/docs -name '*.html' \
 	  | xargs sed -ri 's,href="[^"]*DevelopersGuide/([^"]*\.(xhtml|pdf)[^"]*)".*,href="http://api.openoffice.org/docs/DevelopersGuide/\1,g'
 
 ifeq "$(ENABLE_JAVA)" "y"
