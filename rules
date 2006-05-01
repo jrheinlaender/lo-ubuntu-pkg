@@ -15,6 +15,7 @@
 
 default: environment
 #VER:=2
+SHELL:=/bin/bash
 PKGDIR:=debian/openoffice.org$(VER)
 OODIR:=usr/lib/openoffice$(VER)
 
@@ -30,9 +31,6 @@ DIST := $(shell lsb_release -is)
 # Figure out who's building this package.
 BUILDER:=$(shell echo $$LOGNAME)
 OOO_VENDOR:=Debian
-ifeq "$(DIST)" "Ubuntu"
-OOO_VENDOR+= and Ubuntu
-endif
 ifneq "$(BUILDER)" "buildd"
 OOO_VENDOR+= ($(BUILDER))
 endif
@@ -125,12 +123,7 @@ else
 endif
 export DH_COMPAT
 
-ifeq "$(DIST)" "Ubuntu"
-	PACKAGE_QA_TOOLS=y
-else
-	PACKAGE_QA_TOOLS=n
-endif
-
+PACKAGE_QA_TOOLS=n
 PACKAGE_TTF_OPENSYMBOL=y
 PACKAGE_NPSOPLUGIN=n
 
@@ -296,17 +289,13 @@ else
 	HELPISOS=
 endif
 
-#ifeq "$(DIST)" "Ubuntu"
-#	USE_FIREFOX=y
-#else
-#	USE_FIREFOX=n
-#endif
-#ifeq "$(USE_FIREFOX)" "y"
-#	CONFIGURE_FLAGS+= --with-firefox
-#	BUILD_DEPS+= , firefox-dev, libnspr-dev
-#else
+USE_FIREFOX=n
+ifeq "$(USE_FIREFOX)" "y"
+	CONFIGURE_FLAGS+= --with-firefox
+	BUILD_DEPS+= , firefox-dev, libnspr-dev
+else
 	BUILD_DEPS+= , mozilla-dev
-#endif
+endif
 BUILD_DEPS+= , libnss-dev (>= 1.7.5)
 
 ENABLE_MONO=n
@@ -419,14 +408,10 @@ ifeq "$(USE_SYSTEM_ICU)" "y"
 	PATH+=:/usr/sbin
 endif
 
-ifeq "$(DIST)" "Debian"
 ifeq "$(SARGE_BACKPORT)" "y"
 	USE_SYSTEM_XMLSEC=n
 else
 	USE_SYSTEM_XMLSEC=y
-endif
-else
-	USE_SYSTEM_XMLSEC=n
 endif
 ifeq "$(USE_SYSTEM_XMLSEC)" "y"
 	BUILD_DEPS += , libxmlsec1-dev (>= 1.2.9), libxmlsec1-nss (>= 1.2.9), libxmlsec1-openssl (>= 1.2.9)
@@ -450,7 +435,7 @@ else
   CONFIGURE_FLAGS+= --disable-cairo
 endif
 
-BUILD_MDBTOOLS=n
+BUILD_MDBTOOLS=y
 ifeq "$(SARGE_BACKPORT)" "y"
 	USE_SYSTEM_MDBTOOLS=n
 else
@@ -467,18 +452,14 @@ endif
 
 BUILD_KDE=y
 ifeq "$(BUILD_KDE)" "n"
-		  CONFIGURE_FLAGS+= --disable-kde
-		  DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-kde
-		  CONFIGURE_FLAGS+= --with-images="industrial crystal hicontrast"
+	CONFIGURE_FLAGS+= --disable-kde
+	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-kde
+	CONFIGURE_FLAGS+= --with-images="industrial crystal hicontrast"
 else
-ifeq "$(DIST)" "Debian"
 ifneq "$(SARGE_BACKPORT)" "y"
        BUILD_DEPS += , kdelibs4-dev (>= 4:3.4.3-2)
 else
        BUILD_DEPS += , kdelibs4-dev
-endif
-else
-       BUILD_DEPS += , kdelibs4-dev (>= 4:3.5-rc2)
 endif
 endif
 
@@ -501,14 +482,10 @@ ifeq "$(ENABLE_JAVA)" "y"
 	CONFIGURE_FLAGS+= --with-system-hsqldb
   endif
 
-  ifeq "$(DIST)" "Debian"
-    ifeq "$(SARGE_BACKPORT)" "y"
+  ifeq "$(SARGE_BACKPORT)" "y"
 	USE_SYSTEM_BSH=n
-    else
-	USE_SYSTEM_BSH=y
-    endif
   else
-	USE_SYSTEM_BSH=n
+	USE_SYSTEM_BSH=y
   endif
   ifeq "$(USE_SYSTEM_BSH)" "y"
 	BUILD_DEPS += , bsh (>= 2.0b4-1) [$(NO_JAVA_ARCHS)]
@@ -770,7 +747,7 @@ debian/control: debian/control.in debian/control.lang.in debian/control.help.in 
 	    LCODE=`ooo-build/bin/openoffice-xlate-lang -i $$LNUM | tr A-Z a-z`; \
 	    CCODE=`echo $$LCODE | sed 's/-.*//'`; \
 	    case "$$LCODE" in \
-		bn|gu-in|pa-in) \
+		bn|gu-in|pa-in|ma-in|or-in) \
 			FONT_SUGGESTS=", ttf-`echo $$LNAME | tr A-Z a-z`-fonts"; \
 			;; \
 		hi-in) \
@@ -937,18 +914,18 @@ ifneq "$(LANGPACKISOS)" "en-US"
 	for i in `find ooo-build/src/*.sdf.gz`; do gunzip -dc "$$i" > \
 		ooo-build/src/`basename $$i .gz`; done
 	# work around broken stuff in the GSI breaking the build in svx
-	if `echo $(LANGPACKISOS) | grep -q he`; then \
-		TMP=`mktemp -q`; grep -v OOO_LICENSE ooo-build/src/GSI_he.sdf \
-			> $$TMP && mv $$TMP ooo-build/src/GSI_he.sdf; \
-	fi
-	if `echo $(LANGPACKISOS) | grep -q sr-CS`; then \
-		TMP=`mktemp -q`; grep -v OOO_LICENSE ooo-build/src/GSI_sr-CS.sdf \
-			> $$TMP && mv $$TMP ooo-build/src/GSI_sr-CS.sdf; \
-	fi
-	if `echo $(LANGPACKISOS) | grep -q lo`; then \
-		TMP=`mktemp -q`; grep -v OOO_LICENSE ooo-build/src/GSI_lo.sdf \
-			> $$TMP && mv $$TMP ooo-build/src/GSI_lo.sdf; \
-	fi
+  ifneq (,$(filter he, $(LANGPACKISOS)))
+	TMP=`mktemp -q`; grep -v OOO_LICENSE ooo-build/src/GSI_he.sdf \
+		> $$TMP && mv $$TMP ooo-build/src/GSI_he.sdf
+  endif
+  ifneq (,$(filter sr-CS, $(LANGPACKISOS)))
+	TMP=`mktemp -q`; grep -v OOO_LICENSE ooo-build/src/GSI_sr-CS.sdf \
+		> $$TMP && mv $$TMP ooo-build/src/GSI_sr-CS.sdf
+  endif
+  ifneq (,$(filter lo, $(LANGPACKISOS)))
+	TMP=`mktemp -q`; grep -v OOO_LICENSE ooo-build/src/GSI_lo.sdf \
+		> $$TMP && mv $$TMP ooo-build/src/GSI_lo.sdf
+  endif
 endif
 endif
 
@@ -1002,11 +979,11 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/build
 	cd ooo-build ; DESTDIR=$(CURDIR)/debian/tmp $(MAKE) install
 
 	# no special ooqstart wrappers
-	install -m 755 build/ooo-wrapper \
+	install -m 755 build/ooo-wrapper$(VER) \
 	  debian/tmp/pkg/openoffice.org-common/usr/bin/
 	for i in debian/tmp/pkg/*/usr/bin/oo*; do \
-	  case $$i in *wrapper) continue; esac; \
-	  ln -sf ooo-wrapper $$i; \
+	  case $$i in *wrapper*) continue; esac; \
+	  ln -sf ooo-wrapper$(VER) $$i; \
 	done
 
 ifneq "$(HELPISOS)" ""
@@ -1118,9 +1095,11 @@ maintscripts: $(STAMP_DIR)/maintscripts
 $(STAMP_DIR)/maintscripts: debian/shell-lib.sh debian/java-lib.sh debian/control
 	dh_testdir
 
+	rm -f debian/*.{pre,post}{inst,rm}
+
 	# generate maintainer scripts from *.in
 	# or generate default script which calls hook in openoffice.org-debian-files package
-	for PKG in `dh_listpackages`; do \
+	for PKG in $(PACKAGES); do \
 	  for FILE in postinst postrm preinst prerm; do \
 	    MAINTSCRIPT=debian/$$PKG.$$FILE ; \
 	    if [ -e $$MAINTSCRIPT.in ]; then \
@@ -1390,9 +1369,9 @@ ifeq "$(PACKAGE_QA_TOOLS)" "y"
 		mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-qa-tools/$(OODIR)/program; \
 	done
 
-	mkdir -p -m755 $(PKGDIR)-qa-tools/$(OODIR)/program/classes
+	mkdir -p -m755 $(PKGDIR)-qa-tools/usr/share/java/openoffice$(VER)
 	cp $(SOURCE_TREE)/qadevOOo/unx*.pro/class/OOoRunnerLight.jar \
-		$(PKGDIR)-qa-tools/$(OODIR)/program/classes
+		$(PKGDIR)-qa-tools/usr/share/java/openoffice$(VER)
 
 	mkdir -p -m755 $(PKGDIR)-qa-tools/$(OODIR)/smoketest
 	install -m755 $(SOURCE_TREE)/smoketestoo_native/smoketest.pl \
@@ -1423,7 +1402,10 @@ endif
 	done
 	for f in `find debian -name '*.desktop'`; do \
 		sed -i -e '/^Comment\[de\]/s/- *\([a-zA-Z0-9]*\) *macht.*glich.*$$/mit \1/' $$f; \
+		echo 'X-KDE-Protocols=file,http,smb,ftp,webdav' >> $$f; \
 	done
+	sed -i -e '/^MimeType/s,text/rtf,text/rtf;application/rtf,' \
+		$(PKGDIR)-writer/usr/share/applications/ooo$(VER)-writer.desktop
 	sed -i -e 's/Office;/Office;Graphics;/' $(PKGDIR)-draw/usr/share/applications/ooo$(VER)-draw.desktop
 	#mv $(PKGDIR)-base/usr/share/applications/ooo$(VER)-base.desktop $(PKGDIR)-core/usr/share/applications
 	#rm -r $(PKGDIR)-base
@@ -1495,12 +1477,25 @@ endif
 	cd $(PKGDIR)-dev/$(OODIR)/sdk/$(OS)/bin && \
 	for i in *; do \
 		mv $$i $$i.bin && \
-		echo "#!/bin/sh" > $$i && \
-		echo "# wrapper script for OOos SDK programs" >> $$i && \
-		echo "" >> $$i; \
-		echo 'LD_LIBRARY_PATH=/$(OODIR)/program /$(OODIR)/sdk/$(OS)/bin/`basename $$0`.bin $$@' >> $$i; \
+		( \
+		  echo "#!/bin/sh"; \
+		  echo "# wrapper script for OOos SDK programs"; \
+		  echo ""; \
+		  echo 'LD_LIBRARY_PATH=/$(OODIR)/program /$(OODIR)/sdk/$(OS)/bin/`basename $$0`.bin $$@'; \
+		) > $$i; \
 		chmod 755 $$i; \
 	done		
+
+	# install gsicheck into -dev
+	install -m755 $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD/$$OUTPATH$$PROEXT)/bin/gsicheck \
+		$(PKGDIR)-dev/$(OODIR)/program/gsicheck.bin
+	( \
+	  echo '#! /bin/sh'; \
+	  echo 'LD_LIBRARY_PATH=$${LD_LIBRARY_PATH:+$$LD_LIBRARY_PATH:}/$(OODIR)/program'; \
+	  echo 'export LD_LIBRARY_PATH'; \
+	  echo 'exec /$(OODIR)/program/gsicheck.bin "$$@"'; \
+	) > $(PKGDIR)-dev/$(OODIR)/program/gsicheck
+	chmod 755 $(PKGDIR)-dev/$(OODIR)/program/gsicheck
 
 ifeq "$(INTERNAL_STDLIBS)" "y"
 	# we have to do this manually; specifying --without-system-stdlibs
@@ -1811,7 +1806,7 @@ endif
 	cp ooo-build/desktop/*.png \
 		$(PKGDIR)-common/usr/share/icons/hicolor/48x48/apps
 
-	# add MySQL, MaxDB and PostgreSQ LJDBC drivers to OOos CLASSPATH
+	# add MySQL, MaxDB and PostgreSQL JDBC drivers to OOos CLASSPATH
 	TMP=`mktemp -q`; \
 	sed -e 's|\(UNO_JAVA_JFW_CLASSPATH_URLS=.*\)|\1 file:///usr/share/java/mysql.jar|' \
 	    -e 's|\(UNO_JAVA_JFW_CLASSPATH_URLS=.*\)|\1 file:///usr/share/java/sapdbc.jar|' \
@@ -1830,15 +1825,13 @@ endif
 	# which we put into /etc
 	mv $(PKGDIR)-common/$(OODIR)/program/sofficerc \
 		$(PKGDIR)-common/etc/openoffice$(VER)/sofficerc
-	echo "# *DO NOT* CHANGE THIS FILE. IT ONLY TAKES THE SETTINGS FROM" > \
-		$(PKGDIR)-common/$(OODIR)/program/sofficerc
-	echo "# /etc/openoffice$(VER)/sofficerc. CHANGE THAT FILE IF YOU" >> \
-		$(PKGDIR)-common/$(OODIR)/program/sofficerc
-	echo "# REALLY WANT TO CHANGE SOMETHING." >> \
-		$(PKGDIR)-common/$(OODIR)/program/sofficerc
-	echo "FHS_CONFIG_FILE=file:///etc/openoffice$(VER)/sofficerc" >> \
-		$(PKGDIR)-common/$(OODIR)/program/sofficerc
-	echo "" >> $(PKGDIR)-common/$(OODIR)/program/sofficerc
+	( \
+	  echo "# *DO NOT* CHANGE THIS FILE. IT ONLY TAKES THE SETTINGS FROM"; \
+	  echo "# /etc/openoffice$(VER)/sofficerc. CHANGE THAT FILE IF YOU"; \
+	  echo "# REALLY WANT TO CHANGE SOMETHING."; \
+	  echo "FHS_CONFIG_FILE=file:///etc/openoffice$(VER)/sofficerc"; \
+	  echo "" >> $(PKGDIR)-common/$(OODIR)/program/sofficerc; \
+	) > $(PKGDIR)-common/$(OODIR)/program/sofficerc	
 	cat $(PKGDIR)-common/etc/openoffice$(VER)/sofficerc \
 		| perl -p -e 's/(.*)=(.*)/$$1=\$${\$$FHS_CONFIG_FILE:Bootstrap:$$1}/' \
 		>> $(PKGDIR)-common/$(OODIR)/program/sofficerc
@@ -1848,10 +1841,13 @@ ifeq "$(HELPISOS)" ""
 	# Add them now because openoffice.org-help-* packaged in contrib or so
 	# will need them
 	for z in images.zip images_industrial.zip images_crystal.zip images_hicontrast.zip; do \
-		rm -rf $$z; mkdir $$z; cd $$z; \
-		unzip $(CURDIR)/$(PKGDIR)-common/$(OODIR)/share/config/$$z && \
+		echo "repackaging $$z..."; \
+		rm -rf $$z; mkdir $$z; i\
+		cd $$z; \
+		unzip -q $(CURDIR)/$(PKGDIR)-common/$(OODIR)/share/config/$$z && \
 		cp -r $(CURDIR)/$(SOURCE_TREE)/default_images/res/helpimg res && \
-		zip -r $(CURDIR)/$(PKGDIR)-common/$(OODIR)/share/config/$$z *; \
+		chmod +w $(CURDIR)/$(PKGDIR)-common/$(OODIR)/share/config/$$z && \
+		zip -q -r $(CURDIR)/$(PKGDIR)-common/$(OODIR)/share/config/$$z *; \
 		cd ..; \
 	done
 endif
@@ -1913,7 +1909,7 @@ binary-common:
 	dh_testdir
 	dh_testroot
 
-	for pkg in `dh_listpackages` ; do \
+	for pkg in $(PACKAGES) ; do \
 	  rm -f debian/$$pkg.*.debhelper;\
 	  rm -rf debian/$$pkg/DEBIAN;\
 	done
