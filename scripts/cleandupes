@@ -6,11 +6,11 @@
 import os, re, sys, fileinput, getopt
 
 class Duplicate:
-    def __init__(self, prefix, paths, size=-1):
+    def __init__(self, prefix, base, paths, size=-1):
         self.size = size
         self.files = {'common': [], 'l10n-en-us': []}
         for path in paths:
-            match = re.match(prefix + r'/openoffice.org-([^/]+)(.*)', path)
+            match = re.match(prefix + '/' + base + r'-([^/]+)(.*)', path)
             pkg, fn = match.groups()[:2]
             self.files.setdefault(pkg, []).append(fn)
 
@@ -90,7 +90,7 @@ def calc_target_link(src_path, dst_path):
         new_dirs = ['..' for i in range(updir_count)] + src_dirs[common_idx:]
     return '/'.join(new_dirs)
 
-def remove_and_symlink(duplicates, prefix, dryrun=False, verbose=False):
+def remove_and_symlink(duplicates, prefix, base, dryrun=False, verbose=False):
     for dup in duplicates:
         if not dup.is_candidate():
             continue
@@ -100,7 +100,7 @@ def remove_and_symlink(duplicates, prefix, dryrun=False, verbose=False):
             target_pkg, target_name = dup.get_target()
             for f in files:
                 target_link = calc_target_link(target_name, f)
-                pth = prefix + "/openoffice.org-%s%s" % (pkg, f)
+                pth = prefix + '/' + base + "-%s%s" % (pkg, f)
                 if verbose:
                     print "DO: rm -f %s" % pth
                 if not dryrun:
@@ -114,23 +114,29 @@ def remove_and_symlink(duplicates, prefix, dryrun=False, verbose=False):
 def main():
     prog = os.path.basename(sys.argv[0])
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "np:v", ["dry-run", "prefix=", "verbose"])
+        opts, args = getopt.getopt(sys.argv[1:], "b:np:v",
+                                   ["base=", "dry-run", "prefix=", "verbose"])
     except getopt.GetoptError:
         # print help information and exit:
-        print "usage: %s -p <prefix | --prefix=<prefix> [-v|--verbose] [-n|--dry-run]" % prog
+        print "usage: %s -p <prefix>|--prefix=<prefix> -b <base>|--base=<base> [-v|--verbose] [-n|--dry-run]" % prog
         sys.exit(2)
     verbose = False
     dryrun = False
-    prefix = None
+    prefix = base = None
     for o, a in opts:
         if o in ("-v", "--verbose"):
             verbose = True
         if o in ("-n", "--dry-run"):
             dryrun = True
+        if o in ("-b", "--base"):
+            base = a
         if o in ("-p", "--prefix"):
             prefix = a
     if not prefix:
         print "%s: Missing --prefix option" % prog
+        sys.exit(2)
+    if not base:
+        print "%s: Missing --base option" % prog
         sys.exit(2)
     if not os.path.isdir(prefix):
         print "%s: Not a directory: %s" % (prog, prefix)
@@ -145,7 +151,7 @@ def main():
         if m:
             size = int(m.group(1))
             continue
-        dup = Duplicate(prefix, line.split(), size)
+        dup = Duplicate(prefix, base, line.split(), size)
         duplicates.append(dup)
         size = -1
 
@@ -174,7 +180,7 @@ def main():
     if verbose:
         print
         print "========= Go! ========="
-    remove_and_symlink(duplicates, prefix, dryrun=dryrun, verbose=verbose)
+    remove_and_symlink(duplicates, prefix, base, dryrun=dryrun, verbose=verbose)
 
 if __name__ == '__main__':
     main()
