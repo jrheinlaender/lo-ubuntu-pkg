@@ -218,7 +218,7 @@ ifneq (,$(findstring $(ARCH),i386 powerpc sparc))
   ifeq "$(ARCH)" "sparc"
     ifneq "$(SARGE_BACKPORT)" "y"
 	# n util we have the needed java-gcj-compat-dev in sid
-	ENABLE_JAVA=n
+	ENABLE_JAVA=y
     else
 	ENABLE_JAVA=n
     endif
@@ -235,7 +235,7 @@ ifneq "$(SARGE_BACKPORT)" "y"
 	CONFIGURE_FLAGS += --with-java=gij
 	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.28-8) [$(NO_JAVA_ARCHS)], ant (>= 1.6.5) [$(NO_JAVA_ARCHS)]
   ifeq (,$(findstring sparc,$(NO_JAVA_ARCHS)))
-		BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.54-0) [sparc]
+		BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.56-1) [sparc]
   endif
 	SYSTEM_XT=y
 	SYSTEM_XALAN=y
@@ -746,7 +746,7 @@ debian/control: debian/control.in debian/control.lang.in debian/control.help.in 
 	    LCODE=`ooo-build/bin/openoffice-xlate-lang -i $$LNUM | tr A-Z a-z`; \
 	    CCODE=`echo $$LCODE | sed 's/-.*//'`; \
 	    case "$$LCODE" in \
-		bn|gu-in|pa-in|ml-in|or-in) \
+		bn|gu-in|pa-in|ml-in|or-in|te-in|ta) \
 			FONT_SUGGESTS=", ttf-`echo $$LNAME | tr A-Z a-z`-fonts"; \
 			;; \
 		hi-in|ne|mr-in) \
@@ -1407,6 +1407,20 @@ endif
 	for i in calc math draw writer impress base; do \
 		find $(PKGDIR)-$$i -type f -name "*.1" | xargs gzip -9; \
 	done
+	# fix manpage symlinks
+	for i in writer calc draw impress base math; do \
+		echo $(PACKAGES) | grep -q openoffice.org$(VER)-$$i || continue; \
+		mkdir -p $(CURDIR)/$(PKGDIR)-$$i/usr/share/man/man1; \
+		if [ "$$i" = "writer" ]; then \
+			for j in writer html web; do \
+				cd $(CURDIR)/$(PKGDIR)-$$i/usr/share/man/man1 && \
+					ln -sf openoffice$(VER).1.gz oo$${j}$(VER).1.gz; \
+			done; \
+		else \
+			cd $(CURDIR)/$(PKGDIR)-$$i/usr/share/man/man1 && \
+				ln -sf openoffice$(VER).1.gz oo$${i}$(VER).1.gz; \
+		fi; \
+	done
 
 ifeq "$(BUILD_PYUNO)" "y"
 	# PyUNO packging
@@ -1897,30 +1911,10 @@ binary-common:
 
 	dh_installdocs -A debian/README.Debian
 	dh_installman
-	# fix manpage symlinks
-	for i in writer calc draw impress base math; do \
-		echo $(PACKAGES) | grep -q openoffice.org$(VER)-$$i || continue; \
-		mkdir -p $(CURDIR)/$(PKGDIR)-$$i/usr/share/man/man1; \
-		if [ "$$i" = "writer" ]; then \
-			for j in writer html web; do \
-				cd $(CURDIR)/$(PKGDIR)-$$i/usr/share/man/man1 && \
-					ln -sf openoffice$(VER).1.gz oo$${j}$(VER).1.gz; \
-			done; \
-		else \
-			cd $(CURDIR)/$(PKGDIR)-$$i/usr/share/man/man1 && \
-				ln -sf openoffice$(VER).1.gz oo$${i}$(VER).1.gz; \
-		fi; \
-	done
 	dh_installchangelogs -Nlibmythes-dev ooo-build/ChangeLog
 ifneq "$(USE_EXTERNAL_MYTHES)" "y"
 	dh_installchangelogs -plibmythes-dev -XNEWS
 endif
-	#if [ -e $(PKGDIR)/usr/share/doc/openoffice.org$(VER) ]; then \
-	# install -m644 ooo-build/ChangeLog \
-	#   $(PKGDIR)-core/usr/share/doc/openoffice.org$(VER)-core/changelog.ooo-build \
-	# && gzip -f9 \
-	#   $(PKGDIR)-core/usr/share/doc/openoffice.org$(VER)-core/changelog.ooo-build; \
-	#fi
 	dh_installdebconf
 	dh_installmime
 	dh_installmenu
