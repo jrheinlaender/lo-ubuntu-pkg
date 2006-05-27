@@ -179,11 +179,11 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
     # one to that gid_Module_Root always is english and the other langpacks
     # have gid_Module_Root.$iso
     #ISOS="$(shell ooo-build/bin/openoffice-xlate-lang -i all')"
-    ISOS:="en-US af ar be-BY bg bn br bs ca cs cy da de el en-GB en-ZA es et fi fr ga gu-IN he hi-IN hr hu nb nl nn it ja km ko lo lt lv mk ml-IN ne nr pa-IN pl pt-BR ru rw sk sl sr-CS st sv th tn tr ts vi xh zh-CN zh-TW zu te-IN ti-ER fa tg"
+    ISOS:="en-US af ar be-BY bg bn br bs ca cs cy da de el en-GB en-ZA es et fi fr ga gu-IN he hi-IN hr hu nb nl nn it ja km ko lo lt lv mk ml-IN ne nr pa-IN pl pt-BR ru rw sk sl sr-CS st sv th tn tr ts vi xh zh-CN zh-TW zu te-IN ti-ER fa tg ta-IN"
     #HELPISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all') 
     HELPISOS:=en-US cs da de en-GB es et fr hu it ja ko nl pt-BR sv zh-CN zh-TW
     #LANGPACKISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
-    LANGPACKISOS:=en-US af ar be-BY bg bn br bs ca cs cy da de el en-GB en-ZA es et fi fr ga gu-IN he hi-IN hr hu nb nl nn it ja km ko lo lt lv mk ml-IN ne nr pa-IN pl pt-BR ru rw sk sl sr-CS st sv th tn tr ts vi xh zh-CN zh-TW zu te-IN ti-ER fa tg
+    LANGPACKISOS:=en-US af ar be-BY bg bn br bs ca cs cy da de el en-GB en-ZA es et fi fr ga gu-IN he hi-IN hr hu nb nl nn it ja km ko lo lt lv mk ml-IN ne nr pa-IN pl pt-BR ru rw sk sl sr-CS st sv th tn tr ts vi xh zh-CN zh-TW zu te-IN ti-ER fa tg ta-IN
   endif
 else
   ISOS="en-US"
@@ -289,13 +289,18 @@ else
 endif
 
 USE_FIREFOX=n
+USE_XULRUNNER=y
 ifeq "$(USE_FIREFOX)" "y"
 	CONFIGURE_FLAGS+= --with-firefox
 	BUILD_DEPS+= , firefox-dev, libnspr-dev
 else
-	BUILD_DEPS+= , mozilla-dev
+ ifeq "$(USE_XULRUNNER)" "y"
+	CONFIGURE_FLAGS+= --with-xulrunner
+	BUILD_DEPS+= , libxul-dev, libnss3-dev
+ else
+	BUILD_DEPS+= , mozilla-dev, libnss-dev (>= 1.7.5)
+ endif
 endif
-BUILD_DEPS+= , libnss-dev (>= 1.7.5)
 
 ENABLE_MONO=n
 ifeq "$(ENABLE_MONO)" "y"
@@ -413,7 +418,11 @@ else
 	USE_SYSTEM_XMLSEC=y
 endif
 ifeq "$(USE_SYSTEM_XMLSEC)" "y"
+  ifeq "$(USE_XULRUNNER)" "y"
+	BUILD_DEPS += , libxmlsec1-dev (>= 1.2.9-1.1), libxmlsec1-nss (>= 1.2.9-1.1), libxmlsec1-openssl (>= 1.2.9-1.1)
+  else
 	BUILD_DEPS += , libxmlsec1-dev (>= 1.2.9), libxmlsec1-nss (>= 1.2.9), libxmlsec1-openssl (>= 1.2.9)
+  endif
 	CONFIGURE_FLAGS += --with-system-xmlsec
 else
 	SHLIBS_OVERRIDE += -Ldebian/shlibs.override.xmlsec
@@ -1250,6 +1259,8 @@ ifeq "$(BUILD_KDE)" "y"
 	for f in kdefilepicker libfps_kde.so libvclplug_kde[0-9]*.so libkab*so; do \
 	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-kde/$(OODIR)/program || exit 1 ;\
 	done
+	mv $(CURDIR)/debian/tmp/$(OODIR)/program/kdebe1.uno.so \
+		$(PKGDIR)-kde/$(OODIR)/program
 endif
 
 	# move the GNOME stuff which are *not* in gid_Module_Optional_Gnome
