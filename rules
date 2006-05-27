@@ -851,7 +851,7 @@ endif
 		bn|gu-in|pa-in|ma-in|or-in) \
 			FONT_SUGGESTS=", ttf-`echo $$LNAME | tr A-Z a-z`-fonts"; \
 			;; \
-		hi-in) \
+		hi-in|ne) \
 			FONT_SUGGESTS=", ttf-devanagari-fonts"; \
 			;; \
 		he) \
@@ -907,6 +907,9 @@ endif
 	perl -pi -e 's/Conflicts:(.*)openoffice.org2-l10n-hi-in$$/Conflicts:$$1openoffice.org2-l10n-hi-in, openoffice.org-l10n-hi/' debian/control
 	perl -pi -e 's/Replaces:(.*)openoffice.org2-l10n-hi-in$$/Replaces:$$1openoffice.org2-l10n-hi-in, openoffice.org-l10n-hi/' debian/control
 	perl -pi -e 's/Provides:(.*)openoffice.org2-l10n-hi-in$$/Provides:$$1openoffice.org2-l10n-hi-in, openoffice.org-l10n-hi/' debian/control
+	# make -l10n-fi suggest openoffice.org-spellcheck-fi to
+	# match myspell-fi and Soikko
+	perl -pi -e 's/myspell-dictionary-fi/myspell-dictionary-fi | openoffice.org-spellcheck-fi/' debian/control
 
 ifneq "$(HELPISOS)" ""
 	for LNUM in $(HELPISOS) ; do \
@@ -1246,6 +1249,22 @@ endif
 	) > debian/tmp/pkg/openoffice.org-dev/$(OODIR)/program/gsicheck
 	chmod 755 debian/tmp/pkg/openoffice.org-dev/$(OODIR)/program/gsicheck
 
+ifeq (0,1)
+	# move SDK documentation into own package
+	rm -rf debian/tmp/pkg/openoffice.org-dev-doc
+	mkdir -p debian/tmp/pkg/openoffice.org-dev-doc/usr/share/doc
+	mv debian/tmp/pkg/openoffice.org-dev/usr/share/doc/openoffice.org \
+		debian/tmp/pkg/openoffice.org-dev-doc/usr/share/doc/openoffice.org-dev-doc
+	mkdir -p debian/tmp/pkg/openoffice.org-dev-doc/$(OODIR)/sdk
+	mv debian/tmp/pkg/openoffice.org-dev/$(OODIR)/sdk/examples \
+		debian/tmp/pkg/openoffice.org-dev-doc/$(OODIR)/sdk
+endif
+	# quick hack
+	rm -rf debian/tmp/pkg/openoffice.org-dev/$(OODIR)/sdk/examples
+	rm -rf debian/tmp/pkg/openoffice.org-dev/$(OODIR)/sdk/docs
+	rm -rf debian/tmp/pkg/openoffice.org-dev/$(OODIR)/sdk/index.html
+	rm -rf debian/tmp/pkg/openoffice.org-dev/usr/share/doc/packages
+
 	touch $@
 
 #
@@ -1399,7 +1418,7 @@ $(STAMP_DIR)/install-arch: $(STAMP_DIR)/install
 	umask 022
 
 	# Copy files placed by ooo-build/bin/package-ooo	
-	for i in base calc core draw impress math writer gnome; do \
+	for i in base calc core draw impress math writer gnome dev; do \
 	  rm -rf $(PKGDIR)-$$i $(PKGDIR)-$$i.*.debhelper ;\
 	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-$$i $(PKGDIR)-$$i || exit 1;\
 	done
@@ -1571,26 +1590,45 @@ else
 	rm -f $(PKGDIR)-core/$(OODIR)/program/libsimplecm*
 endif
 
+ifeq (0,1)
+	# disabled, menu files from sysui
 	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare >/dev/null; pwd`" ;\
 	for p in writer calc impress draw math base; do \
 		mkdir -p -m755 $(PKGDIR)-$$p/usr/share/applications ;\
 		sed -e 's,Exec=openoffice.org-2.0 \(.*\) %U,Exec=ooffice$(VER) \1 %U,' \
 		    -e "s,Icon=openofficeorg-20-$$p,Icon=ooo-$$p," \
 			-e 's,Name=OpenOffice.org 2.0,Name=OpenOffice.org $(VER),' \
+			-e '/^Name=/s,  , ,' \
 		   < $$dirname/$$p.desktop \
 		   > $(PKGDIR)-$$p/usr/share/applications/ooo$(VER)-$$p.desktop || exit 1 ;\
 		case "$$p" in *math*|*draw*) \
 		    echo 'NoDisplay=true' >> $(PKGDIR)-$$p/usr/share/applications/ooo$(VER)-$$p.desktop; \
 		esac; \
 	done
+else
+	# menu files from ooo-build/desktop
+	for p in writer calc impress draw math base; do \
+		mkdir -p -m755 $(PKGDIR)-$$p/usr/share/applications ;\
+		sed -e '/^TryExec=.*/d' \
+		    -e "s,^Exec=.*,Exec=ooffice$(VER) -$$p %U," \
+		    -e "s,^Icon=.*,Icon=ooo-$$p," \
+		    -e '/^Name=/s,  , ,' \
+		    -e 's/@STARTUPNOTIFY@/true/' \
+		    -e '/^Categories/s/Office/Application;Office/' \
+			ooo-build/desktop/$$p.desktop \
+			> $(PKGDIR)-$$p/usr/share/applications/ooo$(VER)-$$p.desktop || exit 1 ;\
+		case "$$p" in *math*|*draw*) \
+		    echo 'NoDisplay=true' >> $(PKGDIR)-$$p/usr/share/applications/ooo$(VER)-$$p.desktop; \
+		esac; \
+	done
+endif
 	for f in `find debian -name '*.desktop'`; do \
 		sed -i -e '/^Comment\[de\]/s/- *\([a-zA-Z0-9]*\) *macht.*glich.*$$/mit \1/' $$f; \
-		echo 'X-KDE-Protocols=file,http,smb' >> $$f; \
+		echo 'X-KDE-Protocols=file,http,smb,ftp,webdav' >> $$f; \
 	done
 	sed -i -e '/^MimeType/s,text/rtf,text/rtf;application/rtf,' \
 		$(PKGDIR)-writer/usr/share/applications/ooo$(VER)-writer.desktop
-
-	sed -i -e 's/Office;/Office;Graphics;/' $(PKGDIR)-draw/usr/share/applications/ooo$(VER)-draw.desktop
+#	sed -i -e 's/Office;/Office;Graphics;/' $(PKGDIR)-draw/usr/share/applications/ooo$(VER)-draw.desktop
 	#mv $(PKGDIR)-base/usr/share/applications/ooo$(VER)-base.desktop $(PKGDIR)-core/usr/share/applications
 	#rm -r $(PKGDIR)-base
 
@@ -1637,52 +1675,24 @@ ifeq "$(ENABLE_MONO)" "y"
 		debian/libuno-cil/$(OODIR)/program
 endif
 
-	# install the SDK
-	rm -rf $(PKGDIR)-dev
-	cp -ra debian/tmp/pkg/openoffice.org-dev $(PKGDIR)-dev
-	mkdir -p $(PKGDIR)-dev/usr/include
-	mkdir -p $(PKGDIR)-dev/usr/share/xml
-	mkdir -p $(PKGDIR)-dev/usr/share/idl
-	mkdir -p $(PKGDIR)-dev/usr/share/doc/openoffice.org$(VER)-dev
-ifeq "$(ENABLE_JAVA)" "y"
-	mkdir -p $(PKGDIR)-dev/usr/share/java/openoffice$(VER)
-endif
-	mkdir -p $(PKGDIR)-dev/$(OODIR)/sdk
-	unzip -q $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/odkcommon.zip -x docs/* -x classes/win/* -d $(PKGDIR)-dev/$(OODIR)/sdk
-	unzip -q $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/odkidl.zip -d $(PKGDIR)-dev/$(OODIR)/sdk
-	unzip -q $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/sdk_oo.zip settings/* -d $(PKGDIR)-dev/$(OODIR)/sdk
-ifeq "$(ENABLE_JAVA)" "y"
-	mv $(PKGDIR)-dev/$(OODIR)/sdk/classes/com \
-		$(PKGDIR)-dev/usr/share/java/openoffice$(VER) && \
-	ln -s /usr/share/java/openoffice$(VER)/com \
-		$(PKGDIR)-dev/$(OODIR)/sdk/classes/com
-endif
-	mv $(PKGDIR)-dev/$(OODIR)/sdk/include $(PKGDIR)-dev/usr/include/openoffice$(VER) && \
-		ln -s /usr/include/openoffice$(VER) $(PKGDIR)-dev/$(OODIR)/sdk/include
 ifeq "$(USE_SYSTEM_STLPORT)" "y"
 	# when we use external stlport, we just can and should do a symlink
+	# for the SDK includes
+	mkdir -p $(PKGDIR)-dev/usr/include/openoffice$(VER)
 	cd $(PKGDIR)-dev/usr/include/openoffice$(VER) && \
 		rm -rf stl && ln -s /usr/include/stlport stl
 endif
-	mv $(PKGDIR)-dev/$(OODIR)/sdk/xml $(PKGDIR)-dev/usr/share/xml/openoffice$(VER) && \
-		ln -s /usr/share/xml/openoffice$(VER) $(PKGDIR)-dev/$(OODIR)/sdk/xml
-	mv $(PKGDIR)-dev/$(OODIR)/sdk/idl $(PKGDIR)-dev/usr/share/idl/openoffice$(VER) && \
-		ln -s /usr/share/idl/openoffice$(VER) $(PKGDIR)-dev/$(OODIR)/sdk/idl
+
+	# move SDK Java stuff into /usr/share/java/openoffice
+	rm -f $(PKGDIR)-dev/$(OODIR)/sdk/classes
+	mkdir -p $(PKGDIR)-dev/usr/share/java/openoffice$(VER)
+	mkdir -p $(PKGDIR)-dev/$(OODIR)/sdk/classes
+	mv $(PKGDIR)-dev/usr/share/openoffice/sdk/classes/com \
+		$(PKGDIR)-dev/usr/share/java/openoffice && \
+	cd $(PKGDIR)-dev/$(OODIR)/sdk/classes && \
+		ln -s /usr/share/java/openoffice/com com
+	rm -rf $(PKGDIR)-dev/usr/share/openoffice/sdk
 	chmod 644 $(PKGDIR)-dev/$(OODIR)/sdk/configure.pl
-	for i in setsdkenv_unix.csh setsdkenv_unix.sh; do \
-		sed -e 's,@OO_SDK_NAME@,OpenOffice.org2.0_SDK,' \
-		    -e 's,@OO_SDK_HOME@,/usr/lib/openoffice$(VER)/sdk,' \
-		    -e 's,@OO_SDK_URE_HOME@,,' \
-		    -e 's,@OFFICE_HOME@,/usr/lib/openoffice$(VER),' \
-		    -e 's,@OO_SDK_MAKE_HOME@,/usr/bin,' \
-		    -e 's,@OO_SDK_ZIP_HOME@,/usr/bin,' \
-		    -e 's,@OO_SDK_CPP_HOME@,/usr/bin,' \
-		    -e 's,@OO_SDK_JAVA_HOME@,$(JAVA_HOME),' \
-		    -e 's,@SDK_AUTO_DEPLOYMENT@,NO,' \
-			< $(PKGDIR)-dev/$(OODIR)/sdk/$$i.in \
-			> $(PKGDIR)-dev/$(OODIR)/sdk/$$i; \
-			chmod 755 $(PKGDIR)-dev/$(OODIR)/sdk/$$i; \
-	done
 	for i in csh csh.in; do \
 		perl -pi -e 's,/usr/bin/csh,/bin/csh,'\
 			$(PKGDIR)-dev/$(OODIR)/sdk/setsdkenv_unix.$$i; \
@@ -2392,7 +2402,7 @@ endif
 		-V'ooo-filter52-dep=$(OOO_FILTER52_DEP)' \
 		-v$(BINARY_VERSION)
 	dh_md5sums
-ifeq "$(DIST)-$(PKGSOURCE)" "Ubuntu-openoffice.org$(VER)$(EXPSUFFIX)"
+ifeq "xxx$(DIST)-$(PKGSOURCE)" "Ubuntu-openoffice.org$(VER)$(EXPSUFFIX)"
 	-for i in $$(find ooo-build/bonobo ooo-build/po -name '*.po'); do \
 		mv $$i $$i.hidden; \
 	done
