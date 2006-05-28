@@ -53,7 +53,7 @@ unexport LS_COLORS
 
 #TAG=src680-m$(MILESTONE)
 #MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)"| cut -d. -f3)
-TAG=oob680-m5
+TAG=ooc680-m3
 SOURCE_TREE=ooo-build/build/$(TAG)
 STAMP_DIR=debian/stampdir
 
@@ -223,7 +223,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	en-GB en-ZA es et fa fi fr ga gu-IN he hi-IN hr hu it ja \
 	km ko ku lo lt lv mk ml-IN mr-IN ne nb nl nn nr or-IN pa-IN \
 	pl pt-BR ru rw sh-YU sk sl sr-CS st sv \
-	th tn tr ts ur-IN vi xh zh-CN zh-TW zu
+	ta-IN te-IN tg ti-ER th tn tr ts ur-IN vi xh zh-CN zh-TW zu
     #HELPISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all') 
     HELPISOS:=en-US bg br cs da de en-GB es et fr hu it ja km ko mk nl \
 	pt-BR ru sk sl sv zh-CN zh-TW
@@ -232,7 +232,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	en-GB en-ZA es et fa fi fr ga gu-IN he hi-IN hr hu it ja \
 	km ko ku lo lt lv mk ml-IN mr-IN ne nb nl nn nr or-IN pa-IN \
 	pl pt-BR ru rw sh-YU sk sl sr-CS st sv \
-	th tn tr ts ur-IN vi xh zh-CN zh-TW zu
+	ta-IN te-IN tg ti-ER th tn tr ts ur-IN vi xh zh-CN zh-TW zu
 
     REMOVE_HELP := bs cy fi lt lv sh-YU sr-CS ur-IN
     FILTER_HELP := ga hr pl rw sk th tr vi
@@ -383,13 +383,19 @@ ifeq "$(DIST)" "Ubuntu"
 else
 	USE_FIREFOX=n
 endif
+USE_XULRUNNER=n
 ifeq "$(USE_FIREFOX)" "y"
 	CONFIGURE_FLAGS+= --with-firefox
 	BUILD_DEPS+= , firefox-dev (>= 1.5.dfsg+1.5.0.1-1ubuntu7), libnspr-dev
 else
-	BUILD_DEPS+= , mozilla-dev
+ ifeq "$(USE_XULRUNNER)" "y"
+	CONFIGURE_FLAGS+= --with-xulrunner
+	BUILD_DEPS+= , libxul-dev, libnss3-dev
+ else
+	BUILD_DEPS+= , mozilla-dev, libnss-dev (>= 1.7.5)
+	MOZILLA_NSS_DEPENDS = libnss3 (>= 1.7.5), libnspr4
+ endif
 endif
-BUILD_DEPS+= , libnss-dev (>= 1.7.5)
 
 ENABLE_MONO=n
 ifeq "$(ENABLE_MONO)" "y"
@@ -516,7 +522,11 @@ ifeq "$(DIST)" "Ubuntu"
 	USE_SYSTEM_XMLSEC=y
 endif
 ifeq "$(USE_SYSTEM_XMLSEC)" "y"
+  ifeq "$(USE_XULRUNNER)" "y"
+	BUILD_DEPS += , libxmlsec1-dev (>= 1.2.9-1.1), libxmlsec1-nss (>= 1.2.9-1.1), libxmlsec1-openssl (>= 1.2.9-1.1)
+  else
 	BUILD_DEPS += , libxmlsec1-dev (>= 1.2.9), libxmlsec1-nss (>= 1.2.9), libxmlsec1-openssl (>= 1.2.9)
+  endif
 	CONFIGURE_FLAGS += --with-system-xmlsec
 else
 	SHLIBS_OVERRIDE += -Ldebian/shlibs.override.xmlsec
@@ -751,9 +761,8 @@ clean:
 	cd ooo-build ;\
 	  for f in fonts/opens___.ttf src/ooo_*_images*.bz2 src/extras*bz2 \
 	    src/evolocal.odb src/*.gz src/GSI*bz2 src/xt*zip src/go-oo-team.png \
-	    src/Draft.jpg src/easter/*.png templates/*.o?? \
-	    src/*.bmp src/*.png ; \
-	  do \
+	    src/Draft.jpg src/easter/*.png src/*.bmp src/*.png \
+	    templates/*.o?? src/biblio*bz2; do \
 	  if [ -s $$f ]; then \
 	    uuencode $$f $$f > $$f.uu.tmp && \
 	    ../debian/scripts/move-if-change $$f.uu.tmp $$f.uu; \
@@ -1446,6 +1455,8 @@ ifeq "$(BUILD_KDE)" "y"
 	for f in kdefilepicker libfps_kde.so libvclplug_kde[0-9]*.so libkab*so; do \
 	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-kde/$(OODIR)/program || exit 1 ;\
 	done
+	mv $(CURDIR)/debian/tmp/$(OODIR)/program/kdebe1.uno.so \
+		$(PKGDIR)-kde/$(OODIR)/program
 endif
 
 	# move the GNOME stuff which are *not* in gid_Module_Optional_Gnome
@@ -2427,6 +2438,7 @@ endif
 		-V'common-bsh-depends=$(COMMON_BSH_DEPENDS)' \
 		-V'java-common-depends=$(JAVA_COMMON_DEPENDS)' \
 		-V'java-common-java-depends=$(JAVA_COMMON_JAVA_DEPENDS)' \
+		-v'mozilla-nss-depends=$(MOZILLA_NSS_DEPENDS)' \
 		-V'Binary-Version=$(BINARY_VERSION)' \
 		-V'ooo-filter52-dep=$(OOO_FILTER52_DEP)' \
 		-v$(BINARY_VERSION)
