@@ -127,13 +127,13 @@ PACKAGE_QA_TOOLS=n
 PACKAGE_TTF_OPENSYMBOL=y
 PACKAGE_NPSOPLUGIN=n
 
-#ifneq (,$(findstring $(ARCH), i386))
-#	BUILD_JARS_NATIVE=y
-#	REBUILD_JARS_NATIVE=y
-#else
+ifneq (,$(findstring $(ARCH), i386 powerpc))
+	BUILD_JARS_NATIVE=y
+	REBUILD_JARS_NATIVE=y
+else
 	BUILD_JARS_NATIVE=n
-#	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-gcj
-#endif
+	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-gcj
+endif
 
 ifneq "$(PACKAGE_QA_TOOLS)" "y"
 	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-qa-tools -Nopenoffice.org$(VER)-qa-api-tests
@@ -1235,6 +1235,15 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/install $(STAMP_DIR)/install-indep ooo-buil
 		> l10n.fdupes
 	debian/scripts/cleandupes --base=openoffice.org$(VER) --prefix=debian < l10n.fdupes
 
+	if echo $(LANGPACKISOS) | grep -q en-US; then \
+		mkdir -p $(PKGDIR)-l10n-en-us/$(OODIR)/share/template/en-US/forms; \
+		mkdir -p $(PKGDIR)-l10n-en-us/$(OODIR)/share/template/en-US/officorr; \
+		install -m644 debian/tmp/$(OODIR)/share/template/en-US/forms/resume.ott \
+			$(PKGDIR)-l10n-en-us/$(OODIR)/share/template/en-US/forms/resume.ott; \
+		install -m644 debian/tmp/$(OODIR)/share/template/en-US/officorr/project-proposal.ott \
+			$(PKGDIR)-l10n-en-us/$(OODIR)/share/template/en-US/officorr/project-proposal.ott; \
+	fi
+
 	touch $@
 
 
@@ -1334,7 +1343,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 		   $(PKGDIR)-base/$(OODIR)/program; \
 	done
 	# hack, #340468
-	ln -s $(PKGDIR)-base/$(OODIR)/program/libhsqldb2.so \
+	ln -s libhsqldb2.so \
 		$(PKGDIR)-base/$(OODIR)/program/libhsqldb2
 endif
 	mv $(PKGDIR)-core/$(OODIR)/program/libflat*so \
@@ -1416,6 +1425,7 @@ endif
 		sed -e 's,Exec=openoffice.org-2.0 \(.*\) %U,Exec=ooffice$(VER) \1 %U,' \
 		    -e "s,Icon=openofficeorg-20-$$p,Icon=ooo-$$p," \
 			-e 's,Name=OpenOffice.org 2.0,Name=OpenOffice.org $(VER),' \
+			-e 's/  / /' \
 		   < $$dirname/$$p.desktop \
 		   > $(PKGDIR)-$$p/usr/share/applications/ooo$(VER)-$$p.desktop || exit 1 ;\
 	done
@@ -1561,9 +1571,8 @@ ifeq "$(ENABLE_JAVA)" "y"
 	  debian/scripts/aot-compile $$jar $(PKGDIR)-gcj/$(OODIR)/program/classes-native/$$(basename $$jar).so || exit $$?; \
 	done
   else
-	cp $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/*.jar.so \
+	cp $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/*.jar.so \
 		$(PKGDIR)-gcj/$(OODIR)/program/classes-native
-  endif
 	# remove not needed ones
 	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/FCFGMerge.jar.so
 	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/unoloader.jar.so
@@ -1575,11 +1584,12 @@ ifeq "$(ENABLE_JAVA)" "y"
 	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/jarpackager.jar.so
 	# not needed yet
 	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/javacanvas.uno.jar.so
+  endif
 	# create gcj classmap
 	mkdir -p $(PKGDIR)-gcj/usr/share/gcj-$(GCJ_VERSION)/classmap.d
 	cd debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/classes && \
 	for i in `find . -type f -name "*.jar" | sed -e s,./,,g`; do \
-	  gcj-dbtool -f $(CURDIR)/$(PKGDIR)-gcj/usr/share/gcj-$(GCJ_VERSION)/classmap.d/openoffice.org$(VER)-gcj.db $$i /$(OODIR)/program/classes-native/$$i.so; \
+	  $(JAVA_HOME)/bin/gcj-dbtool -f $(CURDIR)/$(PKGDIR)-gcj/usr/share/gcj-$(GCJ_VERSION)/classmap.d/openoffice.org$(VER)-gcj.db $$i /$(OODIR)/program/classes-native/$$i.so; \
 	done
   endif
 endif
@@ -1617,6 +1627,12 @@ ifeq "$(ENABLE_JAVA)" "y"
 			cp $${i}_src.zip \
 			  $(CURDIR)/$(PKGDIR)-dev/usr/share/java/openoffice; \
 		done
+endif
+
+ifeq "$(ENABLE_JAVA)" "y"
+	# hrmpf, again something like that, we really need to find the root cause for that
+	ln -s libjava_uno.so \
+		$(PKGDIR)-base/$(OODIR)/program/libjava_uno
 endif
 	
 	touch $@
@@ -1918,6 +1934,9 @@ endif
 
 	# add "openoffice" symlink
 	cd $(PKGDIR)-common/usr/bin && ln -s ooo-wrapper openoffice
+	
+	# we also need soffice, for UNO bootstrap :/
+	cd $(PKGDIR)-common/usr/bin && ln -s ../../$(OODIR)/program/soffice soffice
 
 	touch $@
 
