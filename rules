@@ -59,7 +59,131 @@ STAMP_DIR=debian/stampdir
 
 SARGE_BACKPORT=n
 
-#BUILD_AMD64=y
+#########
+# Default package configuration
+#
+OS:= $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
+BUILD_AMD64=n
+PATCHSET=$(DIST)
+BUILD_DEPS=
+BUILD_PYUNO=y
+PACKAGE_TESTTOOL=n
+PACKAGE_TTF_OPENSYMBOL=y
+PACKAGE_NPSOPLUGIN=n
+BUILD_JARS_NATIVE=y
+REBUILD_JARS_NATIVE=y
+SHLIBS_OVERRIDE = --
+BUILD_BINFILTERS=y
+BUILD_ONLY_EN_US=n
+ENABLE_JAVA=y
+ENABLE_MONO=n
+USE_SYSTEM_HUNSPELL=y
+SYSTEM_ALTLINUXHYPH=y
+LIBALTLINUXHYPH_MINVER= (>= 0.1.1-7)
+SYSTEM_AGG=n
+USE_STLPORT=y
+USE_SYSTEM_STLPORT=y
+LIBSTLPORT_MINVER= (>= 4.6.2-3)
+USE_SYSTEM_BOOST=y
+USE_SYSTEM_PORTAUDIO=y
+USE_EXTERNAL_CXXLIBS=y
+LIBWPD8_MINVER= (>= 0.8.3-3)
+USE_SYSTEM_SABLOT=n
+USE_EXTERNAL_MYTHES=n
+USE_SYSTEM_ICU=y
+USE_SYSTEM_XMLSEC=n
+BUILD_CAIROCANVAS=y
+USE_SYSTEM_CAIRO=y
+BUILD_MDBTOOLS=y
+USE_SYSTEM_MDBTOOLS=y
+BUILD_KDE=y
+BUILD_DBG_PACKAGE=n
+USE_SYSTEM_BSH=y
+USE_SYSTEM_HSQLDB=y
+LIBDB_JAVA_MINVER= (>= 4.2.52-21)
+USE_FIREFOX=n
+USE_XULRUNNER=n
+KDELIBS_MINVER= (>= 4:3.4.3-2)
+
+# when we have a package we want to have to be installed on older things with some older
+# C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
+# otherwise
+INTERNAL_STDLIBS=n
+
+# Default flags to pass to configure of ooo-build
+CONFIGURE_FLAGS= --disable-post-install-scripts \
+                 --with-tag=$(TAG) \
+                --with-system-gcc \
+                --with-distro=$(PATCHSET) \
+                --with-vendor=Debian \
+                --enable-package-directories \
+                --with-installed-ooo-dirname=openoffice$(VER) \
+                --mandir=/usr/share/man \
+                --with-lang=$(ISOS) \
+                --with-build-version="openoffice.org$(VER)-core $(BINARY_VERSION), `date`" \
+                --disable-strip \
+                --enable-atkbridge \
+                --enable-lockdown
+
+#############
+# Distro-specific overrides
+
+# Debian
+ifeq "$(DIST)" "Debian"
+  # we don't need to build all languages and the thesaurus on the buildds;
+  # they do binary-only builds anyway
+  ifeq (buildd,$(shell whoami))
+       BUILD_ONLY_EN_US=y
+  endif
+  SYSTEM_AGG=y
+  USE_SYSTEM_XMLSEC=y
+  USE_SYSTEM_HUNSPELL=y
+  USE_XULRUNNER=y
+endif
+
+ifeq "$(DIST)" "Ubuntu"
+  USE_FIREFOX=y
+endif
+
+# Debian Sarge backport
+ifeq "$(SARGE_BACKPORT)" "y"
+  OS:= $(shell dpkg-architecture -qDEB_HOST_GNU_SYSTEM)
+  PATCHSET=$(DIST)Sarge
+  USE_SYSTEM_HUNSPELL=n
+  LIBALTLINUXHYPH_MINVER=
+  LIBSTLPORT_MINVER=
+  USE_SYSTEM_PORTAUDIO=n
+  LIBWPD8_MINVER=
+  USE_SYSTEM_ICU=n
+  BUILD_CAIROCANVAS=n
+  USE_SYSTEM_MDBTOOLS=n
+  LIBDB_JAVA_MINVER=
+  KDELIBS_MINVER=
+  BUILD_JARS_NATIVE=n
+endif
+
+#############
+# Architecture-specific changes
+
+# Java...
+NO_JAVA_ARCHS = !m68k !alpha !hppa !mips !mipsel !ia64 !arm !s390 !amd64
+ifeq (,$(findstring $(ARCH),i386 powerpc sparc))
+       ENABLE_JAVA=n
+endif
+
+# Changes for 64 bit build
+ifeq "$(ARCH)" "amd64"
+  PATCHSET=$(DIST)64
+  BUILD_PYUNO=n
+  BUILD_BINFILTERS=n
+endif
+
+# For sarge, there's no suitable Java
+ifeq "$(ARCH)" "sparc"
+  ifeq "$(SARGE_BACKPORT)" "y"
+    ENABLE_JAVA=n
+  endif
+endif
 
 ifneq "$(USE_EXTERNAL_MYTHES)" "y"
   ifeq ($(ARCH),$(findstring $(ARCH),$(shell dpkg-architecture -L | sed -e s/i386// -e s/powerpc// -e s/sparc// -e s/amd64//)))
@@ -73,45 +197,6 @@ ifneq "$(USE_EXTERNAL_MYTHES)" "y"
   endif
 endif
 
-ifeq "$(SARGE_BACKPORT)" "y"
-OS:= $(shell dpkg-architecture -qDEB_HOST_GNU_SYSTEM)
-else
-OS:= $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
-endif
-
-# Which patchset?
-ifeq ($(ARCH),amd64)
-  PATCHSET=$(DIST)64
-else
-  ifeq "$(DIST)" "Debian"
-    ifeq "$(SARGE_BACKPORT)" "y"
-      PATCHSET=$(DIST)Sarge
-    else
-      PATCHSET=$(DIST)
-    endif
-  else
-    PATCHSET=$(DIST)
-  endif
-endif
-
-BUILD_DEPS=
-
-ifeq "$(ARCH)" "amd64"
-	BUILD_PYUNO=n
-else
-	BUILD_PYUNO=y
-	WRITER_PYUNO_DEP=, python-uno (>> $(UPSTREAM_VERSION))
-endif
-ifeq "$(BUILD_PYUNO)" "n"
-  DEBHELPER_OPTIONS+= -Npython-uno
-endif
-
-ifeq "$(SARGE_BACKPORT)" "y"
-	BUILD_DBG_PACKAGE = n
-else
-	BUILD_DBG_PACKAGE = n
-endif
-
 ifneq "$(BUILD_DBG_PACKAGE)" "y"
 	DH_COMPAT=4
 	BUILD_DEPS += , debhelper (>= 4.2.21)
@@ -123,15 +208,7 @@ else
 endif
 export DH_COMPAT
 
-PACKAGE_QA_TOOLS=n
-PACKAGE_TTF_OPENSYMBOL=y
-PACKAGE_NPSOPLUGIN=n
-
-ifneq (,$(findstring $(ARCH), i386 powerpc))
-	BUILD_JARS_NATIVE=y
-	REBUILD_JARS_NATIVE=y
-else
-	BUILD_JARS_NATIVE=n
+ifneq "$(BUILD_JARS_NATIVE)" "y"
 	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-gcj
 endif
 
@@ -140,31 +217,6 @@ ifneq "$(PACKAGE_QA_TOOLS)" "y"
 endif
 ifneq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 	DEBHELPER_OPTIONS+= -Nttf-opensymbol
-endif
-
-SHLIBS_OVERRIDE = --
-
-# build the binfilters?
-ifeq "$(ARCH)" "amd64"
-	BUILD_BINFILTERS=n
-else
-	BUILD_BINFILTERS=y
-endif
-
-# we should be installed on sid/sarge, use libstdc++/libgcc_s internal for now
-# This won't help for -officebean which needs libgcj6 but for the "normal"
-# packages...
-INTERNAL_STDLIBS=n
-ifeq "$(INTERNAL_STDLIBS)" "y"
-	SHLIBS_OVERRIDE+=-- -Ldebian/shlibs.override.stdlibs
-endif
-
-ifeq "$(DIST)" "Debian"
-  # we don't need to build all languages and the thesaurus on the buildds;
-  # they do binary-only builds anyway
-  ifeq (buildd,$(shell whoami))
-	BUILD_ONLY_EN_US=y
-  endif
 endif
 
 ifneq "$(BUILD_ONLY_EN_US)" "y"
@@ -200,41 +252,10 @@ else
   LANGPACKISOS=en-US
 endif
 
-# Default flags to pass to configure of ooo-build
-CONFIGURE_FLAGS= --disable-post-install-scripts \
-                 --with-tag=$(TAG) \
-		 --with-system-gcc \
-		 --with-distro=$(PATCHSET) \
-		 --with-vendor=Debian \
-		 --enable-package-directories \
-		 --with-installed-ooo-dirname=openoffice$(VER) \
-		 --mandir=/usr/share/man \
-		 --with-docdir=/usr/share/doc/openoffice.org \
-		 --with-lang="$(ISOS)" \
-		 --with-build-version="openoffice.org$(VER)-core $(BINARY_VERSION), `date`" \
-		--disable-strip \
-		--enable-atkbridge \
-		--enable-lockdown
-
 ifeq "$(VER)" ""
 	CONFIGURE_FLAGS += --with-binsuffix=no
 else
 	CONFIGURE_FLAGS += --with-binsuffix=$(VER)
-endif
-
-NO_JAVA_ARCHS = !m68k !alpha !hppa !mips !mipsel !ia64 !arm !s390 !amd64
-ifneq (,$(findstring $(ARCH),i386 powerpc sparc))
-  ifeq "$(ARCH)" "sparc"
-    ifneq "$(SARGE_BACKPORT)" "y"
-	ENABLE_JAVA=y
-    else
-	ENABLE_JAVA=n
-    endif
-  else
-        ENABLE_JAVA=y
-  endif
-else
-	ENABLE_JAVA=n
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
@@ -293,8 +314,6 @@ else
 	HELPISOS=
 endif
 
-USE_FIREFOX=n
-USE_XULRUNNER=n
 ifeq "$(USE_FIREFOX)" "y"
 	CONFIGURE_FLAGS+= --with-firefox
 	BUILD_DEPS+= , firefox-dev, libnspr-dev
@@ -308,7 +327,6 @@ else
  endif
 endif
 
-ENABLE_MONO=n
 ifeq "$(ENABLE_MONO)" "y"
        BUILD_DEPS += , mono-mcs (>= 1.1.8), libmono-dev (>= 1.1.8), cli-common-dev (>= 0.4.0)
 	# http://pkg-mono.alioth.debian.org/cli-policy/ch-mono.html#s7.3
@@ -317,88 +335,48 @@ else
        CONFIGURE_FLAGS+= --disable-mono
 endif
 
-ifeq "$(SARGE_BACKPORT)" "y"
-	USE_SYSTEM_HUNSPELL=n
-else
-	USE_SYSTEM_HUNSPELL=y
-endif
 ifeq "$(USE_SYSTEM_HUNSPELL)" "y"
 		BUILD_DEPS += , libhunspell-dev (>= 1.0.8-3)
 		CONFIGURE_FLAGS+= --with-system-hunspell
 endif
 
-ifeq "$(SARGE_BACKPORT)" "y"
-       SYSTEM_ALTLINUXHYPH=n
-else
-       SYSTEM_ALTLINUXHYPH=y
-endif
 ifeq "$(SYSTEM_ALTLINUXHYPH)" "y"
-	BUILD_DEPS += , libaltlinuxhyph-dev (>= 0.1.1-8)
+	BUILD_DEPS += , libaltlinuxhyph-dev $(LIBALTLINUXHYPH_MINVER)
 	CONFIGURE_FLAGS += --with-system-altlinuxhyph
 endif
 
-ifeq "$(SARGE_BACKPORT)" "y"
-       SYSTEM_AGG=n
-else
-  ifeq "$(DIST)" "Debian"
-       SYSTEM_AGG=y
-  else
-       SYSTEM_AGG=n
-  endif
-endif
 ifeq "$(SYSTEM_AGG)" "y"
        BUILD_DEPS += , libagg-dev (>= 2.3-2)
        CONFIGURE_FLAGS += --with-system-agg
 endif
 
-USE_STLPORT=y
-USE_SYSTEM_STLPORT=y
 ifneq "$(USE_STLPORT)" "y"
 	CONFIGURE_FLAGS += --without-stlport4
 else
   ifeq "$(USE_SYSTEM_STLPORT)" "y"
-    ifneq "$(SARGE_BACKPORT)" "y"
-	BUILD_DEPS += , libstlport4.6-dev (>= 4.6.2-3)
-	DEV_STL_DEPENDS=, libstlport4.6-dev (>= 4.6.2-3)
-    else
-	BUILD_DEPS += , libstlport4.6-dev
-	DEV_STL_DEPENDS=, libstlport4.6-dev
-    endif
-	CONFIGURE_FLAGS+= --with-stlport4=$(CURDIR)/stlport4
+    BUILD_DEPS += , libstlport4.6-dev $(LIBSTLPORT_MINVER)
+    DEV_STL_DEPENDS=, libstlport4.6-dev $(LIBSTLPORT_MINVER)
+    CONFIGURE_FLAGS+= --with-stlport4=$(CURDIR)/stlport4
   endif
 endif
 
-USE_SYSTEM_BOOST=y
 ifeq "$(USE_SYSTEM_BOOST)" "y"
 	BUILD_DEPS += , libboost-dev
 	CONFIGURE_FLAGS += --with-system-boost
 endif
 
-
-ifeq "$(SARGE_BACKPORT)" "y"
-	USE_SYSTEM_PORTAUDIO=n
-else
-	USE_SYSTEM_PORTAUDIO=y
-endif
 ifeq "$(USE_SYSTEM_PORTAUDIO)" "y"
 	BUILD_DEPS += , libportaudio-dev
 	CONFIGURE_FLAGS += --with-system-portaudio
 endif
 
-USE_EXTERNAL_CXXLIBS=y
 ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
-  ifeq "$(SARGE_BACKPORT)" "y"
-       BUILD_DEPS += , libwpd8-dev
-  else
-       BUILD_DEPS += , libwpd8-dev (>= 0.8.3-3)
-  endif
+       BUILD_DEPS += , libwpd8-dev $(LIBWPD8_MINVER)
        CONFIGURE_FLAGS+=  --with-system-libwpd
-USE_SYSTEM_SABLOT=n
 ifeq "$(USE_SYSTEM_SABLOT)" "y"
 	BUILD_DEPS += , libsablot0-dev (>= 1.0.2-4)
 	CONFIGURE_FLAGS += --with-system-sablot
 endif
-USE_EXTERNAL_MYTHES=n
 ifeq "$(USE_EXTERNAL_MYTHES)" "y"
 	BUILD_DEPS += , libmythes-dev (>= 1.0-2)
 	CONFIGURE_FLAGS += --with-system-mythes
@@ -406,11 +384,6 @@ ifeq "$(USE_EXTERNAL_MYTHES)" "y"
 endif
 endif
 
-ifeq "$(SARGE_BACKPORT)" "y"
-	USE_SYSTEM_ICU=n
-else
-	USE_SYSTEM_ICU=y
-endif
 ifeq "$(USE_SYSTEM_ICU)" "y"
 	BUILD_DEPS += , libicu34-dev
 	CONFIGURE_FLAGS += --with-system-icu
@@ -418,11 +391,6 @@ ifeq "$(USE_SYSTEM_ICU)" "y"
 	PATH+=:/usr/sbin
 endif
 
-ifeq "$(SARGE_BACKPORT)" "y"
-	USE_SYSTEM_XMLSEC=n
-else
-	USE_SYSTEM_XMLSEC=y
-endif
 ifeq "$(USE_SYSTEM_XMLSEC)" "y"
   ifeq "$(USE_XULRUNNER)" "y"
 	BUILD_DEPS += , libxmlsec1-dev (>= 1.2.9-1.1), libxmlsec1-nss (>= 1.2.9-1.1), libxmlsec1-openssl (>= 1.2.9-1.1)
@@ -434,12 +402,6 @@ else
 	SHLIBS_OVERRIDE += -Ldebian/shlibs.override.xmlsec
 endif
 
-ifeq "$(SARGE_BACKPORT)" "y"
-	BUILD_CAIROCANVAS=n
-else
-	BUILD_CAIROCANVAS=y
-endif
-USE_SYSTEM_CAIRO=y
 ifeq "$(BUILD_CAIROCANVAS)" "y"
   ifeq "$(USE_SYSTEM_CAIRO)" "y"
     BUILD_DEPS+= , libcairo2-dev, libglitz-glx1-dev
@@ -449,12 +411,6 @@ else
   CONFIGURE_FLAGS+= --disable-cairo
 endif
 
-BUILD_MDBTOOLS=y
-ifeq "$(SARGE_BACKPORT)" "y"
-	USE_SYSTEM_MDBTOOLS=n
-else
-	USE_SYSTEM_MDBTOOLS=y
-endif
 ifneq "$(BUILD_MDBTOOLS)" "y"
   CONFIGURE_FLAGS+= --disable-access
 else
@@ -464,17 +420,12 @@ else
   endif
 endif
 
-BUILD_KDE=y
 ifeq "$(BUILD_KDE)" "n"
 	CONFIGURE_FLAGS+= --disable-kde
 	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-kde
 	CONFIGURE_FLAGS+= --with-images="industrial crystal hicontrast"
 else
-ifneq "$(SARGE_BACKPORT)" "y"
-       BUILD_DEPS += , kdelibs4-dev (>= 4:3.4.3-2)
-else
-       BUILD_DEPS += , kdelibs4-dev
-endif
+       BUILD_DEPS += , kdelibs4-dev $(KDELIBS_MINVER)
 endif
 
 ifeq "$(BUILD_BINFILTERS)" "y"
@@ -485,31 +436,18 @@ else
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
-  ifeq "$(SARGE_BACKPORT)" "y"
-	USE_SYSTEM_HSQLDB=n
-  else
-	USE_SYSTEM_HSQLDB=y
-  endif
   ifeq "$(USE_SYSTEM_HSQLDB)" "y"
 	BUILD_DEPS += , libhsqldb-java (>= 1.8.0.0-2) [$(NO_JAVA_ARCHS)]
 	BASE_HSQLDB_DEPENDS = libhsqldb-java (>= 1.8.0.0-2)
 	CONFIGURE_FLAGS+= --with-system-hsqldb
   endif
 
-  ifeq "$(SARGE_BACKPORT)" "y"
-	USE_SYSTEM_BSH=n
-  else
-	USE_SYSTEM_BSH=y
-  endif
   ifeq "$(USE_SYSTEM_BSH)" "y"
 	BUILD_DEPS += , bsh (>= 2.0b4-1) [$(NO_JAVA_ARCHS)]
 	COMMON_BSH_DEPENDS = bsh (>= 2.0b4-1)
 	CONFIGURE_FLAGS+= --with-system-beanshell
   endif
 endif
-
-#		 --with-ooo-builddir=$(CURDIR) \
-#		 --with-src=$(CURDIR) \
 
 # Use compiler cache?  Include ccache in DEB_BUILD_OPTIONS for much faster rebuild times
 # A complete build uses about 200Mb of compiler cache.
@@ -1004,17 +942,6 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/build
 	done
 
 ifneq "$(HELPISOS)" ""
-	# save space by removing non-packaged localized help; we don't need
-	# them anyway
-	cd debian/tmp/pkg && \
-		for iso in $(filter-out en-US,$(LANGPACKISOS)); do \
-			if ! `echo $(HELPISOS) | grep -q $$iso`; then \
-				rm -rf openoffice.org-help-$$iso; \
-			fi; \
-		done
-endif
-
-ifneq "$(HELPISOS)" ""
 	# install help; we can't do that later since this is in
 	# arch-dep and arch-indep stuff..
 	cd debian/tmp/pkg; \
@@ -1023,6 +950,14 @@ ifneq "$(HELPISOS)" ""
 			cp -r ./openoffice.org-$$i/$(OODIR)/help/en/* \
 			 ./openoffice.org-help-en-us/$(OODIR)/help/en && \
 			rm -rf ./openoffice.org-$$i/$(OODIR)/help/en; \
+		done
+	# save space by removing non-packaged localized help; we don't need
+	# them anyway
+	cd debian/tmp/pkg && \
+		for iso in $(filter-out en-US,$(LANGPACKISOS)); do \
+			if ! `echo $(HELPISOS) | grep -q $$iso`; then \
+				rm -rf openoffice.org-help-$$iso; \
+			fi; \
 		done
 endif
 
@@ -1235,15 +1170,6 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/install $(STAMP_DIR)/install-indep ooo-buil
 		> l10n.fdupes
 	debian/scripts/cleandupes --base=openoffice.org$(VER) --prefix=debian < l10n.fdupes
 
-	if echo $(LANGPACKISOS) | grep -q en-US; then \
-		mkdir -p $(PKGDIR)-l10n-en-us/$(OODIR)/share/template/en-US/forms; \
-		mkdir -p $(PKGDIR)-l10n-en-us/$(OODIR)/share/template/en-US/officorr; \
-		install -m644 debian/tmp/$(OODIR)/share/template/en-US/forms/resume.ott \
-			$(PKGDIR)-l10n-en-us/$(OODIR)/share/template/en-US/forms/resume.ott; \
-		install -m644 debian/tmp/$(OODIR)/share/template/en-US/officorr/project-proposal.ott \
-			$(PKGDIR)-l10n-en-us/$(OODIR)/share/template/en-US/officorr/project-proposal.ott; \
-	fi
-
 	touch $@
 
 
@@ -1271,11 +1197,9 @@ endif
 
 ifeq "$(BUILD_KDE)" "y"
 	mkdir -p -m755 $(PKGDIR)-kde/$(OODIR)/program
-	for f in kdefilepicker libfps_kde.so libvclplug_kde[0-9]*.so libkab*so; do \
+	for f in kdefilepicker libfps_kde.so libvclplug_kde[0-9]*.so libkab*so kdebe*so; do \
 	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-kde/$(OODIR)/program || exit 1 ;\
 	done
-	mv $(CURDIR)/debian/tmp/$(OODIR)/program/kdebe1.uno.so \
-		$(PKGDIR)-kde/$(OODIR)/program
 endif
 
 	# move the GNOME stuff which are *not* in gid_Module_Optional_Gnome
@@ -2008,7 +1932,7 @@ endif
 		-V'common-bsh-depends=$(COMMON_BSH_DEPENDS)' \
 		-V'java-common-depends=$(JAVA_COMMON_DEPENDS)' \
 		-V'java-common-java-depends=$(JAVA_COMMON_JAVA_DEPENDS)' \
-		-v'mozilla-nss-depends=$(MOZILLA_NSS_DEPENDS)' \
+		-V'mozilla-nss-depends=$(MOZILLA_NSS_DEPENDS)' \
 		-V'Binary-Version=$(BINARY_VERSION)' \
 		-V'ooo-filter52-dep=$(OOO_FILTER52_DEP)' \
 		-v$(BINARY_VERSION)
