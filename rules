@@ -160,6 +160,7 @@ ifeq "$(SARGE_BACKPORT)" "y"
   LIBDB_JAVA_MINVER=
   KDELIBS_MINVER=
   BUILD_JARS_NATIVE=n
+  GCC_VERSION=3.3
 endif
 
 #############
@@ -184,6 +185,10 @@ ifeq "$(ARCH)" "sparc"
     ENABLE_JAVA=n
   endif
 endif
+ifeq "$(ARCH)-linux-gnu" "sparc-linux-gnu"
+	# use 32-bit compiler
+	CC_PREFIX=sparc-linux-gnu-
+endif
 
 ifneq "$(USE_EXTERNAL_MYTHES)" "y"
   ifeq ($(ARCH),$(findstring $(ARCH),$(shell dpkg-architecture -L | sed -e s/i386// -e s/powerpc// -e s/sparc// -e s/amd64//)))
@@ -196,6 +201,12 @@ ifneq "$(USE_EXTERNAL_MYTHES)" "y"
     endif
   endif
 endif
+
+# 4.1 broken, #372152
+ifeq "$(ARCH)" "i386"
+  GCC_VERSION = 4.0
+endif
+BUILD_DEPS += , gcc-4.0 [i386], g++-4.0 [i386]
 
 ifneq "$(BUILD_DBG_PACKAGE)" "y"
 	DH_COMPAT=4
@@ -263,6 +274,7 @@ ifneq "$(SARGE_BACKPORT)" "y"
 	JAVA_HOME=/usr/lib/jvm/java-gcj
 	CONFIGURE_FLAGS += --with-java=gij
 	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.56-1) [$(NO_JAVA_ARCHS)], ant (>= 1.6.5) [$(NO_JAVA_ARCHS)]
+	GCJ_VERSION = $(shell $(JAVA_HOME)/bin/gcj --version | head -n 1 | awk '{ print $$3; }' | cut -d"." -f1,2)
 	SYSTEM_XT=y
 	SYSTEM_XALAN=y
 	SYSTEM_XERCES=y
@@ -480,17 +492,6 @@ PYTHON_SITE:=debian/python-uno/usr/lib/python$(PYMAJOR).$(PYMINOR)/site-packages
 
 CURDIR ?= $(shell pwd)
 
-ifeq "$(ARCH)-linux" "sparc-linux"
-	# use 32-bit compiler
-	CC_PREFIX=sparc-linux-gnu-
-endif
-
-ifeq "$(SARGE_BACKPORT)" "y"
-	GCC_VERSION = 3.3
-else
-	GCC_VERSION =
-	GCJ_VERSION = $(shell $(JAVA_HOME)/bin/gcj --version | head -n 1 | awk '{ print $$3; }' | cut -d"." -f1,2)
-endif
 ifeq ($(GCC_VERSION),)
 	BUILD_PATH = /usr/lib/jvm/java-gcj/bin:$$PATH
 else
@@ -741,17 +742,6 @@ debian/control: debian/control.in debian/control.lang.in debian/control.help.in 
 			-e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 	        >> debian/control < debian/control.lang.in; \
 	done
-	# -l10n-en became -l10n-en-us
-	perl -pi -e 's/Conflicts:(.*)openoffice.org2-l10n-en-us$$/Conflicts:$$1openoffice.org2-l10n-en-us, openoffice.org-l10n-en/' debian/control
-	perl -pi -e 's/Replaces:(.*)openoffice.org2-l10n-en-us$$/Replaces:$$1openoffice.org2-l10n-en-us, openoffice.org-l10n-en/' debian/control
-	perl -pi -e 's/Provides:(.*)openoffice.org2-l10n-en-us$$/Provides:$$1openoffice.org2-l10n-en-us, openoffice.org-l10n-en/' debian/control
-	# ... and -hi became -hi-in
-	perl -pi -e 's/Conflicts:(.*)openoffice.org2-l10n-hi-in$$/Conflicts:$$1openoffice.org2-l10n-hi-in, openoffice.org-l10n-hi/' debian/control
-	perl -pi -e 's/Replaces:(.*)openoffice.org2-l10n-hi-in$$/Replaces:$$1openoffice.org2-l10n-hi-in, openoffice.org-l10n-hi/' debian/control
-	perl -pi -e 's/Provides:(.*)openoffice.org2-l10n-hi-in$$/Provides:$$1openoffice.org2-l10n-hi-in, openoffice.org-l10n-hi/' debian/control
-	# make -l10n-fi suggest openoffice.org-spellcheck-fi to
-	# match myspell-fi and Soikko
-	perl -pi -e 's/myspell-dictionary-fi/myspell-dictionary-fi | openoffice.org-spellcheck-fi/' debian/control
 
 ifneq "$(HELPISOS)" ""
 	for LNUM in $(HELPISOS) ; do \
@@ -796,6 +786,21 @@ ifeq "$(SARGE_BACKPORT)" "y"
 else
 	perl -pi -e "s,%CONTRIB%,,g" debian/control
 endif
+
+	python debian/joinctrl.py < debian/control > debian/control.tmp
+	mv debian/control.tmp debian/control
+
+	# -l10n-en became -l10n-en-us
+	perl -pi -e 's/Conflicts:(.*)openoffice.org2-l10n-en-us$$/Conflicts:$$1openoffice.org2-l10n-en-us, openoffice.org-l10n-en/' debian/control
+	perl -pi -e 's/Replaces:(.*)openoffice.org2-l10n-en-us$$/Replaces:$$1openoffice.org2-l10n-en-us, openoffice.org-l10n-en/' debian/control
+	perl -pi -e 's/Provides:(.*)openoffice.org2-l10n-en-us$$/Provides:$$1openoffice.org2-l10n-en-us, openoffice.org-l10n-en/' debian/control
+	# ... and -hi became -hi-in
+	perl -pi -e 's/Conflicts:(.*)openoffice.org2-l10n-hi-in$$/Conflicts:$$1openoffice.org2-l10n-hi-in, openoffice.org-l10n-hi/' debian/control
+	perl -pi -e 's/Replaces:(.*)openoffice.org2-l10n-hi-in$$/Replaces:$$1openoffice.org2-l10n-hi-in, openoffice.org-l10n-hi/' debian/control
+	perl -pi -e 's/Provides:(.*)openoffice.org2-l10n-hi-in$$/Provides:$$1openoffice.org2-l10n-hi-in, openoffice.org-l10n-hi/' debian/control
+	# make -l10n-fi suggest openoffice.org-spellcheck-fi to
+	# match myspell-fi and Soikko
+	perl -pi -e 's/myspell-dictionary-fi/myspell-dictionary-fi | openoffice.org-spellcheck-fi/' debian/control
 
 .DELETE_ON_ERROR: debian/control
 
