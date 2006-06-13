@@ -139,6 +139,7 @@ ifeq "$(DIST)" "Debian"
   USE_SYSTEM_XMLSEC=y
   USE_SYSTEM_HUNSPELL=y
   USE_XULRUNNER=y
+  BUILD_DEPS += , python-central (>= 0.4.10), debhelper (>= 5.0.37.1), python (>= 2.3.5-7)
 endif
 
 ifeq "$(DIST)" "Ubuntu"
@@ -214,7 +215,11 @@ ifneq "$(BUILD_DBG_PACKAGE)" "y"
 	SMALL_SYMBOLS = y
 else
 	DH_COMPAT=5
+ifneq "$(SARGE_BACKPORT)" "y"
+ifneq "$(BUILD_PYUNO)" "y"
 	BUILD_DEPS += , debhelper (>= 5)
+endif
+endif
 	SMALL_SYMBOLS = n
 endif
 export DH_COMPAT
@@ -801,6 +806,13 @@ endif
 	# make -l10n-fi suggest openoffice.org-spellcheck-fi to
 	# match myspell-fi and Soikko
 	perl -pi -e 's/myspell-dictionary-fi/myspell-dictionary-fi | openoffice.org-spellcheck-fi/' debian/control
+
+ifneq "$(SARGE_BACKPORT)" "y"
+	# new python policy
+	perl -pi -e "s/Package: python-uno/Package: python-uno\n\
+		Provides: \$${python:Provides}\n\
+		XB-Python-Version: $${python:Versions}" debian/control
+endif
 
 .DELETE_ON_ERROR: debian/control
 
@@ -1892,6 +1904,9 @@ endif
 	dh_installdebconf
 	dh_installmime
 	dh_installmenu
+ifneq "$(SARGE_BACKPORT)" "y"
+	dh_pycentral
+endif
 	dh_python
 	debian/scripts/installoverrides
 	dh_link
