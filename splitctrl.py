@@ -3,7 +3,7 @@
 import sys, fileinput
 
 def splitlines():
-    fields = ('Build-Depends', 'Depends', 'Replaces',
+    fields = ('Build-Depends', 'Build-Conflicts', 'Depends', 'Replaces',
               'Provides', 'Conflicts', 'Recommends', 'Suggests')
     for line in fileinput.input():
         line = line[:-1]
