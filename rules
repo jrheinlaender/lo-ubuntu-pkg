@@ -57,7 +57,7 @@ STAMP_DIR=debian/stampdir
 # Read in architecture-specific variables of importance.
 #include debian/scripts/vars.$(ARCH)
 
-SARGE_BACKPORT=n
+SARGE_BACKPORT=y
 
 #########
 # Default package configuration
@@ -146,9 +146,6 @@ ifeq "$(DIST)" "Debian"
   USE_SYSTEM_XMLSEC=y
   USE_SYSTEM_HUNSPELL=y
   USE_XULRUNNER=y
-  ifeq "$(BUILD_PYUNO)" "y"
-    BUILD_DEPS += , python-central (>= 0.4.10), debhelper (>= 5.0.37.1), python (>= 2.3.5-7)
-  endif
 endif
 
 ifeq "$(DIST)" "Ubuntu"
@@ -159,19 +156,25 @@ endif
 ifeq "$(SARGE_BACKPORT)" "y"
   OS:= $(shell dpkg-architecture -qDEB_HOST_GNU_SYSTEM)
   PATCHSET=$(DIST)Sarge
-  USE_SYSTEM_HUNSPELL=n
-  USE_STLPORT5=n
-  LIBALTLINUXHYPH_MINVER=
-  LIBSTLPORT_MINVER=
-  USE_SYSTEM_PORTAUDIO=n
-  LIBWPD8_MINVER=
-  USE_SYSTEM_ICU=n
   BUILD_CAIROCANVAS=n
-  USE_SYSTEM_MDBTOOLS=n
-  LIBDB_JAVA_MINVER=
-  KDELIBS_MINVER=
   BUILD_JARS_NATIVE=n
   GCC_VERSION=3.3
+  KDELIBS_MINVER=
+  LIBALTLINUXHYPH_MINVER=
+  LIBDB_JAVA_MINVER=
+  LIBSTLPORT_MINVER=
+  LIBWPD8_MINVER=
+  SYSTEM_AGG=n
+  SYSTEM_ALTLINUXHYPH=n
+  USE_STLPORT5=n
+  USE_SYSTEM_BSH=n
+  USE_SYSTEM_HSQLDB=n
+  USE_SYSTEM_HUNSPELL=n
+  USE_SYSTEM_ICU=n
+  USE_SYSTEM_MDBTOOLS=n
+  USE_SYSTEM_PORTAUDIO=n
+  USE_SYSTEM_XMLSEC=n
+  USE_XULRUNNER=n
 endif
 
 #############
@@ -218,22 +221,28 @@ endif
 
 ifneq "$(BUILD_DBG_PACKAGE)" "y"
 	DH_COMPAT=4
-ifneq "$(SARGE_BACKPORT)" "y"
-ifneq "$(BUILD_PYUNO)" "y"
-	BUILD_DEPS += , debhelper (>= 4.2.21)
-endif
-endif
 	SMALL_SYMBOLS = y
 else
 	DH_COMPAT=5
-ifneq "$(SARGE_BACKPORT)" "y"
-ifneq "$(BUILD_PYUNO)" "y"
-	BUILD_DEPS += , debhelper (>= 5)
-endif
-endif
 	SMALL_SYMBOLS = n
 endif
 export DH_COMPAT
+
+ifeq "$(BUILD_PYUNO)" "y"
+    ifneq "$(SARGE_BACKPORT)" "y"
+	BUILD_DEPS += , python-central (>= 0.4.10), debhelper (>= 5.0.37.1), python (>= 2.3.5-7)
+    else
+	BUILD_DEPS += , debhelper, python-dev
+    endif
+else 
+  ifeq "$(BUILD_DBG_PACKAGE)" "y"
+	BUILD_DEPS += , debhelper (>= 4.2.21)
+  else
+    ifneq "$(SARGE_BACKPORT)" "y"
+	BUILD_DEPS += , debhelper (>= 5)
+    endif
+  endif
+endif
 
 ifeq "$(BUILD_JARS_NATIVE)" "y"
 	BUILD_DEPS += , dpkg-dev (>= 1.13.19)
