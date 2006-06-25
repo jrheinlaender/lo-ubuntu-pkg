@@ -191,6 +191,7 @@ ifeq "$(ARCH)" "amd64"
   PATCHSET=$(DIST)64
   BUILD_PYUNO=n
   BUILD_BINFILTERS=n
+  USE_SYSTEM_BOOST=y
 endif
 
 # For sarge, there's no suitable Java
@@ -406,8 +407,12 @@ else
 endif
 
 ifeq "$(USE_SYSTEM_BOOST)" "y"
-	BUILD_DEPS += , libboost-dev
+	BUILD_DEPS += , liboost-dev
 	CONFIGURE_FLAGS += --with-system-boost
+else
+  ifeq "$(BUILD_AMD64)" "y"
+	BUILD_DEPS += , libboost-dev [amd64]
+  endif
 endif
 
 ifeq "$(USE_SYSTEM_PORTAUDIO)" "y"
@@ -1344,11 +1349,13 @@ endif
 			$(PKGDIR)-calc/$(OODIR)/program; \
 	done
 
+ifneq "$(ARCH)" "amd64"
 	mv $(PKGDIR)-core/$(OODIR)/program/scsolver.uno.so \
 		$(PKGDIR)-calc/$(OODIR)/program
-ifneq "$(USE_SYSTEM_LPSOLVE)" "y"
+  ifneq "$(USE_SYSTEM_LPSOLVE)" "y"
 	mv $(PKGDIR)-core/$(OODIR)/program/liblpsolve55.so \
 		$(PKGDIR)-calc/$(OODIR)/program
+  endif
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
@@ -1489,6 +1496,7 @@ ifeq "$(USE_SYSTEM_STLPORT)" "y"
 	cd $(PKGDIR)-dev/usr/include/openoffice$(VER) && \
 		rm -rf stl && ln -s /usr/include/stlport stl
 endif
+ifeq "$(ENABLE_JAVA)" "y"
 	# move SDK Java stuff into /usr/share/java/openoffice
 	rm -f $(PKGDIR)-dev/$(OODIR)/sdk/classes
 	mkdir -p $(PKGDIR)-dev/usr/share/java/openoffice$(VER)
@@ -1498,6 +1506,7 @@ endif
 	cd $(PKGDIR)-dev/$(OODIR)/sdk/classes && \
 		ln -s /usr/share/java/openoffice/com com
 	rm -rf $(PKGDIR)-dev/usr/share/openoffice/sdk
+endif
 	chmod 644 $(PKGDIR)-dev/$(OODIR)/sdk/configure.pl
 	for i in csh csh.in; do \
 		perl -pi -e 's,/usr/bin/csh,/bin/csh,'\
