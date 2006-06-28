@@ -20,13 +20,13 @@ PKGDIR:=debian/openoffice.org$(VER)
 OODIR:=usr/lib/openoffice$(VER)
 
 PKGSOURCE := $(shell dpkg-parsechangelog | awk '/^Source:/ {print $$2;exit 0}')
-PACKAGES := $(shell dh_listpackages)
 SOURCE_VERSION:=$(shell head -1 debian/changelog | cut -d\( -f2 | cut -d\) -f1)
 UPSTREAM_VERSION:=$(shell echo "$(SOURCE_VERSION)"| cut -d- -f1)
 BINARY_VERSION=$(SOURCE_VERSION)
-#BINARY_VERSION=1.9.125+2.0beta2-$(shell dpkg-parsechangelog  | grep urgency \
+#BINARY_VERSION=2.0.3-$(shell dpkg-parsechangelog  | grep urgency \
 	| awk '{print $$2}' | sed -e s/"("// -e s/")"// | cut -d"-" -f2)
-BASE_VERSION=2.0.3
+PACKAGES := $(shell dh_listpackages)
+BASE_VERSION=2.0.3~m7
 NEXT_BASE_VERSION=2.0.4
 
 ARCH := $(shell dpkg-architecture -qDEB_HOST_ARCH)
@@ -53,7 +53,7 @@ unexport LS_COLORS
 
 #TAG=src680-m$(MILESTONE)
 #MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)"| cut -d. -f3)
-TAG=ooc680-m5
+TAG=ooc680-m7
 SOURCE_TREE=ooo-build/build/$(TAG)
 STAMP_DIR=debian/stampdir
 
@@ -85,7 +85,166 @@ endif
 
 SARGE_BACKPORT=n
 
-#BUILD_AMD64=y
+#########
+# Default package configuration
+#
+OS:= $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
+BUILD_AMD64=n
+PATCHSET=$(DIST)
+BUILD_DEPS=
+BUILD_PYUNO=y
+PACKAGE_TESTTOOL=n
+PACKAGE_TTF_OPENSYMBOL=y
+PACKAGE_NPSOPLUGIN=n
+BUILD_JARS_NATIVE=n
+REBUILD_JARS_NATIVE=y
+SHLIBS_OVERRIDE = --
+BUILD_BINFILTERS=y
+BUILD_ONLY_EN_US=n
+ENABLE_JAVA=y
+ENABLE_MONO=n
+USE_SYSTEM_HUNSPELL=y
+SYSTEM_ALTLINUXHYPH=y
+LIBALTLINUXHYPH_MINVER= (>= 0.1.1-7)
+SYSTEM_AGG=n
+USE_STLPORT=y
+USE_STLPORT5=n
+USE_SYSTEM_STLPORT=y
+ifeq "$(USE_STLPORT5)" "y"
+  LIBSTLPORT_MINVER= (>= 5.0.2-3)
+  BUILD_BINFILTERS=n
+else
+  LIBSTLPORT_MINVER= (>= 4.6.2-3)
+endif
+USE_SYSTEM_BOOST=n
+USE_SYSTEM_PORTAUDIO=y
+USE_EXTERNAL_CXXLIBS=y
+LIBWPD8_MINVER= (>= 0.8.3-3)
+USE_SYSTEM_SABLOT=n
+USE_EXTERNAL_MYTHES=n
+USE_SYSTEM_ICU=y
+USE_SYSTEM_XMLSEC=n
+BUILD_CAIROCANVAS=y
+USE_SYSTEM_CAIRO=y
+BUILD_MDBTOOLS=y
+USE_SYSTEM_MDBTOOLS=y
+BUILD_KDE=y
+BUILD_DBG_PACKAGE=n
+USE_SYSTEM_BSH=y
+USE_SYSTEM_HSQLDB=y
+LIBDB_JAVA_MINVER= (>= 4.2.52-21)
+USE_FIREFOX=n
+USE_XULRUNNER=n
+KDELIBS_MINVER= (>= 4:3.4.3-2)
+USE_SYSTEM_LPSOLVE=y
+PACKAGE_QA_TOOLS=y
+
+# when we have a package we want to have to be installed on older things with some older
+# C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
+# otherwise
+INTERNAL_STDLIBS=n
+
+# Default flags to pass to configure of ooo-build
+CONFIGURE_FLAGS= --disable-post-install-scripts \
+                 --with-tag=$(TAG) \
+                --with-system-gcc \
+                --with-distro=$(PATCHSET) \
+                --enable-package-directories \
+                --with-installed-ooo-dirname=openoffice$(VER) \
+                --mandir=/usr/share/man \
+                --with-lang="$(BUILD_ISOS)" \
+		 -x-libraries=/usr/lib \
+                --with-build-version="openoffice.org$(VER) $(BINARY_VERSION), `date`" \
+                --disable-strip \
+                --enable-atkbridge \
+                --enable-lockdown
+
+#############
+# Distro-specific overrides
+
+# Debian
+ifeq "$(DIST)" "Debian"
+  # we don't need to build all languages and the thesaurus on the buildds;
+  # they do binary-only builds anyway
+  ifeq (buildd,$(shell whoami))
+       BUILD_ONLY_EN_US=y
+  endif
+  SYSTEM_AGG=y
+  USE_SYSTEM_XMLSEC=y
+  USE_SYSTEM_HUNSPELL=y
+  USE_XULRUNNER=y
+endif
+
+ifeq "$(DIST)" "Ubuntu"
+  USE_FIREFOX=y
+  BUILD_DEPS += , translate-toolkit (>= 0.8.rel)
+  BUILD_AMD64=y
+  OOO_ARCHS+= amd64
+  PACKAGE_QA_TOOLS=y
+  ifeq "$(ARCH)" "amd64"
+    PACKAGE_QA_TOOLS=n
+  endif
+  SYSTEM_ALTLINUXHYPH=n
+  USE_SYSTEM_XMLSEC=y
+  USE_SYSTEM_HUNSPELL=n
+endif
+
+# Debian Sarge backport
+ifeq "$(SARGE_BACKPORT)" "y"
+  OS:= $(shell dpkg-architecture -qDEB_HOST_GNU_SYSTEM)
+  PATCHSET=$(DIST)Sarge
+  BUILD_CAIROCANVAS=n
+  BUILD_JARS_NATIVE=n
+  GCC_VERSION=3.3
+  KDELIBS_MINVER=
+  LIBALTLINUXHYPH_MINVER=
+  LIBDB_JAVA_MINVER=
+  LIBSTLPORT_MINVER=
+  LIBWPD8_MINVER=
+  SYSTEM_AGG=n
+  SYSTEM_ALTLINUXHYPH=n
+  USE_STLPORT5=n
+  USE_SYSTEM_BSH=n
+  USE_SYSTEM_HSQLDB=n
+  USE_SYSTEM_HUNSPELL=n
+  USE_SYSTEM_ICU=n
+  USE_SYSTEM_MDBTOOLS=n
+  USE_SYSTEM_PORTAUDIO=n
+  USE_SYSTEM_XMLSEC=n
+  USE_XULRUNNER=n
+  USE_SYSTEM_LPSOLVE=n
+endif
+
+#############
+# Architecture-specific changes
+
+# Java...
+NO_JAVA_ARCHS = !m68k !alpha !hppa !mips !mipsel !ia64 !arm !s390 !amd64
+ifeq (,$(findstring $(ARCH),i386 powerpc sparc))
+       ENABLE_JAVA=n
+endif
+
+# Changes for 64 bit build
+ifeq "$(ARCH)" "amd64"
+  PATCHSET=$(DIST)64
+  BUILD_PYUNO=n
+  BUILD_BINFILTERS=n
+  USE_SYSTEM_BOOST=y
+endif
+
+# For sarge, there's no suitable Java
+ifeq "$(ARCH)" "sparc"
+  ifeq "$(SARGE_BACKPORT)" "y"
+    ENABLE_JAVA=n
+  endif
+endif
+ifeq "$(ARCH)-linux-gnu" "sparc-linux-gnu"
+	# use 32-bit compiler
+	CC_PREFIX=sparc-linux-gnu-
+	# 4.1 fails
+	GCC_VERSION=4.0
+endif
+BUILD_DEPS += , gcc-4.0 [sparc], g++-4.0 [sparc]
 
 ifneq "$(USE_EXTERNAL_MYTHES)" "y"
   ifeq ($(ARCH),$(findstring $(ARCH),$(shell dpkg-architecture -L | sed -e s/i386// -e s/powerpc// -e s/sparc// -e s/amd64//)))
@@ -99,112 +258,46 @@ ifneq "$(USE_EXTERNAL_MYTHES)" "y"
   endif
 endif
 
-ifeq "$(SARGE_BACKPORT)" "y"
-OS:= $(shell dpkg-architecture -qDEB_HOST_GNU_SYSTEM)
-else
-OS:= $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
-endif
-
-# Which patchset?
-ifeq ($(ARCH),amd64)
-  PATCHSET=$(DIST)64
-else
-  ifeq "$(DIST)" "Debian"
-    ifeq "$(SARGE_BACKPORT)" "y"
-      PATCHSET=$(DIST)Sarge
-    else
-      PATCHSET=$(DIST)
-    endif
-  else
-    PATCHSET=$(DIST)
-  endif
-endif
-
-BUILD_DEPS=
-
-ifeq "$(DIST)" "Ubuntu"
-	BUILD_AMD64=y
-	BUILD_DEPS += , translate-toolkit (>= 0.8.rel)
-	OOO_ARCHS+= amd64
-endif
-
-ifeq "$(ARCH)" "amd64"
-	BUILD_PYUNO=n
-else
-	BUILD_PYUNO=y
-	WRITER_PYUNO_DEP=, python-uno (>> $(UPSTREAM_VERSION))
-endif
-ifeq "$(BUILD_PYUNO)" "n"
-  DEBHELPER_OPTIONS+= -Npython-uno
-endif
-
-ifeq "$(SARGE_BACKPORT)" "y"
-	BUILD_DBG_PACKAGE = n
-else
-	BUILD_DBG_PACKAGE = n
-endif
-
 ifneq "$(BUILD_DBG_PACKAGE)" "y"
 	DH_COMPAT=4
-	BUILD_DEPS += , debhelper (>= 4.2.21)
 	SMALL_SYMBOLS = y
 else
 	DH_COMPAT=5
-	BUILD_DEPS += , debhelper (>= 5)
 	SMALL_SYMBOLS = n
 endif
 export DH_COMPAT
 
-ifeq "$(DIST)" "Ubuntu"
-	PACKAGE_QA_TOOLS=y
-else
-	PACKAGE_QA_TOOLS=n
+ifeq "$(BUILD_PYUNO)" "y"
+    ifneq "$(SARGE_BACKPORT)" "y"
+	BUILD_DEPS += , python-central (>= 0.5), debhelper (>= 5.0.37.2), python-dev (>= 2.3.5-7)
+    else
+	BUILD_DEPS += , debhelper, python-dev
+    endif
+else 
+  ifeq "$(BUILD_DBG_PACKAGE)" "y"
+	BUILD_DEPS += , debhelper (>= 4.2.21)
+  else
+    ifneq "$(SARGE_BACKPORT)" "y"
+	BUILD_DEPS += , debhelper (>= 5)
+    endif
+  endif
 endif
 
-PACKAGE_TTF_OPENSYMBOL=y
-PACKAGE_NPSOPLUGIN=n
-
-ifneq (,$(findstring $(ARCH), i386 powerpc sparc))
-	BUILD_JARS_NATIVE=y
-	REBUILD_JARS_NATIVE=y
+ifeq "$(BUILD_JARS_NATIVE)" "y"
+	BUILD_DEPS += , dpkg-dev (>= 1.13.19)
 else
-	BUILD_JARS_NATIVE=n
 	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-gcj
 endif
 
 ifneq "$(PACKAGE_QA_TOOLS)" "y"
 	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-qa-tools -Nopenoffice.org$(VER)-qa-api-tests
+	CONFIGURE_FLAGS += --disable-qadevooo
 endif
 ifneq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 	DEBHELPER_OPTIONS+= -Nttf-opensymbol
 endif
 ifneq "$(PACKAGE_NPSOPLUGIN)" "y"
 	DEBHELPER_OPTIONS+= -Nmozilla-openoffice.org
-endif
-
-SHLIBS_OVERRIDE = --
-
-# build the binfilters?
-ifeq "$(ARCH)" "amd64"
-	BUILD_BINFILTERS=n
-else
-	BUILD_BINFILTERS=y
-endif
-
-# we should be installed on sid/sarge, use libstdc++/libgcc_s internal for now
-# This won't help for -officebean which needs libgcj6 but for the "normal"
-# packages...
-INTERNAL_STDLIBS=n
-ifeq "$(INTERNAL_STDLIBS)" "y"
-	SHLIBS_OVERRIDE+=-- -Ldebian/shlibs.override.stdlibs
-endif
-
-ifeq "$(DIST)" "Debian"
-  # we don't need to build all languages and the thesaurus on the buildds;
-  # they do binary-only builds anyway
-  ifeq (buildd,$(shell whoami))
-	BUILD_ONLY_EN_US=y
-  endif
 endif
 
 ifneq "$(BUILD_ONLY_EN_US)" "y"
@@ -219,36 +312,42 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
     # one to that gid_Module_Root always is english and the other langpacks
     # have gid_Module_Root.$iso
     #ISOS=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
-    ISOS := en-US af ar as-IN be-BY bg bn br bs ca cs cy da de el \
+    ISOS:=en-US af ar be-BY bg bn br bs ca cs cy da de el \
 	en-GB en-ZA es et fa fi fr ga gu-IN he hi-IN hr hu it ja \
-	km ko ku lo lt lv mk ml-IN mr-IN ne nb nl nn nr or-IN pa-IN \
-	pl pt-BR ru rw sh-YU sk sl sr-CS st sv \
-	ta-IN te-IN tg ti-ER th tn tr ts ur-IN vi xh zh-CN zh-TW zu
+	km ko lo lt lv mk ml-IN ne nb nl nn nr pa-IN \
+	pl pt-BR ru rw sk sl sr-CS st sv \
+	ta-IN te-IN tg th ti-ER tn tr ts vi xh zh-CN zh-TW zu
     #HELPISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all') 
-    HELPISOS:=en-US bg br cs da de en-GB es et fr hu it ja km ko mk nl \
-	pt-BR ru sk sl sv zh-CN zh-TW
+    HELPISOS:=en-US cs da de en-GB es et fr hu it ja ko nl \
+	pt-BR sv zh-CN zh-TW
     #LANGPACKISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
-    LANGPACKISOS := en-US af ar as-IN be-BY bg bn br bs ca cs cy da de el \
-	en-GB en-ZA es et fa fi fr ga gu-IN he hi-IN hr hu it ja \
-	km ko ku lo lt lv mk ml-IN mr-IN ne nb nl nn nr or-IN pa-IN \
-	pl pt-BR ru rw sh-YU sk sl sr-CS st sv \
-	ta-IN te-IN tg ti-ER th tn tr ts ur-IN vi xh zh-CN zh-TW zu
+    LANGPACKISOS:=en-US af ar be-BY bg bn br bs ca cs cy da de el \
+	en-GB en-ZA es et fa fi fr ga gu-IN he hi-IN hr hu nb nl nn it ja \
+	km ko lo lt lv mk ml-IN ne nr pa-IN \
+	pl pt-BR ru rw sk sl sr-CS st sv \
+	ta-IN te-IN tg th ti-ER tn tr ts vi xh zh-CN zh-TW zu
 
+    # additional things built in Ubuntu, having belocs-locales
+    ISOS := $(sort $(ISOS) as-IN ku mr-IN or-IN sh-YU ur-IN)
+    HELPISOS := $(sort $(HELPISOS) bg br km mk ru sk sl)
+    LANGPACKISOS := $(sort $(LANGPACKISOS) as-IN ku mr-IN or-IN sh-YU ur-IN)
     REMOVE_HELP := bs cy fi lt lv sh-YU sr-CS ur-IN
     FILTER_HELP := ga hr pl rw sk th tr vi
 
+    # ALL_ISOS, taken from solenv/inc/postset.mk
+    ALL_ISOS := af ar be-BY bg br bn bn-BD bn-IN bs ca cs cy da de el \
+	en-GB en-US en-ZA eo es et eu fa fi fr ga gl gu-IN he hi-IN hr hu \
+	it ja km kn-IN ko lo lt lv mk ms ne nb nl nn nr ns \
+	pa-IN pl pt pt-BR ru rw sk sl sh-YU sr-CS ss st sv sw sw-TZ sx \
+	ta-IN th tn tr ts ve vi xh zh-CN zh-TW zu
+    # filter out all, which are not in ALL, add ALL
+    BUILD_ISOS := en-US ALL $(filter-out $(ALL_ISOS), $(ISOS))
   endif
 else
   ISOS=en-US
   HELPISOS=en-US
   LANGPACKISOS=en-US
 endif
-
-# remove senseless quotes, use them only there where needed
-ISOS := $(subst ",,$(ISOS))
-HELPISOS := $(subst ",,$(HELPISOS))
-LANGPACKISOS := $(subst ",,$(LANGPACKISOS))
-# dummy "
 
 ifeq "$(DIST)" "Ubuntu"
   LANGUAGES := $(ISOS)
@@ -279,54 +378,18 @@ endif
 HELP_PACKAGES = $(filter-out %-common, $(filter openoffice.org$(VER)-help-%, $(PACKAGES)))
 LANG_PACKAGES = $(filter-out %-common, $(filter openoffice.org$(VER)-l10n-%, $(PACKAGES)))
 
-# Default flags to pass to configure of ooo-build
-CONFIGURE_FLAGS= --disable-post-install-scripts \
-                 --with-tag=$(TAG) \
-		 --with-system-gcc \
-		 --with-distro=$(PATCHSET) \
-		 --with-vendor=Debian \
-		 --enable-package-directories \
-		 --with-installed-ooo-dirname=openoffice$(VER) \
-		 --mandir=/usr/share/man \
-		 --with-docdir=/usr/share/doc/openoffice.org \
-		 --with-lang="$(ISOS)" \
-		 -x-libraries=/usr/lib \
-		 --with-build-version="openoffice.org$(VER) $(BINARY_VERSION), `date`" \
-		--disable-strip \
-		--with-alloc=system \
-		--enable-atkbridge \
-		--enable-lockdown
-
 ifeq "$(VER)" ""
 	CONFIGURE_FLAGS += --with-binsuffix=no
 else
 	CONFIGURE_FLAGS += --with-binsuffix=$(VER)
 endif
 
-NO_JAVA_ARCHS = !m68k !alpha !hppa !mips !mipsel !ia64 !arm !s390 !amd64
-ifneq (,$(findstring $(ARCH),i386 powerpc sparc))
-  ifeq "$(ARCH)" "sparc"
-    ifneq "$(SARGE_BACKPORT)" "y"
-	# n util we have the needed java-gcj-compat-dev in sid
-	ENABLE_JAVA=y
-    else
-	ENABLE_JAVA=n
-    endif
-  else
-        ENABLE_JAVA=y
-  endif
-else
-	ENABLE_JAVA=n
-endif
-
 ifeq "$(ENABLE_JAVA)" "y"
 ifneq "$(SARGE_BACKPORT)" "y"
 	export JAVA_HOME=/usr/lib/jvm/java-gcj
 	CONFIGURE_FLAGS += --with-java=gij
-	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.54-0) [$(NO_JAVA_ARCHS)], ant (>= 1.6.5) [$(NO_JAVA_ARCHS)]
-  ifeq (,$(findstring sparc,$(NO_JAVA_ARCHS)))
-		BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.56-1) [sparc]
-  endif
+	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.56-1) [$(NO_JAVA_ARCHS)], ant (>= 1.6.5) [$(NO_JAVA_ARCHS)]
+	GCJ_VERSION = $(shell $(JAVA_HOME)/bin/gcj --version | head -n 1 | awk '{ print $$3; }' | cut -d"." -f1,2)
 	SYSTEM_XT=y
 	SYSTEM_XALAN=y
 	SYSTEM_XERCES=y
@@ -378,12 +441,6 @@ else
 	HELPISOS=
 endif
 
-ifeq "$(DIST)" "Ubuntu"
-	USE_FIREFOX=y
-else
-	USE_FIREFOX=n
-endif
-USE_XULRUNNER=n
 ifeq "$(USE_FIREFOX)" "y"
 	CONFIGURE_FLAGS+= --with-firefox
 	BUILD_DEPS+= , firefox-dev (>= 1.5.dfsg+1.5.0.1-1ubuntu7), libnspr-dev
@@ -397,7 +454,6 @@ else
  endif
 endif
 
-ENABLE_MONO=n
 ifeq "$(ENABLE_MONO)" "y"
        BUILD_DEPS += , mono-mcs (>= 1.1.8), libmono-dev (>= 1.1.8), cli-common-dev (>= 0.4.0)
 	# http://pkg-mono.alioth.debian.org/cli-policy/ch-mono.html#s7.3
@@ -406,94 +462,57 @@ else
        CONFIGURE_FLAGS+= --disable-mono
 endif
 
-ifeq "$(SARGE_BACKPORT)" "y"
-	USE_SYSTEM_HUNSPELL=n
-else
-	USE_SYSTEM_HUNSPELL=y
-endif
-ifeq "$(DIST)" "Ubuntu"
-	USE_SYSTEM_HUNSPELL=n
-endif
 ifeq "$(USE_SYSTEM_HUNSPELL)" "y"
 		BUILD_DEPS += , libhunspell-dev (>= 1.0.8-3)
 		CONFIGURE_FLAGS+= --with-system-hunspell
 endif
 
-ifeq "$(SARGE_BACKPORT)" "y"
-	SYSTEM_ALTLINUXHYPH=n
-else
-	SYSTEM_ALTLINUXHYPH=y
-endif
-ifeq "$(DIST)" "Ubuntu"
-	SYSTEM_ALTLINUXHYPH=n
-endif
 ifeq "$(SYSTEM_ALTLINUXHYPH)" "y"
-	BUILD_DEPS += , libaltlinuxhyph-dev (>= 0.1.1-8)
+	BUILD_DEPS += , libaltlinuxhyph-dev $(LIBALTLINUXHYPH_MINVER)
 	CONFIGURE_FLAGS += --with-system-altlinuxhyph
 endif
 
-ifeq "$(SARGE_BACKPORT)" "y"
-       SYSTEM_AGG=n
-else
-  ifeq "$(DIST)" "Debian"
-       SYSTEM_AGG=y
-  else
-       SYSTEM_AGG=n
-  endif
-endif
 ifeq "$(SYSTEM_AGG)" "y"
        BUILD_DEPS += , libagg-dev (>= 2.3-2)
        CONFIGURE_FLAGS += --with-system-agg
 endif
 
-USE_STLPORT=y
-USE_SYSTEM_STLPORT=y
 ifneq "$(USE_STLPORT)" "y"
-	CONFIGURE_FLAGS += --without-stlport4
+	CONFIGURE_FLAGS += --without-stlport
 else
   ifeq "$(USE_SYSTEM_STLPORT)" "y"
-    ifneq "$(SARGE_BACKPORT)" "y"
-	BUILD_DEPS += , libstlport4.6-dev (>= 4.6.2-3)
-	DEV_STL_DEPENDS=, libstlport4.6-dev (>= 4.6.2-3)
+    ifeq "$(USE_STLPORT5)" "y"
+      BUILD_DEPS += , libstlport5.0-dev $(LIBSTLPORT_MINVER)
+      DEV_STL_DEPENDS=, libstlport5.0-dev $(LIBSTLPORT_MINVER)
     else
-	BUILD_DEPS += , libstlport4.6-dev
-	DEV_STL_DEPENDS=, libstlport4.6-dev
+      BUILD_DEPS += , libstlport4.6-dev $(LIBSTLPORT_MINVER)
+      DEV_STL_DEPENDS=, libstlport4.6-dev $(LIBSTLPORT_MINVER)
     endif
-	CONFIGURE_FLAGS+= --with-stlport4=$(CURDIR)/stlport4
+    CONFIGURE_FLAGS+= --with-stlport=$(CURDIR)/stlport
   endif
 endif
 
-USE_SYSTEM_BOOST=y
 ifeq "$(USE_SYSTEM_BOOST)" "y"
 	BUILD_DEPS += , libboost-dev
 	CONFIGURE_FLAGS += --with-system-boost
-endif
-
-
-ifeq "$(SARGE_BACKPORT)" "y"
-	USE_SYSTEM_PORTAUDIO=n
 else
-	USE_SYSTEM_PORTAUDIO=y
+  ifeq "$(BUILD_AMD64)" "y"
+	BUILD_DEPS += , libboost-dev [amd64]
+  endif
 endif
+
 ifeq "$(USE_SYSTEM_PORTAUDIO)" "y"
 	BUILD_DEPS += , libportaudio-dev
 	CONFIGURE_FLAGS += --with-system-portaudio
 endif
 
-USE_EXTERNAL_CXXLIBS=y
 ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
-  ifeq "$(SARGE_BACKPORT)" "y"
-       BUILD_DEPS += , libwpd8-dev
-  else
-       BUILD_DEPS += , libwpd8-dev (>= 0.8.3-3)
-  endif
+       BUILD_DEPS += , libwpd8-dev $(LIBWPD8_MINVER)
        CONFIGURE_FLAGS+=  --with-system-libwpd
-USE_SYSTEM_SABLOT=n
 ifeq "$(USE_SYSTEM_SABLOT)" "y"
 	BUILD_DEPS += , libsablot0-dev (>= 1.0.2-4)
 	CONFIGURE_FLAGS += --with-system-sablot
 endif
-USE_EXTERNAL_MYTHES=n
 ifeq "$(USE_EXTERNAL_MYTHES)" "y"
 	BUILD_DEPS += , libmythes-dev (>= 1.0-2)
 	CONFIGURE_FLAGS += --with-system-mythes
@@ -501,11 +520,6 @@ ifeq "$(USE_EXTERNAL_MYTHES)" "y"
 endif
 endif
 
-ifeq "$(SARGE_BACKPORT)" "y"
-	USE_SYSTEM_ICU=n
-else
-	USE_SYSTEM_ICU=y
-endif
 ifeq "$(USE_SYSTEM_ICU)" "y"
 	BUILD_DEPS += , libicu34-dev
 	CONFIGURE_FLAGS += --with-system-icu
@@ -513,14 +527,6 @@ ifeq "$(USE_SYSTEM_ICU)" "y"
 	PATH+=:/usr/sbin
 endif
 
-ifeq "$(SARGE_BACKPORT)" "y"
-	USE_SYSTEM_XMLSEC=n
-else
-	USE_SYSTEM_XMLSEC=y
-endif
-ifeq "$(DIST)" "Ubuntu"
-	USE_SYSTEM_XMLSEC=y
-endif
 ifeq "$(USE_SYSTEM_XMLSEC)" "y"
   ifeq "$(USE_XULRUNNER)" "y"
 	BUILD_DEPS += , libxmlsec1-dev (>= 1.2.9-1.1), libxmlsec1-nss (>= 1.2.9-1.1), libxmlsec1-openssl (>= 1.2.9-1.1)
@@ -532,12 +538,6 @@ else
 	SHLIBS_OVERRIDE += -Ldebian/shlibs.override.xmlsec
 endif
 
-ifeq "$(SARGE_BACKPORT)" "y"
-	BUILD_CAIROCANVAS=n
-else
-	BUILD_CAIROCANVAS=y
-endif
-USE_SYSTEM_CAIRO=y
 ifeq "$(BUILD_CAIROCANVAS)" "y"
   ifeq "$(USE_SYSTEM_CAIRO)" "y"
     BUILD_DEPS+= , libcairo2-dev, libglitz-glx1-dev
@@ -547,12 +547,6 @@ else
   CONFIGURE_FLAGS+= --disable-cairo
 endif
 
-BUILD_MDBTOOLS=y
-ifeq "$(SARGE_BACKPORT)" "y"
-	USE_SYSTEM_MDBTOOLS=n
-else
-	USE_SYSTEM_MDBTOOLS=y
-endif
 ifneq "$(BUILD_MDBTOOLS)" "y"
   CONFIGURE_FLAGS+= --disable-access
 else
@@ -562,17 +556,12 @@ else
   endif
 endif
 
-BUILD_KDE=y
 ifeq "$(BUILD_KDE)" "n"
 	CONFIGURE_FLAGS+= --disable-kde
 	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-kde
 	CONFIGURE_FLAGS+= --with-images="industrial crystal hicontrast"
 else
-ifneq "$(SARGE_BACKPORT)" "y"
-       BUILD_DEPS += , kdelibs4-dev (>= 4:3.4.3-2)
-else
-       BUILD_DEPS += , kdelibs4-dev
-endif
+       BUILD_DEPS += , kdelibs4-dev $(KDELIBS_MINVER)
 endif
 
 ifeq "$(BUILD_BINFILTERS)" "y"
@@ -585,25 +574,12 @@ else
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
-  ifeq "$(SARGE_BACKPORT)" "y"
-	USE_SYSTEM_HSQLDB=n
-  else
-	USE_SYSTEM_HSQLDB=y
-  endif
   ifeq "$(USE_SYSTEM_HSQLDB)" "y"
 	BUILD_DEPS += , libhsqldb-java (>= 1.8.0.0-2) [$(NO_JAVA_ARCHS)]
 	BASE_HSQLDB_DEPENDS = libhsqldb-java (>= 1.8.0.0-2)
 	CONFIGURE_FLAGS+= --with-system-hsqldb
   endif
 
-  ifeq "$(SARGE_BACKPORT)" "y"
-	USE_SYSTEM_BSH=n
-  else
-	USE_SYSTEM_BSH=y
-  endif
-  ifeq "$(DIST)" "Ubuntu"
-	USE_SYSTEM_BSH=y
-  endif
   ifeq "$(USE_SYSTEM_BSH)" "y"
 	BUILD_DEPS += , bsh (>= 2.0b4-1) [$(NO_JAVA_ARCHS)]
 	COMMON_BSH_DEPENDS = bsh (>= 2.0b4-1)
@@ -611,8 +587,10 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
 endif
 
-#		 --with-ooo-builddir=$(CURDIR) \
-#		 --with-src=$(CURDIR) \
+ifeq "$(USE_SYSTEM_LPSOLVE)" "y"
+	CONFIGURE_FLAGS += --with-system-lpsolve
+	BUILD_DEPS += , liblpsolve55-dev [!amd64], libufsparse-dev [!amd64]
+endif
 
 # Use compiler cache?  Include ccache in DEB_BUILD_OPTIONS for much faster rebuild times
 # A complete build uses about 200Mb of compiler cache.
@@ -654,17 +632,6 @@ PYTHON_SITE:=debian/python-uno/usr/lib/python$(PYMAJOR).$(PYMINOR)/site-packages
 
 CURDIR ?= $(shell pwd)
 
-ifeq "$(ARCH)-linux" "sparc-linux"
-	# use 32-bit compiler
-	CC_PREFIX=sparc-linux-gnu-
-endif
-
-ifeq "$(SARGE_BACKPORT)" "y"
-	GCC_VERSION = 3.3
-else
-	GCC_VERSION =
-	GCJ_VERSION := $(shell $(JAVA_HOME)/bin/gcj --version | head -n 1 | awk '{ print $$3; }' | cut -d"." -f1,2)
-endif
 ifeq ($(GCC_VERSION),)
 	BUILD_PATH = /usr/lib/jvm/java-gcj/bin:$$PATH
 else
@@ -677,7 +644,61 @@ endif
 endif
 BUILD_PATH := $(CURDIR)/debian/usr/bin:$(BUILD_PATH)
 
+ifeq "$(BUILD_ONLY_LIBMYTHES)" "y"
+clean:
+	dh_testdir
+	dh_testroot
 
+	rm -rf ooo-build/build
+	rm -rf debian/libmythes-dev
+	
+	dh_clean
+
+build:
+	mkdir -p ooo-build/build
+	cd ooo-build/build && \
+		tar xfvj ../src/$(TAG)-core.tar.bz2 $(TAG)/lingucomponent/source/thesaurus/mythes && \
+		tar xfvj ../src/$(TAG)-system.tar.bz2 $(TAG)/dictionaries/util
+	cd $(SOURCE_TREE)/lingucomponent/source/thesaurus/mythes && \
+		$(CXX) -O2 -Wall -ansi -pedantic -I. -c mythes.cxx && \
+		ar rc libmythes.a mythes.o && ranlib libmythes.a && \
+		mv libmythes.a $(CURDIR)/ooo-build/build
+	cd $(SOURCE_TREE)/lingucomponent/source/thesaurus/mythes && \
+		$(CXX) -fPIC -O2 -Wall -ansi -pedantic -I. -c mythes.cxx && \
+		ar rc libmythes_pic.a mythes.o && ranlib libmythes_pic.a && \
+		mv libmythes_pic.a $(CURDIR)/ooo-build/build
+
+install: build
+	mkdir -p debian/libmythes-dev/usr/lib
+	mkdir -p debian/libmythes-dev/usr/include
+	mkdir -p debian/libmythes-dev/usr/share/mythes
+	install -m644 \
+		$(CURDIR)/ooo-build/build/libmythes.a \
+		debian/libmythes-dev/usr/lib/libmythes.a
+	install -m644 \
+		$(CURDIR)/ooo-build/build/libmythes_pic.a \
+		debian/libmythes-dev/usr/lib/libmythes_pic.a
+	install -m644 $(SOURCE_TREE)/lingucomponent/source/thesaurus/mythes/mythes.hxx \
+		debian/libmythes-dev/usr/include
+	install -m755 $(SOURCE_TREE)/dictionaries/util/th_gen_idx.pl \
+		debian/libmythes-dev/usr/share/mythes/th_gen_idx.pl
+
+binary: binary-arch
+
+binary-arch: install
+	dh_testdir
+	dh_testroot
+	dh_installdocs -plibmythes-dev
+	dh_installchangelogs -plibmythes-dev -XNEWS
+	debian/scripts/installoverrides
+	dh_link -plibmythes-dev
+	dh_fixperms -plibmythes-dev
+	dh_compress -plibmythes-dev
+	dh_installdeb -plibmythes-dev
+	dh_gencontrol -plibmythes-dev -- -v$(BINARY_VERSION)
+	dh_md5sums -plibmythes-dev
+	dh_builddeb -plibmythes-dev
+else
 # Because of the stampdir magic, when you actually want to run a rule
 # over, you would have to remove the stamp manually.  Now, just do
 # 'debian/rules <target> <target> ... FORCE=1', and the stamp files
@@ -753,7 +774,7 @@ clean:
 	rm -rf debian/usr
 
 	# stlport home
-	rm -rf $(CURDIR)/stlport4
+	rm -rf $(CURDIR)/stlport
 	# convenience link
 	rm -f build
 
@@ -809,6 +830,7 @@ clean:
 	rm -f ooo-build/desktop/*.png
 
 	rm -f ooo-build/src/GSI*err
+	rm -f ooo-build/config.*
 
 ifneq "$(OOO_L10N_DIR)" ""
 	rm -rf $(OOO_L10N_DIR)
@@ -920,17 +942,6 @@ endif
 			-e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 	        >> debian/control < debian/control.lang.in; \
 	done
-	# -l10n-en became -l10n-en-us
-	perl -pi -e 's/Conflicts:(.*)openoffice.org2-l10n-en-us$$/Conflicts:$$1openoffice.org2-l10n-en-us, openoffice.org-l10n-en/' debian/control
-	perl -pi -e 's/Replaces:(.*)openoffice.org2-l10n-en-us$$/Replaces:$$1openoffice.org2-l10n-en-us, openoffice.org-l10n-en/' debian/control
-	perl -pi -e 's/Provides:(.*)openoffice.org2-l10n-en-us$$/Provides:$$1openoffice.org2-l10n-en-us, openoffice.org-l10n-en/' debian/control
-	# ... and -hi became -hi-in
-	perl -pi -e 's/Conflicts:(.*)openoffice.org2-l10n-hi-in$$/Conflicts:$$1openoffice.org2-l10n-hi-in, openoffice.org-l10n-hi/' debian/control
-	perl -pi -e 's/Replaces:(.*)openoffice.org2-l10n-hi-in$$/Replaces:$$1openoffice.org2-l10n-hi-in, openoffice.org-l10n-hi/' debian/control
-	perl -pi -e 's/Provides:(.*)openoffice.org2-l10n-hi-in$$/Provides:$$1openoffice.org2-l10n-hi-in, openoffice.org-l10n-hi/' debian/control
-	# make -l10n-fi suggest openoffice.org-spellcheck-fi to
-	# match myspell-fi and Soikko
-	perl -pi -e 's/myspell-dictionary-fi/myspell-dictionary-fi | openoffice.org-spellcheck-fi/' debian/control
 
 ifneq "$(HELPISOS)" ""
 	for LNUM in $(HELPISOS) ; do \
@@ -983,6 +994,26 @@ ifeq "$(SARGE_BACKPORT)" "y"
 	perl -pi -e "s,%CONTRIB%,contrib/,g" debian/control
 else
 	perl -pi -e "s,%CONTRIB%,,g" debian/control
+endif
+
+	python debian/joinctrl.py < debian/control > debian/control.tmp
+	mv debian/control.tmp debian/control
+
+	# -l10n-en became -l10n-en-us
+	perl -pi -e 's/Conflicts:(.*)openoffice.org2-l10n-en-us$$/Conflicts:$$1openoffice.org2-l10n-en-us, openoffice.org-l10n-en/' debian/control
+	perl -pi -e 's/Replaces:(.*)openoffice.org2-l10n-en-us$$/Replaces:$$1openoffice.org2-l10n-en-us, openoffice.org-l10n-en/' debian/control
+	perl -pi -e 's/Provides:(.*)openoffice.org2-l10n-en-us$$/Provides:$$1openoffice.org2-l10n-en-us, openoffice.org-l10n-en/' debian/control
+	# ... and -hi became -hi-in
+	perl -pi -e 's/Conflicts:(.*)openoffice.org2-l10n-hi-in$$/Conflicts:$$1openoffice.org2-l10n-hi-in, openoffice.org-l10n-hi/' debian/control
+	perl -pi -e 's/Replaces:(.*)openoffice.org2-l10n-hi-in$$/Replaces:$$1openoffice.org2-l10n-hi-in, openoffice.org-l10n-hi/' debian/control
+	perl -pi -e 's/Provides:(.*)openoffice.org2-l10n-hi-in$$/Provides:$$1openoffice.org2-l10n-hi-in, openoffice.org-l10n-hi/' debian/control
+	# make -l10n-fi suggest openoffice.org-spellcheck-fi to
+	# match myspell-fi and Soikko
+	perl -pi -e 's/myspell-dictionary-fi/myspell-dictionary-fi | openoffice.org-spellcheck-fi/' debian/control
+
+ifneq "$(SARGE_BACKPORT)" "y"
+	# new python policy
+	perl -pi -e 's/Package: python-uno/Package: python-uno\n\Provides: \$${python:Provides}\n\XB-Python-Version: \$${python:Versions}/' debian/control
 endif
 
 .DELETE_ON_ERROR: debian/control
@@ -1078,10 +1109,10 @@ endif
 
 ifeq "$(USE_SYSTEM_STLPORT)" "y"
 	# stlport home
-	if [ ! -d stlport4 ]; then \
-		mkdir -p stlport4; \
-		ln -sf /usr/include/stlport stlport4/stlport; \
-		ln -sf /usr/lib stlport4/lib; \
+	if [ ! -d stlport ]; then \
+		mkdir -p stlport; \
+		ln -sf /usr/include/stlport stlport/stlport; \
+		ln -sf /usr/lib stlport/lib; \
 	fi
 endif
 
@@ -1192,6 +1223,14 @@ ifneq "$(HELPISOS)" ""
 			 ./openoffice.org-help-en-us/$(OODIR)/help/en && \
 			rm -rf ./openoffice.org-$$i/$(OODIR)/help/en; \
 		done
+	# save space by removing non-packaged localized help; we don't need
+	# them anyway
+	cd debian/tmp/pkg && \
+		for iso in $(filter-out en-US,$(LANGPACKISOS)); do \
+			if ! `echo $(HELPISOS) | grep -q $$iso`; then \
+				rm -rf openoffice.org-help-$$iso; \
+			fi; \
+		done
 endif
 
 ifneq "$(findstring en-US,$(ISOS))" ""
@@ -1265,17 +1304,6 @@ endif
 	mv debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/gengal  \
 		debian/tmp/pkg/openoffice.org-dev/$(OODIR)/program
 
-	# install gsicheck into -dev
-	install -m755 $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD/$$OUTPATH$$PROEXT)/bin/gsicheck \
-		debian/tmp/pkg/openoffice.org-dev/$(OODIR)/program/gsicheck.bin
-	( \
-	  echo '#! /bin/sh'; \
-	  echo 'LD_LIBRARY_PATH=$${LD_LIBRARY_PATH:+$$LD_LIBRARY_PATH:}/$(OODIR)/program'; \
-	  echo 'export LD_LIBRARY_PATH'; \
-	  echo 'exec /$(OODIR)/program/gsicheck.bin "$$@"'; \
-	) > debian/tmp/pkg/openoffice.org-dev/$(OODIR)/program/gsicheck
-	chmod 755 debian/tmp/pkg/openoffice.org-dev/$(OODIR)/program/gsicheck
-
 	# move SDK documentation into own package
 	rm -rf debian/tmp/pkg/openoffice.org-dev-doc
 	mkdir -p debian/tmp/pkg/openoffice.org-dev-doc/usr/share/doc
@@ -1306,6 +1334,11 @@ $(STAMP_DIR)/maintscripts: debian/shell-lib.sh debian/java-lib.sh debian/control
 	      grep LIBSUFFIX debian/scripts/vars.$(ARCH) >> $$MAINTSCRIPT; \
 	      cat debian/shell-lib.sh >> $$MAINTSCRIPT; \
 	      sed -n '/^#INCLUDE_SHELL_LIB#$$/,$$p' < $$MAINTSCRIPT.in | sed -e '/^#INCLUDE_SHELL_LIB#$$/d' >> $$MAINTSCRIPT; \
+	    else \
+	      echo '#!/bin/sh' > $$MAINTSCRIPT ; \
+	      echo THIS_PACKAGE=$$PKG >> $$MAINTSCRIPT ;\
+	      echo THIS_SCRIPT=$$FILE >> $$MAINTSCRIPT ;\
+	      cat debian/shell-lib.sh >> $$MAINTSCRIPT; \
 	    fi; \
 	  done; \
 	done
@@ -1350,6 +1383,7 @@ endif
 	  done; \
 	done	
 endif
+
 	touch $@
 
 # Install files generated by setup into package directories
@@ -1453,11 +1487,9 @@ endif
 
 ifeq "$(BUILD_KDE)" "y"
 	mkdir -p -m755 $(PKGDIR)-kde/$(OODIR)/program
-	for f in kdefilepicker libfps_kde.so libvclplug_kde[0-9]*.so libkab*so; do \
+	for f in kdefilepicker libfps_kde.so libvclplug_kde[0-9]*.so libkab*so kdebe*so; do \
 	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-kde/$(OODIR)/program || exit 1 ;\
 	done
-	mv $(CURDIR)/debian/tmp/$(OODIR)/program/kdebe1.uno.so \
-		$(PKGDIR)-kde/$(OODIR)/program
 endif
 
 	# move the GNOME stuff which are *not* in gid_Module_Optional_Gnome
@@ -1467,14 +1499,16 @@ endif
 	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-gnome/$(OODIR)/program || exit 1;\
 	done
 
-	# split out gtk stuff, keep gconfbe1.uno.so in -gtk, gdm depends
-	# on it anyway.
+	# split out gtk stuff
 	mkdir -p -m755 $(PKGDIR)-gtk/$(OODIR)/program
 	mv $(PKGDIR)-gnome/$(OODIR)/program/* $(PKGDIR)-gtk/$(OODIR)/program/
 	mv $(PKGDIR)-gtk/$(OODIR)/program/ucpgvfs1.uno.so \
 		$(PKGDIR)-gnome/$(OODIR)/program/
 	mv $(PKGDIR)-gtk/$(OODIR)/program/gnome-set-default-application \
 		$(PKGDIR)-gnome/$(OODIR)/program/
+#	# keep gconfbe1.uno.so in -gtk, gdm depends on it anyway.
+#	mv $(PKGDIR)-gtk/$(OODIR)/program/gconfbe* \
+#		$(PKGDIR)-gnome/$(OODIR)/program
 
 	mkdir -p -m755 $(PKGDIR)-evolution/$(OODIR)/program
 	mv $(PKGDIR)-core/$(OODIR)/program/libevoab2.so $(PKGDIR)-evolution/$(OODIR)/program
@@ -1552,8 +1586,14 @@ endif
 			$(PKGDIR)-calc/$(OODIR)/program; \
 	done
 
+ifneq "$(ARCH)" "amd64"
 	mv $(PKGDIR)-core/$(OODIR)/program/scsolver.uno.so \
 		$(PKGDIR)-calc/$(OODIR)/program
+  ifneq "$(USE_SYSTEM_LPSOLVE)" "y"
+	mv $(PKGDIR)-core/$(OODIR)/program/liblpsolve55.so \
+		$(PKGDIR)-calc/$(OODIR)/program
+  endif
+endif
 
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(USE_SYSTEM_HSQLDB)" "y"
@@ -1590,7 +1630,7 @@ ifeq "$(PACKAGE_QA_TOOLS)" "y"
 
 	mkdir -p -m755 $(PKGDIR)-qa-tools/usr/share/java/openoffice$(VER)
 	cp $(SOURCE_TREE)/qadevOOo/unx*.pro/class/OOoRunnerLight.jar \
-		$(PKGDIR)-qa-tools/usr/share/java/openoffice$(VER)/
+		$(PKGDIR)-qa-tools/usr/share/java/openoffice$(VER)
 
 	mkdir -p -m755 $(PKGDIR)-qa-tools/$(OODIR)/smoketest
 	install -m755 $(SOURCE_TREE)/smoketestoo_native/smoketest.pl \
@@ -1619,7 +1659,7 @@ ifeq (0,1)
 		sed -e 's,Exec=openoffice.org-2.0 \(.*\) %U,Exec=ooffice$(VER) \1 %U,' \
 		    -e "s,Icon=openofficeorg-20-$$p,Icon=ooo-$$p," \
 			-e 's,Name=OpenOffice.org 2.0,Name=OpenOffice.org $(VER),' \
-			-e '/^Name=/s,  , ,' \
+			-e 's/  / /' \
 		   < $$dirname/$$p.desktop \
 		   > $(PKGDIR)-$$p/usr/share/applications/ooo$(VER)-$$p.desktop || exit 1 ;\
 		case "$$p" in *math*|*draw*) \
@@ -1712,9 +1752,11 @@ endif
 
 ifeq "$(USE_SYSTEM_STLPORT)" "y"
 	# when we use external stlport, we just can and should do a symlink
+	# for the SDK includes
 	cd $(PKGDIR)-dev/usr/include/openoffice$(VER) && \
 		rm -rf stl && ln -s /usr/include/stlport stl
 endif
+ifeq "$(ENABLE_JAVA)" "y"
 	# move SDK Java stuff into /usr/share/java/openoffice
 	rm -f $(PKGDIR)-dev/$(OODIR)/sdk/classes
 	mkdir -p $(PKGDIR)-dev/usr/share/java/openoffice$(VER)
@@ -1724,6 +1766,7 @@ endif
 	cd $(PKGDIR)-dev/$(OODIR)/sdk/classes && \
 		ln -s /usr/share/java/openoffice/com com
 	rm -rf $(PKGDIR)-dev/usr/share/openoffice/sdk
+endif
 	chmod 644 $(PKGDIR)-dev/$(OODIR)/sdk/configure.pl
 	for i in csh csh.in; do \
 		perl -pi -e 's,/usr/bin/csh,/bin/csh,'\
@@ -1784,9 +1827,8 @@ ifeq "$(ENABLE_JAVA)" "y"
 	  debian/scripts/aot-compile $$jar $(PKGDIR)-gcj/$(OODIR)/program/classes-native/$$(basename $$jar).so || exit $$?; \
 	done
   else
-	cp $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/*.jar.so \
+	cp $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/*.jar.so \
 		$(PKGDIR)-gcj/$(OODIR)/program/classes-native
-  endif
 	# remove not needed ones
 	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/FCFGMerge.jar.so
 	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/unoloader.jar.so
@@ -1798,11 +1840,12 @@ ifeq "$(ENABLE_JAVA)" "y"
 	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/jarpackager.jar.so
 	# not needed yet
 	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/javacanvas.uno.jar.so
+  endif
 	# create gcj classmap
 	mkdir -p $(PKGDIR)-gcj/usr/share/gcj-$(GCJ_VERSION)/classmap.d
 	cd debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/classes && \
 	for i in `find . -type f -name "*.jar" | sed -e s,./,,g`; do \
-	  gcj-dbtool-$(GCJ_VERSION) -f $(CURDIR)/$(PKGDIR)-gcj/usr/share/gcj-$(GCJ_VERSION)/classmap.d/openoffice.org$(VER)-gcj.db $$i /$(OODIR)/program/classes-native/$$i.so; \
+	  $(JAVA_HOME)/bin/gcj-dbtool -f $(CURDIR)/$(PKGDIR)-gcj/usr/share/gcj-$(GCJ_VERSION)/classmap.d/openoffice.org$(VER)-gcj.db $$i /$(OODIR)/program/classes-native/$$i.so; \
 	done
   endif
 endif
@@ -1849,6 +1892,12 @@ ifeq "$(ENABLE_JAVA)" "y"
 			  $(CURDIR)/$(PKGDIR)-dev/usr/share/java/openoffice; \
 		done
 endif
+
+ifeq "$(ENABLE_JAVA)" "y"
+	# hrmpf, again something like that, we really need to find the root cause for that
+	ln -s libjava_uno.so \
+		$(PKGDIR)-base/$(OODIR)/program/libjava_uno
+endif
 	
 ifeq "$(ARCH)" "amd64"
   ifeq "$(AMD64_EXPERIMENTAL)" "y"
@@ -1879,8 +1928,6 @@ ifeq "$(ARCH)" "amd64"
 
   endif
 endif
-	-find debian -name gengal*
-
 	touch $@
 
 # Install files generated by setup into arch-independent package directories
@@ -2053,9 +2100,7 @@ endif
 	ln -s /etc/openoffice/dictionary.lst \
 		$(PKGDIR)-common/usr/share/myspell/dicts/dictionary.lst
 
-	# FIXME
-	# convert icons to xpm; we need them for the Debian menu policy...
-	-cd $(PKGDIR)-common/usr/share/icons/gnome/32x32/apps && \
+	cd $(PKGDIR)-common/usr/share/icons/gnome/32x32/apps && \
 	  for x in *.png; do convert $$x `basename $$x .png`.xpm; done
 
 ifeq "$(ENABLE_JAVA)" "y"
@@ -2103,8 +2148,6 @@ endif
 	    -e 's|\(UNO_JAVA_JFW_CLASSPATH_URLS=.*\)|\1 file:///usr/share/java/postgresql.jar|' < $(PKGDIR)-common/$(OODIR)/program/jvmfwk3rc > $$TMP && \
 	mv $$TMP $(PKGDIR)-common/$(OODIR)/program/jvmfwk3rc
 
-# FIXME: psprint.conf doesn't exist?
-	test -e $(PKGDIR)-common/$(OODIR)/share/psprint/psprint.conf || echo 'FIXME'
 	# move psprint.conf into /etc
 	mkdir -p $(PKGDIR)-common/etc/openoffice$(VER)
 	mv $(PKGDIR)-common/$(OODIR)/share/psprint/psprint.conf \
@@ -2115,8 +2158,7 @@ endif
 	# prepare a fake sofficerc in the place where OOo expects it
 	# which does nothing except reference the "normal" one
 	# which we put into /etc
-	# FIXME
-	-mv $(PKGDIR)-common/$(OODIR)/program/sofficerc \
+	mv $(PKGDIR)-common/$(OODIR)/program/sofficerc \
 		$(PKGDIR)-common/etc/openoffice$(VER)/sofficerc
 	( \
 	  echo "# *DO NOT* CHANGE THIS FILE. IT ONLY TAKES THE SETTINGS FROM"; \
@@ -2136,7 +2178,7 @@ ifeq "$(HELPISOS)" ""
 	set -e; \
 	for z in images.zip images_industrial.zip images_crystal.zip images_hicontrast.zip; do \
 		echo "repackaging $$z..."; \
-		rm -rf $$z; mkdir $$z; i\
+		rm -rf $$z; mkdir $$z; \
 		cd $$z; \
 		unzip -q $(CURDIR)/$(PKGDIR)-common/$(OODIR)/share/config/$$z && \
 		cp -r $(CURDIR)/$(SOURCE_TREE)/default_images/res/helpimg res && \
@@ -2196,6 +2238,9 @@ endif
 
 	# add "openoffice" symlink
 	cd $(PKGDIR)-common/usr/bin && ln -s ooo-wrapper openoffice
+	
+	# we also need soffice, for UNO bootstrap :/
+	cd $(PKGDIR)-common/usr/bin && ln -s ../../$(OODIR)/program/soffice soffice
 
 	touch $@
 
@@ -2336,6 +2381,9 @@ endif
 	dh_installdebconf
 	dh_installmime
 	dh_installmenu
+ifneq "$(SARGE_BACKPORT)" "y"
+	dh_pycentral
+endif
 	dh_python
 	debian/scripts/installoverrides
 	dh_link
@@ -2439,22 +2487,12 @@ endif
 		-V'common-bsh-depends=$(COMMON_BSH_DEPENDS)' \
 		-V'java-common-depends=$(JAVA_COMMON_DEPENDS)' \
 		-V'java-common-java-depends=$(JAVA_COMMON_JAVA_DEPENDS)' \
-		-v'mozilla-nss-depends=$(MOZILLA_NSS_DEPENDS)' \
+		-V'mozilla-nss-depends=$(MOZILLA_NSS_DEPENDS)' \
 		-V'Binary-Version=$(BINARY_VERSION)' \
 		-V'ooo-filter52-dep=$(OOO_FILTER52_DEP)' \
 		-v$(BINARY_VERSION)
 	dh_md5sums
-ifeq "xxx$(DIST)-$(PKGSOURCE)" "Ubuntu-openoffice.org$(VER)$(EXPSUFFIX)"
-	-for i in $$(find ooo-build/bonobo ooo-build/po -name '*.po'); do \
-		mv $$i $$i.hidden; \
-	done
 	dh_builddeb
-	-for i in $$(find ooo-build/bonobo ooo-build/po -name '*.po.hidden'); do \
-		mv $$i $${i%*.hidden}; \
-	done
-else
-	dh_builddeb
-endif
 
 # Build architecture independant packages using the common target.
 binary-indep: $(GSI_EXPORT_STAMP) $(STAMP_DIR)/binary-indep
@@ -2483,10 +2521,10 @@ binary-arch: $(STAMP_DIR)/binary-arch
 $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/maintscripts
 	$(MAKE) -f debian/rules DH_OPTIONS="$(DEBHELPER_OPTIONS) -s" binary-common
 ifeq "$(ARCH)" "amd64"
-  ifneq "$(AMD64_EXPERIMENTAL)" "y"
-	@echo "Didn't we mention, the packages are a bit experimental?"
-	exit 63
-  endif
+#  ifneq "$(AMD64_EXPERIMENTAL)" "y"
+#	@echo "Didn't we mention, the packages are a bit experimental?"
+#	exit 63
+#  endif
 endif
 	touch $@
 
@@ -2533,7 +2571,7 @@ environment:
 get-ooo-build:
 	# press enter at the password prompt
 	cvs -d:pserver:anonymous@anoncvs3.gnome.org:/cvs/gnome login
-	cvs -z3 -d:pserver:anonymous@anoncvs3.gnome.org:/cvs/gnome co -r ooo-build-2-0-2 ooo-build
+	cvs -z3 -d:pserver:anonymous@anoncvs3.gnome.org:/cvs/gnome co ooo-build
 	cd ooo-build && ./autogen.sh $(CONFIGURE_FLAGS)
 
 # Download the latest ooo-build sources
@@ -2554,7 +2592,7 @@ ifeq "$(ARCH)" "i386"
 	  tar -T - -jcvf $(CURDIR)/../openoffice.org$(VER)-binaries_$(SOURCE_VERSION)_$(ARCH).tar.bz2
 else
   ifeq "$(ARCH)" "arm"
-	cd §(SOURCE_TREE)/solver/$(shell . $(SOURCE_TRE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE/*.sh; echo $$OUTPATH$$PROEXT) && \
+	cd $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TRE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE/*.sh; echo $$OUTPATH$$PROEXT) && \
 	  find bin lib | xargs file | sed -n '/LSB \(executable\|shared object\),.* not stripped/ s/:.*$$//p' | \
 	  tar -T - -jcvf $(CURDIR)/../openoffice.org$(VER)-binaries_$(SOURCE_VERSION)_$(ARCH).tar.bz2
   else
@@ -2569,5 +2607,6 @@ endif
 .PHONY: clean-debdir clean-instsetoo clean-objectdirs clean default configure
 .PHONY: build build-indep build-arch install-arch install-indep
 .PHONY: $(stampdir_targets)
+endif
 
 # vim:set noet ai sts=8 sw=8 tw=0:
