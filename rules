@@ -125,7 +125,8 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
                 --enable-package-directories \
                 --with-installed-ooo-dirname=openoffice$(VER) \
                 --mandir=/usr/share/man \
-                --with-lang="$(ISOS)" \
+                --with-docdir=/usr/share/doc/openoffice.org \
+		--with-lang="$(ISOS)" \
                 --with-build-version="openoffice.org$(VER)-core $(BINARY_VERSION), `date`" \
                 --disable-strip \
                 --enable-atkbridge \
@@ -1086,9 +1087,15 @@ endif
 
 	# move SDK documentation into own package
 	rm -rf debian/tmp/pkg/openoffice.org-dev-doc
-	mkdir -p debian/tmp/pkg/openoffice.org-dev-doc/usr/share/doc
+	mkdir -p debian/tmp/pkg/openoffice.org-dev-doc/usr/share/doc/openoffice.org-dev-doc
 	mv debian/tmp/pkg/openoffice.org-dev/usr/share/doc/openoffice.org \
-		debian/tmp/pkg/openoffice.org-dev-doc/usr/share/doc/openoffice.org-dev-doc
+		debian/tmp/pkg/openoffice.org-dev-doc/usr/share/doc/openoffice.org-dev && \
+	mv debian/tmp/pkg/openoffice.org-dev-doc/usr/share/doc/openoffice.org-dev/sdk/docs \
+		debian/tmp/pkg/openoffice.org-dev-doc/usr/share/doc/openoffice.org-dev
+	rm -rf debian/tmp/pkg/openoffice.org-dev/usr/share/doc/openoffice.org \
+		debian/tmp/pkg/openoffice.org-dev-doc/usr/share/doc/openoffice.org-dev/sdk
+	ln -s /usr/share/doc/openoffice.org-dev/docs \
+		debian/tmp/pkg/openoffice.org-dev-doc/usr/share/doc/openoffice.org-dev-doc/docs
 	mkdir -p debian/tmp/pkg/openoffice.org-dev-doc/$(OODIR)/sdk
 	mv debian/tmp/pkg/openoffice.org-dev/$(OODIR)/sdk/examples \
 		debian/tmp/pkg/openoffice.org-dev-doc/$(OODIR)/sdk
@@ -1524,6 +1531,9 @@ endif
 		) > $$i; \
 		chmod 755 $$i; \
 	done		
+        # adapt symlink
+	cd $(PKGDIR)-dev/$(OODIR)/sdk && \
+		ln -sf /usr/share/doc/openoffice.org-dev/docs docs
 
 	# install gsicheck into -dev
 	install -m755 $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD/$$OUTPATH$$PROEXT)/bin/gsicheck \
@@ -1705,19 +1715,15 @@ endif
 	perl -pi -e 's,/bin/awk,/usr/bin/awk,'\
 		$(PKGDIR)-common/$(OODIR)/program/uri-encode
 
-	chmod 644 $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev-doc/sdk/docs/images/bg_table2.gif
-	chmod 644 $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev-doc/sdk/docs/images/bg_table3.gif
+	chmod 644 $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev/docs/images/bg_table2.gif
+	chmod 644 $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev/docs/images/bg_table3.gif
 	chmod 644 $(PKGDIR)-dev-doc/$(OODIR)/sdk/examples/DevelopersGuide/ScriptingFramework/ScriptSelector/build.xml
 	chmod 644 $(PKGDIR)-dev-doc/$(OODIR)/sdk/examples/DevelopersGuide/ScriptingFramework/SayHello/build.xml
-	rm -f $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev-doc/sdk/LICENSE
-
-	mkdir -p $(PKGDIR)-dev-doc/$(OODIR)/sdk
-	cd $(PKGDIR)-dev-doc/$(OODIR)/sdk && \
-		ln -sf /usr/share/doc/openoffice.org-dev-doc/sdk/docs docs
+	rm -f $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev-doc/LICENSE
 
 	# replace href's to the non-free DevelopersGuide with links to the
 	# online docs
-	find $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev-doc/sdk/docs -name '*.html' \
+	find $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev/docs -name '*.html' \
 	  | xargs sed -ri 's,href="[^"]*DevelopersGuide/([^"]*\.(xhtml|pdf)[^"]*)".*,href="http://api.openoffice.org/docs/DevelopersGuide/\1,g'
 
 ifeq "$(ENABLE_JAVA)" "y"
