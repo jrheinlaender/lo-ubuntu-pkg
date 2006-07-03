@@ -137,7 +137,8 @@ USE_FIREFOX=n
 USE_XULRUNNER=n
 KDELIBS_MINVER= (>= 4:3.4.3-2)
 USE_SYSTEM_LPSOLVE=y
-PACKAGE_QA_TOOLS=y
+USE_DBUS=y
+PACKAGE_QA_TOOLS=n
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
@@ -152,6 +153,7 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
                 --enable-package-directories \
                 --with-installed-ooo-dirname=openoffice$(VER) \
                 --mandir=/usr/share/man \
+                --with-docdir=/usr/share/doc/openoffice.org \
                 --with-lang="$(BUILD_ISOS)" \
 		 -x-libraries=/usr/lib \
                 --with-build-version="openoffice.org$(VER) $(BINARY_VERSION), `date`" \
@@ -187,6 +189,8 @@ ifeq "$(DIST)" "Ubuntu"
   SYSTEM_ALTLINUXHYPH=n
   USE_SYSTEM_XMLSEC=y
   USE_SYSTEM_HUNSPELL=n
+  # not for dapper
+  USE_SYSTEM_LPSOLVE=n
 endif
 
 # Debian Sarge backport
@@ -213,6 +217,7 @@ ifeq "$(SARGE_BACKPORT)" "y"
   USE_SYSTEM_XMLSEC=n
   USE_XULRUNNER=n
   USE_SYSTEM_LPSOLVE=n
+  USE_DBUS=n
 endif
 
 #############
@@ -269,7 +274,9 @@ export DH_COMPAT
 
 ifeq "$(BUILD_PYUNO)" "y"
     ifneq "$(SARGE_BACKPORT)" "y"
-	BUILD_DEPS += , python-central (>= 0.5), debhelper (>= 5.0.37.2), python-dev (>= 2.3.5-7)
+	# XXX dapper
+	#BUILD_DEPS += , python-central (>= 0.5), debhelper (>= 5.0.37.2), python-dev (>= 2.3.5-7)
+	BUILD_DEPS += , debhelper, python-dev
     else
 	BUILD_DEPS += , debhelper, python-dev
     endif
@@ -328,20 +335,22 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	ta-IN te-IN tg th ti-ER tn tr ts vi xh zh-CN zh-TW zu
 
     # additional things built in Ubuntu, having belocs-locales
-    ISOS := $(sort $(ISOS) as-IN ku mr-IN or-IN sh-YU ur-IN)
+    #ISOS := $(sort $(ISOS) as-IN eu ku mr-IN or-IN sh-YU ur-IN)
+    ISOS := $(sort $(ISOS) as-IN eu ku mr-IN)
     HELPISOS := $(sort $(HELPISOS) bg br km mk ru sk sl)
     LANGPACKISOS := $(sort $(LANGPACKISOS) as-IN ku mr-IN or-IN sh-YU ur-IN)
     REMOVE_HELP := bs cy fi lt lv sh-YU sr-CS ur-IN
     FILTER_HELP := ga hr pl rw sk th tr vi
 
-    # ALL_ISOS, taken from solenv/inc/postset.mk
-    ALL_ISOS := af ar be-BY bg br bn bn-BD bn-IN bs ca cs cy da de el \
-	en-GB en-US en-ZA eo es et eu fa fi fr ga gl gu-IN he hi-IN hr hu \
-	it ja km kn-IN ko lo lt lv mk ms ne nb nl nn nr ns \
-	pa-IN pl pt pt-BR ru rw sk sl sh-YU sr-CS ss st sv sw sw-TZ sx \
-	ta-IN th tn tr ts ve vi xh zh-CN zh-TW zu
-    # filter out all, which are not in ALL, add ALL
-    BUILD_ISOS := en-US ALL $(filter-out $(ALL_ISOS), $(ISOS))
+#    # ALL_ISOS, taken from solenv/inc/postset.mk
+#    ALL_ISOS := af ar be-BY bg br bn bn-BD bn-IN bs ca cs cy da de el \
+#	en-GB en-US en-ZA eo es et eu fa fi fr ga gl gu-IN he hi-IN hr hu \
+#	it ja km kn-IN ko lo lt lv mk ms ne nb nl nn nr ns \
+#	pa-IN pl pt pt-BR ru rw sk sl sh-YU sr-CS ss st sv sw sw-TZ sx \
+#	ta-IN th tn tr ts ve vi xh zh-CN zh-TW zu
+#    # filter out all, which are not in ALL, add ALL
+#    BUILD_ISOS = en-US ALL $(filter-out $(ALL_ISOS), $(ISOS))
+    BUILD_ISOS = $(ISOS)
   endif
 else
   ISOS=en-US
@@ -388,7 +397,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 ifneq "$(SARGE_BACKPORT)" "y"
 	export JAVA_HOME=/usr/lib/jvm/java-gcj
 	CONFIGURE_FLAGS += --with-java=gij
-	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.56-1) [$(NO_JAVA_ARCHS)], ant (>= 1.6.5) [$(NO_JAVA_ARCHS)]
+	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.56) [$(NO_JAVA_ARCHS)], ant (>= 1.6.5) [$(NO_JAVA_ARCHS)]
 	GCJ_VERSION = $(shell $(JAVA_HOME)/bin/gcj --version | head -n 1 | awk '{ print $$3; }' | cut -d"." -f1,2)
 	SYSTEM_XT=y
 	SYSTEM_XALAN=y
@@ -592,6 +601,10 @@ ifeq "$(USE_SYSTEM_LPSOLVE)" "y"
 	BUILD_DEPS += , liblpsolve55-dev [!amd64], libufsparse-dev [!amd64]
 endif
 
+ifeq "$(USE_DBUS)" "y"
+	BUILD_DEPS += , libdbus-glib-1-dev (>= 0.60)
+endif
+
 # Use compiler cache?  Include ccache in DEB_BUILD_OPTIONS for much faster rebuild times
 # A complete build uses about 200Mb of compiler cache.
 ifeq (ccache,$(findstring ccache,$(DEB_BUILD_OPTIONS)))
@@ -619,7 +632,6 @@ AVAIL_CPUS := $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
 ifneq (,$(findstring $(ARCH), powerpc sparc))
   AVAIL_CPUS := 1
 endif
-  AVAIL_CPUS := 1
 ifneq ($(AVAIL_CPUS),1)
   CONFIGURE_FLAGS += --with-num-cpus=$(shell expr $(AVAIL_CPUS) + 1)
 endif
@@ -1190,8 +1202,8 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/build
 	dh_testroot
 
 	rm -rf $(CURDIR)/debian/tmp
-	cd ooo-build ; DESTDIR=$(CURDIR)/debian/tmp $(MAKE) install
 	-find debian/tmp ! -perm -200 | xargs chmod u+w
+	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DESTDIR=$(CURDIR)/debian/tmp $(MAKE) install
 
 	# no special ooqstart wrappers
 	install -m 755 build/ooo-wrapper$(VER) \
@@ -1306,9 +1318,13 @@ endif
 
 	# move SDK documentation into own package
 	rm -rf debian/tmp/pkg/openoffice.org-dev-doc
-	mkdir -p debian/tmp/pkg/openoffice.org-dev-doc/usr/share/doc
+	mkdir -p debian/tmp/pkg/openoffice.org-dev-doc/usr/share/doc/openoffice.org-dev-doc
 	mv debian/tmp/pkg/openoffice.org-dev/usr/share/doc/openoffice.org \
-		debian/tmp/pkg/openoffice.org-dev-doc/usr/share/doc/openoffice.org-dev-doc
+		debian/tmp/pkg/openoffice.org-dev-doc/usr/share/doc/openoffice.org-dev && \
+	mv debian/tmp/pkg/openoffice.org-dev-doc/usr/share/doc/openoffice.org-dev/sdk/docs \
+		debian/tmp/pkg/openoffice.org-dev-doc/usr/share/doc/openoffice.org-dev
+	rm -rf debian/tmp/pkg/openoffice.org-dev/usr/share/doc/openoffice.org \
+		debian/tmp/pkg/openoffice.org-dev-doc/usr/share/doc/openoffice.org-dev/sdk
 	mkdir -p debian/tmp/pkg/openoffice.org-dev-doc/$(OODIR)/sdk
 	mv debian/tmp/pkg/openoffice.org-dev/$(OODIR)/sdk/examples \
 		debian/tmp/pkg/openoffice.org-dev-doc/$(OODIR)/sdk
@@ -1784,6 +1800,9 @@ endif
 		) > $$i; \
 		chmod 755 $$i; \
 	done		
+        # adapt symlink
+	cd $(PKGDIR)-dev/$(OODIR)/sdk && \
+		ln -sf /usr/share/doc/openoffice.org-dev/docs docs
 
 	# install gsicheck into -dev
 	install -m755 $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD/$$OUTPATH$$PROEXT)/bin/gsicheck \
@@ -2008,19 +2027,15 @@ endif
 	perl -pi -e 's,/bin/awk,/usr/bin/awk,'\
 		$(PKGDIR)-common/$(OODIR)/program/uri-encode
 
-	chmod 644 $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev-doc/sdk/docs/images/bg_table2.gif
-	chmod 644 $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev-doc/sdk/docs/images/bg_table3.gif
+	chmod 644 $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev/docs/images/bg_table2.gif
+	chmod 644 $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev/docs/images/bg_table3.gif
 	chmod 644 $(PKGDIR)-dev-doc/$(OODIR)/sdk/examples/DevelopersGuide/ScriptingFramework/ScriptSelector/build.xml
 	chmod 644 $(PKGDIR)-dev-doc/$(OODIR)/sdk/examples/DevelopersGuide/ScriptingFramework/SayHello/build.xml
-	rm -f $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev-doc/sdk/LICENSE
-
-	mkdir -p $(PKGDIR)-dev-doc/$(OODIR)/sdk
-	cd $(PKGDIR)-dev-doc/$(OODIR)/sdk && \
-		ln -sf /usr/share/doc/openoffice.org-dev-doc/sdk/docs docs
+	rm -f $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev-doc/LICENSE
 
 	# replace href's to the non-free DevelopersGuide with links to the
 	# online docs
-	find $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev-doc/sdk/docs -name '*.html' \
+	find $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev/docs -name '*.html' \
 	  | xargs sed -ri 's,href="[^"]*DevelopersGuide/([^"]*\.(xhtml|pdf)[^"]*)".*,href="http://api.openoffice.org/docs/DevelopersGuide/\1,g'
 
 ifeq "$(ENABLE_JAVA)" "y"
@@ -2241,6 +2256,17 @@ endif
 	
 	# we also need soffice, for UNO bootstrap :/
 	cd $(PKGDIR)-common/usr/bin && ln -s ../../$(OODIR)/program/soffice soffice
+	
+	# add symlinks for docs and examples
+	cd $(PKGDIR)-dev-doc/$(OODIR)/sdk && \
+		rm -rf docs && \
+		ln -s /usr/share/doc/openoffice.org-dev-doc/docs docs
+	cd $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev-doc && \
+		ln -s /usr/share/doc/openoffice.org-dev/docs docs
+	cd $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev-doc && \
+		ln -s /$(OODIR)/sdk/examples examples
+	cd $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev && \
+		ln -s /$(OODIR)/sdk/examples examples
 
 	touch $@
 
@@ -2382,7 +2408,7 @@ endif
 	dh_installmime
 	dh_installmenu
 ifneq "$(SARGE_BACKPORT)" "y"
-	dh_pycentral
+	-dh_pycentral
 endif
 	dh_python
 	debian/scripts/installoverrides
@@ -2571,7 +2597,7 @@ environment:
 get-ooo-build:
 	# press enter at the password prompt
 	cvs -d:pserver:anonymous@anoncvs3.gnome.org:/cvs/gnome login
-	cvs -z3 -d:pserver:anonymous@anoncvs3.gnome.org:/cvs/gnome co ooo-build
+	cvs -z3 -d:pserver:anonymous@anoncvs3.gnome.org:/cvs/gnome co -r ooo-build-2-0-3 ooo-build
 	cd ooo-build && ./autogen.sh $(CONFIGURE_FLAGS)
 
 # Download the latest ooo-build sources
