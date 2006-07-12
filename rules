@@ -311,7 +311,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 ifneq "$(SARGE_BACKPORT)" "y"
 	JAVA_HOME=/usr/lib/jvm/java-gcj
 	CONFIGURE_FLAGS += --with-java=gij
-	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.56-1) [$(NO_JAVA_ARCHS)], ant (>= 1.6.5) [$(NO_JAVA_ARCHS)]
+	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.56-1) [$(NO_JAVA_ARCHS)], ant (>= 1.6.5) [$(NO_JAVA_ARCHS)], mingw32 [$(NO_JAVA_ARCHS)]
 	GCJ_VERSION = $(shell $(JAVA_HOME)/bin/gcj --version | head -n 1 | awk '{ print $$3; }' | cut -d"." -f1,2)
 	SYSTEM_XT=y
 	SYSTEM_XALAN=y
@@ -999,6 +999,14 @@ ifneq "$(USE_EXTERNAL_MYTHES)" "y"
 		mv libmythes_nopic.a $(CURDIR)/$(SOURCE_TREE)
 endif
 
+ifeq "$(ENABLE_JAVA)" "y"
+	# rebuild unowinreg.dll from source
+	cd $(SOURCE_TREE)/odk/source/unowinreg/win && \
+		i586-mingw32msvc-gcc -Wall -D_JNI_IMPLEMENTATION_ -I$(JDK_HOME)/include -shared -o unowinreg.dll unowinreg.c \
+			-Wl,--kill-at -lkernel32 -ladvapi32 && \
+		mv unowinreg.dll $(CURDIR)/$(SOURCE_TREE)
+endif
+
 	touch $@
 
 install: $(STAMP_DIR)/install
@@ -1118,6 +1126,11 @@ endif
 	mkdir -p debian/tmp/pkg/openoffice.org-dev-doc/$(OODIR)/sdk
 	mv debian/tmp/pkg/openoffice.org-dev/$(OODIR)/sdk/examples \
 		debian/tmp/pkg/openoffice.org-dev-doc/$(OODIR)/sdk
+
+ifeq "$(ENABLE_JAVA)" "y"
+	# install unowinreg.dll
+	cp $(CURDIR)/$(SOURCE_TREE)/unowinreg.dll $(PKGDIR)-dev/usr/share/java/openoffice
+endif
 
 	touch $@
 
@@ -1997,9 +2010,12 @@ endif
 	dh_link
 	dh_fixperms
 ifeq "$(BUILD_DBG_PACKAGE)" "y"
-	dh_strip --dbg-package=openoffice.org-dbg
+	dh_strip --dbg-package=openoffice.org-dbg -X unowinreg.dll
 else
-	dh_strip
+	dh_strip -X unowinreg.dll
+endif
+ifeq "$(ENABLE_JAVA)" "y"
+	i586-mingw32msvc-strip debian/openoffice.org-dev/usr/share/java/openoffice/unowinreg.dll
 endif
 	dh_desktop
 	dh_installxmlcatalogs
