@@ -72,7 +72,7 @@ PACKAGE_TTF_OPENSYMBOL=y
 PACKAGE_NPSOPLUGIN=n
 BUILD_JARS_NATIVE=n
 REBUILD_JARS_NATIVE=y
-SHLIBS_OVERRIDE = --
+SHLIBS_OVERRIDE = -- -Ldebian/openoffice.org-core.shlibs.local
 BUILD_BINFILTERS=y
 BUILD_ONLY_EN_US=n
 ENABLE_JAVA=y
@@ -1002,7 +1002,7 @@ endif
 ifeq "$(ENABLE_JAVA)" "y"
 	# rebuild unowinreg.dll from source
 	cd $(SOURCE_TREE)/odk/source/unowinreg/win && \
-		i586-mingw32msvc-gcc -Wall -D_JNI_IMPLEMENTATION_ -I$(JDK_HOME)/include -shared -o unowinreg.dll unowinreg.c \
+		i586-mingw32msvc-gcc -Wall -D_JNI_IMPLEMENTATION_ -I$(JAVA_HOME)/include -shared -o unowinreg.dll unowinreg.c \
 			-Wl,--kill-at -lkernel32 -ladvapi32 && \
 		mv unowinreg.dll $(CURDIR)/$(SOURCE_TREE)
 endif
@@ -1126,11 +1126,6 @@ endif
 	mkdir -p debian/tmp/pkg/openoffice.org-dev-doc/$(OODIR)/sdk
 	mv debian/tmp/pkg/openoffice.org-dev/$(OODIR)/sdk/examples \
 		debian/tmp/pkg/openoffice.org-dev-doc/$(OODIR)/sdk
-
-ifeq "$(ENABLE_JAVA)" "y"
-	# install unowinreg.dll
-	cp $(CURDIR)/$(SOURCE_TREE)/unowinreg.dll $(PKGDIR)-dev/usr/share/java/openoffice
-endif
 
 	touch $@
 
@@ -1572,6 +1567,11 @@ endif
 	) > $(PKGDIR)-dev/$(OODIR)/program/gsicheck
 	chmod 755 $(PKGDIR)-dev/$(OODIR)/program/gsicheck
 
+ifeq "$(ENABLE_JAVA)" "y"
+	# install unowinreg.dll
+	install -m644 $(CURDIR)/$(SOURCE_TREE)/unowinreg.dll $(PKGDIR)-dev/usr/share/java/openoffice
+endif
+
 ifeq "$(INTERNAL_STDLIBS)" "y"
 	# we have to do this manually; specifying --without-system-stdlibs
 	# won't work because the odering of the configure arguments...
@@ -2010,12 +2010,14 @@ endif
 	dh_link
 	dh_fixperms
 ifeq "$(BUILD_DBG_PACKAGE)" "y"
-	dh_strip --dbg-package=openoffice.org-dbg -X unowinreg.dll
+	dh_strip --dbg-package=openoffice.org-dbg -Xunowinreg.dll
 else
-	dh_strip -X unowinreg.dll
+	dh_strip -Xunowinreg.dll
 endif
 ifeq "$(ENABLE_JAVA)" "y"
+  ifeq (nostrip,$(findstring nostrip,$(DEB_BUILD_OPTIONS)))
 	i586-mingw32msvc-strip debian/openoffice.org-dev/usr/share/java/openoffice/unowinreg.dll
+  endif
 endif
 	dh_desktop
 	dh_installxmlcatalogs
@@ -2027,7 +2029,7 @@ endif
 			mv $$i `echo "$$i" | sed -e "s/\.gz$$//"`; \
 		done; \
 	fi
-	dh_makeshlibs -V
+	dh_makeshlibs -n -V
 	dh_installdeb
 ifeq "$(ARCH)" "i386"
 	# this LD_ASSUME_KERNEL is for working around some bug which makes
