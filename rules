@@ -50,7 +50,7 @@ unexport LS_COLORS
 
 #TAG=src680-m$(MILESTONE)
 #MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)"| cut -d. -f3)
-TAG=src680-m175
+TAG=src680-m176
 SOURCE_TREE=ooo-build/build/$(TAG)
 STAMP_DIR=debian/stampdir
 
@@ -72,7 +72,7 @@ PACKAGE_TTF_OPENSYMBOL=y
 PACKAGE_NPSOPLUGIN=n
 BUILD_JARS_NATIVE=n
 REBUILD_JARS_NATIVE=y
-SHLIBS_OVERRIDE = --
+SHLIBS_OVERRIDE = -- -Ldebian/openoffice.org-core.shlibs.local
 BUILD_BINFILTERS=y
 BUILD_ONLY_EN_US=n
 ENABLE_JAVA=y
@@ -311,7 +311,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 ifneq "$(SARGE_BACKPORT)" "y"
 	JAVA_HOME=/usr/lib/jvm/java-gcj
 	CONFIGURE_FLAGS += --with-java=gij --enable-gcjaot
-	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.56-1) [$(NO_JAVA_ARCHS)], ant (>= 1.6.5) [$(NO_JAVA_ARCHS)]
+	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.56-1) [$(NO_JAVA_ARCHS)], ant (>= 1.6.5) [$(NO_JAVA_ARCHS)], mingw32 [$(NO_JAVA_ARCHS)]
 	GCJ_VERSION = $(shell $(JAVA_HOME)/bin/gcj --version | head -n 1 | awk '{ print $$3; }' | cut -d"." -f1,2)
 	SYSTEM_XT=y
 	SYSTEM_XALAN=y
@@ -323,7 +323,7 @@ ifeq "$(ARCH)" "i386"
 else
 	JAVA_HOME=/usr/lib/j2sdk1.4-ibm
 endif
-	BUILD_DEPS += , j2sdk1.4 [i386], j2sdk1.4-ibm [powerpc], ant [$(NO_JAVA_ARCHS)]
+	BUILD_DEPS += , j2sdk1.4 [i386], ibm-j2sdk1.4 [powerpc], ant [$(NO_JAVA_ARCHS)]
 	CONFIGURE_FLAGS += --with-system-xml-apis
 	SYSTEM_XT=n
 	SYSTEM_XALAN=y
@@ -999,6 +999,14 @@ ifneq "$(USE_EXTERNAL_MYTHES)" "y"
 		mv libmythes_nopic.a $(CURDIR)/$(SOURCE_TREE)
 endif
 
+ifeq "$(ENABLE_JAVA)" "y"
+	# rebuild unowinreg.dll from source
+	cd $(SOURCE_TREE)/odk/source/unowinreg/win && \
+		i586-mingw32msvc-g++ -Wall -D_JNI_IMPLEMENTATION_ -I$(JAVA_HOME)/include -shared -o unowinreg.dll unowinreg.cxx \
+			-Wl,--kill-at -lkernel32 -ladvapi32 && \
+		mv unowinreg.dll $(CURDIR)/$(SOURCE_TREE)
+endif
+
 	touch $@
 
 install: $(STAMP_DIR)/install
@@ -1130,7 +1138,6 @@ $(STAMP_DIR)/maintscripts: debian/shell-lib.sh debian/java-lib.sh debian/control
 	rm -f debian/*.{pre,post}{inst,rm}
 
 	# generate maintainer scripts from *.in
-	# or generate default script which calls hook in openoffice.org-debian-files package
 	for PKG in $(PACKAGES); do \
 	  for FILE in postinst postrm preinst prerm; do \
 	    MAINTSCRIPT=debian/$$PKG.$$FILE ; \
@@ -1139,11 +1146,6 @@ $(STAMP_DIR)/maintscripts: debian/shell-lib.sh debian/java-lib.sh debian/control
 	      grep LIBSUFFIX debian/scripts/vars.$(ARCH) >> $$MAINTSCRIPT; \
 	      cat debian/shell-lib.sh >> $$MAINTSCRIPT; \
 	      sed -n '/^#INCLUDE_SHELL_LIB#$$/,$$p' < $$MAINTSCRIPT.in | sed -e '/^#INCLUDE_SHELL_LIB#$$/d' >> $$MAINTSCRIPT; \
-	    else \
-	      echo '#!/bin/sh' > $$MAINTSCRIPT ; \
-	      echo THIS_PACKAGE=$$PKG >> $$MAINTSCRIPT ;\
-	      echo THIS_SCRIPT=$$FILE >> $$MAINTSCRIPT ;\
-	      cat debian/shell-lib.sh >> $$MAINTSCRIPT; \
 	    fi; \
 	  done; \
 	done
@@ -1564,6 +1566,11 @@ endif
 	  echo 'exec /$(OODIR)/program/gsicheck.bin "$$@"'; \
 	) > $(PKGDIR)-dev/$(OODIR)/program/gsicheck
 	chmod 755 $(PKGDIR)-dev/$(OODIR)/program/gsicheck
+
+ifeq "$(ENABLE_JAVA)" "y"
+	# install unowinreg.dll
+	install -m644 $(CURDIR)/$(SOURCE_TREE)/unowinreg.dll $(PKGDIR)-dev/usr/share/java/openoffice
+endif
 
 ifeq "$(INTERNAL_STDLIBS)" "y"
 	# we have to do this manually; specifying --without-system-stdlibs
@@ -2003,9 +2010,14 @@ endif
 	dh_link
 	dh_fixperms
 ifeq "$(BUILD_DBG_PACKAGE)" "y"
-	dh_strip --dbg-package=openoffice.org-dbg
+	dh_strip --dbg-package=openoffice.org-dbg -Xunowinreg.dll
 else
-	dh_strip
+	dh_strip -Xunowinreg.dll
+endif
+ifeq "$(ENABLE_JAVA)" "y"
+  ifeq (nostrip,$(findstring nostrip,$(DEB_BUILD_OPTIONS)))
+	i586-mingw32msvc-strip debian/openoffice.org-dev/usr/share/java/openoffice/unowinreg.dll
+  endif
 endif
 	dh_desktop
 	dh_installxmlcatalogs
@@ -2017,7 +2029,7 @@ endif
 			mv $$i `echo "$$i" | sed -e "s/\.gz$$//"`; \
 		done; \
 	fi
-	dh_makeshlibs -V
+	dh_makeshlibs -n -V
 	dh_installdeb
 ifeq "$(ARCH)" "i386"
 	# this LD_ASSUME_KERNEL is for working around some bug which makes

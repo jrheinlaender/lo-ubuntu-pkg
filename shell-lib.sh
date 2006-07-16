@@ -63,5 +63,3 @@ trap "message;\
 
 VER=
 
-#DEBHELPER#
-
