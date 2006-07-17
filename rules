@@ -98,7 +98,7 @@ PACKAGE_TTF_OPENSYMBOL=y
 PACKAGE_NPSOPLUGIN=n
 BUILD_JARS_NATIVE=n
 REBUILD_JARS_NATIVE=y
-SHLIBS_OVERRIDE = --
+SHLIBS_OVERRIDE = -- -Ldebian/openoffice.org-core.shlibs.local
 BUILD_BINFILTERS=y
 BUILD_ONLY_EN_US=n
 ENABLE_JAVA=y
@@ -138,6 +138,7 @@ USE_XULRUNNER=n
 KDELIBS_MINVER= (>= 4:3.4.3-2)
 USE_SYSTEM_LPSOLVE=y
 USE_DBUS=y
+USE_SYSTEM_NEON=y
 PACKAGE_QA_TOOLS=n
 
 # when we have a package we want to have to be installed on older things with some older
@@ -156,7 +157,7 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
                 --with-docdir=/usr/share/doc/openoffice.org \
                 --with-lang="$(BUILD_ISOS)" \
 		 -x-libraries=/usr/lib \
-                --with-build-version="openoffice.org$(VER) $(BINARY_VERSION), `date`" \
+                --with-build-version="openoffice.org$(VER) $(BINARY_VERSION), `LANG=C date`" \
                 --disable-strip \
                 --enable-atkbridge \
                 --enable-lockdown
@@ -199,7 +200,6 @@ ifeq "$(SARGE_BACKPORT)" "y"
   PATCHSET=$(DIST)Sarge
   BUILD_CAIROCANVAS=n
   BUILD_JARS_NATIVE=n
-  GCC_VERSION=3.3
   KDELIBS_MINVER=
   LIBALTLINUXHYPH_MINVER=
   LIBDB_JAVA_MINVER=
@@ -218,6 +218,15 @@ ifeq "$(SARGE_BACKPORT)" "y"
   USE_XULRUNNER=n
   USE_SYSTEM_LPSOLVE=n
   USE_DBUS=n
+endif
+
+# X, curl and neon builddeps...
+ifeq "$(SARGE_BACKPORT)" "y"
+	BUILD_DEPS += , libcurl3-dev
+	BUILD_DEPS += , xlibs-static-dev, render-dev
+else
+	BUILD_DEPS += , libcurl3-openssl-dev
+	BUILD_DEPS += , libxkbfile-dev, libxinerama-dev, x11proto-render-dev
 endif
 
 #############
@@ -246,10 +255,7 @@ endif
 ifeq "$(ARCH)-linux-gnu" "sparc-linux-gnu"
 	# use 32-bit compiler
 	CC_PREFIX=sparc-linux-gnu-
-	# 4.1 fails
-	GCC_VERSION=4.0
 endif
-BUILD_DEPS += , gcc-4.0 [sparc], g++-4.0 [sparc]
 
 ifneq "$(USE_EXTERNAL_MYTHES)" "y"
   ifeq ($(ARCH),$(findstring $(ARCH),$(shell dpkg-architecture -L | sed -e s/i386// -e s/powerpc// -e s/sparc// -e s/amd64//)))
@@ -397,7 +403,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 ifneq "$(SARGE_BACKPORT)" "y"
 	export JAVA_HOME=/usr/lib/jvm/java-gcj
 	CONFIGURE_FLAGS += --with-java=gij
-	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.56) [$(NO_JAVA_ARCHS)], ant (>= 1.6.5) [$(NO_JAVA_ARCHS)]
+	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.56-1) [$(NO_JAVA_ARCHS)], ant (>= 1.6.5) [$(NO_JAVA_ARCHS)] #, mingw32 [$(NO_JAVA_ARCHS)]
 	GCJ_VERSION = $(shell $(JAVA_HOME)/bin/gcj --version | head -n 1 | awk '{ print $$3; }' | cut -d"." -f1,2)
 	SYSTEM_XT=y
 	SYSTEM_XALAN=y
@@ -409,7 +415,7 @@ ifeq "$(ARCH)" "i386"
 else
 	JAVA_HOME=/usr/lib/j2sdk1.4-ibm
 endif
-	BUILD_DEPS += , j2sdk1.4 [i386], j2sdk1.4-ibm [powerpc], ant [$(NO_JAVA_ARCHS)]
+	BUILD_DEPS += , j2sdk1.4 [i386], ibm-j2sdk1.4 [powerpc], ant [$(NO_JAVA_ARCHS)]
 	CONFIGURE_FLAGS += --with-system-xml-apis
 	SYSTEM_XT=n
 	SYSTEM_XALAN=y
@@ -605,6 +611,15 @@ ifeq "$(USE_DBUS)" "y"
 	BUILD_DEPS += , libdbus-glib-1-dev (>= 0.60)
 endif
 
+ifeq "$(USE_SYSTEM_NEON)" "y"
+  ifeq "$(SARGE_BACKPORT)" "y"
+	BUILD_DEPS += , libneon24-dev
+  else
+	BUILD_DEPS += , libneon25-dev
+  endif
+	CONFIGURE_FLAGS += --with-system-neon
+endif
+
 # Use compiler cache?  Include ccache in DEB_BUILD_OPTIONS for much faster rebuild times
 # A complete build uses about 200Mb of compiler cache.
 ifeq (ccache,$(findstring ccache,$(DEB_BUILD_OPTIONS)))
@@ -632,6 +647,7 @@ AVAIL_CPUS := $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
 ifneq (,$(findstring $(ARCH), powerpc sparc))
   AVAIL_CPUS := 1
 endif
+AVAIL_CPUS := 1
 ifneq ($(AVAIL_CPUS),1)
   CONFIGURE_FLAGS += --with-num-cpus=$(shell expr $(AVAIL_CPUS) + 1)
 endif
@@ -1194,6 +1210,14 @@ ifneq "$(USE_EXTERNAL_MYTHES)" "y"
 		mv libmythes_nopic.a $(CURDIR)/$(SOURCE_TREE)
 endif
 
+ifeq "$(ENABLE_JAVA)" "y-braindamage"
+	# rebuild unowinreg.dll from source
+	cd $(SOURCE_TREE)/odk/source/unowinreg/win && \
+		i586-mingw32msvc-gcc -Wall -D_JNI_IMPLEMENTATION_ -I$(JAVA_HOME)/include -shared -o unowinreg.dll unowinreg.c \
+			-Wl,--kill-at -lkernel32 -ladvapi32 && \
+		mv unowinreg.dll $(CURDIR)/$(SOURCE_TREE)
+endif
+
 	touch $@
 
 install: $(STAMP_DIR)/install
@@ -1340,7 +1364,6 @@ $(STAMP_DIR)/maintscripts: debian/shell-lib.sh debian/java-lib.sh debian/control
 	rm -f debian/*.{pre,post}{inst,rm}
 
 	# generate maintainer scripts from *.in
-	# or generate default script which calls hook in openoffice.org-debian-files package
 	for PKG in $(PACKAGES); do \
 	  case $$PKG in *l10n-*|*help-*|*experimental*) continue; esac; \
 	  for FILE in postinst postrm preinst prerm; do \
@@ -1350,11 +1373,6 @@ $(STAMP_DIR)/maintscripts: debian/shell-lib.sh debian/java-lib.sh debian/control
 	      grep LIBSUFFIX debian/scripts/vars.$(ARCH) >> $$MAINTSCRIPT; \
 	      cat debian/shell-lib.sh >> $$MAINTSCRIPT; \
 	      sed -n '/^#INCLUDE_SHELL_LIB#$$/,$$p' < $$MAINTSCRIPT.in | sed -e '/^#INCLUDE_SHELL_LIB#$$/d' >> $$MAINTSCRIPT; \
-	    else \
-	      echo '#!/bin/sh' > $$MAINTSCRIPT ; \
-	      echo THIS_PACKAGE=$$PKG >> $$MAINTSCRIPT ;\
-	      echo THIS_SCRIPT=$$FILE >> $$MAINTSCRIPT ;\
-	      cat debian/shell-lib.sh >> $$MAINTSCRIPT; \
 	    fi; \
 	  done; \
 	done
@@ -1800,9 +1818,9 @@ endif
 		) > $$i; \
 		chmod 755 $$i; \
 	done		
-        # adapt symlink
+        # remove symlink, it should be in -dev-doc
 	cd $(PKGDIR)-dev/$(OODIR)/sdk && \
-		ln -sf /usr/share/doc/openoffice.org-dev/docs docs
+		rm docs
 
 	# install gsicheck into -dev
 	install -m755 $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD/$$OUTPATH$$PROEXT)/bin/gsicheck \
@@ -1814,6 +1832,11 @@ endif
 	  echo 'exec /$(OODIR)/program/gsicheck.bin "$$@"'; \
 	) > $(PKGDIR)-dev/$(OODIR)/program/gsicheck
 	chmod 755 $(PKGDIR)-dev/$(OODIR)/program/gsicheck
+
+ifeq "$(ENABLE_JAVA)" "y-braindamage"
+	# install unowinreg.dll
+	install -m644 $(CURDIR)/$(SOURCE_TREE)/unowinreg.dll $(PKGDIR)-dev/usr/share/java/openoffice
+endif
 
 ifeq "$(INTERNAL_STDLIBS)" "y"
 	# we have to do this manually; specifying --without-system-stdlibs
@@ -2260,7 +2283,7 @@ endif
 	# add symlinks for docs and examples
 	cd $(PKGDIR)-dev-doc/$(OODIR)/sdk && \
 		rm -rf docs && \
-		ln -s /usr/share/doc/openoffice.org-dev-doc/docs docs
+		ln -sf /usr/share/doc/openoffice.org-dev/docs docs
 	cd $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev-doc && \
 		ln -s /usr/share/doc/openoffice.org-dev/docs docs
 	cd $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev-doc && \
@@ -2415,9 +2438,14 @@ endif
 	dh_link
 	dh_fixperms
 ifeq "$(BUILD_DBG_PACKAGE)" "y"
-	dh_strip --dbg-package=openoffice.org-dbg
+	dh_strip --dbg-package=openoffice.org-dbg -Xunowinreg.dll
 else
-	dh_strip
+	dh_strip -Xunowinreg.dll
+endif
+ifeq "$(ENABLE_JAVA)" "y"
+  ifeq (nostrip,$(findstring nostrip,$(DEB_BUILD_OPTIONS)))
+	i586-mingw32msvc-strip debian/openoffice.org-dev/usr/share/java/openoffice/unowinreg.dll
+  endif
 endif
 	dh_desktop
 	dh_iconcache
@@ -2486,7 +2514,7 @@ endif
 	    debian/deppackage.postinst.in > debian/$$PKG.postinst; \
 	done
 
-	dh_makeshlibs -V
+	dh_makeshlibs -n -V
 	dh_installdeb
 ifeq "$(ARCH)" "i386"
 	# this LD_ASSUME_KERNEL is for working around some bug which makes
