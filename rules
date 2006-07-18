@@ -67,11 +67,10 @@ BUILD_AMD64=n
 PATCHSET=$(DIST)
 BUILD_DEPS=
 BUILD_PYUNO=y
-PACKAGE_TESTTOOL=n
+PACKAGE_QA_TOOLS=n
 PACKAGE_TTF_OPENSYMBOL=y
 PACKAGE_NPSOPLUGIN=n
 BUILD_JARS_NATIVE=n
-REBUILD_JARS_NATIVE=y
 SHLIBS_OVERRIDE = -- -Ldebian/openoffice.org-core.shlibs.local
 BUILD_BINFILTERS=y
 BUILD_ONLY_EN_US=n
@@ -311,7 +310,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 ifneq "$(SARGE_BACKPORT)" "y"
 	JAVA_HOME=/usr/lib/jvm/java-gcj
 	CONFIGURE_FLAGS += --with-java=gij --enable-gcjaot
-	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.56-1) [$(NO_JAVA_ARCHS)], ant (>= 1.6.5) [$(NO_JAVA_ARCHS)], mingw32 [$(NO_JAVA_ARCHS)]
+	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.56) [$(NO_JAVA_ARCHS)], ant (>= 1.6.5) [$(NO_JAVA_ARCHS)], mingw32 [$(NO_JAVA_ARCHS)]
 	GCJ_VERSION = $(shell $(JAVA_HOME)/bin/gcj --version | head -n 1 | awk '{ print $$3; }' | cut -d"." -f1,2)
 	SYSTEM_XT=y
 	SYSTEM_XALAN=y
@@ -323,7 +322,7 @@ ifeq "$(ARCH)" "i386"
 else
 	JAVA_HOME=/usr/lib/j2sdk1.4-ibm
 endif
-	BUILD_DEPS += , j2sdk1.4 [i386], ibm-j2sdk1.4 [powerpc], ant [$(NO_JAVA_ARCHS)]
+	BUILD_DEPS += , j2sdk1.4 [i386], ibm-j2sdk1.4 [powerpc], ant [$(NO_JAVA_ARCHS)], mingw32 [$(NO_JAVA_ARCHS)]
 	CONFIGURE_FLAGS += --with-system-xml-apis
 	SYSTEM_XT=n
 	SYSTEM_XALAN=y
@@ -1252,6 +1251,15 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/install $(STAMP_DIR)/install-indep ooo-buil
 		> l10n.fdupes
 	debian/scripts/cleandupes --base=openoffice.org$(VER) --prefix=debian < l10n.fdupes
 
+ifeq "$(PACKAGE_QA_TOOLS)" "y"
+	mkdir -p $(PKGDIR)-qa-tools/$(OODIR)/program
+	mv $(PKGDIR)-common/$(OODIR)/program/.testtoolrc \
+		$(PKGDIR)-qa-tools/$(OODIR)/program
+	chmod 644 $(PKGDIR)-qa-tools/$(OODIR)/program/.testtoolrc; fi
+else
+	rm -f $(PKGDIR)-common/$(OODIR)/program/.testtoolrc
+endif
+
 	touch $@
 
 
@@ -1592,36 +1600,21 @@ endif
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(BUILD_JARS_NATIVE)" "y"
 	rm -rf $(PKGDIR)-gcj
-	mkdir -p $(PKGDIR)-gcj/$(OODIR)/program/classes-native
-  ifeq "$(REBUILD_JARS_NATIVE)" "y"
+	mkdir -p $(PKGDIR)-gcj//usr/lib/gcj-$(GCJ_VERSIONi
 	# recompile the jar; the preferred way is to produce the binaries from
 	# the bytecode.
-	mkdir -p $(PKGDIR)-gcj/$(OODIR)/program/classes-native
+	mkdir -p $(PKGDIR)-gcj/usr/lib/gcj-$(GCJ_VERSION)
 	for jar in debian/tmp/pkg/openoffice.org-common/usr/lib/openoffice/program/classes/*.jar $(PKGDIR)-common/$(OODIR)/program/classes/*.jar $(PKGDIR)-java-common/usr/share/java/openoffice/*.jar; \
 	do \
 	  [ -h "$$jar" -o ! -f "$$jar" ] && continue; \
-	  debian/scripts/aot-compile $$jar $(PKGDIR)-gcj/$(OODIR)/program/classes-native/$$(basename $$jar).so || exit $$?; \
+	  debian/scripts/aot-compile $$jar $(PKGDIR)-gcj/usr/lib/gcj-$(GCJ_VERSION)/$$(basename $$jar).so || exit $$?; \
 	done
-  else
-	cp $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/*.jar.so \
-		$(PKGDIR)-gcj/$(OODIR)/program/classes-native
-	# remove not needed ones
-	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/FCFGMerge.jar.so
-	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/unoloader.jar.so
-	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/schema.jar.so
-	# NetBeans crap
-	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/jhall.jar.so
-	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/nbantext.jar.so
-	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/openide.jar.so
-	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/jarpackager.jar.so
-	# not needed yet
-	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/javacanvas.uno.jar.so
   endif
 	# create gcj classmap
 	mkdir -p $(PKGDIR)-gcj/usr/share/gcj-$(GCJ_VERSION)/classmap.d
 	cd debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/classes && \
 	for i in `find . -type f -name "*.jar" | sed -e s,./,,g`; do \
-	  $(JAVA_HOME)/bin/gcj-dbtool -f $(CURDIR)/$(PKGDIR)-gcj/usr/share/gcj-$(GCJ_VERSION)/classmap.d/openoffice.org$(VER)-gcj.db $$i /$(OODIR)/program/classes-native/$$i.so; \
+	  $(JAVA_HOME)/bin/gcj-dbtool -f $(CURDIR)/$(PKGDIR)-gcj/usr/share/gcj-$(GCJ_VERSION)/classmap.d/openoffice.org$(VER)-gcj.db $$i /usr/lib/gcj-$(GCJ_VERSION)/$$i.so; \
 	done
   endif
 endif
