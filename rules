@@ -342,9 +342,9 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 
     # additional things built in Ubuntu, having belocs-locales
     #ISOS := $(sort $(ISOS) as-IN eu ku mr-IN or-IN sh-YU ur-IN)
-    ISOS := $(sort $(ISOS) as-IN eu ku mr-IN)
-    HELPISOS := $(sort $(HELPISOS) bg br km mk ru sk sl)
-    LANGPACKISOS := $(sort $(LANGPACKISOS) as-IN ku mr-IN or-IN sh-YU ur-IN)
+    ISOS := en-US $(sort $(filter-out en-US, $(ISOS)) eu ku)
+    HELPISOS := en-US $(sort $(filter-out en-US, $(HELPISOS)) bg br km mk ru sk sl)
+    LANGPACKISOS := en-US $(sort $(filter-out en-US, $(LANGPACKISOS)) eu ku)
     REMOVE_HELP := bs cy fi lt lv sh-YU sr-CS ur-IN
     FILTER_HELP := ga hr pl rw sk th tr vi
 
@@ -403,7 +403,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 ifneq "$(SARGE_BACKPORT)" "y"
 	export JAVA_HOME=/usr/lib/jvm/java-gcj
 	CONFIGURE_FLAGS += --with-java=gij
-	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.56-1) [$(NO_JAVA_ARCHS)], ant (>= 1.6.5) [$(NO_JAVA_ARCHS)] #, mingw32 [$(NO_JAVA_ARCHS)]
+	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.56) [$(NO_JAVA_ARCHS)], ant (>= 1.6.5) [$(NO_JAVA_ARCHS)] #, mingw32 [$(NO_JAVA_ARCHS)]
 	GCJ_VERSION = $(shell $(JAVA_HOME)/bin/gcj --version | head -n 1 | awk '{ print $$3; }' | cut -d"." -f1,2)
 	SYSTEM_XT=y
 	SYSTEM_XALAN=y
@@ -1162,6 +1162,7 @@ ifneq "$(LANGPACKISOS)" "en-US"
 	# work around broken stuff in the GSI breaking the build in svx
 	for iso in as-IN he lo lv ml-IN mr-IN nb or-IN sh-YU sr-CS ur-IN; do \
 	  case " $(LANGPACKISOS) " in *\ $$iso\ *) ;; *) continue; esac; \
+	  [ -f ooo-build/src/GSI_$$iso.sdf ] || continue; \
 	  TMP=`mktemp -q`; \
 	  grep -v OOO_LICENSE ooo-build/src/GSI_$$iso.sdf \
 	    > $$TMP && mv $$TMP ooo-build/src/GSI_$$iso.sdf; \
@@ -1227,6 +1228,7 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/build
 
 	rm -rf $(CURDIR)/debian/tmp
 	-find debian/tmp ! -perm -200 | xargs chmod u+w
+	mkdir -p debian/tmp/usr/lib/openoffice/program
 	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DESTDIR=$(CURDIR)/debian/tmp $(MAKE) install
 
 	# no special ooqstart wrappers
@@ -1264,7 +1266,7 @@ ifneq "$(HELPISOS)" ""
 	cd debian/tmp/pkg && \
 		for iso in $(filter-out en-US,$(LANGPACKISOS)); do \
 			if ! `echo $(HELPISOS) | grep -q $$iso`; then \
-				rm -rf openoffice.org-help-$$iso; \
+				rm -rf openoffice.org$(VER)-help-$$iso; \
 			fi; \
 		done
 endif
