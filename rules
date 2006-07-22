@@ -676,8 +676,6 @@ clean:
 		ooo-build/src/open*.png ooo-build/src/file-bug*.png \
 		ooo-build/src/*.bmp ooo-build/src/*.xcf \
 		ooo-build/src/*.ico \
-		ooo-build/scratch/scsolver/docs/class_diagram.odg \
-		ooo-build/scratch/scsolver/workben/test_run.ods \
 		ooo-build/src/Draft.jpg \
 		ooo-build/src/easter/*.png
 
@@ -689,6 +687,9 @@ clean:
 			-o -name '*.odp' -o -name '*.odt' -o -name "*.ods" \) \
 			-exec rm {} \; ;\
 	fi
+	find ooo-build/scratch ooo-build/src -type f \
+			\( -name '*.ott' -o -name '*.ods' -o -name '*.odg' \) \
+			-exec rm {} \;
 	rm -f ooo-build/fonts/symbols.xls
 	rm -rf ooo-build/desktop/*.desktop
 	rm -rf ooo-build/build
@@ -727,7 +728,6 @@ clean:
 	fi; \
 	done
 	rm -f ooo-build/desktop/*.png
-
 	rm -f ooo-build/src/GSI*err
 	rm -f ooo-build/config.*
 
@@ -953,6 +953,7 @@ ifneq "$(LANGPACKISOS)" "en-US"
 	# work around broken stuff in the GSI breaking the build in svx
 	for iso in as-IN he lo lv ml-IN mr-IN nb or-IN sh-YU sr-CS ur-IN; do \
 	  case " $(LANGPACKISOS) " in *\ $$iso\ *) ;; *) continue; esac; \
+	  [ -f ooo-build/src/GSI_$$iso.sdf ] || continue; \
 	  TMP=`mktemp -q`; \
 	  grep -v OOO_LICENSE ooo-build/src/GSI_$$iso.sdf \
 	    > $$TMP && mv $$TMP ooo-build/src/GSI_$$iso.sdf; \
@@ -966,7 +967,8 @@ endif
 	# Make sure we have /proc mounted - otherwise idlc will fail later.
 	test -r /proc/version
 
-	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ../ooo-build/configure $(CONFIGURE_FLAGS)
+	cd ooo-build ; \
+		PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ../ooo-build/configure $(CONFIGURE_FLAGS)
 
 	touch $@
 
@@ -989,7 +991,9 @@ endif
 
 	# DPKG is only set on with-EPM build what we don't do and the menu stuff
 	# is only built wenn DPKG is set.. Same with PKGFORMAT.
-	cd $(SOURCE_TREE)/sysui; . $(CURDIR)/$(SOURCE_TREE)/*.sh; PATH=$(BUILD_PATH) DPKG="dpkg" PKGFORMAT="deb" ../solenv/bin/build.pl && ../solenv/bin/deliver.pl
+	cd $(SOURCE_TREE)/sysui; \
+		. $(CURDIR)/$(SOURCE_TREE)/*.sh; \
+		PATH=$(BUILD_PATH) DPKG="dpkg" PKGFORMAT="deb" ../solenv/bin/build.pl && ../solenv/bin/deliver.pl
 
 ifneq "$(USE_EXTERNAL_MYTHES)" "y"
 	# build non-PIC version of libmythes
@@ -1026,7 +1030,7 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/build
 	done
 
 ifneq "$(HELPISOS)" ""
-	# install help; we can't do that later since this is in
+	# install *english* help; we can't do that later since this is in
 	# arch-dep and arch-indep stuff..
 	cd debian/tmp/pkg; \
 		mkdir -p openoffice.org-help-en-us/$(OODIR)/help/en; \
