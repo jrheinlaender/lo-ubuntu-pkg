@@ -93,7 +93,7 @@ BUILD_AMD64=n
 PATCHSET=$(DIST)
 BUILD_DEPS=
 BUILD_PYUNO=y
-PACKAGE_TESTTOOL=n
+PACKAGE_QA_TOOLS=n
 PACKAGE_TTF_OPENSYMBOL=y
 PACKAGE_NPSOPLUGIN=n
 BUILD_JARS_NATIVE=n
@@ -418,7 +418,7 @@ ifeq "$(ARCH)" "i386"
 else
 	JAVA_HOME=/usr/lib/j2sdk1.4-ibm
 endif
-	BUILD_DEPS += , j2sdk1.4 [i386], ibm-j2sdk1.4 [powerpc], ant [$(NO_JAVA_ARCHS)]
+	BUILD_DEPS += , j2sdk1.4 [i386], ibm-j2sdk1.4 [powerpc], ant [$(NO_JAVA_ARCHS)], mingw32 [$(NO_JAVA_ARCHS)]
 	CONFIGURE_FLAGS += --with-system-xml-apis
 	SYSTEM_XT=n
 	SYSTEM_XALAN=y
@@ -792,7 +792,7 @@ clean:
 			-exec rm {} \; ;\
 	fi
 	find ooo-build/scratch ooo-build/src -type f \
-		     \( -name '*.ott' -o -name '*.ods' -o -name '*.odg' \) \
+			\( -name '*.ott' -o -name '*.ods' -o -name '*.odg' \) \
 			-exec rm {} \;
 	rm -f ooo-build/fonts/symbols.xls
 	rm -rf ooo-build/desktop/*.desktop
@@ -859,7 +859,6 @@ clean:
 		ooo-build/src/easter/*.png
 
 	rm -f ooo-build/desktop/*.png
-
 	rm -f ooo-build/src/GSI*err
 	rm -f ooo-build/config.*
 
@@ -1180,7 +1179,8 @@ endif
 	# Make sure we have /proc mounted - otherwise idlc will fail later.
 	test -r /proc/version
 
-	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ../ooo-build/configure $(CONFIGURE_FLAGS)
+	cd ooo-build ; \
+		PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ../ooo-build/configure $(CONFIGURE_FLAGS)
 
 	touch $@
 
@@ -1364,7 +1364,7 @@ endif
 #
 # Generate maintainer scripts
 maintscripts: $(STAMP_DIR)/maintscripts
-$(STAMP_DIR)/maintscripts: debian/shell-lib.sh debian/java-lib.sh debian/control
+$(STAMP_DIR)/maintscripts: debian/shell-lib.sh debian/control
 	dh_testdir
 
 	rm -f debian/*.{pre,post}{inst,rm}
@@ -1499,6 +1499,15 @@ endif
 	      $(PKGDIR)-l10n-$$pkgiso/$(OODIR)/share/template/$$iso/presnt/$$odt; \
 	  done; \
 	done
+
+ifeq "$(PACKAGE_QA_TOOLS)" "y"
+	mkdir -p $(PKGDIR)-qa-tools/$(OODIR)/program
+	mv $(PKGDIR)-common/$(OODIR)/program/.testtoolrc \
+		$(PKGDIR)-qa-tools/$(OODIR)/program
+	chmod 644 $(PKGDIR)-qa-tools/$(OODIR)/program/.testtoolrc; fi
+else
+	rm -f $(PKGDIR)-common/$(OODIR)/program/.testtoolrc
+endif
 
 	touch $@
 
@@ -1864,36 +1873,36 @@ endif
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(BUILD_JARS_NATIVE)" "y"
 	rm -rf $(PKGDIR)-gcj
-	mkdir -p $(PKGDIR)-gcj/$(OODIR)/program/classes-native
+	mkdir -p $(PKGDIR)-gcj//usr/lib/gcj-$(GCJ_VERSIONi
   ifeq "$(REBUILD_JARS_NATIVE)" "y"
 	# recompile the jar; the preferred way is to produce the binaries from
 	# the bytecode.
-	mkdir -p $(PKGDIR)-gcj/$(OODIR)/program/classes-native
+	mkdir -p $(PKGDIR)-gcj/usr/lib/gcj-$(GCJ_VERSION)
 	for jar in debian/tmp/pkg/openoffice.org-common/usr/lib/openoffice/program/classes/*.jar $(PKGDIR)-common/$(OODIR)/program/classes/*.jar $(PKGDIR)-java-common/usr/share/java/openoffice/*.jar; \
 	do \
 	  [ -h "$$jar" -o ! -f "$$jar" ] && continue; \
-	  debian/scripts/aot-compile $$jar $(PKGDIR)-gcj/$(OODIR)/program/classes-native/$$(basename $$jar).so || exit $$?; \
+	  debian/scripts/aot-compile $$jar $(PKGDIR)-gcj/usr/lib/gcj-$(GCJ_VERSION)/$$(basename $$jar).so || exit $$?; \
 	done
   else
 	cp $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/*.jar.so \
-		$(PKGDIR)-gcj/$(OODIR)/program/classes-native
+		$(PKGDIR)-gcj/usr/lib/gcj-$(GCJ_VERSION
 	# remove not needed ones
-	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/FCFGMerge.jar.so
-	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/unoloader.jar.so
-	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/schema.jar.so
+	rm -f $(PKGDIR)-gcj/usr/lib/gcj-$(GCJ_VERSION)/FCFGMerge.jar.so
+	rm -f $(PKGDIR)-gcj/usr/lib/gcj-$(GCJ_VERSION)/unoloader.jar.so
+	rm -f $(PKGDIR)-gcj/usr/lib/gcj-$(GCJ_VERSION)/schema.jar.so
 	# NetBeans crap
-	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/jhall.jar.so
-	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/nbantext.jar.so
-	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/openide.jar.so
-	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/jarpackager.jar.so
+	rm -f $(PKGDIR)-gcj/usr/lib/gcj-$(GCJ_VERSION)/jhall.jar.so
+	rm -f $(PKGDIR)-gcj/usr/lib/gcj-$(GCJ_VERSION)/nbantext.jar.so
+	rm -f $(PKGDIR)-gcj/usr/lib/gcj-$(GCJ_VERSION)/openide.jar.so
+	rm -f $(PKGDIR)-gcj/usr/lib/gcj-$(GCJ_VERSION)/jarpackager.jar.so
 	# not needed yet
-	rm -f $(PKGDIR)-gcj/$(OODIR)/program/classes-native/javacanvas.uno.jar.so
+	rm -f $(PKGDIR)-gcj/usr/lib/gcj-$(GCJ_VERSION)/javacanvas.uno.jar.so
   endif
 	# create gcj classmap
 	mkdir -p $(PKGDIR)-gcj/usr/share/gcj-$(GCJ_VERSION)/classmap.d
 	cd debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/classes && \
 	for i in `find . -type f -name "*.jar" | sed -e s,./,,g`; do \
-	  $(JAVA_HOME)/bin/gcj-dbtool -f $(CURDIR)/$(PKGDIR)-gcj/usr/share/gcj-$(GCJ_VERSION)/classmap.d/openoffice.org$(VER)-gcj.db $$i /$(OODIR)/program/classes-native/$$i.so; \
+	  $(JAVA_HOME)/bin/gcj-dbtool -f $(CURDIR)/$(PKGDIR)-gcj/usr/share/gcj-$(GCJ_VERSION)/classmap.d/openoffice.org$(VER)-gcj.db $$i /usr/lib/gcj-$(GCJ_VERSION)/$$i.so; \
 	done
   endif
 endif
@@ -1976,6 +1985,15 @@ ifeq "$(ARCH)" "amd64"
 
   endif
 endif
+
+	# move libflash and libsvgfilter to -draw; they only are export
+	# filters only used in draw and impress (and impress depends on
+	# draw anyway)
+	for i in libflash libsvgfilter; do \
+		mv $(PKGDIR)-core/$(OODIR)/program/$$i* \
+			$(PKGDIR)-draw/$(OODIR)/program; \
+	done
+
 	touch $@
 
 # Install files generated by setup into arch-independent package directories
@@ -2398,7 +2416,12 @@ binary-common:
 
 	dh_installdocs
 ifeq "$(DIST)" "Debian"
-	dh_installdocs -A debian/README.Debian
+	dh_installdocs -A debian/README.Debian \
+		debian/tmp/pkg/openoffice.org-common/$(OODIR)/README
+ifeq "$(PACKAGE_QA_TOOLS)" "y"
+	dh_installdocs -popenoffice.org$(VER)-qa-tools debian/REAME.qa
+endif
+	dh_installman
 	dh_installchangelogs -Nlibmythes-dev ooo-build/ChangeLog
 ifneq "$(USE_EXTERNAL_MYTHES)" "y"
 	dh_installchangelogs -plibmythes-dev -XNEWS
@@ -2444,7 +2467,7 @@ endif
 	dh_link
 	dh_fixperms
 ifeq "$(BUILD_DBG_PACKAGE)" "y"
-	dh_strip --dbg-package=openoffice.org-dbg -Xunowinreg.dll
+	dh_strip --dbg-package=openoffice.org$(VER)-dbg -Xunowinreg.dll
 else
 	dh_strip -Xunowinreg.dll
 endif
