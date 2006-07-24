@@ -26,7 +26,7 @@ BINARY_VERSION=$(SOURCE_VERSION)
 #BINARY_VERSION=2.0.3-$(shell dpkg-parsechangelog  | grep urgency \
 	| awk '{print $$2}' | sed -e s/"("// -e s/")"// | cut -d"-" -f2)
 PACKAGES := $(shell dh_listpackages)
-BASE_VERSION=2.0.3~m7
+BASE_VERSION=2.0.3
 NEXT_BASE_VERSION=2.0.4
 
 ARCH := $(shell dpkg-architecture -qDEB_HOST_ARCH)
@@ -60,7 +60,7 @@ STAMP_DIR=debian/stampdir
 # Read in architecture-specific variables of importance.
 #include debian/scripts/vars.$(ARCH)
 
-AMD64_EXPERIMENTAL=n
+AMD64_EXPERIMENTAL=y
 ifeq "$(ARCH)" "amd64"
   PKGS_AMD64_NOEXP = openoffice.org$(VER) openoffice.org$(VER)-core \
 	openoffice.org$(VER) openoffice.org$(VER)-writer openoffice.org$(VER)-calc \
@@ -192,6 +192,9 @@ ifeq "$(DIST)" "Ubuntu"
   USE_SYSTEM_HUNSPELL=n
   # not for dapper
   USE_SYSTEM_LPSOLVE=n
+  #ifneq (,$(findstring $(ARCH),powerpc sparc))
+  #  USE_SYSTEM_STLPORT=n
+  #endif
 endif
 
 # Debian Sarge backport
@@ -1041,7 +1044,8 @@ endif
 
 ifneq "$(SARGE_BACKPORT)" "y"
 	# new python policy
-	perl -pi -e 's/Package: python-uno/Package: python-uno\n\Provides: \$${python:Provides}\n\XB-Python-Version: \$${python:Versions}/' debian/control
+	perl -pi -e 's/Package: python-uno$$/Package: python-uno\n\Provides: \$${python:Provides}\n\XB-Python-Version: \$${python:Versions}/' debian/control
+	perl -pi -e 's/Package: python-uno-experimental/Package: python-uno-experimental\n\Provides: \$${python:Provides}\n\XB-Python-Version: \$${python:Versions}/' debian/control
 endif
 
 .DELETE_ON_ERROR: debian/control
@@ -2521,7 +2525,9 @@ endif
 ifeq "$(ARCH)" "i386"
 	# this LD_ASSUME_KERNEL is for working around some bug which makes
 	# dh_shlibddeps report/find nothing with libc6-i686/TLS systems
-	LD_LIBRARY_PATH="$(PKGDIR)-core/$(OODIR)/program" LD_ASSUME_KERNEL="2.4.27" dh_shlibdeps $(SHLIBS_OVERRIDE)
+	-LD_LIBRARY_PATH="$(PKGDIR)-core/$(OODIR)/program" LD_ASSUME_KERNEL="2.4.27" dh_shlibdeps $(SHLIBS_OVERRIDE)
+	# try again, without LD_ASSUME_KERNEL
+	LD_LIBRARY_PATH="$(PKGDIR)-core/$(OODIR)/program" dh_shlibdeps $(SHLIBS_OVERRIDE)
 else
 	LD_LIBRARY_PATH="$(PKGDIR)-core/$(OODIR)/program" dh_shlibdeps $(SHLIBS_OVERRIDE)
 endif
