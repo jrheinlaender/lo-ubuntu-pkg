@@ -66,9 +66,8 @@ ifeq "$(ARCH)" "amd64"
 	openoffice.org$(VER) openoffice.org$(VER)-writer openoffice.org$(VER)-calc \
 	openoffice.org$(VER)-impress openoffice.org$(VER)-draw \
 	openoffice.org$(VER)-math openoffice.org$(VER)-base openoffice.org$(VER)-kde \
-	openoffice.org$(VER)-gtk \
-	openoffice.org$(VER)-gnome openoffice.org$(VER)-evolution \
-	mozilla-openoffice.org openoffice.org$(VER)-officebean \
+	openoffice.org$(VER)-gtk openoffice.org$(VER)-gnome \
+	openoffice.org$(VER)-evolution openoffice.org$(VER)-officebean \
 	openoffice.org$(VER)-dev openoffice.org$(VER)-hunspell \
 	openoffice.org$(VER)-filter-so52 openoffice.org$(VER)-gcj \
 	python-uno
@@ -139,7 +138,6 @@ KDELIBS_MINVER= (>= 4:3.4.3-2)
 USE_SYSTEM_LPSOLVE=y
 USE_DBUS=y
 USE_SYSTEM_NEON=y
-PACKAGE_QA_TOOLS=n
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
@@ -260,6 +258,8 @@ ifeq "$(ARCH)-linux-gnu" "sparc-linux-gnu"
 	CC_PREFIX=sparc-linux-gnu-
 endif
 
+# We only build the main openoffice.org packages on those architectures where it works
+# all other architectures build libmythes-dev
 ifneq "$(USE_EXTERNAL_MYTHES)" "y"
   ifeq ($(ARCH),$(findstring $(ARCH),$(shell dpkg-architecture -L | sed -e s/i386// -e s/powerpc// -e s/sparc// -e s/amd64//)))
        BUILD_ONLY_LIBMYTHES=y
@@ -1017,9 +1017,6 @@ ifeq "$(AMD64_EXPERIMENTAL)" "y"
 		>> debian/control < debian/control.experimental
 endif
 endif
-	python debian/joinctrl.py < debian/control > debian/control.tmp
-	mv debian/control.tmp debian/control
-	
 ifeq "$(SARGE_BACKPORT)" "y"
 	perl -pi -e "s,%CONTRIB%,contrib/,g" debian/control
 else
@@ -1231,8 +1228,7 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/build
 	dh_testroot
 
 	rm -rf $(CURDIR)/debian/tmp
-	-find debian/tmp ! -perm -200 | xargs chmod u+w
-	mkdir -p debian/tmp/usr/lib/openoffice/program
+	find debian/tmp ! -perm -200 | xargs -r chmod u+w
 	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DESTDIR=$(CURDIR)/debian/tmp $(MAKE) install
 
 	# no special ooqstart wrappers
@@ -1270,7 +1266,7 @@ ifneq "$(HELPISOS)" ""
 	cd debian/tmp/pkg && \
 		for iso in $(filter-out en-US,$(LANGPACKISOS)); do \
 			if ! `echo $(HELPISOS) | grep -q $$iso`; then \
-				rm -rf openoffice.org$(VER)-help-$$iso; \
+				rm -rf openoffice.org-help-$$iso; \
 			fi; \
 		done
 endif
@@ -1786,8 +1782,8 @@ ifeq "$(BUILD_PYUNO)" "y"
 		cp -r $(SOURCE_TREE)/pyuno/$$i \
 		  debian/python-uno/usr/share/doc/python-uno; \
 	done
-	-cd debian/python-uno/usr/share/doc/python-uno && \
-		find . -type d -name "CVS" | xargs rm -rf
+	cd debian/python-uno/usr/share/doc/python-uno && \
+		find . -type d -name "CVS" | xargs -r rm -rf
 endif
 
 ifeq "$(ENABLE_MONO)" "y"
@@ -1940,7 +1936,6 @@ ifneq "$(USE_EXTERNAL_MYTHES)" "y"
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
-# FIXME missing sandbox
 	# install the UNO Java sources for e.g. eclipse
 	mkdir -p $(CURDIR)/$(PKGDIR)-dev/usr/share/java/openoffice$(VER)
 	cd $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin && \
@@ -2005,8 +2000,7 @@ $(STAMP_DIR)/install-indep: $(STAMP_DIR)/install
 $(STAMP_DIR)/install-indep: ooo-build/fonts/opens___.ttf
 	dh_testdir
 	dh_testroot
-
-	-find debian/tmp ! -perm -200 | xargs chmod u+w
+	find debian/tmp ! -perm -200 | xargs -r chmod u+w
 
 	# Copy files placed by ooo-build/bin/package-ooo/install
 	rm -rf $(PKGDIR)-common $(PKGDIR)-common.*.debhelper; \
@@ -2039,8 +2033,7 @@ $(STAMP_DIR)/install-indep: ooo-build/fonts/opens___.ttf
 	install -m644 $(SOURCE_TREE)/sysui/desktop/mimetypes/openoffice.mime \
 		$(PKGDIR)-common/usr/share/mime-info && \
 	rm -f $(PKGDIR)-common/usr/share/mime-info/openoffice.keys; \
-# FIXME
-	-for i in $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/debian/*.keys; do \
+	for i in $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/debian/*.keys; do \
 		cat $$i >> $(PKGDIR)-common/usr/share/mime-info/openoffice.keys; \
 	done
 #	install -m644 $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare/openoffice.org.xml \
@@ -2162,6 +2155,7 @@ endif
 	ln -s /etc/openoffice/dictionary.lst \
 		$(PKGDIR)-common/usr/share/myspell/dicts/dictionary.lst
 
+	# convert icons to xpm; we need them for the Debian menu policy...
 	cd $(PKGDIR)-common/usr/share/icons/gnome/32x32/apps && \
 	  for x in *.png; do convert $$x `basename $$x .png`.xpm; done
 
@@ -2551,6 +2545,10 @@ ifeq "$(ARCH)" "i386"
 	-LD_LIBRARY_PATH="$(PKGDIR)-core/$(OODIR)/program" LD_ASSUME_KERNEL="2.4.27" dh_shlibdeps $(SHLIBS_OVERRIDE)
 	# try again, without LD_ASSUME_KERNEL
 	LD_LIBRARY_PATH="$(PKGDIR)-core/$(OODIR)/program" dh_shlibdeps $(SHLIBS_OVERRIDE)
+	-for i in debian/*.substvars; do \
+	  echo "===== $$i ====="; \
+	  cat $$i; \
+	done
 else
 	LD_LIBRARY_PATH="$(PKGDIR)-core/$(OODIR)/program" dh_shlibdeps $(SHLIBS_OVERRIDE)
 endif
