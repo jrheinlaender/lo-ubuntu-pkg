@@ -31,6 +31,7 @@ NEXT_BASE_VERSION=2.0.4
 
 ARCH := $(shell dpkg-architecture -qDEB_HOST_ARCH)
 DIST := $(shell lsb_release -is)
+DISTREL := $(shell lsb_release -cs)
 # Figure out who's building this package.
 BUILDER:=$(shell echo $$LOGNAME)
 OOO_VENDOR:=Debian
@@ -138,6 +139,7 @@ KDELIBS_MINVER= (>= 4:3.4.3-2)
 USE_SYSTEM_LPSOLVE=y
 USE_DBUS=y
 USE_SYSTEM_NEON=y
+USE_PYCENTRAL=y
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
@@ -193,6 +195,9 @@ ifeq "$(DIST)" "Ubuntu"
   #ifneq (,$(findstring $(ARCH),powerpc sparc))
   #  USE_SYSTEM_STLPORT=n
   #endif
+  ifeq "$(DISTREL)" "dapper"
+    USE_PYCENTRAL=n
+  endif
 endif
 
 # Debian Sarge backport
@@ -219,6 +224,7 @@ ifeq "$(SARGE_BACKPORT)" "y"
   USE_XULRUNNER=n
   USE_SYSTEM_LPSOLVE=n
   USE_DBUS=n
+  USE_PYCENTRAL=n
 endif
 
 # X, curl and neon builddeps...
@@ -281,11 +287,10 @@ else
 endif
 export DH_COMPAT
 
+
 ifeq "$(BUILD_PYUNO)" "y"
-    ifneq "$(SARGE_BACKPORT)" "y"
-	# XXX dapper
-	#BUILD_DEPS += , python-central (>= 0.5), debhelper (>= 5.0.37.2), python-dev (>= 2.3.5-7)
-	BUILD_DEPS += , debhelper, python-dev
+    ifeq "$(USE_PYCENTRAL)" "y"
+	BUILD_DEPS += , python-central (>= 0.5), debhelper (>= 5.0.37.2), python-dev (>= 2.3.5-7)
     else
 	BUILD_DEPS += , debhelper, python-dev
     endif
@@ -2453,8 +2458,8 @@ endif
 	dh_installdebconf
 	dh_installmime
 	dh_installmenu
-ifneq "$(SARGE_BACKPORT)" "y"
-	-dh_pycentral
+ifeq "$(USE_PYCENTRAL)" "y"
+	dh_pycentral
 endif
 	dh_python
 	debian/scripts/installoverrides
