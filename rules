@@ -34,11 +34,6 @@ OOO_VENDOR:=Debian
 ifneq "$(BUILDER)" "buildd"
 OOO_VENDOR+= ($(BUILDER))
 endif
-export OOO_VENDOR
-
-# ensure that some scripts we need are executable.
-DUMMY:=$(shell if [ ! -x debian/scripts/setperms ]; then chmod 755 debian/scripts/setperms; fi)
-DUMMY:=$(shell debian/scripts/setperms)
 
 # debhelper
 export DH_OPTIONS
@@ -50,7 +45,7 @@ unexport LS_COLORS
 
 #TAG=src680-m$(MILESTONE)
 #MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)"| cut -d. -f3)
-TAG=src680-m177
+TAG=src680-m178
 SOURCE_TREE=ooo-build/build/$(TAG)
 STAMP_DIR=debian/stampdir
 
@@ -95,6 +90,7 @@ USE_SYSTEM_PORTAUDIO=y
 USE_EXTERNAL_CXXLIBS=y
 LIBWPD8_MINVER= (>= 0.8.3-3)
 USE_SYSTEM_SABLOT=n
+USE_LIBXSLT=y
 USE_EXTERNAL_MYTHES=n
 USE_SYSTEM_ICU=y
 USE_SYSTEM_XMLSEC=n
@@ -103,7 +99,7 @@ USE_SYSTEM_CAIRO=y
 BUILD_MDBTOOLS=y
 USE_SYSTEM_MDBTOOLS=y
 BUILD_KDE=y
-BUILD_DBG_PACKAGE=y
+BUILD_DBG_PACKAGE=n
 USE_SYSTEM_BSH=y
 USE_SYSTEM_HSQLDB=y
 LIBDB_JAVA_MINVER= (>= 4.2.52-21)
@@ -124,6 +120,7 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
                  --with-tag=$(TAG) \
                 --with-system-gcc \
                 --with-distro=$(PATCHSET) \
+		--with-vendor='$(OOO_VENDOR)' \
                 --enable-package-directories \
                 --with-installed-ooo-dirname=openoffice$(VER) \
                 --mandir=/usr/share/man \
@@ -145,7 +142,6 @@ ifeq "$(DIST)" "Debian"
        BUILD_ONLY_EN_US=y
   endif
   SYSTEM_AGG=y
-  USE_SYSTEM_XMLSEC=y
   USE_SYSTEM_HUNSPELL=y
   USE_XULRUNNER=y
 endif
@@ -217,6 +213,8 @@ ifeq "$(ARCH)-linux-gnu" "sparc-linux-gnu"
 	CC_PREFIX=sparc-linux-gnu-
 endif
 
+# We only build the main openoffice.org packages on those architectures where it works
+# # all other architectures build libmythes-dev
 ifneq "$(USE_EXTERNAL_MYTHES)" "y"
   ifeq ($(ARCH),$(findstring $(ARCH),$(shell dpkg-architecture -L | sed -e s/i386// -e s/powerpc// -e s/sparc// -e s/amd64//)))
        BUILD_ONLY_LIBMYTHES=y
@@ -283,11 +281,11 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
     ISOS:=en-US af ar be-BY bg bn br bs ca cs cy da de el \
 	en-GB en-ZA es et fa fi fr ga gu-IN he hi-IN hr hu it ja \
 	km ko lo lt lv mk ml-IN ne nb nl nn nr pa-IN \
-	pl pt-BR ru rw sk sl sr-CS st sv \
+	pl pt pt-BR ru rw sk sl sr-CS st sv \
 	ta-IN te-IN tg th ti-ER tn tr ts vi xh zh-CN zh-TW zu
     #HELPISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all') 
     HELPISOS:=en-US cs da de en-GB es et fr hu it ja ko nl \
-	pt-BR sv zh-CN zh-TW
+	pl pt-BR sv zh-CN zh-TW
     #LANGPACKISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
     LANGPACKISOS:=en-US af ar be-BY bg bn br bs ca cs cy da de el \
 	en-GB en-ZA es et fa fi fr ga gu-IN he hi-IN hr hu nb nl nn it ja \
@@ -360,7 +358,7 @@ export JAVA_HOME
   endif
 else
 	CONFIGURE_FLAGS += --without-java
-	DEBHELPER_OPTIONS += -Nopenoffice.org$(VER)-officebean -Nopenoffice.org$(VER)-java-common
+	DEBHELPER_OPTIONS += -Nopenoffice.org$(VER)-officebean -Nopenoffice.org$(VER)-java-common -Nopenoffice.org$(VER)-filter-mobiledev
 	HELPISOS=
 endif
 
@@ -451,6 +449,11 @@ ifeq "$(USE_SYSTEM_ICU)" "y"
 	CONFIGURE_FLAGS += --with-system-icu
 	# ICU utils are in /usr/sbin (!)
 	PATH+=:/usr/sbin
+endif
+
+ifeq "$(USE_LIBXSLT)" "y"
+	CONFIGURE_FLAGS += --with-system-libxslt
+	BUILD_DEPS += , libxslt1-dev
 endif
 
 ifeq "$(USE_SYSTEM_XMLSEC)" "y"
@@ -856,7 +859,7 @@ else
 	perl -pi -e "s,%CONTRIB%,,g" debian/control
 endif
 
-	python debian/joinctrl.py < debian/control > debian/control.tmp
+	python debian/scripts/joinctrl.py < debian/control > debian/control.tmp
 	mv debian/control.tmp debian/control
 
 	# -l10n-en became -l10n-en-us
@@ -896,6 +899,20 @@ configure: ooo-build/config.status
 ooo-build/config.status: ooo-build/configure
 	dh_testdir
 	$(MAKE) -f debian/rules environment
+
+	# Make sure needed scripts are executable
+	set -e;\
+	for FILE in debian/scripts/installoverrides \
+		    debian/scripts/move-if-change \
+		    debian/scripts/aot-compile \
+		    debian/scripts/cleandupes \
+		    ooo-build/configure \
+		    ooo-build/bin/[a-z]* \
+		    ooo-build/patches/apply.pl ;\
+	do \
+	  chmod 755 $$FILE ;\
+	done
+	  
 	mkdir -p $(STAMP_DIR)
 
 	# uudecode source files
@@ -1477,10 +1494,6 @@ endif
 	#mv $(PKGDIR)-base/usr/share/applications/ooo$(VER)-base.desktop $(PKGDIR)-core/usr/share/applications
 	#rm -r $(PKGDIR)-base
 
-	# compress manpages
-	for i in calc math draw writer impress base; do \
-		find $(PKGDIR)-$$i -type f -name "*.1" | xargs gzip -9; \
-	done
 	# fix manpage symlinks
 	for i in writer calc draw impress base math; do \
 		echo $(PACKAGES) | grep -q openoffice.org$(VER)-$$i || continue; \
@@ -1675,6 +1688,12 @@ endif
 			$(PKGDIR)-draw/$(OODIR)/program; \
 	done
 
+	# move writer2latex.jar into the right dir
+	mkdir -p $(PKGDIR)-writer/usr/share/java/openoffice$(VER)
+	mv $(PKGDIR)-writer/$(OODIR)/program/classes/writer2latex.jar \
+		$(PKGDIR)-writer/usr/share/java/openoffice$(VER) && \
+	rmdir $(PKGDIR)-writer/$(OODIR)/program/classes
+
 	touch $@
 
 # Install files generated by setup into arch-independent package directories
@@ -1765,18 +1784,10 @@ ifeq "$(ENABLE_JAVA)" "y"
 	# move common Java stuff to -java-common
 	mkdir -p $(PKGDIR)-java-common/$(OODIR)/program
 	mkdir -p $(PKGDIR)-java-common/$(OODIR)/share/Scripts
-	mkdir -p $(PKGDIR)-java-common/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Filters
-	mkdir -p $(PKGDIR)-java-common/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Types
 	mv $(PKGDIR)-common/$(OODIR)/program/JREProperties.class \
 		$(PKGDIR)-java-common/$(OODIR)/program
 	mv $(PKGDIR)-common/$(OODIR)/share/Scripts/java \
 		$(PKGDIR)-java-common/$(OODIR)/share/Scripts
-	for i in palm pocketexcel pocketword; do \
-	  mv $(PKGDIR)-common/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Filters/fcfg_$${i}_filters.xcu \
-	    $(PKGDIR)-java-common/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Filters; \
-	  mv $(PKGDIR)-common/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Types/fcfg_$${i}_types.xcu \
-	    $(PKGDIR)-java-common/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Types; \
-	done
 	mkdir -p $(PKGDIR)-java-common/usr/share/java/openoffice$(VER)
 	mv $(PKGDIR)-common/$(OODIR)/program/classes/* \
 		$(PKGDIR)-java-common/usr/share/java/openoffice$(VER)
@@ -1789,6 +1800,21 @@ ifeq "$(ENABLE_JAVA)" "y"
 	      's,\$$ORIGIN/classes,file:///usr/share/java/openoffice$(VER),g' \
 		$$i; \
 	  done
+
+	# move into extra package
+	mkdir -p $(PKGDIR)-filter-mobiledev/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Filter
+	mkdir -p $(PKGDIR)-filter-mobiledev/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Types
+	mkdir -p $(PKGDIR)-filter-mobiledev/usr/share/java/openoffice$(VER)
+	for i in palm pocketexcel pocketword; do \
+	  mv $(PKGDIR)-common/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Filter/fcfg_$${i}_filters.xcu \
+	    $(PKGDIR)-filter-mobiledev/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Filter; \
+	  mv $(PKGDIR)-common/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Types/fcfg_$${i}_types.xcu \
+	    $(PKGDIR)-filter-mobiledev/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Types; \
+	done
+	for i in aportisdoc pexcel pocketword; do \
+	  mv $(PKGDIR)-java-common/usr/share/java/openoffice$(VER)/$$i.jar \
+		$(PKGDIR)-filter-mobiledev/usr/share/java/openoffice$(VER); \
+	done
 endif
 
 	# fix permissions
@@ -1915,7 +1941,7 @@ ifeq "$(HELPISOS)" ""
 	# will need them
 	for z in images.zip images_industrial.zip images_crystal.zip images_hicontrast.zip; do \
 		echo "repackaging $$z..."; \
-		rm -rf $$z; mkdir $$z; i\
+		rm -rf $$z; mkdir $$z; \
 		cd $$z; \
 		unzip -q $(CURDIR)/$(PKGDIR)-common/$(OODIR)/share/config/$$z && \
 		cp -r $(CURDIR)/$(SOURCE_TREE)/default_images/res/helpimg res && \
@@ -2020,7 +2046,7 @@ else
 	dh_strip -Xunowinreg.dll
 endif
 ifeq "$(ENABLE_JAVA)" "y"
-  ifeq (nostrip,$(findstring nostrip,$(DEB_BUILD_OPTIONS)))
+  ifneq (nostrip,$(findstring nostrip,$(DEB_BUILD_OPTIONS)))
 	i586-mingw32msvc-strip debian/openoffice.org-dev/usr/share/java/openoffice/unowinreg.dll
   endif
 endif
@@ -2046,9 +2072,6 @@ endif
 ifeq "$(ENABLE_MONO)" "y"
 	dh_clideps
 endif
-#	mkdir -p $(PKGDIR)-core/usr/share/doc/openoffice.org$(VER)-core
-#	debian/scripts/gen_lib_list \
-#	 > $(PKGDIR)-core/usr/share/doc/openoffice.org$(VER)-core/used_libs
 # This switch to dh_shlibdeps reduces the 'libXXX not found' warnings but
 # causes ldd crashes sometimes when used with fakeroot:
 #          -l $(PKGDIR)-core/$(OPENOFFICEDIR)/program
@@ -2126,7 +2149,7 @@ get-ooo-build:
 	# press enter at the password prompt
 	cvs -d:pserver:anonymous@anoncvs3.gnome.org:/cvs/gnome login
 	cvs -z3 -d:pserver:anonymous@anoncvs3.gnome.org:/cvs/gnome co ooo-build
-	cd ooo-build && ./autogen.sh $(CONFIGURE_FLAGS)
+	cd ooo-build && NOCONFIGURE=1 ./autogen.sh
 
 # Download the latest ooo-build sources
 download: ooo-build/config.status
