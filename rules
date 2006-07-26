@@ -40,10 +40,6 @@ OOO_VENDOR+= and Ubuntu
 #endif
 export OOO_VENDOR
 
-# ensure that some scripts we need are executable.
-DUMMY:=$(shell if [ ! -x debian/scripts/setperms ]; then chmod 755 debian/scripts/setperms; fi)
-DUMMY:=$(shell debian/scripts/setperms)
-
 # debhelper
 export DH_OPTIONS
 export DH_ALWAYS_EXCLUDE=CVS
@@ -1028,7 +1024,7 @@ else
 	perl -pi -e "s,%CONTRIB%,,g" debian/control
 endif
 
-	python debian/joinctrl.py < debian/control > debian/control.tmp
+	python debian/scripts/joinctrl.py < debian/control > debian/control.tmp
 	mv debian/control.tmp debian/control
 
 	# -l10n-en became -l10n-en-us
@@ -1076,6 +1072,20 @@ configure: ooo-build/config.status
 ooo-build/config.status: ooo-build/configure
 	dh_testdir
 	$(MAKE) -f debian/rules environment
+
+	# Make sure needed scripts are executable
+	set -e;\
+	for FILE in debian/scripts/installoverrides \
+		    debian/scripts/move-if-change \
+		    debian/scripts/aot-compile \
+		    debian/scripts/cleandupes \
+		    ooo-build/configure \
+		    ooo-build/bin/[a-z]* \
+		    ooo-build/patches/apply.pl ;\
+	do \
+	  chmod 755 $$FILE ;\
+	done
+	  
 	mkdir -p $(STAMP_DIR)
 
 ifeq "$(DIST)" "Ubuntu"
@@ -1505,7 +1515,7 @@ ifeq "$(PACKAGE_QA_TOOLS)" "y"
 	mkdir -p $(PKGDIR)-qa-tools/$(OODIR)/program
 	mv $(PKGDIR)-common/$(OODIR)/program/.testtoolrc \
 		$(PKGDIR)-qa-tools/$(OODIR)/program
-	chmod 644 $(PKGDIR)-qa-tools/$(OODIR)/program/.testtoolrc; fi
+	chmod 644 $(PKGDIR)-qa-tools/$(OODIR)/program/.testtoolrc
 else
 	rm -f $(PKGDIR)-common/$(OODIR)/program/.testtoolrc
 endif
@@ -2465,13 +2475,13 @@ endif
 	debian/scripts/installoverrides
 	dh_link
 	dh_fixperms
-ifeq "$(BUILD_DBG_PACKAGE)" "y"
+ifeq "$(BUILD_DBG_PACKAGE)" "y-xxxxx"
 	dh_strip --dbg-package=openoffice.org$(VER)-dbg -Xunowinreg.dll
 else
 	dh_strip -Xunowinreg.dll
 endif
-ifeq "$(ENABLE_JAVA)" "y"
-  ifeq (nostrip,$(findstring nostrip,$(DEB_BUILD_OPTIONS)))
+ifeq "$(ENABLE_JAVA)" "y-xxxxx"
+  ifneq (nostrip,$(findstring nostrip,$(DEB_BUILD_OPTIONS)))
 	i586-mingw32msvc-strip debian/openoffice.org-dev/usr/share/java/openoffice/unowinreg.dll
   endif
 endif
@@ -2560,9 +2570,6 @@ endif
 ifeq "$(ENABLE_MONO)" "y"
 	dh_clideps
 endif
-#	mkdir -p $(PKGDIR)-core/usr/share/doc/openoffice.org$(VER)-core
-#	debian/scripts/gen_lib_list \
-#	 > $(PKGDIR)-core/usr/share/doc/openoffice.org$(VER)-core/used_libs
 # This switch to dh_shlibdeps reduces the 'libXXX not found' warnings but
 # causes ldd crashes sometimes when used with fakeroot:
 #          -l $(PKGDIR)-core/$(OPENOFFICEDIR)/program
@@ -2660,7 +2667,7 @@ get-ooo-build:
 	# press enter at the password prompt
 	cvs -d:pserver:anonymous@anoncvs3.gnome.org:/cvs/gnome login
 	cvs -z3 -d:pserver:anonymous@anoncvs3.gnome.org:/cvs/gnome co -r ooo-build-2-0-3 ooo-build
-	cd ooo-build && ./autogen.sh $(CONFIGURE_FLAGS)
+	cd ooo-build && NOCONFIGURE=1 ./autogen.sh
 
 # Download the latest ooo-build sources
 download: ooo-build/config.status
