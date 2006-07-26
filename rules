@@ -28,6 +28,7 @@ PACKAGES := $(shell dh_listpackages)
 
 ARCH := $(shell dpkg-architecture -qDEB_HOST_ARCH)
 DIST := $(shell lsb_release -is)
+DISTREL := $(shell lsb_release -cs)
 # Figure out who's building this package.
 BUILDER:=$(shell echo $$LOGNAME)
 OOO_VENDOR:=Debian
@@ -52,7 +53,9 @@ STAMP_DIR=debian/stampdir
 # Read in architecture-specific variables of importance.
 #include debian/scripts/vars.$(ARCH)
 
-SARGE_BACKPORT=n
+ifeq "$(DISTREL)" "sarge"
+  SARGE_BACKPORT=y
+endif
 
 #########
 # Default package configuration
@@ -108,6 +111,7 @@ KDELIBS_MINVER= (>= 4:3.4.3-2)
 USE_SYSTEM_LPSOLVE=y
 USE_DBUS=y
 USE_SYSTEM_NEON=y
+USE_PYCENTRAL=y
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
@@ -174,6 +178,7 @@ ifeq "$(SARGE_BACKPORT)" "y"
   USE_XULRUNNER=n
   USE_SYSTEM_LPSOLVE=n
   USE_DBUS=n
+  USE_PYCENTRAL=n
 endif
 
 # X, curl and neon builddeps...
@@ -237,10 +242,10 @@ endif
 export DH_COMPAT
 
 ifeq "$(BUILD_PYUNO)" "y"
-    ifneq "$(SARGE_BACKPORT)" "y"
+    ifneq "$(USE_PYCENTRAL)" "y"
 	BUILD_DEPS += , python-central (>= 0.4.10), debhelper (>= 5.0.37.1), python (>= 2.3.5-7), python-dev
     else
-	BUILD_DEPS += , debhelper (>= 4.2.21)
+	BUILD_DEPS += , debhelper (>= 4.2.21), python-dev
     endif
 else 
   ifeq "$(BUILD_DBG_PACKAGE)" "y"
@@ -250,6 +255,7 @@ else
 	BUILD_DEPS += , debhelper (>= 5)
     endif
   endif
+  BUILD_DEPS += python
 endif
 
 ifeq "$(BUILD_JARS_NATIVE)" "y"
@@ -540,10 +546,24 @@ endif
 BUILD_FROM=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^\(.*,\)\?from=\([a-zA-Z0-9]\+\).*$$/\2/p')
 export BUILD_FROM
 
-# Build n projects in paralell?
+# Build n projects in paralell / override automatic detection?
 # DEB_BUILD_OPTIONS=num-cpus=<n>
 NUM_CPUS=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^\(.*,\)\?num-cpus=\([0-9]\+\).*$$/\2/p')
 ifneq "$(NUM_CPUS)" ""
+  CONFIGURE_FLAGS += --with-num-cpus=$(NUM_CPUS)
+else
+  NUM_CPUS := $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
+  # using make -jX is not wanted on the Debian buildds, so don't do it...
+  ifeq "$(DIST)" "Debian"
+    ifeq (buildd,$(shell whoami))
+      NUM_CPUS := 1
+    endif
+  endif
+  ifeq "$(NUM_CPUS)" "1"
+    # do at least a build with --with-num-cpus=2 to do something while
+    # helpcontent2 is doing things slowly..
+    NUM_CPUS := 2
+  endif
   CONFIGURE_FLAGS += --with-num-cpus=$(NUM_CPUS)
 endif
 
@@ -705,6 +725,7 @@ clean:
 	rm -f build
 
 	# uuencode binary files
+	set -e; \
 	cd ooo-build ;\
 	  for f in fonts/opens___.ttf src/ooo_*_images*.bz2 src/extras*bz2 \
 	    src/evolocal.odb src/*.gz src/GSI*bz2 src/xt*zip src/go-oo-team.png \
@@ -754,6 +775,7 @@ endif
 # Based on script by Martin Quinson <Martin.Quinson@tuxfamily.org>
 control: debian/control
 debian/control: debian/control.in debian/control.lang.in debian/control.help.in ooo-build/bin/openoffice-xlate-lang debian/rules
+	chmod 755 ooo-build/bin/openoffice-xlate-lang
 	sed -e "s#openoffice.orgVER#openoffice.org$(VER)#g" \
 	    -e "s#%$(DIST)=\([^%]*\)%#, \1#g#" \
 	    -e "s#%[A-Za-z]*=[^%]*%##g#" \
@@ -867,7 +889,7 @@ endif
 	# match myspell-fi and Soikko
 	perl -pi -e 's/myspell-dictionary-fi/myspell-dictionary-fi | openoffice.org-spellcheck-fi/' debian/control
 
-ifneq "$(SARGE_BACKPORT)" "y"
+ifeq "$(USE_PYCENTRAL)" "y"
 	# new python policy
 	perl -pi -e 's/Package: python-uno/Package: python-uno\n\Provides: \$${python:Provides}\n\XB-Python-Version: \$${python:Versions}/' debian/control
 endif
@@ -1006,7 +1028,8 @@ endif
 	# is only built wenn DPKG is set.. Same with PKGFORMAT.
 	cd $(SOURCE_TREE)/sysui; \
 		. $(CURDIR)/$(SOURCE_TREE)/*.sh; \
-		PATH=$(BUILD_PATH) DPKG="dpkg" PKGFORMAT="deb" ../solenv/bin/build.pl && ../solenv/bin/deliver.pl
+		PATH=$(BUILD_PATH) DPKG="dpkg" PKGFORMAT="deb" NO_PKG_MANGLE=go-away \
+		../solenv/bin/build.pl && ../solenv/bin/deliver.pl
 
 ifneq "$(USE_EXTERNAL_MYTHES)" "y"
 	# build non-PIC version of libmythes
@@ -1532,7 +1555,7 @@ ifeq "$(BUILD_PYUNO)" "y"
 		  debian/python-uno/usr/share/doc/python-uno; \
 	done
 	cd debian/python-uno/usr/share/doc/python-uno && \
-		find . -type d -name "CVS" | xargs rm -rf
+		find . -type d -name "CVS" | xargs -r rm -rf
 endif
 
 ifeq "$(ENABLE_MONO)" "y"
@@ -1712,7 +1735,7 @@ $(STAMP_DIR)/install-indep: $(STAMP_DIR)/install
 $(STAMP_DIR)/install-indep: ooo-build/fonts/opens___.ttf
 	dh_testdir
 	dh_testroot
-	umask 022
+	find debian/tmp ! -perm -200 | xargs -r chmod u+w
 
 	# Copy files placed by ooo-build/bin/package-ooo/install
 	rm -rf $(PKGDIR)-common $(PKGDIR)-common.*.debhelper; \
@@ -1939,6 +1962,7 @@ ifeq "$(HELPISOS)" ""
 	# the helpimgs are not included when we don't build with help here.
 	# Add them now because openoffice.org-help-* packaged in contrib or so
 	# will need them
+	set -e; \
 	for z in images.zip images_industrial.zip images_crystal.zip images_hicontrast.zip; do \
 		echo "repackaging $$z..."; \
 		rm -rf $$z; mkdir $$z; \
@@ -1948,6 +1972,7 @@ ifeq "$(HELPISOS)" ""
 		chmod +w $(CURDIR)/$(PKGDIR)-common/$(OODIR)/share/config/$$z && \
 		zip -q -r $(CURDIR)/$(PKGDIR)-common/$(OODIR)/share/config/$$z *; \
 		cd ..; \
+		rm -rf $$z; \
 	done
 endif
 
@@ -2033,7 +2058,7 @@ endif
 	dh_installdebconf
 	dh_installmime
 	dh_installmenu
-ifneq "$(SARGE_BACKPORT)" "y"
+ifneq "$(USE_PYCENTRAL)" "y"
 	dh_pycentral
 endif
 	dh_python
