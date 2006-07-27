@@ -60,14 +60,16 @@ STAMP_DIR=debian/stampdir
 AMD64_EXPERIMENTAL=y
 ifeq "$(ARCH)" "amd64"
   PKGS_AMD64_NOEXP = openoffice.org$(VER) openoffice.org$(VER)-core \
-	openoffice.org$(VER) openoffice.org$(VER)-writer openoffice.org$(VER)-calc \
-	openoffice.org$(VER)-impress openoffice.org$(VER)-draw \
-	openoffice.org$(VER)-math openoffice.org$(VER)-base openoffice.org$(VER)-kde \
+	openoffice.org$(VER) openoffice.org$(VER)-writer \
+	openoffice.org$(VER)-calc openoffice.org$(VER)-impress \
+	openoffice.org$(VER)-draw openoffice.org$(VER)-math \
+	openoffice.org$(VER)-base openoffice.org$(VER)-kde \
 	openoffice.org$(VER)-gtk openoffice.org$(VER)-gnome \
 	openoffice.org$(VER)-evolution openoffice.org$(VER)-officebean \
-	openoffice.org$(VER)-dev openoffice.org$(VER)-hunspell \
-	openoffice.org$(VER)-filter-so52 openoffice.org$(VER)-gcj \
+	openoffice.org$(VER)-dev openoffice.org$(VER)-filter-so52 \
+	openoffice.org$(VER)-gtk-gnome \
 	python-uno
+#	openoffice.org$(VER)-gcj
   PKGS_AMD64_EXP = $(foreach p, $(PKGS_AMD64_NOEXP),$(p)-experimental)
   ifeq "$(AMD64_EXPERIMENTAL)" "y"
 	EXPSUFFIX=-experimental
@@ -178,7 +180,6 @@ ifeq "$(DIST)" "Ubuntu"
   USE_FIREFOX=y
   BUILD_DEPS += , translate-toolkit (>= 0.8.rel)
   BUILD_AMD64=y
-  OOO_ARCHS+= amd64
   PACKAGE_QA_TOOLS=y
   ifeq "$(ARCH)" "amd64"
     PACKAGE_QA_TOOLS=n
@@ -188,11 +189,9 @@ ifeq "$(DIST)" "Ubuntu"
   USE_SYSTEM_HUNSPELL=n
   # not for dapper
   USE_SYSTEM_LPSOLVE=n
-  #ifneq (,$(findstring $(ARCH),powerpc sparc))
-  #  USE_SYSTEM_STLPORT=n
-  #endif
   ifeq "$(DISTREL)" "dapper"
     USE_PYCENTRAL=n
+    BUILD_AMD64=n
   endif
 endif
 
@@ -382,6 +381,7 @@ ifeq "$(DIST)" "Ubuntu"
     endif
   endif
   ifeq "$(PKGSOURCE)" "openoffice.org$(VER)-l10n"
+	PACKAGE_QA_TOOLS=n
 	PATCHSET = UbuntuL10n
 	# seems necessary to build en-US, or else the first language in the list of languages
 	# is dropped from the build. Don't package en-us.
@@ -721,6 +721,7 @@ binary-arch: install
 	dh_testroot
 	dh_installdocs -plibmythes-dev
 	dh_installchangelogs -plibmythes-dev -XNEWS
+	chmod 755 debian/scripts/installoverrides
 	debian/scripts/installoverrides
 	dh_link -plibmythes-dev
 	dh_fixperms -plibmythes-dev
@@ -1254,19 +1255,11 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/build
 	  ln -sf ooo-wrapper$(VER) $$i; \
 	done
 
-ifeq (0,1)
-ifneq "$(HELPISOS)" ""
-	# save space by removing non-packaged localized help; we don't need
-	# them anyway
-	cd debian/tmp/pkg && \
-		for iso in $(filter-out en-US,$(LANGPACKISOS)); do \
-			if ! `echo $(HELPISOS) | grep -q $$iso`; then \
-				rm -rf openoffice.org$(VER)-help-$$iso; \
-			fi; \
-		done
-endif
-endif
-ifneq "$(HELPISOS)" ""
+ifeq "$(HELPISOS)" ""
+	for i in common calc math draw writer impress base; do \
+		rm -rf debian/tmp/pkg/openoffice.org-$$i/$(OODIR)/help/en; \
+	done
+else
 	# install *english* help; we can't do that later since this is in
 	# arch-dep and arch-indep stuff..
 	cd debian/tmp/pkg; \
@@ -1965,10 +1958,20 @@ ifeq "$(ENABLE_JAVA)" "y"
 	ln -s libjava_uno.so \
 		$(PKGDIR)-base/$(OODIR)/program/libjava_uno
 endif
-	
+
+	# move libflash and libsvgfilter to -draw; they only are export
+	# filters only used in draw and impress (and impress depends on
+	# draw anyway)
+	for i in libflash libsvgfilter; do \
+		mv $(PKGDIR)-core/$(OODIR)/program/$$i* \
+			$(PKGDIR)-draw/$(OODIR)/program; \
+	done
+
 ifeq "$(ARCH)" "amd64"
   ifeq "$(AMD64_EXPERIMENTAL)" "y"
 	set -e; set -x; \
+	pc=openoffice.org$(VER)-core; \
+	pce=$$pc-experimental; \
 	for p in $(filter-out openoffice.org$(VER), $(PKGS_AMD64_NOEXP)); do \
 	  pe=$$p-experimental; \
 	  if [ -d debian/$$pe ]; then \
@@ -1987,6 +1990,13 @@ ifeq "$(ARCH)" "amd64"
 	    fi; \
 	    mv debian/$$pe/usr/share/doc/$$p debian/$$pe/usr/share/doc/$$pe; \
 	  fi; \
+	  if [ -e debian/$$pe/usr/share/doc/$$pc ]; then \
+	    if [ -e debian/$$pe/usr/share/doc/$$pce ]; then \
+	      echo "Already exists, removing: debian/$$pe/usr/share/doc/$$pce"; \
+	      rm -rf debian/$$pe/usr/share/doc/$$pce; \
+	    fi; \
+	    mv debian/$$pe/usr/share/doc/$$pc debian/$$pe/usr/share/doc/$$pce; \
+	  fi; \
 	done
 
 #	  for i in debian/$$p.*; do \
@@ -1995,14 +2005,6 @@ ifeq "$(ARCH)" "amd64"
 
   endif
 endif
-
-	# move libflash and libsvgfilter to -draw; they only are export
-	# filters only used in draw and impress (and impress depends on
-	# draw anyway)
-	for i in libflash libsvgfilter; do \
-		mv $(PKGDIR)-core/$(OODIR)/program/$$i* \
-			$(PKGDIR)-draw/$(OODIR)/program; \
-	done
 
 	touch $@
 
