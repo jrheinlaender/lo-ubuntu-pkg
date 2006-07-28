@@ -82,6 +82,9 @@ ifeq "$(ARCH)" "amd64"
 endif
 
 SARGE_BACKPORT=n
+ifeq "$(DISTREL)" "sarge"
+  SARGE_BACKPORT=y
+endif
 
 #########
 # Default package configuration
@@ -149,6 +152,7 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
                  --with-tag=$(TAG) \
                 --with-system-gcc \
                 --with-distro=$(PATCHSET) \
+		--with-vendor='$(OOO_VENDOR)' \
                 --enable-package-directories \
                 --with-installed-ooo-dirname=openoffice$(VER) \
                 --mandir=/usr/share/man \
@@ -224,19 +228,25 @@ endif
 
 # X, curl and neon builddeps...
 ifeq "$(SARGE_BACKPORT)" "y"
-	BUILD_DEPS += , libcurl3-dev
-	BUILD_DEPS += , xlibs-static-dev, render-dev
+	BUILD_DEPS += , libcurl3-dev [$(OOO_ARCHS)]
+	BUILD_DEPS += , xlibs-static-dev [$(OOO_ARCHS)], render-dev [$(OOO_ARCHS)]
+	BUILD_DEPS += , unixodbc-dev [$(OOO_ARCHS)]
 else
-	BUILD_DEPS += , libcurl3-openssl-dev
-	BUILD_DEPS += , libxkbfile-dev, libxinerama-dev, x11proto-render-dev
+	BUILD_DEPS += , libcurl3-openssl-dev [$(OOO_ARCHS)]
+	BUILD_DEPS += , libxkbfile-dev [$(OOO_ARCHS)], libxinerama-dev [$(OOO_ARCHS)], x11proto-render-dev [$(OOO_ARCHS)]
+	BUILD_DEPS += , unixodbc-dev (>= 2.2.11) [$(OOO_ARCHS)]
 endif
 
 #############
 # Architecture-specific changes
 
+OOO_ARCHS= i386 powerpc sparc
+ifeq "$(BUILD_AMD64)" "y"
+  OOO_ARCHS += amd64
+endif
 # Java...
-NO_JAVA_ARCHS = !m68k !alpha !hppa !mips !mipsel !ia64 !arm !s390 !amd64
-ifeq (,$(findstring $(ARCH),i386 powerpc sparc))
+OOO_JAVA_ARCHS = i386 powerpc sparc
+ifeq (,$(findstring $(ARCH),$(OOO_JAVA_ARCHS)))
        ENABLE_JAVA=n
 endif
 
@@ -262,7 +272,7 @@ endif
 # We only build the main openoffice.org packages on those architectures where it works
 # all other architectures build libmythes-dev
 ifneq "$(USE_EXTERNAL_MYTHES)" "y"
-  ifeq ($(ARCH),$(findstring $(ARCH),$(shell dpkg-architecture -L | sed -e s/i386// -e s/powerpc// -e s/sparc// -e s/amd64//)))
+  ifneq ($(ARCH),$(findstring $(ARCH),$(OOO_ARCHS)))
        BUILD_ONLY_LIBMYTHES=y
   else
     ifeq "$(ARCH)" "amd64"
@@ -285,9 +295,9 @@ export DH_COMPAT
 
 ifeq "$(BUILD_PYUNO)" "y"
     ifeq "$(USE_PYCENTRAL)" "y"
-	BUILD_DEPS += , python-central (>= 0.5), debhelper (>= 5.0.37.2), python-dev (>= 2.3.5-7)
+	BUILD_DEPS += , python-central (>= 0.5), debhelper (>= 5.0.37.2), python-dev (>= 2.3.5-7) [$(OOO_ARCHS)]
     else
-	BUILD_DEPS += , debhelper, python-dev
+	BUILD_DEPS += , debhelper (>= 4.2.21), python-dev [$(OOO_ARCHS)]
     endif
 else 
   ifeq "$(BUILD_DBG_PACKAGE)" "y"
@@ -297,6 +307,7 @@ else
 	BUILD_DEPS += , debhelper (>= 5)
     endif
   endif
+  BUILD_DEPS += python [$(OOO_ARCHS)]
 endif
 
 ifeq "$(BUILD_JARS_NATIVE)" "y"
@@ -335,7 +346,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	ta-IN te-IN tg th ti-ER tn tr ts vi xh zh-CN zh-TW zu
     #HELPISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all') 
     HELPISOS:=en-US cs da de en-GB es et fr hu it ja ko nl \
-	pt-BR sv zh-CN zh-TW
+	pl pt-BR sv zh-CN zh-TW
     #LANGPACKISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
     LANGPACKISOS:=en-US af ar be-BY bg bn br bs ca cs cy da de el \
 	en-GB en-ZA es et fa fi fr ga gu-IN he hi-IN hr hu nb nl nn it ja \
@@ -406,7 +417,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 ifneq "$(SARGE_BACKPORT)" "y"
 	export JAVA_HOME=/usr/lib/jvm/java-gcj
 	CONFIGURE_FLAGS += --with-java=gij
-	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.56) [$(NO_JAVA_ARCHS)], ant (>= 1.6.5) [$(NO_JAVA_ARCHS)] #, mingw32 [$(NO_JAVA_ARCHS)]
+	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.56) [$(OOO_JAVA_ARCHS)], ant (>= 1.6.5) [$(OOO_JAVA_ARCHS)] #, mingw32 [$(OOO_JAVA_ARCHS)]
 	GCJ_VERSION = $(shell $(JAVA_HOME)/bin/gcj --version | head -n 1 | awk '{ print $$3; }' | cut -d"." -f1,2)
 	SYSTEM_XT=y
 	SYSTEM_XALAN=y
@@ -418,7 +429,7 @@ ifeq "$(ARCH)" "i386"
 else
 	JAVA_HOME=/usr/lib/j2sdk1.4-ibm
 endif
-	BUILD_DEPS += , j2sdk1.4 [i386], ibm-j2sdk1.4 [powerpc], ant [$(NO_JAVA_ARCHS)], mingw32 [$(NO_JAVA_ARCHS)]
+	BUILD_DEPS += , j2sdk1.4 [i386], ibm-j2sdk1.4 [powerpc], ant [$(OOO_JAVA_ARCHS)], mingw32 [$(OOO_JAVA_ARCHS)]
 	CONFIGURE_FLAGS += --with-system-xml-apis
 	SYSTEM_XT=n
 	SYSTEM_XALAN=y
@@ -431,27 +442,27 @@ export JAVA_HOME
   ifeq "$(SYSTEM_XT)" "y"
 	CONFIGURE_FLAGS += --with-system-xt	
 	JAVA_COMMON_JAVA_DEPENDS+= , libxt-java (>= 0.20050823)
-	BUILD_DEPS += , libxt-java (>= 0.20050823) [$(NO_JAVA_ARCHS)]
+	BUILD_DEPS += , libxt-java (>= 0.20050823) [$(OOO_JAVA_ARCHS)]
   endif
   ifeq "$(SYSTEM_XERCES)" "y"
 	CONFIGURE_FLAGS += --with-system-xerces
-	BUILD_DEPS += , libxerces2-java [$(NO_JAVA_ARCHS)]
+	BUILD_DEPS += , libxerces2-java [$(OOO_JAVA_ARCHS)]
 	JAVA_COMMON_JAVA_DEPENDS+= , libxerces2-java
   endif
   ifeq "$(SYSTEM_XALAN)" "y"
 	CONFIGURE_FLAGS += --with-system-xalan
-	BUILD_DEPS += , libxalan2-java (>= 2.6.0-1) [$(NO_JAVA_ARCHS)]
+	BUILD_DEPS += , libxalan2-java (>= 2.6.0-1) [$(OOO_JAVA_ARCHS)]
 	JAVA_COMMON_JAVA_DEPENDS+= , libxalan2-java (>= 2.6.0-1)
   endif
   ifeq "$(SYSTEM_XML_APIS)" "y"
 	CONFIGURE_FLAGS += --with-system-xml-apis
-	BUILD_DEPS += , libjaxp1.2-java [$(NO_JAVA_ARCHS)]
+	BUILD_DEPS += , libjaxp1.2-java [$(OOO_JAVA_ARCHS)]
 	JAVA_COMMON_JAVA_DEPENDS+= , libjaxp1.2-java
   endif
   ifneq "$(SARGE_BACKPORT)" "y"
-	BUILD_DEPS += , libdb4.3-java [$(NO_JAVA_ARCHS)]
+	BUILD_DEPS += , libdb4.2-java (>= 4.2.52-21) [$(OOO_JAVA_ARCHS)]
   else
-	BUILD_DEPS += , libdb4.2-java [$(NO_JAVA_ARCHS)]
+	BUILD_DEPS += , libdb4.2-java [$(OOO_JAVA_ARCHS)]
   endif
 else
 	CONFIGURE_FLAGS += --without-java
@@ -461,19 +472,19 @@ endif
 
 ifeq "$(USE_FIREFOX)" "y"
 	CONFIGURE_FLAGS+= --with-firefox
-	BUILD_DEPS+= , firefox-dev (>= 1.5.dfsg+1.5.0.1-1ubuntu7), libnspr-dev
+	BUILD_DEPS+= , firefox-dev (>= 1.5.dfsg+1.5.0.1-1ubuntu7) [$(OOO_ARCHS)], libnspr-dev [$(OOO_ARCHS)]
 else
  ifeq "$(USE_XULRUNNER)" "y"
 	CONFIGURE_FLAGS+= --with-xulrunner
-	BUILD_DEPS+= , libxul-dev, libnss3-dev
+	BUILD_DEPS+= , libxul-dev [$(OOO_ARCHS)], libnss3-dev [$(OOO_ARCHS)]
  else
-	BUILD_DEPS+= , mozilla-dev, libnss-dev (>= 1.7.5)
+	BUILD_DEPS+= , mozilla-dev [$(OOO_ARCHS)], libnss-dev (>= 1.7.5) [$(OOO_ARCHS)]
 	MOZILLA_NSS_DEPENDS = libnss3 (>= 1.7.5), libnspr4
  endif
 endif
 
 ifeq "$(ENABLE_MONO)" "y"
-       BUILD_DEPS += , mono-mcs (>= 1.1.8), libmono-dev (>= 1.1.8), cli-common-dev (>= 0.4.0)
+       BUILD_DEPS += , mono-mcs (>= 1.1.8) [$(OOO_ARCHS)], libmono-dev (>= 1.1.8) [$(OOO_ARCHS)], cli-common-dev (>= 0.4.0) [$(OOO_ARCHS)]
 	# http://pkg-mono.alioth.debian.org/cli-policy/ch-mono.html#s7.3
 	export MONO_SHARED_DIR=$(CURDIR)
 else
@@ -481,17 +492,17 @@ else
 endif
 
 ifeq "$(USE_SYSTEM_HUNSPELL)" "y"
-		BUILD_DEPS += , libhunspell-dev (>= 1.0.8-3)
+		BUILD_DEPS += , libhunspell-dev (>= 1.0.8-3) [$(OOO_ARCHS)]
 		CONFIGURE_FLAGS+= --with-system-hunspell
 endif
 
 ifeq "$(SYSTEM_ALTLINUXHYPH)" "y"
-	BUILD_DEPS += , libaltlinuxhyph-dev $(LIBALTLINUXHYPH_MINVER)
+	BUILD_DEPS += , libaltlinuxhyph-dev $(LIBALTLINUXHYPH_MINVER) [$(OOO_ARCHS)]
 	CONFIGURE_FLAGS += --with-system-altlinuxhyph
 endif
 
 ifeq "$(SYSTEM_AGG)" "y"
-       BUILD_DEPS += , libagg-dev (>= 2.3-2)
+       BUILD_DEPS += , libagg-dev (>= 2.3-2) [$(OOO_ARCHS)]
        CONFIGURE_FLAGS += --with-system-agg
 endif
 
@@ -500,18 +511,18 @@ ifneq "$(USE_STLPORT)" "y"
 else
   ifeq "$(USE_SYSTEM_STLPORT)" "y"
     ifeq "$(USE_STLPORT5)" "y"
-      BUILD_DEPS += , libstlport5.0-dev $(LIBSTLPORT_MINVER)
-      DEV_STL_DEPENDS=, libstlport5.0-dev $(LIBSTLPORT_MINVER)
+      BUILD_DEPS += , libstlport5.0-dev $(LIBSTLPORT_MINVER) [$(OOO_ARCHS)]
+      DEV_STL_DEPENDS=, libstlport5.0-dev $(LIBSTLPORT_MINVER) [$(OOO_ARCHS)]
     else
-      BUILD_DEPS += , libstlport4.6-dev $(LIBSTLPORT_MINVER)
-      DEV_STL_DEPENDS=, libstlport4.6-dev $(LIBSTLPORT_MINVER)
+      BUILD_DEPS += , libstlport4.6-dev $(LIBSTLPORT_MINVER) [$(OOO_ARCHS)]
+      DEV_STL_DEPENDS=, libstlport4.6-dev $(LIBSTLPORT_MINVER) [$(OOO_ARCHS)]
     endif
     CONFIGURE_FLAGS+= --with-stlport=$(CURDIR)/stlport
   endif
 endif
 
 ifeq "$(USE_SYSTEM_BOOST)" "y"
-	BUILD_DEPS += , libboost-dev
+	BUILD_DEPS += , libboost-dev [$(OOO_ARCHS)]
 	CONFIGURE_FLAGS += --with-system-boost
 else
   ifeq "$(BUILD_AMD64)" "y"
@@ -520,26 +531,26 @@ else
 endif
 
 ifeq "$(USE_SYSTEM_PORTAUDIO)" "y"
-	BUILD_DEPS += , libportaudio-dev
+	BUILD_DEPS += , libportaudio-dev [$(OOO_ARCHS)]
 	CONFIGURE_FLAGS += --with-system-portaudio
 endif
 
 ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
-       BUILD_DEPS += , libwpd8-dev $(LIBWPD8_MINVER)
+       BUILD_DEPS += , libwpd8-dev $(LIBWPD8_MINVER) [$(OOO_ARCHS)]
        CONFIGURE_FLAGS+=  --with-system-libwpd
 ifeq "$(USE_SYSTEM_SABLOT)" "y"
-	BUILD_DEPS += , libsablot0-dev (>= 1.0.2-4)
+	BUILD_DEPS += , libsablot0-dev (>= 1.0.2-4) [$(OOO_ARCHS)]
 	CONFIGURE_FLAGS += --with-system-sablot
 endif
 ifeq "$(USE_EXTERNAL_MYTHES)" "y"
-	BUILD_DEPS += , libmythes-dev (>= 1.0-2)
+	BUILD_DEPS += , libmythes-dev (>= 1.0-2) [$(OOO_ARCHS)]
 	CONFIGURE_FLAGS += --with-system-mythes
 	DEBHELPER_OPTIONS+= -Nlibmythes-dev
 endif
 endif
 
 ifeq "$(USE_SYSTEM_ICU)" "y"
-	BUILD_DEPS += , libicu34-dev
+	BUILD_DEPS += , libicu34-dev [$(OOO_ARCHS)]
 	CONFIGURE_FLAGS += --with-system-icu
 	# ICU utils are in /usr/sbin (!)
 	PATH+=:/usr/sbin
@@ -547,9 +558,9 @@ endif
 
 ifeq "$(USE_SYSTEM_XMLSEC)" "y"
   ifeq "$(USE_XULRUNNER)" "y"
-	BUILD_DEPS += , libxmlsec1-dev (>= 1.2.9-1.1), libxmlsec1-nss (>= 1.2.9-1.1), libxmlsec1-openssl (>= 1.2.9-1.1)
+	BUILD_DEPS += , libxmlsec1-dev (>= 1.2.9-1.1) [$(OOO_ARCHS)], libxmlsec1-nss (>= 1.2.9-1.1) [$(OOO_ARCHS)], libxmlsec1-openssl (>= 1.2.9-1.1) [$(OOO_ARCHS)]
   else
-	BUILD_DEPS += , libxmlsec1-dev (>= 1.2.9), libxmlsec1-nss (>= 1.2.9), libxmlsec1-openssl (>= 1.2.9)
+	BUILD_DEPS += , libxmlsec1-dev (>= 1.2.9) [$(OOO_ARCHS)], libxmlsec1-nss (>= 1.2.9) [$(OOO_ARCHS)], libxmlsec1-openssl (>= 1.2.9) [$(OOO_ARCHS)]
   endif
 	CONFIGURE_FLAGS += --with-system-xmlsec
 else
@@ -558,7 +569,7 @@ endif
 
 ifeq "$(BUILD_CAIROCANVAS)" "y"
   ifeq "$(USE_SYSTEM_CAIRO)" "y"
-    BUILD_DEPS+= , libcairo2-dev, libglitz-glx1-dev
+    BUILD_DEPS+= , libcairo2-dev [$(OOO_ARCHS)], libglitz-glx1-dev [$(OOO_ARCHS)]
     CONFIGURE_FLAGS+= --with-system-cairo
   endif
 else
@@ -569,7 +580,7 @@ ifneq "$(BUILD_MDBTOOLS)" "y"
   CONFIGURE_FLAGS+= --disable-access
 else
   ifeq "$(USE_SYSTEM_MDBTOOLS)" "y"
-    BUILD_DEPS += , mdbtools-dev (>= 0.5.99.0.6pre1.0.20050409-1)
+    BUILD_DEPS += , mdbtools-dev (>= 0.5.99.0.6pre1.0.20050409-1) [$(OOO_ARCHS)]
     CONFIGURE_FLAGS += --with-system-mdbtools
   endif
 endif
@@ -579,7 +590,7 @@ ifeq "$(BUILD_KDE)" "n"
 	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-kde
 	CONFIGURE_FLAGS+= --with-images="industrial crystal hicontrast"
 else
-       BUILD_DEPS += , kdelibs4-dev $(KDELIBS_MINVER)
+       BUILD_DEPS += , kdelibs4-dev $(KDELIBS_MINVER) [$(OOO_ARCHS)]
 endif
 
 ifeq "$(BUILD_BINFILTERS)" "y"
@@ -590,16 +601,19 @@ else
 		DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-filter-so52-experimental
 		OOO_FILTER52_DEP = openoffice.org$(VER)-filter-so52$(EXPSUFFIX)
 endif
+ifneq "$(BUILD_PYUNO)" "y"
+		DEBHELPER_OPTIONS+= -Npython-uno
+endif
 
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(USE_SYSTEM_HSQLDB)" "y"
-	BUILD_DEPS += , libhsqldb-java (>= 1.8.0.0-2) [$(NO_JAVA_ARCHS)]
+	BUILD_DEPS += , libhsqldb-java (>= 1.8.0.0-2) [$(OOO_JAVA_ARCHS)]
 	BASE_HSQLDB_DEPENDS = libhsqldb-java (>= 1.8.0.0-2)
 	CONFIGURE_FLAGS+= --with-system-hsqldb
   endif
 
   ifeq "$(USE_SYSTEM_BSH)" "y"
-	BUILD_DEPS += , bsh (>= 2.0b4-1) [$(NO_JAVA_ARCHS)]
+	BUILD_DEPS += , bsh (>= 2.0b4-1) [$(OOO_JAVA_ARCHS)]
 	COMMON_BSH_DEPENDS = bsh (>= 2.0b4-1)
 	CONFIGURE_FLAGS+= --with-system-beanshell
   endif
@@ -607,18 +621,18 @@ endif
 
 ifeq "$(USE_SYSTEM_LPSOLVE)" "y"
 	CONFIGURE_FLAGS += --with-system-lpsolve
-	BUILD_DEPS += , liblpsolve55-dev [!amd64], libufsparse-dev [!amd64]
+	BUILD_DEPS += , liblpsolve55-dev [$(OOO_ARCHS)]
 endif
 
 ifeq "$(USE_DBUS)" "y"
-	BUILD_DEPS += , libdbus-glib-1-dev (>= 0.60)
+	BUILD_DEPS += , libdbus-glib-1-dev (>= 0.60) [$(OOO_ARCHS)]
 endif
 
 ifeq "$(USE_SYSTEM_NEON)" "y"
   ifeq "$(SARGE_BACKPORT)" "y"
-	BUILD_DEPS += , libneon24-dev
+	BUILD_DEPS += , libneon24-dev [$(OOO_ARCHS)]
   else
-	BUILD_DEPS += , libneon25-dev
+	BUILD_DEPS += , libneon25-dev [$(OOO_ARCHS)]
   endif
 	CONFIGURE_FLAGS += --with-system-neon
 endif
@@ -639,10 +653,24 @@ endif
 BUILD_FROM=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^\(.*,\)\?from=\([a-zA-Z0-9]\+\).*$$/\2/p')
 export BUILD_FROM
 
-# Build n projects in paralell?
+# Build n projects in paralell / override automatic detection?
 # DEB_BUILD_OPTIONS=num-cpus=<n>
 NUM_CPUS=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^\(.*,\)\?num-cpus=\([0-9]\+\).*$$/\2/p')
 ifneq "$(NUM_CPUS)" ""
+  CONFIGURE_FLAGS += --with-num-cpus=$(NUM_CPUS)
+else
+  NUM_CPUS := $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
+  # using make -jX is not wanted on the Debian buildds, so don't do it...
+  ifeq "$(DIST)" "Debian"
+    ifeq (buildd,$(shell whoami))
+      NUM_CPUS := 1
+    endif
+  endif
+  ifeq "$(NUM_CPUS)" "1"
+    # do at least a build with --with-num-cpus=2 to do something while
+    # helpcontent2 is doing things slowly..
+    NUM_CPUS := 2
+  endif
   CONFIGURE_FLAGS += --with-num-cpus=$(NUM_CPUS)
 endif
 AVAIL_CPUS := $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
@@ -1008,12 +1036,6 @@ ifeq "$(BUILD_DBG_PACKAGE)" "y"
 		>> debian/control < debian/control.debug.in
 endif
 
-ifeq "$(BUILD_AMD64)" "y"
-	perl -pi -e "s/%AMD64%/amd64/g" debian/control
-else
-	perl -pi -e "s/%AMD64%//g" debian/control
-endif
-
 ifeq "$(AMD64_EXPERIMENTAL)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.experimental
@@ -1024,6 +1046,8 @@ ifeq "$(SARGE_BACKPORT)" "y"
 else
 	perl -pi -e "s,%CONTRIB%,,g" debian/control
 endif
+
+	perl -pi -e "s,%OOO_ARCHS%,$(OOO_ARCHS),g" debian/control
 
 	python debian/scripts/joinctrl.py < debian/control > debian/control.tmp
 	mv debian/control.tmp debian/control
@@ -1218,7 +1242,8 @@ endif
 	# is only built wenn DPKG is set.. Same with PKGFORMAT.
 	cd $(SOURCE_TREE)/sysui; \
 		. $(CURDIR)/$(SOURCE_TREE)/*.sh; \
-		PATH=$(BUILD_PATH) DPKG="dpkg" PKGFORMAT="deb" NO_PKG_MANGLE=go-away ../solenv/bin/build.pl && ../solenv/bin/deliver.pl
+		PATH=$(BUILD_PATH) DPKG="dpkg" PKGFORMAT="deb" NO_PKG_MANGLE=go-away \
+		../solenv/bin/build.pl && ../solenv/bin/deliver.pl
 
 ifneq "$(USE_EXTERNAL_MYTHES)" "y"
 	# build non-PIC version of libmythes
@@ -2100,15 +2125,15 @@ ifeq "$(ENABLE_JAVA)" "y"
 	# move common Java stuff to -java-common
 	mkdir -p $(PKGDIR)-java-common/$(OODIR)/program
 	mkdir -p $(PKGDIR)-java-common/$(OODIR)/share/Scripts
-	mkdir -p $(PKGDIR)-java-common/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Filters
+	mkdir -p $(PKGDIR)-java-common/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Filter
 	mkdir -p $(PKGDIR)-java-common/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Types
 	mv $(PKGDIR)-common/$(OODIR)/program/JREProperties.class \
 		$(PKGDIR)-java-common/$(OODIR)/program
 	mv $(PKGDIR)-common/$(OODIR)/share/Scripts/java \
 		$(PKGDIR)-java-common/$(OODIR)/share/Scripts
 	for i in palm pocketexcel pocketword; do \
-	  mv $(PKGDIR)-common/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Filters/fcfg_$${i}_filters.xcu \
-	    $(PKGDIR)-java-common/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Filters; \
+	  mv $(PKGDIR)-common/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Filter/fcfg_$${i}_filters.xcu \
+	    $(PKGDIR)-java-common/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Filter; \
 	  mv $(PKGDIR)-common/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Types/fcfg_$${i}_types.xcu \
 	    $(PKGDIR)-java-common/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Types; \
 	done
@@ -2594,7 +2619,7 @@ endif
 # Build architecture independant packages using the common target.
 binary-indep: $(GSI_EXPORT_STAMP) $(STAMP_DIR)/binary-indep
 $(STAMP_DIR)/binary-indep: $(STAMP_DIR)/install-indep debian/control $(STAMP_DIR)/maintscripts $(STAMP_DIR)/langpacks $(STAMP_DIR)/helppacks
-ifeq ($(ARCH),$(findstring $(ARCH),$(NO_JAVA_ARCHS)))
+ifneq ($(ARCH),$(findstring $(ARCH),$(OOO_JAVA_ARCHS)))
 	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 	echo "For uploads with binary-all packages, please use arches where Java is enabled!!!!!"
 	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
