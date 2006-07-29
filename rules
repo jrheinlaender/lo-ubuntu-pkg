@@ -46,7 +46,7 @@ unexport LS_COLORS
 
 #TAG=src680-m$(MILESTONE)
 #MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)"| cut -d. -f3)
-TAG=src680-m178
+TAG=src680-m179
 SOURCE_TREE=ooo-build/build/$(TAG)
 STAMP_DIR=debian/stampdir
 
@@ -69,7 +69,6 @@ PACKAGE_QA_TOOLS=n
 PACKAGE_TTF_OPENSYMBOL=y
 PACKAGE_NPSOPLUGIN=n
 BUILD_JARS_NATIVE=n
-SHLIBS_OVERRIDE = -- -Ldebian/openoffice.org-core.shlibs.local
 BUILD_BINFILTERS=y
 BUILD_ONLY_EN_US=n
 ENABLE_JAVA=y
@@ -248,7 +247,7 @@ endif
 export DH_COMPAT
 
 ifeq "$(BUILD_PYUNO)" "y"
-    ifneq "$(USE_PYCENTRAL)" "y"
+    ifeq "$(USE_PYCENTRAL)" "y"
 	BUILD_DEPS += , python-central (>= 0.4.10) [$(OOO_ARCHS)], debhelper (>= 5.0.37.1), python (>= 2.4) [$(OOO_ARCHS)], python-dev [$(OOO_ARCHS)]
     else
 	BUILD_DEPS += , debhelper (>= 4.2.21), python-dev [$(OOO_ARCHS)]
@@ -475,8 +474,6 @@ ifeq "$(USE_SYSTEM_XMLSEC)" "y"
 	BUILD_DEPS += , libxmlsec1-dev (>= 1.2.9) [$(OOO_ARCHS)], libxmlsec1-nss (>= 1.2.9) [$(OOO_ARCHS)], libxmlsec1-openssl (>= 1.2.9) [$(OOO_ARCHS)]
   endif
 	CONFIGURE_FLAGS += --with-system-xmlsec
-else
-	SHLIBS_OVERRIDE += -Ldebian/shlibs.override.xmlsec
 endif
 
 ifeq "$(BUILD_CAIROCANVAS)" "y"
@@ -784,6 +781,7 @@ ifeq "$(HELPISOS)" ""
 endif
 
 	rm -f l10n.fdupes
+	rm -f debian/shlibs.local
 
 	$(MAKE) -f debian/rules control
 
@@ -2093,6 +2091,10 @@ endif
 	fi
 	dh_makeshlibs -n -V
 	dh_installdeb
+	cat debian/openoffice.org-core.shlibs.local > debian/shlibs.local
+ifeq "$(USE SYSTEM_XMLSEC)" "y"
+	cat debian/shlibs.override.xmlsec >> debian/shlibs.local
+endif
 ifeq "$(ARCH)" "i386"
 	# this LD_ASSUME_KERNEL is for working around some bug which makes
 	# dh_shlibddeps report/find nothing with libc6-i686/TLS systems
