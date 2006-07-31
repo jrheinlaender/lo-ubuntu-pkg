@@ -112,6 +112,7 @@ USE_SYSTEM_LPSOLVE=y
 USE_DBUS=y
 USE_SYSTEM_NEON=y
 USE_PYCENTRAL=y
+PACKAGE_QUICKSTART=n
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
@@ -133,6 +134,10 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
                 --disable-strip \
                 --enable-atkbridge \
                 --enable-lockdown
+
+ifneq "$(PACKAGE_QUICKSTART)" "y"
+  CONFIGURE_FLAGS+= --disable-quickstart
+endif
 
 #############
 # Distro-specific overrides
@@ -248,7 +253,7 @@ export DH_COMPAT
 
 ifeq "$(BUILD_PYUNO)" "y"
     ifeq "$(USE_PYCENTRAL)" "y"
-	BUILD_DEPS += , python-central (>= 0.4.10) [$(OOO_ARCHS)], debhelper (>= 5.0.37.1), python (>= 2.4) [$(OOO_ARCHS)], python-dev [$(OOO_ARCHS)]
+	BUILD_DEPS += , python-central (>= 0.4.10) [$(OOO_ARCHS)], debhelper (>= 5.0.37.1), python (>= 2.4) [$(OOO_ARCHS)], python-dev (>= 2.4) [$(OOO_ARCHS)], python-minimal (>= 2.4) [$(OOO_ARCHS)]
     else
 	BUILD_DEPS += , debhelper (>= 4.2.21), python-dev [$(OOO_ARCHS)]
     endif
@@ -885,6 +890,12 @@ endif
 
 	perl -pi -e "s,%OOO_ARCHS%,$(OOO_ARCHS),g" debian/control
 
+ifeq "$(PACKAGE_QUICKSTART)" "y"
+	perl -pi -e 's#\(Widgets, Dialogs\)#\(Widgets, Dialogs, Quickstarter\)#' debian/control
+	perl -pi -e 's/GNOME\./GNOME. It also\n contains a QuickStarter for the \"notification area\"./' debian/control
+	perl -pi -e 's/Package: openoffice.org$(VER)-gtk$$/Package: openoffice.org-gtk\nConflicts: ooqstart-gnome/' debian/control
+endif
+
 	python debian/scripts/joinctrl.py < debian/control > debian/control.tmp
 	mv debian/control.tmp debian/control
 
@@ -1150,13 +1161,15 @@ ifeq "$(ENABLE_MONO)" "y"
 	fi
 endif
 
+ifeq "$(PACKAGE_QUICKSTART)" "y"
 	# ooqstart should go into -core; we have just a glib dependency
 	mkdir -p debian/tmp/pkg/openoffice.org-core/$(OODIR)/program
 	mv debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/ooqstart \
 		debian/tmp/pkg/openoffice.org-core/$(OODIR)/program
-#	mkdir -p -m755 debian/tmp/pkg/openoffice.org-gnome/$(OODIR)/share/xdg
-#	mv debian/tmp/pkg/openoffice.org-common/$(OODIR)/share/xdg/qstart.desktop \
-#		debian/tmp/pkg/openoffice.org-gnome/$(OODIR)/share/xdg
+	mkdir -p -m755 debian/tmp/pkg/openoffice.org-gnome/$(OODIR)/share/xdg
+	mv debian/tmp/pkg/openoffice.org-common/$(OODIR)/share/xdg/qstart.desktop \
+		debian/tmp/pkg/openoffice.org-gnome/$(OODIR)/share/xdg
+endif
 
 	# move gengal stuff into -dev
 	mkdir -p debian/tmp/pkg/openoffice.org-dev/$(OODIR)/program
@@ -1347,9 +1360,18 @@ endif
 	# move the GNOME stuff which are *not* in gid_Module_Optional_Gnome
 	# (which is moved into -gnome in package-ooo) into -gnome
 	mkdir -p -m755 $(PKGDIR)-gnome/$(OODIR)/program
-	for f in gnome-open-url.bin fps_gnome.uno.so libvclplug_gtk[0-9]*.so libeggtray* libqstart_gtk*; do \
+	for f in gnome-open-url.bin fps_gnome.uno.so libvclplug_gtk[0-9]*.so; do \
 	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-gnome/$(OODIR)/program || exit 1;\
 	done
+ifeq "$(PACKAGE_QUICKSTART)" "y"
+	for f in libeggtray* libqstart_gtk*; do \
+	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-gnome/$(OODIR)/program || exit 1;\
+	done
+else
+	for f in libeggtray* libqstart_gtk*; do \
+	  rm -f $(PKGDIR)-core/$(OODIR)/program/$$f; \
+	done
+endif
 
 	# split out gtk stuff
 	mkdir -p -m755 $(PKGDIR)-gtk/$(OODIR)/program
