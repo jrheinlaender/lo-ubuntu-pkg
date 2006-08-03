@@ -46,7 +46,7 @@ unexport LS_COLORS
 
 #TAG=src680-m$(MILESTONE)
 #MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)"| cut -d. -f3)
-TAG=src680-m179
+TAG=src680-m180
 SOURCE_TREE=ooo-build/build/$(TAG)
 STAMP_DIR=debian/stampdir
 
@@ -257,6 +257,7 @@ ifeq "$(BUILD_PYUNO)" "y"
     else
 	BUILD_DEPS += , debhelper (>= 4.2.21), python-dev [$(OOO_ARCHS)]
     endif
+    WRITER_PYUNO_DEP = python-uno (>= ${base-version})
 else 
   ifeq "$(BUILD_DBG_PACKAGE)" "y"
 	BUILD_DEPS += , debhelper (>= 4.2.21)
@@ -629,7 +630,7 @@ build:
 		ar rc libmythes_pic.a mythes.o && ranlib libmythes_pic.a && \
 		mv libmythes_pic.a $(CURDIR)/ooo-build/build
 
-install: build
+install: $(CURDIR)/ooo-build/build/libmythes.a $(CURDIR)/ooo-build/build/libmythes_pic.a
 	mkdir -p debian/libmythes-dev/usr/lib
 	mkdir -p debian/libmythes-dev/usr/include
 	mkdir -p debian/libmythes-dev/usr/share/mythes
@@ -1674,7 +1675,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 	# recompile the jar; the preferred way is to produce the binaries from
 	# the bytecode.
 	mkdir -p $(PKGDIR)-gcj/usr/lib/gcj-$(GCJ_VERSION)
-	for jar in debian/tmp/pkg/openoffice.org-common/usr/lib/openoffice/program/classes/*.jar $(PKGDIR)-common/$(OODIR)/program/classes/*.jar $(PKGDIR)-java-common/usr/share/java/openoffice/*.jar; \
+	for jar in debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/classes/*.jar $(PKGDIR)-common/$(OODIR)/program/classes/*.jar $(PKGDIR)-java-common/usr/share/java/openoffice/*.jar; \
 	do \
 	  [ -h "$$jar" -o ! -f "$$jar" ] && continue; \
 	  debian/scripts/aot-compile $$jar $(PKGDIR)-gcj/usr/lib/gcj-$(GCJ_VERSION)/$$(basename $$jar).so || exit $$?; \
@@ -1764,10 +1765,16 @@ $(STAMP_DIR)/install-indep: ooo-build/fonts/opens___.ttf
 
 	# Remove files in langpack
 	for dir in program/resource share/registry/res/en-US; do \
-	  rm -rf $(PKGDIR)-common/usr/lib/openoffice$(VER)/$$dir ;\
+	  rm -rf $(PKGDIR)-common/$(OODIR)/$$dir ;\
 	done
 
 	dh_installdirs -i
+
+	# sound doesn't work anyway, remove the .wav files to save space
+	rm -f $(PKGDIR)-common/$(OODIR)/share/gallery/sounds/*
+	rm -f $(PKGSIR)-common/$(OODIR)/share/gallery/sg9.*
+
+	rm -f $(PKGDIR)-common/$(OODIR)/program/oo_product.bmp
 
 	# Extract and install icons
 	cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/desktop-integration && dpkg --extract openoffice.org-debian-menus_*_all.deb . && cd usr/share/icons; \
@@ -2018,23 +2025,23 @@ ifeq "$(PACKAGE_QA_TOOLS)" "y"
 	find $(PKGDIR)-qa-api-tests -type d -name "CVS" | xargs rm -rf
 	find $(PKGDIR)-qa-api-tests -type f | xargs chmod 0644
 
-	echo "TestBase=java_fat" > $(PKGDIR)-qa-api-tests/usr/lib/openoffice/qadevOOo/java.props
-	echo "TestBase=java_complex" > $(PKGDIR)-qa-api-tests/usr/lib/openoffice/qadevOOo/complex.props
-	echo "TestBase=basic_fat" > $(PKGDIR)-qa-api-tests/usr/lib/openoffice/qadevOOo/basic.props
+	echo "TestBase=java_fat" > $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/java.props
+	echo "TestBase=java_complex" > $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/complex.props
+	echo "TestBase=basic_fat" > $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/basic.props
 
 	echo "BASICBRIDGE=/$(OODIR)/qadevOOo/testdocs/BasicBridge.sxw" >> \
-		$(PKGDIR)-qa-api-tests/usr/lib/openoffice/qadevOOo/basic.props
+		$(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/basic.props
 	echo "BASICRESPTH=/$(OODIR)/qadevOOo/tests/basic" >> \
-		$(PKGDIR)-qa-api-tests/usr/lib/openoffice/qadevOOo/basic.props
+		$(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/basic.props
 
 	for i in java complex basic; do \
 		echo "DescriptionPath=/$(OODIR)/qadevOOo/objdsc" >> \
-			$(PKGDIR)-qa-api-tests/usr/lib/openoffice/qadevOOo/$$i.props; \
+			$(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/$$i.props; \
 		echo "TestDocumentPath=/$(OODIR)/qadevOOo/testdocs" >> \
-			$(PKGDIR)-qa-api-tests/usr/lib/openoffice/qadevOOo/$$i.props; \
+			$(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/$$i.props; \
 		echo "AppExecutionCommand=/$(OODIR)/program/soffice" \
 			"-norestore -nocrashreport -accept=socket,host=localhost,port=8100;urp;" >> \
-			$(PKGDIR)-qa-api-tests/usr/lib/openoffice/qadevOOo/$$i.props; \
+			$(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/$$i.props; \
 	done
 endif
 
