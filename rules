@@ -715,6 +715,7 @@ clean:
 		ooo-build/src/*.ico \
 		ooo-build/src/Draft.jpg \
 		ooo-build/src/easter/*.png
+	rm -rf ooo-build/scratch/buildbot
 
 	if [ -d ooo-build/test ]; then \
 		find ooo-build/test ooo-build/doc -type f \
@@ -801,7 +802,7 @@ debian/control: debian/control.in debian/control.lang.in debian/control.help.in 
 	    -e "s#%BUILD_DEPS%#$(strip $(BUILD_DEPS))#g" \
 	    < debian/control.in > debian/control
 
-	for LNUM in $(LANGPACKISOS) ; do \
+	for LNUM in $(filter-out en-US,$(LANGPACKISOS)) ; do \
 	    LNAME=`ooo-build/bin/openoffice-xlate-lang -l $$LNUM | perl -e 'print ucfirst(<STDIN>);'`; \
 	    LCODE=`ooo-build/bin/openoffice-xlate-lang -i $$LNUM | tr A-Z a-z`; \
 	    CCODE=`echo $$LCODE | sed 's/-.*//'`; \
@@ -898,10 +899,6 @@ endif
 	python debian/scripts/joinctrl.py < debian/control > debian/control.tmp
 	mv debian/control.tmp debian/control
 
-	# -l10n-en became -l10n-en-us
-	perl -pi -e 's/Conflicts:(.*)openoffice.org2-l10n-en-us$$/Conflicts:$$1openoffice.org2-l10n-en-us, openoffice.org-l10n-en/' debian/control
-	perl -pi -e 's/Replaces:(.*)openoffice.org2-l10n-en-us$$/Replaces:$$1openoffice.org2-l10n-en-us, openoffice.org-l10n-en/' debian/control
-	perl -pi -e 's/Provides:(.*)openoffice.org2-l10n-en-us$$/Provides:$$1openoffice.org2-l10n-en-us, openoffice.org-l10n-en/' debian/control
 	# ... and -hi became -hi-in
 	perl -pi -e 's/Conflicts:(.*)openoffice.org2-l10n-hi-in$$/Conflicts:$$1openoffice.org2-l10n-hi-in, openoffice.org-l10n-hi/' debian/control
 	perl -pi -e 's/Replaces:(.*)openoffice.org2-l10n-hi-in$$/Replaces:$$1openoffice.org2-l10n-hi-in, openoffice.org-l10n-hi/' debian/control
@@ -1094,7 +1091,7 @@ ifneq "$(HELPISOS)" ""
 		for i in common calc math draw writer impress base; do \
 			cp -r ./openoffice.org-$$i/$(OODIR)/help/en/* \
 			 ./openoffice.org-help-en-us/$(OODIR)/help/en && \
-			rm -rf ./openoffice.org-$$i/$(OODIR)/help/en; \
+			rm -rf ./openoffice.org-$$i/$(OODIR)/help; \
 		done
 	# save space by removing non-packaged localized help; we don't need
 	# them anyway
@@ -1106,23 +1103,11 @@ ifneq "$(HELPISOS)" ""
 		done
 endif
 
-ifeq "$(BUILD_BINFILTERS)" "y"
-	# move en-US binfilter resources which are not in -l10n-en-us there.
-	# They will be moved out of -common in the langpacks target...
+	# move resources which have been installed outside of common there
 	cd debian/tmp/pkg; \
-		mv openoffice.org-calc/$(OODIR)/program/resource/bf_sc*en-US.res \
-			openoffice.org-common/$(OODIR)/program/resource && \
-		mv openoffice.org-math/$(OODIR)/program/resource/bf_sm*en-US.res \
-			openoffice.org-common/$(OODIR)/program/resource
-endif
-	# ... same with base
-	cd debian/tmp/pkg; \
-	mv openoffice.org-base/$(OODIR)/program/resource/abp*en-US.res \
-		openoffice.org-common/$(OODIR)/program/resource && \
-	mv openoffice.org-base/$(OODIR)/program/resource/dbp*en-US.res \
-		openoffice.org-common/$(OODIR)/program/resource && \
-	mv openoffice.org-base/$(OODIR)/program/resource/dbu*en-US.res \
-		openoffice.org-common/$(OODIR)/program/resource
+		for i in `find . -name "*en-US.res" | grep -v common`; do \
+			mv $$i openoffice.org-common/$(OODIR)/program/resource/`basename $$i`; \
+		done
 
 ifeq "$(ENABLE_JAVA)" "y"
 	# move officebean.jar into -officebean (They will be moved out of -core
@@ -1264,13 +1249,6 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/install $(STAMP_DIR)/install-indep ooo-buil
 	  rm -rf $(PKGDIR)-l10n-$$ext.*.debhelper;\
 	done
 
-	# move the english stuff out of the -common install
-	for dir in program/resource share/registry/res/en-US; do \
-	  mkdir -m755 -p $(PKGDIR)-l10n-en-us/$(OODIR)/$$dir ;\
-	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-common/$(OODIR)/$$dir/* \
-			$(PKGDIR)-l10n-en-us/$(OODIR)/$$dir || exit 1;\
-	done
-
 	# ... and install the rest of the langpacks
 	for iso in $(LANGPACKISOS); do \
 	  if [ "$$iso" = "en-US" ]; then continue; fi ; \
@@ -1279,7 +1257,6 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/install $(STAMP_DIR)/install-indep ooo-buil
 	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-l10n-$$iso \
 		$(PKGDIR)-l10n-$$pkgiso || exit 1; \
 	done
-
 	
 	# remove empty uno_packages dirs somehow in the langpacks(?)
 	for iso in `echo $(LANGPACKISOS) | tr A-Z a-z`; do \
@@ -1306,6 +1283,11 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/install $(STAMP_DIR)/install-indep ooo-buil
 	# remove empty help directories
 	for iso in `echo $(LANGPACKISOS) | tr A-Z a-z`; do \
 		rm -rf $(PKGDIR)-l10n-$$iso/$(OODIR)/help; \
+	done
+
+	# remove empty resource directories
+	for i in draw base writer impress calc math; do \
+		rm -rf $(PKGDIR)-$$i/$(OODIR)/program/resource; \
 	done
 
 	# replace duplicate files in the langpacks with symlinks
@@ -1678,13 +1660,13 @@ ifeq "$(ENABLE_JAVA)" "y"
 	  [ -h "$$jar" -o ! -f "$$jar" ] && continue; \
 	  debian/scripts/aot-compile $$jar $(PKGDIR)-gcj/usr/lib/gcj-$(GCJ_VERSION)/$$(basename $$jar).so || exit $$?; \
 	done
-  endif
 	# create gcj classmap
 	mkdir -p $(PKGDIR)-gcj/usr/share/gcj-$(GCJ_VERSION)/classmap.d
 	cd debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/classes && \
 	for i in `find . -type f -name "*.jar" | sed -e s,./,,g`; do \
 	  $(JAVA_HOME)/bin/gcj-dbtool -f $(CURDIR)/$(PKGDIR)-gcj/usr/share/gcj-$(GCJ_VERSION)/classmap.d/openoffice.org$(VER)-gcj.db $$i /usr/lib/gcj-$(GCJ_VERSION)/$$i.so; \
 	done
+  endif
 endif
 
 	# install some docs.
@@ -1736,7 +1718,6 @@ endif
 	mv $(PKGDIR)-draw/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Filter/fcfg_impressgraphics_filters.xcu \
 	  $(PKGDIR)-impress/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Filter
 
-
 	# move writer2latex.jar into the right dir
 	mkdir -p $(PKGDIR)-writer/usr/share/java/openoffice$(VER)
 	mv $(PKGDIR)-writer/$(OODIR)/program/classes/writer2latex.jar \
@@ -1761,11 +1742,6 @@ $(STAMP_DIR)/install-indep: ooo-build/fonts/opens___.ttf
 	cp -r --preserve=mode debian/tmp/pkg/openoffice.org-common $(PKGDIR)-common || exit 1
 	rm -rf $(PKGDIR)-dev-doc $(PKGDIR)-dev-doc.*.debhelper; \
 	cp -r --preserve=mode debian/tmp/pkg/openoffice.org-dev-doc $(PKGDIR)-dev-doc || exit 1
-
-	# Remove files in langpack
-	for dir in program/resource share/registry/res/en-US; do \
-	  rm -rf $(PKGDIR)-common/$(OODIR)/$$dir ;\
-	done
 
 	dh_installdirs -i
 
