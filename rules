@@ -46,7 +46,7 @@ unexport LS_COLORS
 
 #TAG=src680-m$(MILESTONE)
 #MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)"| cut -d. -f3)
-TAG=src680-m180
+TAG=src680-m181
 SOURCE_TREE=ooo-build/build/$(TAG)
 STAMP_DIR=debian/stampdir
 
@@ -1060,14 +1060,6 @@ ifneq "$(USE_EXTERNAL_MYTHES)" "y"
 		mv libmythes_nopic.a $(CURDIR)/$(SOURCE_TREE)
 endif
 
-ifeq "$(ENABLE_JAVA)" "y"
-	# rebuild unowinreg.dll from source
-	cd $(SOURCE_TREE)/odk/source/unowinreg/win && \
-		i586-mingw32msvc-g++ -Wall -D_JNI_IMPLEMENTATION_ -I$(JAVA_HOME)/include -shared -o unowinreg.dll unowinreg.cxx \
-			-Wl,--kill-at -lkernel32 -ladvapi32 && \
-		mv unowinreg.dll $(CURDIR)/$(SOURCE_TREE)
-endif
-
 	touch $@
 
 install: $(STAMP_DIR)/install
@@ -1589,9 +1581,13 @@ endif
 ifeq "$(ENABLE_JAVA)" "y"
 	# move SDK Java stuff into /usr/share/java/openoffice
 	rm -f $(PKGDIR)-dev/$(OODIR)/sdk/classes
-	mkdir -p $(PKGDIR)-dev/usr/share/java/openoffice$(VER)
+	mkdir -p $(PKGDIR)-dev/usr/share/java/openoffice$(VER)/win
 	mkdir -p $(PKGDIR)-dev/$(OODIR)/sdk/classes
 	mv $(PKGDIR)-dev/usr/share/openoffice/sdk/classes/com \
+		$(PKGDIR)-dev/usr/share/java/openoffice$(VER) && \
+	mv $(PKGDIR)-dev/usr/share/openoffice/sdk/classes/win/unowinreg.dll \
+		$(PKGDIR)-dev/usr/share/java/openoffice$(VER)/win && \
+	mv $(PKGDIR)-dev/usr/share/openoffice/sdk/classes/unowinreg.dll \
 		$(PKGDIR)-dev/usr/share/java/openoffice$(VER) && \
 	cd $(PKGDIR)-dev/$(OODIR)/sdk/classes && \
 		ln -s /usr/share/java/openoffice$(VER)/com com
@@ -1628,11 +1624,6 @@ endif
 	  echo 'exec /$(OODIR)/program/gsicheck.bin "$$@"'; \
 	) > $(PKGDIR)-dev/$(OODIR)/program/gsicheck
 	chmod 755 $(PKGDIR)-dev/$(OODIR)/program/gsicheck
-
-ifeq "$(ENABLE_JAVA)" "y"
-	# install unowinreg.dll
-	install -m644 $(CURDIR)/$(SOURCE_TREE)/unowinreg.dll $(PKGDIR)-dev/usr/share/java/openoffice$(VER)
-endif
 
 ifeq "$(INTERNAL_STDLIBS)" "y"
 	# we have to do this manually; specifying --without-system-stdlibs
@@ -1721,11 +1712,13 @@ endif
 	mv $(PKGDIR)-draw/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Filter/fcfg_impressgraphics_filters.xcu \
 	  $(PKGDIR)-impress/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Filter
 
+ifeq "$(ENABLE_JAVA)" "y"
 	# move writer2latex.jar into the right dir
 	mkdir -p $(PKGDIR)-writer/usr/share/java/openoffice$(VER)
 	mv $(PKGDIR)-writer/$(OODIR)/program/classes/writer2latex.jar \
 		$(PKGDIR)-writer/usr/share/java/openoffice$(VER) && \
 	rmdir $(PKGDIR)-writer/$(OODIR)/program/classes
+endif
 
 	touch $@
 
@@ -2082,11 +2075,6 @@ ifeq "$(BUILD_DBG_PACKAGE)" "y"
 	rm -rf $(PKGDIR)-dbg/usr/lib/debug/$(OODIR)/sdk
 else
 	dh_strip -Xunowinreg.dll
-endif
-ifeq "$(ENABLE_JAVA)" "y"
-  ifneq (nostrip,$(findstring nostrip,$(DEB_BUILD_OPTIONS)))
-	i586-mingw32msvc-strip debian/openoffice.org-dev/usr/share/java/openoffice$(VER)/unowinreg.dll
-  endif
 endif
 	dh_desktop
 	dh_installxmlcatalogs
