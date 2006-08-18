@@ -331,7 +331,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 ifneq "$(SARGE_BACKPORT)" "y"
 	JAVA_HOME=/usr/lib/jvm/java-gcj
 	CONFIGURE_FLAGS += --with-java=gij --enable-gcjaot
-	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.56) [$(OOO_JAVA_ARCHS)], ant (>= 1.6.5) [$(OOO_JAVA_ARCHS)], mingw32 [$(OOO_JAVA_ARCHS)]
+	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.56) [$(OOO_JAVA_ARCHS)], ant (>= 1.6.5) [$(OOO_JAVA_ARCHS)]
 	GCJ_VERSION = $(shell $(JAVA_HOME)/bin/gcj --version | head -n 1 | awk '{ print $$3; }' | cut -d"." -f1,2)
 	SYSTEM_XT=y
 	SYSTEM_XALAN=y
@@ -343,7 +343,7 @@ ifeq "$(ARCH)" "i386"
 else
 	JAVA_HOME=/usr/lib/j2sdk1.4-ibm
 endif
-	BUILD_DEPS += , j2sdk1.4 [i386], ibm-j2sdk1.4 [powerpc], ant [$(OOO_JAVA_ARCHS)], mingw32 [$(OOO_JAVA_ARCHS)]
+	BUILD_DEPS += , j2sdk1.4 [i386], ibm-j2sdk1.4 [powerpc], ant [$(OOO_JAVA_ARCHS)]
 	CONFIGURE_FLAGS += --with-system-xml-apis
 	SYSTEM_XT=n
 	SYSTEM_XALAN=y
@@ -377,6 +377,10 @@ export JAVA_HOME
 	BUILD_DEPS += , libdb4.2-java (>= 4.2.52-21) [$(OOO_JAVA_ARCHS)]
   else
 	BUILD_DEPS += , libdb4.2-java [$(OOO_JAVA_ARCHS)]
+  endif
+  ifeq "$(DIST)" "Debian"
+	BUILD_DEPS += , mingw32 [$(OOO_JAVA_ARCHS)]
+	CONFIGURE_FLAGS += --with-mingwin=i586-mingw32msvc-g++
   endif
 else
 	CONFIGURE_FLAGS += --without-java
@@ -1299,7 +1303,7 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/install $(STAMP_DIR)/install-indep ooo-buil
 	# replace duplicate files in the langpacks with symlinks
 	fdupes --quiet --recurse --sameline --size \
 		debian/openoffice.org$(VER)-common/$(OODIR) \
-		$(foreach d,$(shell echo $(LANGPACKISOS) | tr A-Z a-z),debian/openoffice.org$(VER)-l10n-$(d)/$(OODIR)) \
+		$(foreach d,$(shell echo $(filter-out en-US,$(LANGPACKISOS)) | sed -e s/en-US // | tr A-Z a-z),debian/openoffice.org$(VER)-l10n-$(d)/$(OODIR)) \
 		> l10n.fdupes
 	debian/scripts/cleandupes --base=openoffice.org$(VER) --prefix=debian < l10n.fdupes
 
@@ -1518,21 +1522,6 @@ endif
 	sed -i -e 's/Office;/Office;Graphics;/' $(PKGDIR)-draw/usr/share/applications/ooo$(VER)-draw.desktop
 	#mv $(PKGDIR)-base/usr/share/applications/ooo$(VER)-base.desktop $(PKGDIR)-core/usr/share/applications
 	#rm -r $(PKGDIR)-base
-
-	# fix manpage symlinks
-	for i in writer calc draw impress base math; do \
-		echo $(PACKAGES) | grep -q openoffice.org$(VER)-$$i || continue; \
-		mkdir -p $(CURDIR)/$(PKGDIR)-$$i/usr/share/man/man1; \
-		if [ "$$i" = "writer" ]; then \
-			for j in writer html web; do \
-				cd $(CURDIR)/$(PKGDIR)-$$i/usr/share/man/man1 && \
-					ln -sf openoffice$(VER).1.gz oo$${j}$(VER).1.gz; \
-			done; \
-		else \
-			cd $(CURDIR)/$(PKGDIR)-$$i/usr/share/man/man1 && \
-				ln -sf openoffice$(VER).1.gz oo$${i}$(VER).1.gz; \
-		fi; \
-	done
 
 ifeq "$(BUILD_PYUNO)" "y"
 	# PyUNO packging
@@ -1781,13 +1770,6 @@ endif
 	install -m755 ooo-build/bin/openoffice-xlate-lang \
 		$(PKGDIR)-common/usr/share/openoffice$(VER)/bin
 
-	# compress manpages
-	find $(PKGDIR)-common -type f -name "*.1" | xargs gzip -9
-	mkdir -p $(PKGDIR)-common/usr/share/man/man1
-	ln -sf openoffice$(VER).1.gz $(PKGDIR)-common/usr/share/man/man1/ooffice$(VER).1.gz
-	ln -sf openoffice$(VER).1.gz $(PKGDIR)-common/usr/share/man/man1/ooo-wrapper$(VER).1.gz
-	ln -sf openoffice$(VER).1.gz $(PKGDIR)-common/usr/share/man/man1/oofromtemplate$(VER).1.gz
-
 ifeq "$(HELPISOS)" ""
 	# when we don't build helpcontent2 here we are missing helpxsl.zip so
 	# this file doesn't get installed either. Do it manually..
@@ -1985,6 +1967,7 @@ ifeq "$(HELPISOS)" ""
 	done
 endif
 
+	rm -rf $(PKGDIR)-dtd-officedocument1.0
 	mkdir -p $(PKGDIR)-dtd-officedocument1.0/$(OODIR)/share/dtd
 	mv $(PKGDIR)-common/$(OODIR)/share/dtd/officedocument \
 		$(PKGDIR)-dtd-officedocument1.0/$(OODIR)/share/dtd
@@ -2066,6 +2049,15 @@ ifeq "$(PACKAGE_QA_TOOLS)" "y"
 	dh_installdocs -popenoffice.org$(VER)-qa-tools debian/README.qa
 endif
 	dh_installman
+	# fix symlinks
+	for i in writer calc draw base math impress common; do \
+		for i in `find $(PKGDIR)-$$i -type l -name "*.1"`; do \
+			mv $$i $$i.gz; \
+			if [ "`readlink $$i`" != "openoffice.1.gz" ]; then \
+				ln -sf openoffice.1.gz $$i.gz; \
+			fi; \
+		done; \
+	done
 	dh_installchangelogs -Nlibmythes-dev ooo-build/ChangeLog
 ifneq "$(USE_EXTERNAL_MYTHES)" "y"
 	dh_installchangelogs -plibmythes-dev -XNEWS
@@ -2090,13 +2082,6 @@ endif
 	dh_desktop
 	dh_installxmlcatalogs
 	dh_compress
-	# when we have manpages (well, links..) with .gz.gz, fix them
-	# FIXME: Find out the root cause for this...
-	if find $(PKGDIR)-common -type l -name "*.gz.gz" 2>&1 >/dev/null; then \
-		for i in `find $(PKGDIR)-common -type l -name "*.gz.gz"`; do \
-			mv $$i `echo "$$i" | sed -e "s/\.gz$$//"`; \
-		done; \
-	fi
 	dh_makeshlibs -n -V
 	dh_installdeb
 	cat debian/openoffice.org-core.shlibs.local > debian/shlibs.local
