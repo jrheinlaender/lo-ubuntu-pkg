@@ -22,6 +22,10 @@ OODIR:=usr/lib/openoffice$(VER)
 PKGSOURCE := $(shell dpkg-parsechangelog | awk '/^Source:/ {print $$2;exit 0}')
 SOURCE_VERSION:=$(shell head -1 debian/changelog | cut -d\( -f2 | cut -d\) -f1)
 UPSTREAM_VERSION:=$(shell echo "$(SOURCE_VERSION)"| cut -d- -f1)
+BASE_VERSION:=$(UPSTREAM_VERSION)
+#HELP_L10N_VIRTUAL_VERSION:=$(UPSTREAM_VERSION)
+HELP_L10N_VIRTUAL_VERSION:=2.0.4
+
 BINARY_VERSION=$(SOURCE_VERSION)
 #BINARY_VERSION=2.0.3-$(shell dpkg-parsechangelog  | grep urgency \
 	| awk '{print $$2}' | sed -e s/"("// -e s/")"// | cut -d"-" -f2)
@@ -50,7 +54,7 @@ unexport LS_COLORS
 
 #TAG=src680-m$(MILESTONE)
 #MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)"| cut -d. -f3)
-TAG=ooc680-m7
+TAG=ood680-m1
 SOURCE_TREE=ooo-build/build/$(TAG)
 STAMP_DIR=debian/stampdir
 
@@ -70,6 +74,7 @@ ifeq "$(ARCH)" "amd64"
 	openoffice.org$(VER)-gtk openoffice.org$(VER)-gnome \
 	openoffice.org$(VER)-evolution openoffice.org$(VER)-officebean \
 	openoffice.org$(VER)-dev openoffice.org$(VER)-filter-so52 \
+	openoffice.org$(VER)-filter-mobiledev \
 	openoffice.org$(VER)-gtk-gnome \
 	python-uno
 #	openoffice.org$(VER)-gcj
@@ -84,7 +89,6 @@ ifeq "$(ARCH)" "amd64"
   endif
 endif
 
-SARGE_BACKPORT=n
 ifeq "$(DISTREL)" "sarge"
   SARGE_BACKPORT=y
 endif
@@ -93,16 +97,14 @@ endif
 # Default package configuration
 #
 OS:= $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
-BUILD_AMD64=n
+BUILD_AMD64=y
 PATCHSET=$(DIST)
 BUILD_DEPS=
 BUILD_PYUNO=y
-PACKAGE_QA_TOOLS=n
+PACKAGE_QA_TOOLS=y
 PACKAGE_TTF_OPENSYMBOL=y
 PACKAGE_NPSOPLUGIN=n
 BUILD_JARS_NATIVE=n
-REBUILD_JARS_NATIVE=y
-SHLIBS_OVERRIDE = -- -Ldebian/openoffice.org-core.shlibs.local
 BUILD_BINFILTERS=y
 BUILD_ONLY_EN_US=n
 ENABLE_JAVA=y
@@ -110,6 +112,7 @@ ENABLE_MONO=n
 USE_SYSTEM_HUNSPELL=y
 SYSTEM_ALTLINUXHYPH=y
 LIBALTLINUXHYPH_MINVER= (>= 0.1.1-7)
+USE_AGG=y
 SYSTEM_AGG=n
 USE_STLPORT=y
 USE_STLPORT5=n
@@ -125,6 +128,7 @@ USE_SYSTEM_PORTAUDIO=y
 USE_EXTERNAL_CXXLIBS=y
 LIBWPD8_MINVER= (>= 0.8.3-3)
 USE_SYSTEM_SABLOT=n
+USE_LIBXSLT=y
 USE_EXTERNAL_MYTHES=n
 USE_SYSTEM_ICU=y
 USE_SYSTEM_XMLSEC=n
@@ -133,7 +137,7 @@ USE_SYSTEM_CAIRO=y
 BUILD_MDBTOOLS=y
 USE_SYSTEM_MDBTOOLS=y
 BUILD_KDE=y
-BUILD_DBG_PACKAGE=n
+BUILD_DBG_PACKAGE=y
 USE_SYSTEM_BSH=y
 USE_SYSTEM_HSQLDB=y
 LIBDB_JAVA_MINVER= (>= 4.2.52-21)
@@ -142,8 +146,11 @@ USE_XULRUNNER=n
 KDELIBS_MINVER= (>= 4:3.4.3-2)
 USE_SYSTEM_LPSOLVE=y
 USE_DBUS=y
+# not yet supported by ooo-build, coming soon
+USE_GSTREAMER=n
 USE_SYSTEM_NEON=y
 USE_PYCENTRAL=y
+PACKAGE_QUICKSTART=y
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
@@ -167,6 +174,10 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
                 --enable-atkbridge \
                 --enable-lockdown
 
+ifneq "$(PACKAGE_QUICKSTART)" "y"
+  CONFIGURE_FLAGS+= --disable-quickstart
+endif
+
 #############
 # Distro-specific overrides
 
@@ -178,7 +189,6 @@ ifeq "$(DIST)" "Debian"
        BUILD_ONLY_EN_US=y
   endif
   SYSTEM_AGG=y
-  USE_SYSTEM_XMLSEC=y
   USE_SYSTEM_HUNSPELL=y
   USE_XULRUNNER=y
 endif
@@ -226,6 +236,7 @@ ifeq "$(SARGE_BACKPORT)" "y"
   USE_XULRUNNER=n
   USE_SYSTEM_LPSOLVE=n
   USE_DBUS=n
+  USE_GSTREAMER=n
   USE_PYCENTRAL=n
 endif
 
@@ -256,8 +267,6 @@ endif
 # Changes for 64 bit build
 ifeq "$(ARCH)" "amd64"
   PATCHSET=$(DIST)64
-  BUILD_PYUNO=n
-  BUILD_BINFILTERS=n
   USE_SYSTEM_BOOST=y
 endif
 
@@ -273,7 +282,7 @@ ifeq "$(ARCH)-linux-gnu" "sparc-linux-gnu"
 endif
 
 # We only build the main openoffice.org packages on those architectures where it works
-# all other architectures build libmythes-dev
+# # all other architectures build libmythes-dev
 ifneq "$(USE_EXTERNAL_MYTHES)" "y"
   ifneq ($(ARCH),$(findstring $(ARCH),$(OOO_ARCHS)))
        BUILD_ONLY_LIBMYTHES=y
@@ -295,10 +304,9 @@ else
 endif
 export DH_COMPAT
 
-
 ifeq "$(BUILD_PYUNO)" "y"
     ifeq "$(USE_PYCENTRAL)" "y"
-	BUILD_DEPS += , python-central (>= 0.5) [$(OOO_ARCHS)], debhelper (>= 5.0.37.2), python-dev (>= 2.3.5-7) [$(OOO_ARCHS)]
+	BUILD_DEPS += , python-central (>= 0.5) [$(OOO_ARCHS)], debhelper (>= 5.0.37.2), python-dev (>= 2.4) [$(OOO_ARCHS)]
     else
 	BUILD_DEPS += , debhelper (>= 4.2.21), python-dev [$(OOO_ARCHS)]
     endif
@@ -327,9 +335,6 @@ endif
 ifneq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 	DEBHELPER_OPTIONS+= -Nttf-opensymbol
 endif
-ifneq "$(PACKAGE_NPSOPLUGIN)" "y"
-	DEBHELPER_OPTIONS+= -Nmozilla-openoffice.org
-endif
 
 ifneq "$(BUILD_ONLY_EN_US)" "y"
   ifeq (lang=,$(findstring lang=,$(DEB_BUILD_OPTIONS)))
@@ -346,7 +351,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
     ISOS:=en-US af ar be-BY bg bn br bs ca cs cy da de el \
 	en-GB en-ZA es et fa fi fr ga gu-IN he hi-IN hr hu it ja \
 	km ko lo lt lv mk ml-IN ne nb nl nn nr pa-IN \
-	pl pt-BR ru rw sk sl sr-CS st sv \
+	pl pt pt-BR ru rw sk sl sr-CS st sv \
 	ta-IN te-IN tg th ti-ER tn tr ts vi xh zh-CN zh-TW zu
     #HELPISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all') 
     HELPISOS:=en-US bg cs da de en-GB es et fr hu it ja km ko mk nl \
@@ -355,7 +360,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
     LANGPACKISOS:=en-US af ar be-BY bg bn br bs ca cs cy da de el \
 	en-GB en-ZA es et fa fi fr ga gu-IN he hi-IN hr hu nb nl nn it ja \
 	km ko lo lt lv mk ml-IN ne nr pa-IN \
-	pl pt-BR ru rw sk sl sr-CS st sv \
+	pl pt pt-BR ru rw sk sl sr-CS st sv \
 	ta-IN te-IN tg th ti-ER tn tr ts vi xh zh-CN zh-TW zu
 
     # additional things built in Ubuntu, having belocs-locales
@@ -419,9 +424,9 @@ endif
 
 ifeq "$(ENABLE_JAVA)" "y"
 ifneq "$(SARGE_BACKPORT)" "y"
-	export JAVA_HOME=/usr/lib/jvm/java-gcj
-	CONFIGURE_FLAGS += --with-java=gij
-	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.56) [$(OOO_JAVA_ARCHS)], ant (>= 1.6.5) [$(OOO_JAVA_ARCHS)] #, mingw32 [$(OOO_JAVA_ARCHS)]
+	JAVA_HOME=/usr/lib/jvm/java-gcj
+	CONFIGURE_FLAGS += --with-java=gij --enable-gcjaot
+	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.56) [$(OOO_JAVA_ARCHS)], ant (>= 1.6.5) [$(OOO_JAVA_ARCHS)]
 	GCJ_VERSION = $(shell $(JAVA_HOME)/bin/gcj --version | head -n 1 | awk '{ print $$3; }' | cut -d"." -f1,2)
 	SYSTEM_XT=y
 	SYSTEM_XALAN=y
@@ -433,7 +438,7 @@ ifeq "$(ARCH)" "i386"
 else
 	JAVA_HOME=/usr/lib/j2sdk1.4-ibm
 endif
-	BUILD_DEPS += , j2sdk1.4 [i386], ibm-j2sdk1.4 [powerpc], ant [$(OOO_JAVA_ARCHS)], mingw32 [$(OOO_JAVA_ARCHS)]
+	BUILD_DEPS += , j2sdk1.4 [i386], ibm-j2sdk1.4 [powerpc], ant [$(OOO_JAVA_ARCHS)]
 	CONFIGURE_FLAGS += --with-system-xml-apis
 	SYSTEM_XT=n
 	SYSTEM_XALAN=y
@@ -470,15 +475,19 @@ export JAVA_HOME
   else
 	BUILD_DEPS += , libdb4.2-java [$(OOO_JAVA_ARCHS)]
   endif
+  ifeq "$(DIST)" "Debian"
+	BUILD_DEPS += , mingw32 [$(OOO_JAVA_ARCHS)]
+	CONFIGURE_FLAGS += --with-mingwin=i586-mingw32msvc-g++
+  endif
 else
 	CONFIGURE_FLAGS += --without-java
-	DEBHELPER_OPTIONS += -Nopenoffice.org$(VER)-officebean -Nopenoffice.org$(VER)-java-common
+	DEBHELPER_OPTIONS += -Nopenoffice.org$(VER)-officebean -Nopenoffice.org$(VER)-java-common -Nopenoffice.org$(VER)-filter-mobiledev
 	HELPISOS=
 endif
 
 ifeq "$(USE_FIREFOX)" "y"
 	CONFIGURE_FLAGS+= --with-firefox
-	BUILD_DEPS+= , firefox-dev (>= 1.5.dfsg+1.5.0.1-1ubuntu7) [$(OOO_ARCHS)], libnspr-dev [$(OOO_ARCHS)]
+	BUILD_DEPS+= , firefox-dev [$(OOO_ARCHS)], libnspr-dev [$(OOO_ARCHS)]
 else
  ifeq "$(USE_XULRUNNER)" "y"
 	CONFIGURE_FLAGS+= --with-xulrunner
@@ -507,9 +516,12 @@ ifeq "$(SYSTEM_ALTLINUXHYPH)" "y"
 	CONFIGURE_FLAGS += --with-system-altlinuxhyph
 endif
 
-ifeq "$(SYSTEM_AGG)" "y"
+ifeq "$(USE_AGG)" "y"
+  CONFIGURE_FLAGS+= --with-agg
+  ifeq "$(SYSTEM_AGG)" "y"
        BUILD_DEPS += , libagg-dev (>= 2.3-2) [$(OOO_ARCHS)]
        CONFIGURE_FLAGS += --with-system-agg
+  endif
 endif
 
 ifneq "$(USE_STLPORT)" "y"
@@ -562,6 +574,11 @@ ifeq "$(USE_SYSTEM_ICU)" "y"
 	PATH+=:/usr/sbin
 endif
 
+ifeq "$(USE_LIBXSLT)" "y"
+	CONFIGURE_FLAGS += --with-system-libxslt
+	BUILD_DEPS += , libxslt1-dev [$(OOO_ARCHS)]
+endif
+
 ifeq "$(USE_SYSTEM_XMLSEC)" "y"
   ifeq "$(USE_XULRUNNER)" "y"
 	BUILD_DEPS += , libxmlsec1-dev (>= 1.2.9-1.1) [$(OOO_ARCHS)], libxmlsec1-nss (>= 1.2.9-1.1) [$(OOO_ARCHS)], libxmlsec1-openssl (>= 1.2.9-1.1) [$(OOO_ARCHS)]
@@ -569,8 +586,6 @@ ifeq "$(USE_SYSTEM_XMLSEC)" "y"
 	BUILD_DEPS += , libxmlsec1-dev (>= 1.2.9) [$(OOO_ARCHS)], libxmlsec1-nss (>= 1.2.9) [$(OOO_ARCHS)], libxmlsec1-openssl (>= 1.2.9) [$(OOO_ARCHS)]
   endif
 	CONFIGURE_FLAGS += --with-system-xmlsec
-else
-	SHLIBS_OVERRIDE += -Ldebian/shlibs.override.xmlsec
 endif
 
 ifeq "$(BUILD_CAIROCANVAS)" "y"
@@ -627,11 +642,17 @@ endif
 
 ifeq "$(USE_SYSTEM_LPSOLVE)" "y"
 	CONFIGURE_FLAGS += --with-system-lpsolve
-	BUILD_DEPS += , liblpsolve55-dev [$(OOO_ARCHS)]
+	BUILD_DEPS += , liblpsolve55-dev [$(OOO_ARCHS)], libufsparse-dev [$(OOO_ARCHS)]
 endif
 
 ifeq "$(USE_DBUS)" "y"
 	BUILD_DEPS += , libdbus-glib-1-dev (>= 0.60) [$(OOO_ARCHS)]
+endif
+
+ifeq "$(USE_GSTREAMER)" "y"
+	BUILD_DEPS += , libgstreamer-plugins-base0.10-dev [$(OOO_ARCHS)]
+else
+	CONFIGURE_FLAGS += --disable-gstreamer
 endif
 
 ifeq "$(USE_SYSTEM_NEON)" "y"
@@ -666,6 +687,11 @@ ifneq "$(NUM_CPUS)" ""
   CONFIGURE_FLAGS += --with-num-cpus=$(NUM_CPUS)
 else
   NUM_CPUS := $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
+  ifeq "$(NUM_CPUS)" "1"
+    # do at least a build with --with-num-cpus=2 to do something while
+    # helpcontent2 is doing things slowly..
+    NUM_CPUS := 2
+  endif
   # using make -jX is not wanted on the Debian buildds, so don't do it...
   ifeq "$(DIST)" "Debian"
     ifeq (buildd,$(shell whoami))
@@ -924,6 +950,7 @@ ifeq "$(HELPISOS)" ""
 endif
 
 	rm -f l10n.fdupes
+	rm -f debian/shlibs.local
 
 	$(MAKE) -f debian/rules control
 
@@ -951,7 +978,7 @@ ifeq "$(PKGSOURCE)" "openoffice.org$(VER)-l10n"
 	        >> debian/control < debian/control.l10n.in
 endif
 
-	for LNUM in $(LANGPACKISOS) ; do \
+	for LNUM in $(filter-out en-US,$(LANGPACKISOS)) ; do \
 	    [ "$$LNUM" = en-US -a "$(PKGSOURCE)" = "openoffice.org$(VER)-l10n" ] && continue; \
 	    LNAME=`ooo-build/bin/openoffice-xlate-lang -l $$LNUM | perl -e 'print ucfirst(<STDIN>);'`; \
 	    LCODE=`ooo-build/bin/openoffice-xlate-lang -i $$LNUM | tr A-Z a-z`; \
@@ -1044,6 +1071,14 @@ ifeq "$(BUILD_DBG_PACKAGE)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.debug.in
 endif
+# Debian sarge->etch transitional packages
+ifeq "$(DIST)" "Debian"
+	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
+		>> debian/control < debian/control.sarge_etch_transitional.in
+	perl -pi -e 's/Description: English_american help for OpenOffice.org/Replaces: openoffice.org$(VER)-help-en\nDescription: English_american help for OpenOffice.org/' debian/control
+endif
+
+
 
 ifeq "$(AMD64_EXPERIMENTAL)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
@@ -1058,17 +1093,18 @@ endif
 
 	perl -pi -e "s,%OOO_ARCHS%,$(OOO_ARCHS),g" debian/control
 
+ifeq "$(PACKAGE_QUICKSTART)" "y"
+	perl -pi -e 's#\(Widgets, Dialogs\)#\(Widgets, Dialogs, Quickstarter\)#' debian/control
+	perl -pi -e 's/GNOME\./GNOME. It also\n contains a QuickStarter for the \"notification area\"./' debian/control
+	perl -pi -e 's/Package: openoffice.org$(VER)-gtk$$/Package: openoffice.org-gtk\nConflicts: ooqstart-gnome, oooqs-kde/' debian/control
+	perl -pi -e 's/Conflicts: openoffice.org-thesaurus/Conflicts: openoffice.org-thesaurus, oooqstart-gnome, oooqs-kde/' debian/control
+else
+	perl -pi -e 's/Conflicts: openoffice.org-thesaurus/Conflicts: openoffice.org-thesaurus, oooqstart-gnome <= 0.8.3-8), oooqs-kde (<< 2.0.3-7)/' debian/control
+endif
+
 	python debian/scripts/joinctrl.py < debian/control > debian/control.tmp
 	mv debian/control.tmp debian/control
 
-	# -l10n-en became -l10n-en-us
-	perl -pi -e 's/Conflicts:(.*)openoffice.org2-l10n-en-us$$/Conflicts:$$1openoffice.org2-l10n-en-us, openoffice.org-l10n-en/' debian/control
-	perl -pi -e 's/Replaces:(.*)openoffice.org2-l10n-en-us$$/Replaces:$$1openoffice.org2-l10n-en-us, openoffice.org-l10n-en/' debian/control
-	perl -pi -e 's/Provides:(.*)openoffice.org2-l10n-en-us$$/Provides:$$1openoffice.org2-l10n-en-us, openoffice.org-l10n-en/' debian/control
-	# ... and -hi became -hi-in
-	perl -pi -e 's/Conflicts:(.*)openoffice.org2-l10n-hi-in$$/Conflicts:$$1openoffice.org2-l10n-hi-in, openoffice.org-l10n-hi/' debian/control
-	perl -pi -e 's/Replaces:(.*)openoffice.org2-l10n-hi-in$$/Replaces:$$1openoffice.org2-l10n-hi-in, openoffice.org-l10n-hi/' debian/control
-	perl -pi -e 's/Provides:(.*)openoffice.org2-l10n-hi-in$$/Provides:$$1openoffice.org2-l10n-hi-in, openoffice.org-l10n-hi/' debian/control
 	# make -l10n-fi suggest openoffice.org-spellcheck-fi to
 	# match myspell-fi and Soikko
 	perl -pi -e 's/myspell-dictionary-fi/myspell-dictionary-fi | openoffice.org-spellcheck-fi/' debian/control
@@ -1178,12 +1214,6 @@ endif
 endif
 endif
 
-#ifeq "$(DIST)" "Ubuntu"
-#	mkdir -p $(CURDIR)/debian/usr/bin
-#	ln -sf /usr/bin/gcj-$(GCJ_VERSION) $(CURDIR)/debian/usr/bin/gcj
-#	ln -sf /usr/bin/gij-$(GCJ_VERSION) $(CURDIR)/debian/usr/bin/gij
-#endif
-
 ifeq "$(USE_SYSTEM_STLPORT)" "y"
 	# stlport home
 	if [ ! -d stlport ]; then \
@@ -1262,14 +1292,6 @@ ifneq "$(USE_EXTERNAL_MYTHES)" "y"
 		mv libmythes_nopic.a $(CURDIR)/$(SOURCE_TREE)
 endif
 
-ifeq "$(ENABLE_JAVA)" "y-braindamage"
-	# rebuild unowinreg.dll from source
-	cd $(SOURCE_TREE)/odk/source/unowinreg/win && \
-		i586-mingw32msvc-gcc -Wall -D_JNI_IMPLEMENTATION_ -I$(JAVA_HOME)/include -shared -o unowinreg.dll unowinreg.c \
-			-Wl,--kill-at -lkernel32 -ladvapi32 && \
-		mv unowinreg.dll $(CURDIR)/$(SOURCE_TREE)
-endif
-
 	touch $@
 
 install: $(STAMP_DIR)/install
@@ -1301,7 +1323,7 @@ else
 		for i in common calc math draw writer impress base; do \
 			cp -r ./openoffice.org-$$i/$(OODIR)/help/en/* \
 			 ./openoffice.org-help-en-us/$(OODIR)/help/en && \
-			rm -rf ./openoffice.org-$$i/$(OODIR)/help/en; \
+			rm -rf ./openoffice.org-$$i/$(OODIR)/help; \
 		done
 	# save space by removing non-packaged localized help; we don't need
 	# them anyway
@@ -1313,25 +1335,11 @@ else
 		done
 endif
 
-ifneq "$(findstring en-US,$(ISOS))" ""
-ifeq "$(BUILD_BINFILTERS)" "y"
-	# move en-US binfilter resources which are not in -l10n-en-us there.
-	# They will be moved out of -common in the langpacks target...
+	# move resources which have been installed outside of common there
 	cd debian/tmp/pkg; \
-		mv openoffice.org-calc/$(OODIR)/program/resource/bf_sc*en-US.res \
-			openoffice.org-common/$(OODIR)/program/resource && \
-		mv openoffice.org-math/$(OODIR)/program/resource/bf_sm*en-US.res \
-			openoffice.org-common/$(OODIR)/program/resource
-endif
-	# ... same with base
-	cd debian/tmp/pkg; \
-	mv openoffice.org-base/$(OODIR)/program/resource/abp*en-US.res \
-		openoffice.org-common/$(OODIR)/program/resource && \
-	mv openoffice.org-base/$(OODIR)/program/resource/dbp*en-US.res \
-		openoffice.org-common/$(OODIR)/program/resource && \
-	mv openoffice.org-base/$(OODIR)/program/resource/dbu*en-US.res \
-		openoffice.org-common/$(OODIR)/program/resource
-endif
+		for i in `find . -name "*en-US.res" | grep -v common`; do \
+			mv $$i openoffice.org-common/$(OODIR)/program/resource/`basename $$i`; \
+		done
 
 ifeq "$(ENABLE_JAVA)" "y"
 	# move officebean.jar into -officebean (They will be moved out of -core
@@ -1369,13 +1377,15 @@ ifeq "$(ENABLE_MONO)" "y"
 	fi
 endif
 
+ifeq "$(PACKAGE_QUICKSTART)" "y"
 	# ooqstart should go into -core; we have just a glib dependency
 	mkdir -p debian/tmp/pkg/openoffice.org-core/$(OODIR)/program
 	mv debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/ooqstart \
 		debian/tmp/pkg/openoffice.org-core/$(OODIR)/program
-#	mkdir -p -m755 debian/tmp/pkg/openoffice.org-gnome/$(OODIR)/share/xdg
-#	mv debian/tmp/pkg/openoffice.org-common/$(OODIR)/share/xdg/qstart.desktop \
-#		debian/tmp/pkg/openoffice.org-gnome/$(OODIR)/share/xdg
+	mkdir -p -m755 debian/tmp/pkg/openoffice.org-gnome/$(OODIR)/share/xdg
+	mv debian/tmp/pkg/openoffice.org-common/$(OODIR)/share/xdg/qstart.desktop \
+		debian/tmp/pkg/openoffice.org-gnome/$(OODIR)/share/xdg
+endif
 
 	# move gengal stuff into -dev
 	mkdir -p debian/tmp/pkg/openoffice.org-dev/$(OODIR)/program
@@ -1473,15 +1483,6 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/install $(STAMP_DIR)/install-indep ooo-buil
 	  rm -rf $(PKGDIR)-l10n-$$ext.*.debhelper;\
 	done
 
-ifneq "$(findstring en-US,$(ISOS))" ""
-	# move the english stuff out of the -common install
-	for dir in program/resource share/registry/res/en-US; do \
-	  mkdir -m755 -p $(PKGDIR)-l10n-en-us/$(OODIR)/$$dir ;\
-	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-common/$(OODIR)/$$dir/* \
-			$(PKGDIR)-l10n-en-us/$(OODIR)/$$dir || exit 1;\
-	done
-endif
-
 	# ... and install the rest of the langpacks
 	for iso in $(LANGPACKISOS); do \
 	  if [ "$$iso" = "en-US" ]; then continue; fi ; \
@@ -1490,7 +1491,6 @@ endif
 	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-l10n-$$iso \
 		$(PKGDIR)-l10n-$$pkgiso || exit 1; \
 	done
-
 	
 	# remove empty uno_packages dirs somehow in the langpacks(?)
 	for iso in `echo $(LANGPACKISOS) | tr A-Z a-z`; do \
@@ -1522,7 +1522,7 @@ endif
 	# replace duplicate files in the langpacks with symlinks
 	fdupes --quiet --recurse --sameline --size \
 		debian/openoffice.org$(VER)-common/$(OODIR) \
-		$(foreach d,$(shell echo $(LANGPACKISOS) | tr A-Z a-z),debian/openoffice.org$(VER)-l10n-$(d)/$(OODIR)) \
+		$(foreach d,$(shell echo $(filter-out en-US,$(LANGPACKISOS)) | sed -e s/en-US // | tr A-Z a-z),debian/openoffice.org$(VER)-l10n-$(d)/$(OODIR)) \
 		> l10n.fdupes
 	debian/scripts/cleandupes --base=openoffice.org$(VER) --prefix=debian < l10n.fdupes
 
@@ -1582,9 +1582,18 @@ endif
 	# move the GNOME stuff which are *not* in gid_Module_Optional_Gnome
 	# (which is moved into -gnome in package-ooo) into -gnome
 	mkdir -p -m755 $(PKGDIR)-gnome/$(OODIR)/program
-	for f in gnome-open-url.bin fps_gnome.uno.so libvclplug_gtk[0-9]*.so libeggtray* libqstart_gtk*; do \
+	for f in gnome-open-url.bin fps_gnome.uno.so libvclplug_gtk[0-9]*.so; do \
 	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-gnome/$(OODIR)/program || exit 1;\
 	done
+ifeq "$(PACKAGE_QUICKSTART)" "y"
+	for f in libeggtray* libqstart_gtk*; do \
+	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-gnome/$(OODIR)/program || exit 1;\
+	done
+else
+	for f in libeggtray* libqstart_gtk*; do \
+	  rm -f $(PKGDIR)-core/$(OODIR)/program/$$f; \
+	done
+endif
 
 	# split out gtk stuff
 	mkdir -p -m755 $(PKGDIR)-gtk/$(OODIR)/program
@@ -1780,25 +1789,6 @@ endif
 	#mv $(PKGDIR)-base/usr/share/applications/ooo$(VER)-base.desktop $(PKGDIR)-core/usr/share/applications
 	#rm -r $(PKGDIR)-base
 
-	# compress manpages
-	for i in calc math draw writer impress base; do \
-		find $(PKGDIR)-$$i -type f -name "*.1" | xargs gzip -9; \
-	done
-	# fix manpage symlinks
-	for i in writer calc draw impress base math; do \
-		echo $(PACKAGES) | grep -q openoffice.org$(VER)-$$i || continue; \
-		mkdir -p $(CURDIR)/$(PKGDIR)-$$i/usr/share/man/man1; \
-		if [ "$$i" = "writer" ]; then \
-			for j in writer html web; do \
-				cd $(CURDIR)/$(PKGDIR)-$$i/usr/share/man/man1 && \
-					ln -sf openoffice$(VER).1.gz oo$${j}$(VER).1.gz; \
-			done; \
-		else \
-			cd $(CURDIR)/$(PKGDIR)-$$i/usr/share/man/man1 && \
-				ln -sf openoffice$(VER).1.gz oo$${i}$(VER).1.gz; \
-		fi; \
-	done
-
 ifeq "$(BUILD_PYUNO)" "y"
 	# PyUNO packging
 	rm -rf debian/python-uno debian/python-uno.*.debhelper
@@ -1846,10 +1836,12 @@ endif
 ifeq "$(ENABLE_JAVA)" "y"
 	# move SDK Java stuff into /usr/share/java/openoffice
 	rm -f $(PKGDIR)-dev/$(OODIR)/sdk/classes
-	mkdir -p $(PKGDIR)-dev/usr/share/java/openoffice$(VER)
+	mkdir -p $(PKGDIR)-dev/usr/share/java/openoffice$(VER)/win
 	mkdir -p $(PKGDIR)-dev/$(OODIR)/sdk/classes
 	mv $(PKGDIR)-dev/usr/share/openoffice/sdk/classes/com \
 		$(PKGDIR)-dev/usr/share/java/openoffice$(VER) && \
+	mv $(PKGDIR)-dev/usr/share/openoffice/sdk/classes/win/unowinreg.dll \
+		$(PKGDIR)-dev/usr/share/java/openoffice$(VER)/win
 	cd $(PKGDIR)-dev/$(OODIR)/sdk/classes && \
 		ln -s /usr/share/java/openoffice$(VER)/com com
 	rm -rf $(PKGDIR)-dev/usr/share/openoffice/sdk
@@ -1886,12 +1878,6 @@ endif
 	) > $(PKGDIR)-dev/$(OODIR)/program/gsicheck
 	chmod 755 $(PKGDIR)-dev/$(OODIR)/program/gsicheck
 
-ifeq "$(ENABLE_JAVA)" "y-braindamage"
-	# install unowinreg.dll
-	mkdir -p $(PKGDIR)-dev/usr/share/java/openoffice$(VER)/win
-	install -m644 $(CURDIR)/$(SOURCE_TREE)/unowinreg.dll $(PKGDIR)-dev/usr/share/java/openoffice$(VER)/win
-endif
-
 ifeq "$(INTERNAL_STDLIBS)" "y"
 	# we have to do this manually; specifying --without-system-stdlibs
 	# won't work because the odering of the configure arguments...
@@ -1912,8 +1898,7 @@ endif
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(BUILD_JARS_NATIVE)" "y"
 	rm -rf $(PKGDIR)-gcj
-	mkdir -p $(PKGDIR)-gcj//usr/lib/gcj-$(GCJ_VERSIONi
-  ifeq "$(REBUILD_JARS_NATIVE)" "y"
+	mkdir -p $(PKGDIR)-gcj//usr/lib/gcj-$(GCJ_VERSION)
 	# recompile the jar; the preferred way is to produce the binaries from
 	# the bytecode.
 	mkdir -p $(PKGDIR)-gcj/usr/lib/gcj-$(GCJ_VERSION)
@@ -1922,21 +1907,6 @@ ifeq "$(ENABLE_JAVA)" "y"
 	  [ -h "$$jar" -o ! -f "$$jar" ] && continue; \
 	  debian/scripts/aot-compile $$jar $(PKGDIR)-gcj/usr/lib/gcj-$(GCJ_VERSION)/$$(basename $$jar).so || exit $$?; \
 	done
-  else
-	cp $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/*.jar.so \
-		$(PKGDIR)-gcj/usr/lib/gcj-$(GCJ_VERSION)
-	# remove not needed ones
-	rm -f $(PKGDIR)-gcj/usr/lib/gcj-$(GCJ_VERSION)/FCFGMerge.jar.so
-	rm -f $(PKGDIR)-gcj/usr/lib/gcj-$(GCJ_VERSION)/unoloader.jar.so
-	rm -f $(PKGDIR)-gcj/usr/lib/gcj-$(GCJ_VERSION)/schema.jar.so
-	# NetBeans crap
-	rm -f $(PKGDIR)-gcj/usr/lib/gcj-$(GCJ_VERSION)/jhall.jar.so
-	rm -f $(PKGDIR)-gcj/usr/lib/gcj-$(GCJ_VERSION)/nbantext.jar.so
-	rm -f $(PKGDIR)-gcj/usr/lib/gcj-$(GCJ_VERSION)/openide.jar.so
-	rm -f $(PKGDIR)-gcj/usr/lib/gcj-$(GCJ_VERSION)/jarpackager.jar.so
-	# not needed yet
-	rm -f $(PKGDIR)-gcj/usr/lib/gcj-$(GCJ_VERSION)/javacanvas.uno.jar.so
-  endif
 	# create gcj classmap
 	mkdir -p $(PKGDIR)-gcj/usr/share/gcj-$(GCJ_VERSION)/classmap.d
 	cd debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/classes && \
@@ -2002,6 +1972,18 @@ endif
 	mv $(PKGDIR)-draw/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Filter/fcfg_impressgraphics_filters.xcu \
 	  $(PKGDIR)-impress/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Filter
 
+ifeq "$(ENABLE_JAVA)" "y"
+	# move writer2latex.jar into the right dir
+	mkdir -p $(PKGDIR)-writer/usr/share/java/openoffice$(VER)
+	mv $(PKGDIR)-writer/$(OODIR)/program/classes/writer2latex.jar \
+		$(PKGDIR)-writer/usr/share/java/openoffice$(VER) && \
+	rmdir $(PKGDIR)-writer/$(OODIR)/program/classes
+endif
+
+	# remove empty resource directories
+	for i in draw base writer impress calc math; do \
+		rm -rf $(PKGDIR)-$$i/$(OODIR)/program/resource; \
+	done
 
 ifeq "$(ARCH)" "amd64"
   ifeq "$(AMD64_EXPERIMENTAL)" "y"
@@ -2061,16 +2043,13 @@ $(STAMP_DIR)/install-indep: ooo-build/fonts/opens___.ttf
 	rm -rf $(PKGDIR)-dev-doc $(PKGDIR)-dev-doc.*.debhelper; \
 	cp -r --preserve=mode debian/tmp/pkg/openoffice.org-dev-doc $(PKGDIR)-dev-doc || exit 1
 
-	# Remove files in langpack
-	for dir in program/resource share/registry/res/en-US; do \
-	  rm -rf $(PKGDIR)-common/$(OODIR)/$$dir ;\
-	done
-
 	dh_installdirs -i
 
+ifneq "$(USE_GSTREAMER)" "y"
 	# sound doesn't work anyway, remove the .wav files to save space
-	rm -f $(PKGDIR)-common/$(OODIR)/share/gallery/sounds/*
+	rm -rf $(PKGDIR)-common/$(OODIR)/share/gallery/sounds
 	rm -f $(PKGDIR)-common/$(OODIR)/share/gallery/sg9.*
+endif
 
 	ln -sf openintro_ubuntu.bmp $(PKGDIR)-common/$(OODIR)/program/intro.bmp
 	rm -f $(PKGDIR)-common/$(OODIR)/program/oo_product.bmp
@@ -2108,13 +2087,6 @@ $(STAMP_DIR)/install-indep: ooo-build/fonts/opens___.ttf
 	install -m755 ooo-build/bin/openoffice-xlate-lang \
 		$(PKGDIR)-common/usr/share/openoffice$(VER)/bin
 
-	# compress manpages
-	find $(PKGDIR)-common -type f -name "*.1" | xargs gzip -9
-	mkdir -p $(PKGDIR)-common/usr/share/man/man1
-	ln -sf openoffice$(VER).1.gz $(PKGDIR)-common/usr/share/man/man1/ooffice$(VER).1.gz
-	ln -sf openoffice$(VER).1.gz $(PKGDIR)-common/usr/share/man/man1/ooo-wrapper$(VER).1.gz
-	ln -sf openoffice$(VER).1.gz $(PKGDIR)-common/usr/share/man/man1/oofromtemplate$(VER).1.gz
-
 ifeq "$(HELPISOS)" ""
 	# when we don't build helpcontent2 here we are missing helpxsl.zip so
 	# this file doesn't get installed either. Do it manually..
@@ -2143,18 +2115,10 @@ ifeq "$(ENABLE_JAVA)" "y"
 	# move common Java stuff to -java-common
 	mkdir -p $(PKGDIR)-java-common/$(OODIR)/program
 	mkdir -p $(PKGDIR)-java-common/$(OODIR)/share/Scripts
-	mkdir -p $(PKGDIR)-java-common/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Filter
-	mkdir -p $(PKGDIR)-java-common/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Types
 	mv $(PKGDIR)-common/$(OODIR)/program/JREProperties.class \
 		$(PKGDIR)-java-common/$(OODIR)/program
 	mv $(PKGDIR)-common/$(OODIR)/share/Scripts/java \
 		$(PKGDIR)-java-common/$(OODIR)/share/Scripts
-	for i in palm pocketexcel pocketword; do \
-	  mv $(PKGDIR)-common/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Filter/fcfg_$${i}_filters.xcu \
-	    $(PKGDIR)-java-common/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Filter; \
-	  mv $(PKGDIR)-common/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Types/fcfg_$${i}_types.xcu \
-	    $(PKGDIR)-java-common/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Types; \
-	done
 	mkdir -p $(PKGDIR)-java-common/usr/share/java/openoffice$(VER)
 	mv $(PKGDIR)-common/$(OODIR)/program/classes/* \
 		$(PKGDIR)-java-common/usr/share/java/openoffice$(VER)
@@ -2167,6 +2131,21 @@ ifeq "$(ENABLE_JAVA)" "y"
 	      's,\$$ORIGIN/classes,file:///usr/share/java/openoffice$(VER),g' \
 		$$i; \
 	  done
+
+	# move into extra package
+	mkdir -p $(PKGDIR)-filter-mobiledev/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Filter
+	mkdir -p $(PKGDIR)-filter-mobiledev/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Types
+	mkdir -p $(PKGDIR)-filter-mobiledev/usr/share/java/openoffice$(VER)
+	for i in palm pocketexcel pocketword; do \
+	  mv $(PKGDIR)-common/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Filter/fcfg_$${i}_filters.xcu \
+	    $(PKGDIR)-filter-mobiledev/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Filter; \
+	  mv $(PKGDIR)-common/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Types/fcfg_$${i}_types.xcu \
+	    $(PKGDIR)-filter-mobiledev/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Types; \
+	done
+	for i in aportisdoc pexcel pocketword; do \
+	  mv $(PKGDIR)-java-common/usr/share/java/openoffice$(VER)/$$i.jar \
+		$(PKGDIR)-filter-mobiledev/usr/share/java/openoffice$(VER); \
+	done
 endif
 
 	# fix permissions
@@ -2305,7 +2284,11 @@ ifeq "$(HELPISOS)" ""
 	done
 endif
 
-	cp debian/catalog.xml $(PKGDIR)-common/$(OODIR)/share/dtd/officedocument/1_0
+	rm -rf $(PKGDIR)-dtd-officedocument1.0
+	mkdir -p $(PKGDIR)-dtd-officedocument1.0/$(OODIR)/share/dtd
+	mv $(PKGDIR)-common/$(OODIR)/share/dtd/officedocument \
+		$(PKGDIR)-dtd-officedocument1.0/$(OODIR)/share/dtd
+	cp debian/catalog.xml $(PKGDIR)-dtd-officedocument1.0/$(OODIR)/share/dtd/officedocument/1_0
 
 ifeq "$(PACKAGE_QA_TOOLS)" "y"
 	mkdir -p -m755 $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/tests/java
@@ -2368,6 +2351,9 @@ endif
 		ln -s /$(OODIR)/sdk/examples examples
 	cd $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev && \
 		ln -s /$(OODIR)/sdk/examples examples
+	
+	# remove eventually sneaked in .testtoolrc
+	rm -f $(PKGDIR)-common/$(OODIR)/program/.testtoolrc
 
 	touch $@
 
@@ -2473,9 +2459,18 @@ ifeq "$(DIST)" "Debian"
 	dh_installdocs -A debian/README.Debian \
 		debian/tmp/pkg/openoffice.org-common/$(OODIR)/README
 ifeq "$(PACKAGE_QA_TOOLS)" "y"
-	dh_installdocs -popenoffice.org$(VER)-qa-tools debian/REAME.qa
+	dh_installdocs -popenoffice.org$(VER)-qa-tools debian/README.qa
 endif
 	dh_installman
+	# fix symlinks
+	for i in writer calc draw base math impress common; do \
+		for i in `find $(PKGDIR)-$$i -type l -name "*.1"`; do \
+			mv $$i $$i.gz; \
+			if [ "`readlink $$i`" != "openoffice.1.gz" ]; then \
+				ln -sf openoffice.1.gz $$i.gz; \
+			fi; \
+		done; \
+	done
 	dh_installchangelogs -Nlibmythes-dev ooo-build/ChangeLog
 ifneq "$(USE_EXTERNAL_MYTHES)" "y"
 	dh_installchangelogs -plibmythes-dev -XNEWS
@@ -2522,13 +2517,10 @@ endif
 	dh_fixperms
 ifeq "$(BUILD_DBG_PACKAGE)" "y-xxxxx"
 	dh_strip --dbg-package=openoffice.org$(VER)-dbg -Xunowinreg.dll
+	# somehow they are stripped...
+	rm -rf $(PKGDIR)-dbg/usr/lib/debug/$(OODIR)/sdk
 else
 	dh_strip -Xunowinreg.dll
-endif
-ifeq "$(ENABLE_JAVA)" "y-xxxxx"
-  ifneq (nostrip,$(findstring nostrip,$(DEB_BUILD_OPTIONS)))
-	i586-mingw32msvc-strip debian/openoffice.org-dev/usr/share/java/openoffice$(VER)/unowinreg.dll
-  endif
 endif
 	dh_desktop
 	dh_iconcache
@@ -2599,6 +2591,13 @@ endif
 
 	dh_makeshlibs -n -V
 	dh_installdeb
+	cat debian/openoffice.org-core.shlibs.local > debian/shlibs.local
+ifneq "$(USE_SYSTEM_XMLSEC)" "y"
+	cat debian/shlibs.override.xmlsec >> debian/shlibs.local
+endif
+ifeq "$(INTERNAL_STDLIBS)" "y"
+	cat debian/shlibs.override.stdlibs >> debian/shlibs.local
+endif
 ifeq "$(ARCH)" "i386"
 	# this LD_ASSUME_KERNEL is for working around some bug which makes
 	# dh_shlibddeps report/find nothing with libc6-i686/TLS systems
@@ -2621,6 +2620,7 @@ endif
 	dh_gencontrol -- \
 		-V'base-version=$(BASE_VERSION)' \
 		-V'next-base-version=$(NEXT_BASE_VERSION)' \
+		-V'help-l10n-virtual-version=$(HELP_L10N_VIRTUAL_VERSION)' \
 		-V'dev-stl-depends=$(DEV_STL_DEPENDS)' \
 		-V'writer-pyuno-dep=$(WRITER_PYUNO_DEP)' \
 		-V'base-hsqldb-depends=$(BASE_HSQLDB_DEPENDS)' \
@@ -2711,7 +2711,7 @@ environment:
 get-ooo-build:
 	# press enter at the password prompt
 	cvs -d:pserver:anonymous@anoncvs3.gnome.org:/cvs/gnome login
-	cvs -z3 -d:pserver:anonymous@anoncvs3.gnome.org:/cvs/gnome co -r ooo-build-2-0-3 ooo-build
+	cvs -z3 -d:pserver:anonymous@anoncvs3.gnome.org:/cvs/gnome co ooo-build
 	cd ooo-build && NOCONFIGURE=1 ./autogen.sh
 
 # Download the latest ooo-build sources
