@@ -1160,15 +1160,24 @@ endif
 		mv openoffice.org-common/$(OODIR)/program/*.so \
 			openoffice.org-dev/$(OODIR)/program
 
-ifeq "$(ENABLE_MONO)" "y"
 	# somehow, these go into -common. Move them to -core here to be able
 	# to install them later in install-arch
+ifeq "$(ENABLE_MONO)" "y"
 	cd debian/tmp/pkg; \
 	mv openoffice.org-common/$(OODIR)/program/cli_*.dll  \
 		openoffice.org-core/$(OODIR)/program
 	if [ -d openoffice.org-common/$(OODIR)/program/assembly ]; then \
 		rm -rf openoffice.org-common/$(OODIR)/program/assembly; \
 	fi
+endif
+ifeq "$(PACKAGE_QA_TOOLS)" "y"
+	cd debian/tmp/pkg; \
+	mv debian/openoffice.org-common/$(OODIR)/program/testtoolrc \
+		debian/openoffice.org-core/$(OODIR)/program
+	# remove eventually sneaked in .testtoolrc
+	cd debian/tmp/pkg; \
+	rm -f debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/.testtoolrc
+	
 endif
 
 ifeq "$(PACKAGE_QUICKSTART)" "y"
@@ -1508,10 +1517,14 @@ ifeq "$(PACKAGE_QA_TOOLS)" "y"
 		$(PKGDIR)-qa-tools/$(OODIR)/presets/basic/Standard
 
 	mkdir -p -m755 $(PKGDIR)-qa-tools/usr/share/doc/openoffice.org$(VER)-qa-tools
+
+	mv $(PKGDIR)-core/$(OODIR)/program/testtoolrc \
+		$(PKGDIR)-qa-tools/$(OODIR)/program
 else
 	rm -f $(PKGDIR)-core/$(OODIR)/program/testtool.bin
 	rm -f $(PKGDIR)-core/$(OODIR)/program/libcommuni*
 	rm -f $(PKGDIR)-core/$(OODIR)/program/libsimplecm*
+	rm -f $(PKGDIR)-core/$(OODIR)/program/testtoolrc
 endif
 
 	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare >/dev/null; pwd`" ;\
@@ -2036,9 +2049,6 @@ endif
 	cd $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev && \
 		ln -s /$(OODIR)/sdk/examples examples
 	
-	# remove eventually sneaked in .testtoolrc
-	rm -f $(PKGDIR)-common/$(OODIR)/program/.testtoolrc
-
 	touch $@
 
 
