@@ -54,8 +54,7 @@ unexport LS_COLORS
 
 #TAG=src680-m$(MILESTONE)
 #MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)"| cut -d. -f3)
-TAG=ood680-m1
-TAG=src680-m181
+TAG=ood680-m2
 SOURCE_TREE=ooo-build/build/$(TAG)
 STAMP_DIR=debian/stampdir
 
@@ -147,8 +146,7 @@ USE_XULRUNNER=n
 KDELIBS_MINVER= (>= 4:3.4.3-2)
 USE_SYSTEM_LPSOLVE=y
 USE_DBUS=y
-# not yet supported by ooo-build, coming soon
-USE_GSTREAMER=n
+USE_GSTREAMER=y
 USE_SYSTEM_NEON=y
 USE_PYCENTRAL=y
 PACKAGE_QUICKSTART=y
@@ -250,6 +248,7 @@ else
 	BUILD_DEPS += , libcurl3-openssl-dev [$(OOO_ARCHS)]
 	BUILD_DEPS += , libxkbfile-dev [$(OOO_ARCHS)], libxinerama-dev [$(OOO_ARCHS)], x11proto-render-dev [$(OOO_ARCHS)]
 	BUILD_DEPS += , unixodbc-dev (>= 2.2.11) [$(OOO_ARCHS)]
+	DBG_DBG_SUGGESTS += libcurl3-dbg, libxinerama1-dbg
 endif
 
 #############
@@ -302,6 +301,7 @@ ifneq "$(BUILD_DBG_PACKAGE)" "y"
 else
 	DH_COMPAT=5
 	SMALL_SYMBOLS = n
+	DBG_DBG_SUGGESTS+= , libatk1.0-dbg, libglib2.0-0-dbg, libgnomevfs2-0-dbg, libstdc++6-dbg, libx11-6-dbg, libxext6-dbg, libxaw7-dbg, libxml2-dbg, libgtk2.0-0-dbg, libxau6-dbg, libice6-dbg, libsm6-dbg
 endif
 export DH_COMPAT
 
@@ -312,6 +312,7 @@ ifeq "$(BUILD_PYUNO)" "y"
 	BUILD_DEPS += , debhelper (>= 4.2.21), python-dev [$(OOO_ARCHS)]
     endif
     WRITER_PYUNO_DEP = python-uno (>= $(UPSTREAM_VERSION))
+    DBG_DBG_SUGGESTS+= , python-dbg
 else 
   ifeq "$(BUILD_DBG_PACKAGE)" "y"
 	BUILD_DEPS += , debhelper (>= 4.2.21)
@@ -351,7 +352,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
     #ISOS=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
     ISOS:=en-US af ar be-BY bg bn br bs ca cs cy da de el \
 	en-GB en-ZA es et fa fi fr ga gu-IN he hi-IN hr hu it ja \
-	km ko lo lt lv mk ml-IN ne nb nl nn nr pa-IN \
+	km ko ku lo lt lv mk ml-IN ne nb nl nn nr pa-IN \
 	pl pt pt-BR ru rw sk sl sr-CS st sv \
 	ta-IN te-IN tg th ti-ER tn tr ts vi xh zh-CN zh-TW zu
     #HELPISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all') 
@@ -360,7 +361,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
     #LANGPACKISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
     LANGPACKISOS:=en-US af ar be-BY bg bn br bs ca cs cy da de el \
 	en-GB en-ZA es et fa fi fr ga gu-IN he hi-IN hr hu nb nl nn it ja \
-	km ko lo lt lv mk ml-IN ne nr pa-IN \
+	km ko ku lo lt lv mk ml-IN ne nr pa-IN \
 	pl pt pt-BR ru rw sk sl sr-CS st sv \
 	ta-IN te-IN tg th ti-ER tn tr ts vi xh zh-CN zh-TW zu
 
@@ -433,6 +434,7 @@ ifneq "$(SARGE_BACKPORT)" "y"
 	SYSTEM_XALAN=y
 	SYSTEM_XERCES=y
 	SYSTEM_XML_APIS=y
+	DBG_DBG_SUGGESTS+= , libgcj7-dbg
 else
 ifeq "$(ARCH)" "i386"
 	JAVA_HOME=/usr/lib/j2se/1.4
@@ -476,7 +478,7 @@ export JAVA_HOME
   else
 	BUILD_DEPS += , libdb4.2-java [$(OOO_JAVA_ARCHS)]
   endif
-  ifeq "$(DIST)" "Debian"
+  ifneq (,$(findstring Debian,$(DIST)))
 	BUILD_DEPS += , mingw32 [$(OOO_JAVA_ARCHS)]
 	CONFIGURE_FLAGS += --with-mingwin=i586-mingw32msvc-g++
   endif
@@ -493,6 +495,7 @@ else
  ifeq "$(USE_XULRUNNER)" "y"
 	CONFIGURE_FLAGS+= --with-xulrunner
 	BUILD_DEPS+= , libxul-dev [$(OOO_ARCHS)], libnss3-dev [$(OOO_ARCHS)]
+	DBG_DBG_SUGGESTS+= , libnss3-0d-dbg, libnspr4-0d-dbg
  else
 	BUILD_DEPS+= , mozilla-dev [$(OOO_ARCHS)], libnss-dev (>= 1.7.5) [$(OOO_ARCHS)]
 	MOZILLA_NSS_DEPENDS = libnss3 (>= 1.7.5), libnspr4
@@ -531,10 +534,11 @@ else
   ifeq "$(USE_SYSTEM_STLPORT)" "y"
     ifeq "$(USE_STLPORT5)" "y"
       BUILD_DEPS += , libstlport5.0-dev $(LIBSTLPORT_MINVER) [$(OOO_ARCHS)]
-      DEV_STL_DEPENDS=, libstlport5.0-dev $(LIBSTLPORT_MINVER) [$(OOO_ARCHS)]
+      DEV_STL_DEPENDS=, libstlport5.0-dev $(LIBSTLPORT_MINVER)
+      DBG_DBG_SUGGESTS+= , libstlport5.0-dev
     else
       BUILD_DEPS += , libstlport4.6-dev $(LIBSTLPORT_MINVER) [$(OOO_ARCHS)]
-      DEV_STL_DEPENDS=, libstlport4.6-dev $(LIBSTLPORT_MINVER) [$(OOO_ARCHS)]
+      DEV_STL_DEPENDS=, libstlport4.6-dev $(LIBSTLPORT_MINVER)
     endif
     CONFIGURE_FLAGS+= --with-stlport=$(CURDIR)/stlport
   endif
@@ -578,6 +582,7 @@ endif
 ifeq "$(USE_LIBXSLT)" "y"
 	CONFIGURE_FLAGS += --with-system-libxslt
 	BUILD_DEPS += , libxslt1-dev [$(OOO_ARCHS)]
+	DBG_DBG_SUGGESTS+= , libxslt1-dbg
 endif
 
 ifeq "$(USE_SYSTEM_XMLSEC)" "y"
@@ -613,6 +618,7 @@ ifeq "$(BUILD_KDE)" "n"
 	CONFIGURE_FLAGS+= --with-images="industrial crystal hicontrast"
 else
        BUILD_DEPS += , kdelibs4-dev $(KDELIBS_MINVER) [$(OOO_ARCHS)]
+       DBG_DBG_SUGGESTS+= , kdelibs-dbg, qt-x11-free-dbg
 endif
 
 ifeq "$(BUILD_BINFILTERS)" "y"
@@ -644,6 +650,7 @@ endif
 ifeq "$(USE_SYSTEM_LPSOLVE)" "y"
 	CONFIGURE_FLAGS += --with-system-lpsolve
 	BUILD_DEPS += , liblpsolve55-dev [$(OOO_ARCHS)], libufsparse-dev [$(OOO_ARCHS)]
+	DBG_DBG_SUGGESTS+= , libufsparse-dbg
 endif
 
 ifeq "$(USE_DBUS)" "y"
@@ -652,6 +659,7 @@ endif
 
 ifeq "$(USE_GSTREAMER)" "y"
 	BUILD_DEPS += , libgstreamer-plugins-base0.10-dev [$(OOO_ARCHS)]
+	GSTREAMER_PLUGINS_SUGGESTS += , gstreamer0.10-plugins-base, gstreamer0.10-plugins-good, gstreamer0.10-plugins-ugly, gstreamer0.10-plugins-bad
 else
 	CONFIGURE_FLAGS += --disable-gstreamer
 endif
@@ -661,6 +669,7 @@ ifeq "$(USE_SYSTEM_NEON)" "y"
 	BUILD_DEPS += , libneon24-dev [$(OOO_ARCHS)]
   else
 	BUILD_DEPS += , libneon25-dev [$(OOO_ARCHS)]
+	DBG_DBG_SUGGESTS+= , libneon25-dbg
   endif
 	CONFIGURE_FLAGS += --with-system-neon
 endif
@@ -781,7 +790,8 @@ binary-arch: install
 	dh_testdir
 	dh_testroot
 	dh_installdocs -plibmythes-dev
-	dh_installchangelogs -plibmythes-dev -XNEWS
+	dh_installchangelogs -plibmythes-dev
+	rm -f debian/libmythes-dev/usr/share/doc/libmythes-dev/NEWS.Debian*
 	chmod 755 debian/scripts/installoverrides
 	debian/scripts/installoverrides
 	dh_link -plibmythes-dev
@@ -1324,7 +1334,11 @@ else
 		for i in common calc math draw writer impress base; do \
 			cp -r ./openoffice.org-$$i/$(OODIR)/help/en/* \
 			 ./openoffice.org-help-en-us/$(OODIR)/help/en && \
-			rm -rf ./openoffice.org-$$i/$(OODIR)/help; \
+			if [ "$$i" = "common" ]; then \
+				rm -rf ./openoffice.org-$$i/$(OODIR)/help/en; \
+			else \
+				rm -rf ./openoffice.org-$$i/$(OODIR)/help; \
+			fi; \
 		done
 	# save space by removing non-packaged localized help; we don't need
 	# them anyway
@@ -1367,15 +1381,24 @@ endif
 		mv openoffice.org-common/$(OODIR)/program/*.so \
 			openoffice.org-dev/$(OODIR)/program
 
-ifeq "$(ENABLE_MONO)" "y"
 	# somehow, these go into -common. Move them to -core here to be able
 	# to install them later in install-arch
+ifeq "$(ENABLE_MONO)" "y"
 	cd debian/tmp/pkg; \
 	mv openoffice.org-common/$(OODIR)/program/cli_*.dll  \
 		openoffice.org-core/$(OODIR)/program
 	if [ -d openoffice.org-common/$(OODIR)/program/assembly ]; then \
 		rm -rf openoffice.org-common/$(OODIR)/program/assembly; \
 	fi
+endif
+ifeq "$(PACKAGE_QA_TOOLS)" "y"
+	cd debian/tmp/pkg; \
+	mv openoffice.org-common/$(OODIR)/program/testtoolrc \
+		openoffice.org-core/$(OODIR)/program
+	# remove eventually sneaked in .testtoolrc
+	cd debian/tmp/pkg; \
+	rm -f openoffice.org-common/$(OODIR)/program/.testtoolrc
+	
 endif
 
 ifeq "$(PACKAGE_QUICKSTART)" "y"
@@ -1523,7 +1546,7 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/install $(STAMP_DIR)/install-indep ooo-buil
 	# replace duplicate files in the langpacks with symlinks
 	fdupes --quiet --recurse --sameline --size \
 		debian/openoffice.org$(VER)-common/$(OODIR) \
-		$(foreach d,$(shell echo $(filter-out en-US,$(LANGPACKISOS)) | sed -e s/en-US // | tr A-Z a-z),debian/openoffice.org$(VER)-l10n-$(d)/$(OODIR)) \
+		$(foreach d,$(shell echo $(filter-out en-US,$(LANGPACKISOS)) | tr A-Z a-z),debian/openoffice.org$(VER)-l10n-$(d)/$(OODIR)) \
 		> l10n.fdupes
 	debian/scripts/cleandupes --base=openoffice.org$(VER) --prefix=debian < l10n.fdupes
 
@@ -1742,10 +1765,13 @@ ifeq "$(PACKAGE_QA_TOOLS)" "y"
 	mkdir -p -m755 $(PKGDIR)-qa-tools/usr/share/doc/openoffice.org$(VER)-core
 	install -m644 debian/README.qa \
 		$(PKGDIR)-qa-tools/usr/share/doc/openoffice.org$(VER)-core
+	mv $(PKGDIR)-core/$(OODIR)/program/testtoolrc \
+		$(PKGDIR)-qa-tools/$(OODIR)/program
 else
 	rm -f $(PKGDIR)-core/$(OODIR)/program/testtool.bin
 	rm -f $(PKGDIR)-core/$(OODIR)/program/libcommuni*
 	rm -f $(PKGDIR)-core/$(OODIR)/program/libsimplecm*
+	rm -f $(PKGDIR)-core/$(OODIR)/program/testtoolrc
 endif
 
 ifeq (0,1)
@@ -1843,6 +1869,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 		$(PKGDIR)-dev/usr/share/java/openoffice$(VER) && \
 	mv $(PKGDIR)-dev/usr/share/openoffice/sdk/classes/win/unowinreg.dll \
 		$(PKGDIR)-dev/usr/share/java/openoffice$(VER)/win
+	chmod 644 $(PKGDIR)-dev/usr/share/java/openoffice$(VER)/win/unowinreg.dll
 	cd $(PKGDIR)-dev/$(OODIR)/sdk/classes && \
 		ln -s /usr/share/java/openoffice$(VER)/com com
 	rm -rf $(PKGDIR)-dev/usr/share/openoffice/sdk
@@ -2353,9 +2380,6 @@ endif
 	cd $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev && \
 		ln -s /$(OODIR)/sdk/examples examples
 	
-	# remove eventually sneaked in .testtoolrc
-	rm -f $(PKGDIR)-common/$(OODIR)/program/.testtoolrc
-
 	touch $@
 
 gsi-import:
@@ -2455,13 +2479,10 @@ binary-common:
 	  rm -rf debian/$$pkg/DEBIAN;\
 	done
 
-	dh_installdocs
 ifeq "$(DIST)" "Debian"
-	dh_installdocs -A debian/README.Debian \
+	dh_installdocs -A -Nlibmythes-dev debian/README.Debian \
 		debian/tmp/pkg/openoffice.org-common/$(OODIR)/README
-ifeq "$(PACKAGE_QA_TOOLS)" "y"
-	dh_installdocs -popenoffice.org$(VER)-qa-tools debian/README.qa
-endif
+	dh_installdocs -plibmythes-dev debian/copyright
 	dh_installman
 	# fix symlinks
 	for i in writer calc draw base math impress common; do \
@@ -2474,7 +2495,8 @@ endif
 	done
 	dh_installchangelogs -Nlibmythes-dev ooo-build/ChangeLog
 ifneq "$(USE_EXTERNAL_MYTHES)" "y"
-	dh_installchangelogs -plibmythes-dev -XNEWS
+	dh_installchangelogs -plibmythes-dev
+	rm -f debian/libmythes-dev/usr/share/doc/libmythes-dev/NEWS.Debian*
 endif
 endif
 	dh_installman
@@ -2631,6 +2653,8 @@ endif
 		-V'mozilla-nss-depends=$(MOZILLA_NSS_DEPENDS)' \
 		-V'Binary-Version=$(BINARY_VERSION)' \
 		-V'ooo-filter52-dep=$(OOO_FILTER52_DEP)' \
+		-V'gstreamer-plugins-suggests=$(GSTREAMER_PLUGINS_SUGGESTS)' \
+		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-v$(BINARY_VERSION)
 	dh_md5sums
 	dh_builddeb
