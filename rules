@@ -30,8 +30,8 @@ BINARY_VERSION=$(SOURCE_VERSION)
 #BINARY_VERSION=2.0.3-$(shell dpkg-parsechangelog  | grep urgency \
 	| awk '{print $$2}' | sed -e s/"("// -e s/")"// | cut -d"-" -f2)
 PACKAGES := $(shell dh_listpackages)
-BASE_VERSION=2.0.3
-NEXT_BASE_VERSION=2.0.4
+BASE_VERSION=2.0.4~ood680
+NEXT_BASE_VERSION=2.0.5
 
 ARCH := $(shell dpkg-architecture -qDEB_HOST_ARCH)
 DIST := $(shell lsb_release -is)
@@ -74,10 +74,10 @@ ifeq "$(ARCH)" "amd64"
 	openoffice.org$(VER)-gtk openoffice.org$(VER)-gnome \
 	openoffice.org$(VER)-evolution openoffice.org$(VER)-officebean \
 	openoffice.org$(VER)-dev openoffice.org$(VER)-filter-so52 \
-	openoffice.org$(VER)-filter-mobiledev \
-	openoffice.org$(VER)-gtk-gnome \
 	python-uno
+#	openoffice.org$(VER)-gtk-gnome
 #	openoffice.org$(VER)-gcj
+#	openoffice.org$(VER)-filter-mobiledev
   PKGS_AMD64_EXP = $(foreach p, $(PKGS_AMD64_NOEXP),$(p)-experimental)
   ifeq "$(AMD64_EXPERIMENTAL)" "y"
 	EXPSUFFIX=-experimental
@@ -209,6 +209,9 @@ ifeq "$(DIST)" "Ubuntu"
     USE_PYCENTRAL=n
     BUILD_AMD64=n
   endif
+  CONFIGURE_FLAGS += \
+	--with-intro-bitmaps=\"\$$BASEDIR/../ubuntu/openintro_ubuntu.bmp\"
+	--with-about-bitmaps=\"\$$BASEDIR/../ubuntu/openabout_ubuntu.bmp\"
 endif
 
 # Debian Sarge backport
@@ -886,7 +889,11 @@ clean:
 	cd ooo-build ;\
 	  for f in fonts/opens___.ttf src/ooo_*_images*.bz2 src/extras*bz2 \
 	    src/evolocal.odb src/*.gz src/GSI*bz2 src/xt*zip src/go-oo-team.png \
-	    src/Draft.jpg src/easter/*.png src/*.bmp src/*.png \
+	    src/Draft.jpg src/easter/*.png src/*.bmp src/*.png src/*.dll \
+	    scratch/buildbot/buildbot-0.7.3/docs/PyCon-2003/*.png \
+	    scratch/buildbot/buildbot-0.7.3/buildbot/*.png \
+	    buildbot/buildbot-source/docs/PyCon-2003/*.png \
+	    buildbot/buildbot-source/buildbot/*.png \
 	    templates/*.o?? src/biblio*bz2; do \
 	  if [ -s $$f ]; then \
 	    uuencode $$f $$f > $$f.uu.tmp && \
@@ -917,19 +924,6 @@ clean:
             touch -r $$f $$f.uu ;\
 	fi; \
 	done
-
-	# we do not need them and they make problem with dpkg-source....
-	rm -f ooo-build/www/*.png \
-		ooo-build/www/images/*.png \
-		ooo-build/www/l10n/*.gif \
-		ooo-build/src/open*.png ooo-build/src/file-bug*.png \
-		ooo-build/src/*.bmp ooo-build/src/*.xcf \
-		ooo-build/src/*.ico \
-		ooo-build/scratch/scsolver/docs/class_diagram.odg \
-		ooo-build/scratch/scsolver/workben/test_run.ods \
-		ooo-build/src/Draft.jpg \
-		ooo-build/src/easter/*.png
-
 	rm -f ooo-build/desktop/*.png
 	rm -f ooo-build/src/GSI*err
 	rm -f ooo-build/config.*
@@ -1288,6 +1282,10 @@ endif
 
 	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 $(MAKE)
 
+	if [ -d ooo-build/build/current -a ! -d $(SOURCE_TREE) ]; then \
+	  ln -sf current $(SOURCE_TREE); \
+	fi
+
 	# DPKG is only set on with-EPM build what we don't do and the menu stuff
 	# is only built wenn DPKG is set.. Same with PKGFORMAT.
 	cd $(SOURCE_TREE)/sysui; \
@@ -1561,15 +1559,6 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/install $(STAMP_DIR)/install-indep ooo-buil
 	      $(PKGDIR)-l10n-$$pkgiso/$(OODIR)/share/template/$$iso/presnt/$$odt; \
 	  done; \
 	done
-
-ifeq "$(PACKAGE_QA_TOOLS)" "y"
-	mkdir -p $(PKGDIR)-qa-tools/$(OODIR)/program
-	mv $(PKGDIR)-common/$(OODIR)/program/.testtoolrc \
-		$(PKGDIR)-qa-tools/$(OODIR)/program
-	chmod 644 $(PKGDIR)-qa-tools/$(OODIR)/program/.testtoolrc
-else
-	rm -f $(PKGDIR)-common/$(OODIR)/program/.testtoolrc
-endif
 
 	touch $@
 
@@ -2514,6 +2503,7 @@ endif
 				ln -sf openoffice$(VER).1.gz oo$${i}$(VER).1.gz; \
 		fi; \
 	done
+	rm -f debian/openoffice.org-core/usr/share/man/man1/oocalc.1
 	dh_installchangelogs
 ifneq "" "$(findstring openoffice.org$(VER)-common$(EXPSUFFIX), $(PACKAGES))"
 	mkdir -p $(PKGDIR)-common$(EXPSUFFIX)/usr/share/doc/openoffice.org$(VER)-common$(EXPSUFFIX)
