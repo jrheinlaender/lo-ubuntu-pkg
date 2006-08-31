@@ -384,7 +384,7 @@ export JAVA_HOME
   else
 	BUILD_DEPS += , libdb4.2-java [$(OOO_JAVA_ARCHS)]
   endif
-  ifneq (,$(findstring Debian,$(DIST)))
+  ifeq "$(DIST)" "Debian"
 	BUILD_DEPS += , mingw32 [$(OOO_JAVA_ARCHS)]
 	CONFIGURE_FLAGS += --with-mingwin=i586-mingw32msvc-g++
   endif
@@ -563,7 +563,7 @@ endif
 
 ifeq "$(USE_GSTREAMER)" "y"
 	BUILD_DEPS += , libgstreamer-plugins-base0.10-dev [$(OOO_ARCHS)]
-	GSTREAMER_PLUGINS_SUGGESTS += , gstreamer0.10-plugins-base, gstreamer0.10-plugins-good, gstreamer0.10-plugins-ugly, gstreamer0.10-plugins-bad
+	GSTREAMER_PLUGINS_SUGGESTS += , gstreamer0.10-plugins-base, gstreamer0.10-plugins-good, gstreamer0.10-plugins-ugly, gstreamer0.10-plugins-bad, gstreamer0.10-ffmpeg
 else
 	CONFIGURE_FLAGS += --disable-gstreamer
 endif
@@ -1518,9 +1518,11 @@ ifeq "$(PACKAGE_QA_TOOLS)" "y"
 		mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-qa-tools/$(OODIR)/program; \
 	done
 
+ifeq "$(ENABLE_JAVA)" "y"
 	mkdir -p -m755 $(PKGDIR)-qa-tools/usr/share/java/openoffice$(VER)
 	cp $(SOURCE_TREE)/qadevOOo/unx*.pro/class/OOoRunnerLight.jar \
 		$(PKGDIR)-qa-tools/usr/share/java/openoffice$(VER)
+endif
 
 	mkdir -p -m755 $(PKGDIR)-qa-tools/$(OODIR)/smoketest
 	install -m755 $(SOURCE_TREE)/smoketestoo_native/smoketest.pl \
@@ -2015,10 +2017,12 @@ endif
 	cp debian/catalog.xml $(PKGDIR)-dtd-officedocument1.0/$(OODIR)/share/dtd/officedocument/1_0
 
 ifeq "$(PACKAGE_QA_TOOLS)" "y"
+ifeq "$(ENABLE_JAVA)" "y"
 	mkdir -p -m755 $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/tests/java
 	for d in objdsc testdocs; do \
 		cp -r $(SOURCE_TREE)/qadevOOo/$$d $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/$$d; \
 	done
+endif
 
 	cp -r $(SOURCE_TREE)/qadevOOo/tests/basic $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/tests; \
 	for d in mod ifc; do \
@@ -2028,7 +2032,9 @@ ifeq "$(PACKAGE_QA_TOOLS)" "y"
 	find $(PKGDIR)-qa-api-tests -type d -name "CVS" | xargs rm -rf
 	find $(PKGDIR)-qa-api-tests -type f | xargs chmod 0644
 
+ifeq "$(ENABLE_JAVA)" "y"
 	echo "TestBase=java_fat" > $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/java.props
+endif
 	echo "TestBase=java_complex" > $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/complex.props
 	echo "TestBase=basic_fat" > $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/basic.props
 
@@ -2037,7 +2043,16 @@ ifeq "$(PACKAGE_QA_TOOLS)" "y"
 	echo "BASICRESPTH=/$(OODIR)/qadevOOo/tests/basic" >> \
 		$(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/basic.props
 
-	for i in java complex basic; do \
+ifeq "$(ENABLE_JAVA)" "y"
+	echo "DescriptionPath=/$(OODIR)/qadevOOo/objdsc" >> \
+		$(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/java.props; \
+	echo "TestDocumentPath=/$(OODIR)/qadevOOo/testdocs" >> \
+		$(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/java.props; \
+	echo "AppExecutionCommand=/$(OODIR)/program/soffice" \
+		"-norestore -nocrashreport -accept=socket,host=localhost,port=8100;urp;" >> \
+		$(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/java.props
+endif
+	for i in complex basic; do \
 		echo "DescriptionPath=/$(OODIR)/qadevOOo/objdsc" >> \
 			$(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/$$i.props; \
 		echo "TestDocumentPath=/$(OODIR)/qadevOOo/testdocs" >> \
