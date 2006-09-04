@@ -118,12 +118,15 @@ USE_STLPORT=y
 USE_STLPORT5=n
 USE_SYSTEM_STLPORT=y
 ifeq "$(USE_STLPORT5)" "y"
-  LIBSTLPORT_MINVER= (>= 5.0.2-3)
-  BUILD_BINFILTERS=n
+  LIBSTLPORT_MINVER= (>= 5.0.2-7)
 else
   LIBSTLPORT_MINVER= (>= 4.6.2-3)
 endif
-USE_SYSTEM_BOOST=n
+ifeq "$(USE_STLPORT5)" "y"
+  USE_SYSTEM_BOOST=y
+else
+  USE_SYSTEM_BOOST=n
+endif
 USE_SYSTEM_PORTAUDIO=y
 USE_EXTERNAL_CXXLIBS=y
 LIBWPD8_MINVER= (>= 0.8.3-3)
@@ -197,9 +200,9 @@ ifeq "$(DIST)" "Ubuntu"
   BUILD_DEPS += , translate-toolkit (>= 0.8.rel)
   BUILD_AMD64=y
   PACKAGE_QA_TOOLS=y
-  ifeq "$(ARCH)" "amd64"
-    PACKAGE_QA_TOOLS=n
-  endif
+  #ifeq "$(ARCH)" "amd64"
+  #  PACKAGE_QA_TOOLS=n
+  #endif
   SYSTEM_ALTLINUXHYPH=n
   USE_SYSTEM_XMLSEC=y
   USE_SYSTEM_HUNSPELL=n
@@ -263,6 +266,9 @@ ifeq "$(BUILD_AMD64)" "y"
 endif
 # Java...
 OOO_JAVA_ARCHS = i386 powerpc sparc
+ifeq "$(BUILD_AMD64)" "y"
+  OOO_JAVA_ARCHS+= amd64
+endif
 ifeq (,$(findstring $(ARCH),$(OOO_JAVA_ARCHS)))
        ENABLE_JAVA=n
 endif
@@ -370,9 +376,9 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 
     # additional things built in Ubuntu, having belocs-locales
     #ISOS := $(sort $(ISOS) as-IN ku mr-IN or-IN sh-YU ur-IN)
-    ISOS := en-US $(sort $(filter-out en-US, $(ISOS)) ku)
-    HELPISOS := en-US $(sort $(filter-out en-US, $(HELPISOS)) br ru)
-    LANGPACKISOS := en-US $(sort $(filter-out en-US, $(LANGPACKISOS)) ku)
+    ISOS := en-US $(sort $(filter-out en-US, $(ISOS)) ka)
+    HELPISOS := en-US $(sort $(filter-out en-US, $(HELPISOS)) br)
+    LANGPACKISOS := en-US $(sort $(filter-out en-US, $(LANGPACKISOS)) ka)
     REMOVE_HELP := bs cy fi lt lv sh-YU sr-CS ur-IN
     FILTER_HELP := ga hr pl rw sk th tr vi
 
@@ -481,7 +487,7 @@ export JAVA_HOME
   else
 	BUILD_DEPS += , libdb4.2-java [$(OOO_JAVA_ARCHS)]
   endif
-  ifneq (,$(findstring Debian,$(DIST)))
+  ifeq "$(DIST)" "Debian"
 	BUILD_DEPS += , mingw32 [$(OOO_JAVA_ARCHS)]
 	CONFIGURE_FLAGS += --with-mingwin=i586-mingw32msvc-g++
   endif
@@ -662,7 +668,8 @@ endif
 
 ifeq "$(USE_GSTREAMER)" "y"
 	BUILD_DEPS += , libgstreamer-plugins-base0.10-dev [$(OOO_ARCHS)]
-	GSTREAMER_PLUGINS_SUGGESTS += , gstreamer0.10-plugins-base, gstreamer0.10-plugins-good, gstreamer0.10-plugins-ugly, gstreamer0.10-plugins-bad
+	GSTREAMER_PLUGINS_SUGGESTS += , gstreamer0.10-plugins-base, gstreamer0.10-plugins-good, gstreamer0.10-plugins-ugly, gstreamer0.10-plugins-bad, gstreamer0.10-ffmpeg
+	DBG_SBG_SUGGESTS+= , libgstreamer0.10-0-dbg 
 else
 	CONFIGURE_FLAGS += --disable-gstreamer
 endif
@@ -1260,7 +1267,11 @@ endif
 endif
 
 	# Make convenience link
+ifeq (ccache,$(findstring ccache,$(DEB_BUILD_OPTIONS)))
+	if [ ! -L build ]; then ln -s ooo-build/build/current build ; fi
+else
 	if [ ! -L build ]; then ln -s $(SOURCE_TREE) build ; fi
+endif
 
 	# Make sure we have /proc mounted - otherwise idlc will fail later.
 	test -r /proc/version
@@ -1288,7 +1299,7 @@ endif
 	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 $(MAKE)
 
 	if [ -d ooo-build/build/current -a ! -d $(SOURCE_TREE) ]; then \
-	  ln -sf current $(SOURCE_TREE); \
+		ln -sf current $(SOURCE_TREE); \
 	fi
 
 	# DPKG is only set on with-EPM build what we don't do and the menu stuff
@@ -1616,6 +1627,12 @@ endif
 	# split out gtk stuff
 	mkdir -p -m755 $(PKGDIR)-gtk/$(OODIR)/program
 	mv $(PKGDIR)-gnome/$(OODIR)/program/* $(PKGDIR)-gtk/$(OODIR)/program/
+ifeq "$(PACKAGE_QUICKSTART)" "y"
+	mkdir -p -m755 $(PKGDIR)-gtk/$(OODIR)/share
+	mv $(PKGDIR)-gnome/$(OODIR)/share/xdg $(PKGDIR)-gtk/$(OODIR)/share
+else
+	rm -rf $(PKGDIR)-gnome/$(OODIR)/share
+endif
 	mv $(PKGDIR)-gtk/$(OODIR)/program/ucpgvfs1.uno.so \
 		$(PKGDIR)-gnome/$(OODIR)/program/
 	mv $(PKGDIR)-gtk/$(OODIR)/program/gnome-set-default-application \
@@ -1742,9 +1759,11 @@ ifeq "$(PACKAGE_QA_TOOLS)" "y"
 		mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-qa-tools/$(OODIR)/program; \
 	done
 
+ifeq "$(ENABLE_JAVA)" "y"
 	mkdir -p -m755 $(PKGDIR)-qa-tools/usr/share/java/openoffice$(VER)
 	cp $(SOURCE_TREE)/qadevOOo/unx*.pro/class/OOoRunnerLight.jar \
 		$(PKGDIR)-qa-tools/usr/share/java/openoffice$(VER)
+endif
 
 	mkdir -p -m755 $(PKGDIR)-qa-tools/$(OODIR)/smoketest
 	install -m755 $(SOURCE_TREE)/smoketestoo_native/smoketest.pl \
@@ -1760,7 +1779,8 @@ ifeq "$(PACKAGE_QA_TOOLS)" "y"
 	install -m644 debian/README.qa \
 		$(PKGDIR)-qa-tools/usr/share/doc/openoffice.org$(VER)-core
 	mv $(PKGDIR)-core/$(OODIR)/program/testtoolrc \
-		$(PKGDIR)-qa-tools/$(OODIR)/program
+		$(PKGDIR)-qa-tools/$(OODIR)/program && \
+	chmod 644 $(PKGDIR)-qa-tools/$(OODIR)/program/testtoolrc
 else
 	rm -f $(PKGDIR)-core/$(OODIR)/program/testtool.bin
 	rm -f $(PKGDIR)-core/$(OODIR)/program/libcommuni*
@@ -1853,6 +1873,10 @@ ifeq "$(USE_SYSTEM_STLPORT)" "y"
 	# for the SDK includes
 	cd $(PKGDIR)-dev/usr/include/openoffice$(VER) && \
 		rm -rf stl && ln -s /usr/include/stlport stl
+ifeq "$(USE_STLPORT5)" "y"
+	perl -pi -e "s/STORELIB=-lstore/STORELIB=-lstore\nSTLPORT_VER=500/" \
+		 $(PKGDIR)-dev/$(OODIR)/sdk/settings/settings.mk
+endif
 endif
 ifeq "$(ENABLE_JAVA)" "y"
 	# move SDK Java stuff into /usr/share/java/openoffice
@@ -2313,20 +2337,27 @@ endif
 	cp debian/catalog.xml $(PKGDIR)-dtd-officedocument1.0/$(OODIR)/share/dtd/officedocument/1_0
 
 ifeq "$(PACKAGE_QA_TOOLS)" "y"
+ifeq "$(ENABLE_JAVA)" "y"
 	mkdir -p -m755 $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/tests/java
 	for d in objdsc testdocs; do \
 		cp -r $(SOURCE_TREE)/qadevOOo/$$d $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/$$d; \
 	done
+endif
 
-	cp -r $(SOURCE_TREE)/qadevOOo/tests/basic $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/tests; \
+	mkdir -p -m755 $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/tests
+	cp -r $(SOURCE_TREE)/qadevOOo/tests/basic $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/tests
+ifeq "$(ENABLE_JAVA)" "y"
 	for d in mod ifc; do \
 		cp -r $(SOURCE_TREE)/qadevOOo/unx*.pro/class/$$d $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/tests/java; \
 	done
+endif
 
 	find $(PKGDIR)-qa-api-tests -type d -name "CVS" | xargs rm -rf
 	find $(PKGDIR)-qa-api-tests -type f | xargs chmod 0644
 
+ifeq "$(ENABLE_JAVA)" "y"
 	echo "TestBase=java_fat" > $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/java.props
+endif
 	echo "TestBase=java_complex" > $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/complex.props
 	echo "TestBase=basic_fat" > $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/basic.props
 
@@ -2335,7 +2366,16 @@ ifeq "$(PACKAGE_QA_TOOLS)" "y"
 	echo "BASICRESPTH=/$(OODIR)/qadevOOo/tests/basic" >> \
 		$(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/basic.props
 
-	for i in java complex basic; do \
+ifeq "$(ENABLE_JAVA)" "y"
+	echo "DescriptionPath=/$(OODIR)/qadevOOo/objdsc" >> \
+		$(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/java.props; \
+	echo "TestDocumentPath=/$(OODIR)/qadevOOo/testdocs" >> \
+		$(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/java.props; \
+	echo "AppExecutionCommand=/$(OODIR)/program/soffice" \
+		"-norestore -nocrashreport -accept=socket,host=localhost,port=8100;urp;" >> \
+		$(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/java.props
+endif
+	for i in complex basic; do \
 		echo "DescriptionPath=/$(OODIR)/qadevOOo/objdsc" >> \
 			$(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/$$i.props; \
 		echo "TestDocumentPath=/$(OODIR)/qadevOOo/testdocs" >> \
@@ -2359,9 +2399,6 @@ endif
 
 	# add "openoffice" symlink
 	cd $(PKGDIR)-common/usr/bin && ln -s ooo-wrapper openoffice
-	
-	# we also need soffice, for UNO bootstrap :/
-	cd $(PKGDIR)-common/usr/bin && ln -s ../../$(OODIR)/program/soffice soffice
 	
 	# add symlinks for docs and examples
 	cd $(PKGDIR)-dev-doc/$(OODIR)/sdk && \
