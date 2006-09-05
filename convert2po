@@ -2,8 +2,6 @@
 
 basedir=debian/l10n
 
-export PYTHONPATH=$(pwd)/ubuntu
-
 _convert2po()
 {
     local lc=${1#*_*}
@@ -27,22 +25,49 @@ _convert2po()
     rm -rf $basedir/$lc
 }
 
+lc2rlc()
+{
+    local rlc
+    lc=$(echo $1 | tr - _)
+    case "$lc" in
+	*_IN) lc=${lc%*_IN};;
+	be_BY) lc=be;;
+	sr_CS) lc=sr;;
+	ti_ER) lc=ti;;
+    esac
+    echo $lc
+}
+
+export PYTHONPATH=~/translate
+
+oldbasedir=../source/debian/l10n
+newbasedir=$(pwd)/ubuntu/l10n
+rosettadir=$(pwd)/../ooo-dapper-2006-08-30
+
 _convert2oo()
 {
     local lc=$1
     [ "$lc" = en-US ] && return
-    rm -rf $basedir/$lc
-    mkdir -p $basedir/$lc
-    $basedir/../splitgsi $basedir/export/GSI_$lc.sdf $basedir/$lc
-    cd $basedir/$lc
+    rm -rf $newbasedir/$lc
+    mkdir -p $newbasedir/$lc
+    $basedir/../splitgsi $oldbasedir/export/GSI_$lc.sdf $newbasedir/$lc
+    rlc=$(lc2rlc $lc)
+    cd $newbasedir/$lc
     for f in *.sdf; do
         d=${f%*.sdf}
-	[ -f ../$d/$lc.po ] || continue
+	po=$rosettadir/rosetta-$d/$lc.po
+	if [ $lc != $rlc ]; then
+	    ln -sf $rlc.po $rosettadir/rosetta-$d/$lc.po
+	fi
+	[ -f $po ] || continue
         echo $d
 	cp -p $d.sdf $d.oo
-        po2oo --multifile=onefile -l $lc -i ../$d/$lc.po -o ${f}2 -t $d.oo
+        po2oo --multifile=onefile -l $lc -i $po -o ${f}2 -t $d.oo
 	rm -f $d.oo
     done
+    mkdir unused
+    mv ooo-guide-* ooo-help-* unused/
+    cat *.sdf2 > ../GSI_$lc.sdf
     cd - >/dev/null
 }
 
