@@ -10,7 +10,11 @@ def statistics(mf, helpfiles, comment, fn):
     n_all = n_translated = n_untranslated = n_same = 0
     for helpfile in helpfiles:
         of = mf.getoofile(helpfile)
-        for el in of.ooelements:
+        try:
+            elements = of.ooelements
+        except:
+            elements = of.units
+        for el in elements:
             n_all += 1
             if len(el.lines) == 1:
                 if debug:

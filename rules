@@ -381,6 +381,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 
     # additional things built in Ubuntu, having belocs-locales
     #ISOS := $(sort $(ISOS) as-IN ku mr-IN or-IN sh-YU ur-IN)
+    ISOS := $(filter-out ti-ER, $(ISOS))
     ISOS := en-US $(sort $(filter-out en-US, $(ISOS)) ka)
     HELPISOS := en-US $(sort $(filter-out en-US, $(HELPISOS)) br)
     LANGPACKISOS := en-US $(sort $(filter-out en-US, $(LANGPACKISOS)) ka)
@@ -418,7 +419,8 @@ ifeq "$(DIST)" "Ubuntu"
   endif
   ifeq "$(PKGSOURCE)" "openoffice.org$(VER)-l10n"
 	PACKAGE_QA_TOOLS=n
-	PATCHSET = UbuntuL10n
+	#PATCHSET = UbuntuL10n
+
 	# seems necessary to build en-US, or else the first language in the list of languages
 	# is dropped from the build. Don't package en-us.
 	#ISOS := $(filter-out en-US, $(ISOS))
@@ -2655,7 +2657,7 @@ endif
 	# l10 & help packages (with docdir symlinks)
 	for PKG in $(HELP_PACKAGES) $(LANG_PACKAGES); do \
 	  case $$PKG in \
-	    *l10n-en-us) target=openoffice.org$(VER)-common; continue;; \
+	    *l10n-en-us) target=openoffice.org$(VER)-common;; \
 	    *) target=openoffice.org$(VER)-l10n-common; \
 	  esac; \
 	  rm -rf debian/$$PKG/usr/share/doc/$$PKG; \
@@ -2683,7 +2685,7 @@ endif
 	done
 
 	# indep packages (with docdir symlinks)
-	for s in -dev-doc -gtk-gnome -java-common -qa-api-tests; do \
+	for s in -dev-doc -gtk-gnome -java-common -qa-api-tests -l10n-en-us; do \
 	  PKG=openoffice.org$(VER)$$s; \
 	  echo " $(PACKAGES) " | fgrep -q " $$PKG " || continue; \
 	  target=openoffice.org$(VER)-common; \
@@ -2757,10 +2759,13 @@ endif
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-v$(BINARY_VERSION)
 	dh_md5sums
-ifneq (,$(findstring -i,$(DEBHELPER_OPTIONS)))
+ifeq "$(PKGSOURCE)" "openoffice.org$(VER)-l10n"
 	dh_builddeb -- -Zbzip2
 else
-	dh_builddeb
+  ifneq (,$(filter -i,$(DH_OPTIONS)))
+	DH_OPTIONS= dh_builddeb -popenoffice.org$(VER)-common -- -Zbzip2
+  endif
+	dh_builddeb -Nopenoffice.org$(VER)-common
 endif
 
 # Build architecture independant packages using the common target.

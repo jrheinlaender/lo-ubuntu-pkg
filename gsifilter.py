@@ -12,7 +12,11 @@ def dupfilter(mf, comment, fn):
     for oofile in mf.listsubfiles():
         of = mf.getoofile(oofile)
         if oofile.startswith('helpcontent2'):
-            for el in of.ooelements:
+            try:
+                elements = of.ooelements
+            except:
+                elements = of.units
+            for el in elements:
                 n_all += 1
                 if len(el.lines) == 1:
                     if debug:
