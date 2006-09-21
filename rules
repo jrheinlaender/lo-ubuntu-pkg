@@ -345,8 +345,14 @@ ifneq "$(SARGE_BACKPORT)" "y"
 	SYSTEM_XALAN=y
 	SYSTEM_XERCES=y
 	SYSTEM_XML_APIS=y
-	DBG_DBG_SUGGESTS+= , libgcj7-dbg
-	JAWT_DEPENDS= , libgcj7-awt
+ifeq "$(GCJ_VERSION)" "4.2"
+	LIBGCJ_SONR=8
+else
+	LIBGCJ_SONR=7
+endif
+	DBG_DBG_SUGGESTS+= , libgcj$(LIBGCJ_SONR)-dbg
+	JAWT_DEPENDS= , libgcj$(LIBGCJ_SONR)-awt
+
 else
 ifeq "$(ARCH)" "i386"
 	JAVA_HOME=/usr/lib/j2se/1.4
@@ -1808,8 +1814,9 @@ endif
 	cat $(PKGDIR)-common/$(OODIR)/share/registry/data/org/openoffice/Setup.xcu \
 		| sed -e "s/OpenO/BrO/" \
 		> debian/broffice.org/$(OODIR)/share/registry/data/org/openoffice/Setup.xcu
-	for iso in `echo $(LANGPACKISOS) |tr A-Z a-z`; do \
-		cat $(PKGDIR)-l10n-$$iso/$(OODIR)/program/resource/ooo680$$iso.res \
+	for iso in $(LANGPACKISOS); do \
+		if [ "$$iso" = "en-US" ]; then p=common; else p=l10n-`echo $$iso | tr A-z a-z`; fi; \
+		cat $(PKGDIR)-$$p/$(OODIR)/program/resource/ooo680$$iso.res \
 		| sed -e "s/OpenO/BrO/" \
 		> debian/broffice.org/$(OODIR)/program/resource/ooo680$$iso.res; \
 	done
@@ -2148,6 +2155,8 @@ endif
 	cd $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev && \
 		ln -s /$(OODIR)/sdk/examples examples
 	
+	rm -f $(PKGDIR)-core/$(OODIR)/program/*updchk*
+
 	touch $@
 
 
