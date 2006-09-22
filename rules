@@ -119,7 +119,7 @@ USE_STLPORT=y
 USE_STLPORT5=n
 USE_SYSTEM_STLPORT=y
 ifeq "$(USE_STLPORT5)" "y"
-  LIBSTLPORT_MINVER= (>= 5.0.2-7)
+  LIBSTLPORT_MINVER= (>= 5.0.2-8)
 else
   LIBSTLPORT_MINVER= (>= 4.6.2-3)
 endif
@@ -451,8 +451,14 @@ ifneq "$(SARGE_BACKPORT)" "y"
 	SYSTEM_XALAN=y
 	SYSTEM_XERCES=y
 	SYSTEM_XML_APIS=y
-	DBG_DBG_SUGGESTS+= , libgcj7-dbg
-	JAWT_DEPENDS= , libgcj7-awt
+ifeq "$(GCJ_VERSION)" "4.2"
+	LIBGCJ_SONR=8
+else
+	LIBGCJ_SONR=7
+endif
+	DBG_DBG_SUGGESTS+= , libgcj$(LIBGCJ_SONR)-dbg
+	JAWT_DEPENDS= , libgcj$(LIBGCJ_SONR)-awt
+
 else
 ifeq "$(ARCH)" "i386"
 	JAVA_HOME=/usr/lib/j2se/1.4
@@ -591,7 +597,7 @@ endif
 endif
 
 ifeq "$(USE_SYSTEM_ICU)" "y"
-	BUILD_DEPS += , libicu34-dev [$(OOO_ARCHS)]
+	BUILD_DEPS += , libicu36-dev [$(OOO_ARCHS)]
 	CONFIGURE_FLAGS += --with-system-icu
 	# ICU utils are in /usr/sbin (!)
 	PATH+=:/usr/sbin
@@ -891,6 +897,7 @@ clean:
 			-o -name '*.odp' -o -name '*.odt' -o -name "*.ods" \) \
 			-exec rm {} \; ;\
 	fi
+	rm -rf ooo-build/patches/test/*.tar
 	find ooo-build/scratch ooo-build/src -type f \
 			\( -name '*.ott' -o -name '*.ods' -o -name '*.odg' \) \
 			-exec rm {} \;
@@ -2083,8 +2090,9 @@ endif
 	cat $(PKGDIR)-common/$(OODIR)/share/registry/data/org/openoffice/Setup.xcu \
 		| sed -e "s/OpenO/BrO/" \
 		> debian/broffice.org/$(OODIR)/share/registry/data/org/openoffice/Setup.xcu
-	for iso in `echo $(LANGPACKISOS) |tr A-Z a-z`; do \
-		cat $(PKGDIR)-l10n-$$iso/$(OODIR)/program/resource/ooo680$$iso.res \
+	for iso in $(LANGPACKISOS); do \
+		if [ "$$iso" = "en-US" ]; then p=common; else p=l10n-`echo $$iso | tr A-z a-z`; fi; \
+		cat $(PKGDIR)-$$p/$(OODIR)/program/resource/ooo680$$iso.res \
 		| sed -e "s/OpenO/BrO/" \
 		> debian/broffice.org/$(OODIR)/program/resource/ooo680$$iso.res; \
 	done
@@ -2478,6 +2486,8 @@ endif
 	cd $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev && \
 		ln -s /$(OODIR)/sdk/examples examples
 	
+	rm -f $(PKGDIR)-core/$(OODIR)/program/*updchk*
+
 	touch $@
 
 gsi-import:
@@ -2724,9 +2734,6 @@ endif
 	dh_makeshlibs -n -V
 	dh_installdeb
 	cat debian/openoffice.org-core.shlibs.local > debian/shlibs.local
-ifeq "$(USE_STLPORT5)" "y"
-	echo "libstlport 5.0 libstlport5.0 $(LIBSTLPORT_MINVER)" >> debian/shlibs.local
-endif
 ifneq "$(USE_SYSTEM_XMLSEC)" "y"
 	cat debian/shlibs.override.xmlsec >> debian/shlibs.local
 endif
