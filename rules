@@ -513,6 +513,7 @@ export JAVA_HOME
 	JAVA_COMMON_JAVA_DEPENDS+= , libjaxp1.2-java
   endif
   ifeq "$(DIST)" "Ubuntu"
+	CONFIGURE_FLAGS += --with-db-jar=/usr/share/java/libdb4.4-java.jar
 	BUILD_DEPS += , libdb4.4-java [$(OOO_JAVA_ARCHS)]
   else ifneq "$(SARGE_BACKPORT)" "y"
 	BUILD_DEPS += , libdb4.2-java (>= 4.2.52-21) [$(OOO_JAVA_ARCHS)]
@@ -2440,6 +2441,14 @@ ifeq "$(HELPISOS)" ""
 		rm -rf $$z; \
 	done
 endif
+	set -e; \
+	for s in default industrial crystal hicontrast; do \
+		z=images_$$s.zip; \
+		case "$$s" in default) z=images.zip; esac; \
+		mkdir -p $(PKGDIR)-style-$$s/$(OODIR)/share/config; \
+		mv $(PKGDIR)-common/$(OODIR)/share/config/$$z \
+			$(PKGDIR)-style-$$s/$(OODIR)/share/config/; \
+	done
 
 	rm -rf $(PKGDIR)-dtd-officedocument1.0
 	mkdir -p $(PKGDIR)-dtd-officedocument1.0/$(OODIR)/share/dtd
@@ -2718,7 +2727,10 @@ endif
 	done
 
 	# arch dependent packages (with docdir symlinks)
-	for s in '' -gtk -gnome -kde -evolution -math -base -calc -writer -draw -impress -gcj -dev -qa-tools -filter-so52 -officebean; do \
+	for s in \
+	  '' -gtk -gnome -kde -evolution -math -base -calc -writer -draw \
+	  -impress -gcj -dev -qa-tools -filter-so52 -officebean; \
+	do \
 	  PKG=openoffice.org$(VER)$$s; \
 	  echo " $(PACKAGES) " | fgrep -q " $$PKG " || continue; \
 	  target=openoffice.org$(VER)-core; \
@@ -2738,11 +2750,12 @@ endif
 	  rm -f debian/$$PKG/usr/share/doc/$$target/changelog.Debian*; \
 	  mkdir -p debian/$$PKG/usr/share/doc; \
 	  ln -sf $$target debian/$$PKG/usr/share/doc/$$PKG; \
-	  sed "s/@PKGNAME@/$$PKG/g;s/@PKGTARGET@/$$target/g" \
-	    debian/deppackage.postinst.in >> debian/$$PKG.postinst
 
 	# indep packages (with docdir symlinks)
-	for s in -dev-doc -gtk-gnome -java-common -qa-api-tests -l10n-en-us; do \
+	for s in \
+	  -dev-doc -gtk-gnome -java-common -qa-api-tests -l10n-en-us \
+	  -style-default -style-industrial -style-crystal -style-hicontrast; \
+	do \
 	  PKG=openoffice.org$(VER)$$s; \
 	  echo " $(PACKAGES) " | fgrep -q " $$PKG " || continue; \
 	  target=openoffice.org$(VER)-common; \
@@ -2751,6 +2764,7 @@ endif
 	  rm -f debian/$$PKG/usr/share/doc/$$target/changelog.Debian*; \
 	  mkdir -p debian/$$PKG/usr/share/doc; \
 	  ln -sf $$target debian/$$PKG/usr/share/doc/$$PKG; \
+	  case "$$s" in -style-*) continue; esac; \
 	  sed "s/@PKGNAME@/$$PKG/g;s/@PKGTARGET@/$$target/g" \
 	    debian/deppackage.postinst.in >> debian/$$PKG.postinst; \
 	done
