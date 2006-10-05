@@ -19,6 +19,7 @@ SHELL:=/bin/bash
 PKGDIR:=debian/openoffice.org$(VER)
 OODIR:=usr/lib/openoffice$(VER)
 
+PKGSOURCE := $(shell dpkg-parsechangelog | awk '/^Source:/ {print $$2;exit 0}')
 SOURCE_VERSION:=$(shell head -1 debian/changelog | cut -d\( -f2 | cut -d\) -f1)
 UPSTREAM_VERSION:=$(shell echo "$(SOURCE_VERSION)"| cut -d- -f1)
 BASE_VERSION:=$(UPSTREAM_VERSION)
@@ -39,6 +40,10 @@ OOO_VENDOR:=Debian
 ifneq "$(BUILDER)" "buildd"
 OOO_VENDOR+= ($(BUILDER))
 endif
+ifeq "$(DIST)" "Ubuntu"
+OOO_VENDOR+= and Ubuntu
+endif
+export OOO_VENDOR
 
 # debhelper
 export DH_OPTIONS
@@ -226,7 +231,7 @@ endif
 
 # Changes for 64 bit build
 ifeq "$(ARCH)" "amd64"
-  PATCHSET=$(DIST)64
+  PATCHSET=$(PATCHSET)64
   USE_SYSTEM_BOOST=y
 endif
 
@@ -813,6 +818,7 @@ clean:
 	done
 
         # uuencode Ximian desktop icons
+	set -e; \
 	for i in base calc draw impress math template web writer; do \
 	  f=ooo-build/desktop/ooo-$$i.png; \
 	  if [ -s $$f ]; then \
@@ -1161,7 +1167,11 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/build
 	  ln -sf ooo-wrapper$(VER) $$i; \
 	done
 
-ifneq "$(HELPISOS)" ""
+ifeq "$(HELPISOS)" ""
+	for i in common calc math draw writer impress base; do \
+		rm -rf debian/tmp/pkg/openoffice.org-$$i/$(OODIR)/help; \
+	done
+else
 	# install *english* help; we can't do that later since this is in
 	# arch-dep and arch-indep stuff..
 	cd debian/tmp/pkg; \
@@ -1304,6 +1314,7 @@ ifneq "$(HELPISOS)" ""
 	rm -rf $(PKGDIR)-help-en-us $(PKGDIR)-help-en-us.*.debhelper; \
 	cp -r --preserve=mode debian/tmp/pkg/openoffice.org-help-en-us $(PKGDIR)-help-en-us || exit 1
 ifneq "$(HELPISOS)" "en-US"
+	set -e; \
 	for iso in $(filter-out en-US,$(HELPISOS)); do \
 	  pkgiso=`echo $$iso | tr \[:upper:\] \[:lower:\]`; \
 	  diriso=`echo $$pkgiso | cut -d"-" -f1`; \
@@ -1602,8 +1613,6 @@ endif
 	install -m644 $(SOURCE_TREE)/smoketestoo_native/data/scripts/*.x* \
 		$(PKGDIR)-qa-tools/$(OODIR)/presets/basic/Standard
 
-	mkdir -p -m755 $(PKGDIR)-qa-tools/usr/share/doc/openoffice.org$(VER)-qa-tools
-
 	mv $(PKGDIR)-core/$(OODIR)/program/testtoolrc \
 		$(PKGDIR)-qa-tools/$(OODIR)/program && \
 	chmod 644 $(PKGDIR)-qa-tools/$(OODIR)/program/testtoolrc
@@ -1614,6 +1623,7 @@ else
 	rm -f $(PKGDIR)-core/$(OODIR)/program/testtoolrc
 endif
 
+	#  menu files from sysui
 	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare >/dev/null; pwd`" ;\
 	for p in writer calc impress draw math base; do \
 		mkdir -p -m755 $(PKGDIR)-$$p/usr/share/applications ;\
