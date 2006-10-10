@@ -126,6 +126,7 @@ USE_GSTREAMER=y
 USE_SYSTEM_NEON=y
 USE_PYCENTRAL=y
 PACKAGE_QUICKSTART=y
+USE_OOO_BUILD_DESKTOPS=n
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
@@ -293,8 +294,6 @@ ifeq "$(BUILD_JARS_NATIVE)" "y"
 	BUILD_DEPS += , dpkg-dev (>= 1.13.19)
 	STAMP_NATIVE_JARS = $(STAMP_DIR)/native-jars
 	JAVA_GCJ_DEPENDS = libgcj-common (>= 1:4.1.1-14)
-else
-	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-gcj
 endif
 
 ifneq "$(PACKAGE_QA_TOOLS)" "y"
@@ -661,6 +660,7 @@ else
 	BUILD_PATH = /usr/lib/jvm/java-gcj/bin:$(CURDIR)/debian/usr/bin:$$PATH
 endif
 endif
+BUILD_PATH := $(CURDIR)/debian/usr/bin:$(BUILD_PATH)
 
 ifeq "$(BUILD_ONLY_LIBMYTHES)" "y"
 clean:
@@ -980,7 +980,7 @@ endif
 	mv debian/control.tmp debian/control
 
 	# make -l10n-fi suggest openoffice.org-spellcheck-fi to
-	# match myspell-fi and Soikko
+	# match myspell-fi and openoffice.org-soikko/-voikko
 	perl -pi -e 's/myspell-dictionary-fi/myspell-dictionary-fi | openoffice.org-spellcheck-fi/' debian/control
 
 ifeq "$(USE_PYCENTRAL)" "y"
@@ -1630,7 +1630,8 @@ else
 	rm -f $(PKGDIR)-core/$(OODIR)/program/testtoolrc
 endif
 
-	#  menu files from sysui
+ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
+	# menu files from sysui
 	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare >/dev/null; pwd`" ;\
 	for p in writer calc impress draw math base; do \
 		mkdir -p -m755 $(PKGDIR)-$$p/usr/share/applications ;\
@@ -1650,6 +1651,20 @@ endif
 	sed -i -e 's/Office;/Office;Graphics;/' $(PKGDIR)-draw/usr/share/applications/ooo$(VER)-draw.desktop
 	#mv $(PKGDIR)-base/usr/share/applications/ooo$(VER)-base.desktop $(PKGDIR)-core/usr/share/applications
 	#rm -r $(PKGDIR)-base
+else
+	# menu files from ooo-build/desktop
+	for p in writer calc impress draw math base; do \
+		mkdir -p -m755 $(PKGDIR)-$$p/usr/share/applications ;\
+			sed -e '/^TryExec=.*/d' \
+			    -e "s,^Exec=.*,Exec=ooffice$(VER) -$$p %U," \
+			    -e "s,^Icon=.*,Icon=ooo-$$p," \
+			    -e '/^Name=/s,  , ,' \
+			    -e 's/@STARTUPNOTIFY@/true/' \
+			    -e '/^Categories/s/Office/Application;Office/' \
+				ooo-build/desktop/$$p.desktop \
+				> $(PKGDIR)-$$p/usr/share/applications/ooo$(VER)-$$p.desktop || exit 1 ;\
+	done
+endif
 
 ifeq "$(BUILD_PYUNO)" "y"
 	# PyUNO packging
