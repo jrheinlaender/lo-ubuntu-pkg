@@ -53,10 +53,10 @@ export DH_ALWAYS_EXCLUDE=CVS
 # work around tcsh bugs.debian.org/339034: tcsh: Unknown colorls variable `su'
 unexport LS_COLORS
 
-#TAG=src680-$(MILESTONE)
-#MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)"| cut -d~ -f2)
-TAG=OOO_2_0_4
-OOO_BUILD_BRANCH=-rooo-build-2-0-4
+TAG=src680-$(MILESTONE)
+MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)"| cut -d~ -f2)
+#TAG=OOO_2_0_4
+#OOO_BUILD_BRANCH=-rooo-build-2-0-4
 SOURCE_TREE=ooo-build/build/$(TAG)
 STAMP_DIR=debian/stampdir
 
@@ -1737,6 +1737,9 @@ endif
 	# create wrapper scripts
 	cd $(PKGDIR)-dev/$(OODIR)/sdk/$(OS)/bin && \
 	for i in *; do \
+		if [ "$$i" = "regcomp" -o "$$i" = "regcomp.bin" ]; then \
+			continue; \
+		fi; \
 		mv $$i $$i.bin && \
 		( \
 		  echo "#!/bin/sh"; \
@@ -1745,7 +1748,14 @@ endif
 		  echo 'LD_LIBRARY_PATH=/$(OODIR)/program /$(OODIR)/sdk/$(OS)/bin/`basename $$0`.bin $$@'; \
 		) > $$i; \
 		chmod 755 $$i; \
-	done		
+	done && \
+	( \
+	  echo "#!/bin/sh"; \
+	  echo "# wrapper script for OOos SDK programs"; \
+	  echo ""; \
+	  echo 'LD_LIBRARY_PATH=/$(OODIR)/program /$(OODIR)/sdk/$(OS)/bin/`basename $$0`.bin $$@'; \
+	) > regcomp; \
+	chmod 755 regcomp
         # remove symlink, it should be in -dev-doc
 	cd $(PKGDIR)-dev/$(OODIR)/sdk && \
 		rm docs
@@ -2143,6 +2153,14 @@ ifeq "$(HELPISOS)" ""
 		rm -rf $$z; \
 	done
 endif
+	set -e; \
+	for s in default industrial crystal hicontrast; do \
+		z=images_$$s.zip; \
+		case "$$s" in default) z=images.zip; esac; \
+		mkdir -p $(PKGDIR)-style-$$s/$(OODIR)/share/config; \
+		mv $(PKGDIR)-common/$(OODIR)/share/config/$$z \
+			$(PKGDIR)-style-$$s/$(OODIR)/share/config/; \
+	done
 
 	rm -rf $(PKGDIR)-dtd-officedocument1.0
 	mkdir -p $(PKGDIR)-dtd-officedocument1.0/$(OODIR)/share/dtd
