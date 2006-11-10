@@ -50,7 +50,7 @@ export DH_ALWAYS_EXCLUDE=CVS
 # work around tcsh bugs.debian.org/339034: tcsh: Unknown colorls variable `su'
 unexport LS_COLORS
 
-MWS=SRC680
+MWS=OOE680
 MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)" | cut -d~ -f2 | sed -e s/$(shell echo $(MWS) | tr A-Z a-z)//)
 TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
 #TAG=OOO_2_0_4
@@ -322,8 +322,8 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	pl pt pt-BR ru rw sk sl sr-CS ss st sv \
 	ta-IN te-IN tg th tn tr ts uk ve vi xh zh-CN zh-TW zu
     #HELPISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all') 
-    HELPISOS:=en-US bg cs da de en-GB es et fr hu it ja km ko mk nl \
-	pl pt-BR ru sk sl sv zh-CN zh-TW
+    HELPISOS:=en-US cs da de en-GB es et fr hi-IN hu it ja km ko nl \
+	pl pt-BR ru sl sv zh-CN zh-TW
     #LANGPACKISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
     LANGPACKISOS:=en-US af ar be-BY bg bn br bs ca cs cy da de el \
 	en-GB en-ZA eo es et fa fi fr ga gu-IN he hi-IN hr hu it ja \
@@ -941,6 +941,11 @@ ifneq "$(HELPISOS)" ""
 			-e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 	        >> debian/control < debian/control.help.in; \
 	done
+	# en_US is in -common
+	perl -pi -e 's|(Depends: openoffice.org$(VER)-writer), openoffice.org$(VER)-l10n-en-us|\1|' \
+		debian/control
+	perl -pi -e 's|(Depends: openoffice.org$(VER)-writer, openoffice.org$(VER)-l10n-en-us)|\1, ttf-devanagari-fonts|' \
+		debian/control
 endif
 ifeq "$(BUILD_JARS_NATIVE)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
@@ -1328,6 +1333,11 @@ ifneq "$(HELPISOS)" "en-US"
 	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-help-$$iso \
 		$(PKGDIR)-help-$$pkgiso; \
 	done
+ifeq (hi-IN,$(findstring hi-IN,$(HELPISOS)))
+	for i in $(PKGDIR)-help-hi-in/$(OODIR)/help/hi-IN/*.css; do \
+	  perl -pi -e 's|(font-family: )(.*)|\1 \"Lohit Hindi\", \2|' $$i; \
+	done
+endif
 endif
 
 	# quick hack to reduce the size of the help packages
