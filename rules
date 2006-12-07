@@ -842,8 +842,9 @@ clean:
 	rm -f ooo-build/src/GSI*err
 	rm -f ooo-build/config.*
 
-	# uuencode broffice.org bitmaps
-	for f in debian/ooonologointro-broffice.org.bmp debian/openabout-broffice.org.bmp; do \
+	# uuencode broffice.org bitmaps and Adobe afms
+	for f in debian/ooonologointro-broffice.org.bmp debian/openabout-broffice.org.bmp \
+		debian/Adobe-Core35_AFMs-314.tar.gz; do \
 	  if [ -s $$f ]; then \
 	    uuencode $$f $$f > $$f.uu.tmp && \
 	    debian/scripts/move-if-change $$f.uu.tmp $$f.uu; \
@@ -1065,8 +1066,9 @@ ooo-build/config.status: ooo-build/configure
 	  fi; \
 	done
 
-	# uudecode broffice.org bitmaps
-	for i in debian/ooonologointro-broffice.org.bmp debian/openabout-broffice.org.bmp; do \
+	# uudecode broffice.org bitmaps and Adobe afms
+	for i in debian/ooonologointro-broffice.org.bmp debian/openabout-broffice.org.bmp \
+		debian/Adobe-Core35_AFMs-314.tar.gz; do \
 	  if [ ! -s $$i ]; then \
 	    uudecode -o $$i $$i.uu ;\
 	    touch -r $$i.uu $$i; \
@@ -2251,6 +2253,33 @@ endif
 		ln -s /$(OODIR)/sdk/examples examples
 	
 	rm -f $(PKGDIR)-core/$(OODIR)/program/*updchk*
+
+	# add hertz units to AutoCorrects exception list
+	TMP=`mktemp -d -q`; \
+	for i in $(PKGDIR)-common/$(OODIR)/share/autocorr/acor_*.dat; do \
+		cd $$TMP; \
+		unzip $$i; \
+		if [ -e WordExceptList.xml ]; then \
+			perl -pi -e 's,(.*)(</block-list:block-list>$$),\1<block-list:block block-list:abbreviated-name="MHz"/>\2,' WordExceptList.xml; \
+			perl -pi -e 's,(.*)(</block-list:block-list>$$),\1<block-list:block block-list:abbreviated-name="GHz"/>\2,' WordExceptList.xml; \
+			perl -pi -e 's,(.*)(</block-list:block-list>$$),\1<block-list:block block-list:abbreviated-name="THz"/>\2,' WordExceptList.xml; \
+		else \
+			echo '<?xml version="1.0" encoding="UTF-8"?>' > WordExceptList.xml; \
+			echo '<block-list:block-list xmlns:block-list="http://openoffice.org/2001/block-list">' >> WordExceptList.xml; \
+			echo '    <block-list:block block-list:abbreviated-name="MHz"/>' >> WordExceptList.xml; \
+			echo '    <block-list:block block-list:abbreviated-name="GHz"/>' >> WordExceptList.xml; \
+			echo '    <block-list:block block-list:abbreviated-name="THz"/>' >> WordExceptList.xml; \
+			echo '</block-list:block-list>' >> WordExceptList.xml; \
+		fi; \
+		zip $$i *; \
+		rm -rf *; \
+	done
+
+	# install free afms
+	cd $(PKGDIR)-common/$(OODIR)/share/psprint/fontmetric; \
+		tar xfvz $(CURDIR)/debian/Adobe-Core35_AFMs-314.tar.gz; \
+		mv Adobe-Core35_AFMs-314/*.afm .; \
+		rm -rf Adobe-Core35_AFMs-314
 
 	touch $@
 
