@@ -259,7 +259,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
     # one to that gid_Module_Root always is english and the other langpacks
     # have gid_Module_Root.$iso
     #ISOS=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
-    ISOS:=en-US af ar as-IN be-BY bg bn br bs ca cs cy da de el \
+    ISOS:=en-US af ar as-IN be-BY bg bn br bs ca cs cy da de dz el \
 	en-GB en-ZA eo es et fa fi fr ga gu-IN he hi-IN hr hu it ja \
 	ka km ko ku lo lt lv mk ml-IN nb ne nl nn nr ns or-IN pa-IN \
 	pl pt pt-BR ru rw sk sl sr-CS ss st sv \
@@ -268,7 +268,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
     HELPISOS:=en-US cs da de en-GB es et fr hi-IN hu it ja km ko nl \
 	pl pt-BR ru sl sv zh-CN zh-TW
     #LANGPACKISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
-    LANGPACKISOS:=en-US af ar as-IN be-BY bg bn br bs ca cs cy da de el \
+    LANGPACKISOS:=en-US af ar as-IN be-BY bg bn br bs ca cs cy da de dz el \
 	en-GB en-ZA eo es et fa fi fr ga gu-IN he hi-IN hr hu it ja \
 	ka km ko ku lo lt lv mk ml-IN nb ne nl nn nr ns or-IN pa-IN \
 	pl pt pt-BR ru rw sk sl sr-CS ss st sv \
@@ -751,11 +751,15 @@ clean:
 	fi; \
 	done
 	rm -f ooo-build/desktop/*.png
+	for i in 16x16 22x22 24x24 32x32; do \
+		rm -rf ooo-build/desktop/$$i/*.png; \
+	done
 	rm -f ooo-build/src/GSI*err
 	rm -f ooo-build/config.*
 
-	# uuencode broffice.org bitmaps
-	for f in debian/ooonologointro-broffice.org.bmp debian/openabout-broffice.org.bmp; do \
+	# uuencode broffice.org bitmaps and Adobe afms
+	for f in debian/ooonologointro-broffice.org.bmp debian/openabout-broffice.org.bmp \
+		debian/Adobe-Core35_AFMs-314.tar.gz; do \
 	  if [ -s $$f ]; then \
 	    uuencode $$f $$f > $$f.uu.tmp && \
 	    debian/scripts/move-if-change $$f.uu.tmp $$f.uu; \
@@ -821,6 +825,9 @@ debian/control: debian/control.in debian/control.lang.in debian/control.help.in 
 			;; \
 		fa) \
 			FONT_SUGGESTS=", ttf-farsiweb"; \
+			;; \
+		dz) \
+			FONT_SUGGESTS=", ttf-dzongkha"; \
 			;; \
 		*) \
 			FONT_SUGGESTS= ;; \
@@ -956,8 +963,9 @@ ooo-build/config.status: ooo-build/configure
 	  fi; \
 	done
 
-	# uudecode broffice.org bitmaps
-	for i in debian/ooonologointro-broffice.org.bmp debian/openabout-broffice.org.bmp; do \
+	# uudecode broffice.org bitmaps and Adobe afms
+	for i in debian/ooonologointro-broffice.org.bmp debian/openabout-broffice.org.bmp \
+		debian/Adobe-Core35_AFMs-314.tar.gz; do \
 	  if [ ! -s $$i ]; then \
 	    uudecode -o $$i $$i.uu ;\
 	    touch -r $$i.uu $$i; \
@@ -2143,6 +2151,33 @@ endif
 		ln -s /$(OODIR)/sdk/examples examples
 	
 	rm -f $(PKGDIR)-core/$(OODIR)/program/*updchk*
+
+	# add hertz units to AutoCorrects exception list
+	TMP=`mktemp -d -q`; \
+	for i in $(PKGDIR)-common/$(OODIR)/share/autocorr/acor_*.dat; do \
+		cd $$TMP; \
+		unzip $$i; \
+		if [ -e WordExceptList.xml ]; then \
+			perl -pi -e 's,(.*)(</block-list:block-list>$$),\1<block-list:block block-list:abbreviated-name="MHz"/>\2,' WordExceptList.xml; \
+			perl -pi -e 's,(.*)(</block-list:block-list>$$),\1<block-list:block block-list:abbreviated-name="GHz"/>\2,' WordExceptList.xml; \
+			perl -pi -e 's,(.*)(</block-list:block-list>$$),\1<block-list:block block-list:abbreviated-name="THz"/>\2,' WordExceptList.xml; \
+		else \
+			echo '<?xml version="1.0" encoding="UTF-8"?>' > WordExceptList.xml; \
+			echo '<block-list:block-list xmlns:block-list="http://openoffice.org/2001/block-list">' >> WordExceptList.xml; \
+			echo '    <block-list:block block-list:abbreviated-name="MHz"/>' >> WordExceptList.xml; \
+			echo '    <block-list:block block-list:abbreviated-name="GHz"/>' >> WordExceptList.xml; \
+			echo '    <block-list:block block-list:abbreviated-name="THz"/>' >> WordExceptList.xml; \
+			echo '</block-list:block-list>' >> WordExceptList.xml; \
+		fi; \
+		zip $$i *; \
+		rm -rf *; \
+	done
+
+	# install free afms
+	cd $(PKGDIR)-common/$(OODIR)/share/psprint/fontmetric; \
+		tar xfvz $(CURDIR)/debian/Adobe-Core35_AFMs-314.tar.gz; \
+		mv Adobe-Core35_AFMs-314/*.afm .; \
+		rm -rf Adobe-Core35_AFMs-314
 
 	touch $@
 
