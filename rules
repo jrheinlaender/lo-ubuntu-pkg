@@ -241,9 +241,6 @@ ifneq "$(PACKAGE_QA_TOOLS)" "y"
 	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-qa-tools -Nopenoffice.org$(VER)-qa-api-tests
 	CONFIGURE_FLAGS += --disable-qadevooo
 endif
-ifneq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
-	DEBHELPER_OPTIONS+= -Nttf-opensymbol
-endif
 
 ifneq "$(BUILD_ONLY_EN_US)" "y"
   ifeq (lang=,$(findstring lang=,$(DEB_BUILD_OPTIONS)))
@@ -726,7 +723,7 @@ clean:
 	# uuencode binary files
 	set -e; \
 	cd ooo-build ;\
-	  for f in fonts/opens___.ttf src/ooo_*_images*.bz2 src/extras*bz2 \
+	  for f in src/ooo_*_images*.bz2 src/extras*bz2 \
 	    src/evolocal.odb src/*.gz src/GSI*bz2 src/xt*zip src/go-oo-team.png \
 	    templates/*.o?? src/biblio*bz2; do \
 	  if [ -s $$f ]; then \
@@ -883,6 +880,10 @@ ifeq "$(PACKAGE_NPSOPLUGIN)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.mozilla.in
 endif
+ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
+	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
+		>> debian/control < debian/control.fonts.in
+endif
 ifeq "$(BUILD_DBG_PACKAGE)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.debug.in
@@ -942,7 +943,7 @@ ooo-build/config.status: ooo-build/configure
 	mkdir -p $(STAMP_DIR)
 
 	# uudecode source files
-	cd ooo-build; for uu in fonts/opens___.ttf.uu src/*.uu templates/*.uu; do \
+	cd ooo-build; for uu in src/*.uu templates/*.uu; do \
 	  orig="`echo "$$uu" |sed -e 's#.uu$$##'`" ;\
           if [ ! -s $$orig ]; then \
             uudecode -o $$orig $$uu ;\
@@ -1826,7 +1827,6 @@ install-indep: $(STAMP_DIR)/install-indep
 #$(STAMP_DIR)/install-indep: debian/openoffice.org$(VER)-mimelnk.install 
 #$(STAMP_DIR)/install-indep: debian/openoffice.org$(VER).dirs
 $(STAMP_DIR)/install-indep: $(STAMP_DIR)/install
-$(STAMP_DIR)/install-indep: ooo-build/fonts/opens___.ttf
 	dh_testdir
 	dh_testroot
 
@@ -1963,9 +1963,9 @@ endif
 
 ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 	mkdir -p debian/ttf-opensymbol/usr/share/fonts/truetype/openoffice
-	rm -f $(PKGDIR)-common/$(OODIR)/share/fonts/truetype/opens___.ttf
-	install -m644 ooo-build/fonts/opens___.ttf \
+	mv $(PKGDIR)-common/$(OODIR)/share/fonts/truetype/opens___.ttf \
 		debian/ttf-opensymbol/usr/share/fonts/truetype/openoffice
+	rm -rf $(PKGDIR)-common/$(OODIR)/share/fonts/truetype
 else
 	rm -f $(PKGDIR)-common/$(OODIR)/share/fonts/truetype/opens___.ttf
 endif
