@@ -123,6 +123,7 @@ USE_GSTREAMER=y
 USE_SYSTEM_NEON=y
 PACKAGE_QUICKSTART=y
 USE_OOO_BUILD_DESKTOPS=n
+RUN_SMOKETEST=y
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
@@ -240,6 +241,10 @@ endif
 ifneq "$(PACKAGE_QA_TOOLS)" "y"
 	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-qa-tools -Nopenoffice.org$(VER)-qa-api-tests
 	CONFIGURE_FLAGS += --disable-qadevooo
+endif
+
+ifeq "$(RUN_SMOKETEST)" "y"
+	BUILD_DEPS += , xvfb-run [$(OOO_ARCHS)]
 endif
 
 ifneq "$(BUILD_ONLY_EN_US)" "y"
@@ -1081,10 +1086,21 @@ ifneq "$(USE_EXTERNAL_MYTHES)" "y"
 		mv libmythes_nopic.a $(CURDIR)/$(SOURCE_TREE)
 endif
 
+test: $(STAMP_DIR)/test
+$(STAMP_DIR)/test: $(STAMP_DIR)/build
+ifeq "$(RUN_SMOKETEST)" "y"
+	# smoketest
+	cd $(SOURCE_TREE)/smoketestoo_native && \
+		. $(CURDIR)/$(SOURCE_TREE)/*.sh; \
+		PATH=$(BUILD_PATH) TEMP=$(CURDIR)/oosmoketest \
+		xvfb-run -v -a ../solenv/bin/build.pl && \
+		rm -rf $(CURDIR)/oosmoketest
+endif
+
 	touch $@
 
 install: $(STAMP_DIR)/install
-$(STAMP_DIR)/install: $(STAMP_DIR)/build
+$(STAMP_DIR)/install: $(STAMP_DIR)/build $(STAMP_DIR)/test
 	dh_testdir
 	dh_testroot
 
