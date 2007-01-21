@@ -405,11 +405,12 @@ export JAVA_HOME
 	CONFIGURE_FLAGS += --with-system-xalan
 	BUILD_DEPS += , libxalan2-java (>= 2.6.0-1) [$(OOO_JAVA_ARCHS)]
 	JAVA_COMMON_JAVA_DEPENDS+= , libxalan2-java (>= 2.6.0-1)
+	# force using system xml-apis.jar
+	SYSTEM_XML_APIS=YES
   endif
   ifeq "$(SYSTEM_XML_APIS)" "y"
 	CONFIGURE_FLAGS += --with-system-xml-apis
-	BUILD_DEPS += , libjaxp1.2-java [$(OOO_JAVA_ARCHS)]
-	JAVA_COMMON_JAVA_DEPENDS+= , libjaxp1.2-java
+	# xml-apis.jar is already a link in xalan, see above
   endif
   ifneq "$(SARGE_BACKPORT)" "y"
 	BUILD_DEPS += , libdb4.4-java [$(OOO_JAVA_ARCHS)]
@@ -2110,7 +2111,7 @@ ifeq "$(SYSTEM_XALAN)" "y"
 		$(PKGDIR)-java-common/usr/share/java/openoffice$(VER)/xalan.jar
 endif
 ifeq "$(SYSTEM_XML_APIS)" "y"
-	ln -sf /usr/share/java/jaxp-1.2.jar \
+	ln -sf /usr/share/java/xml-apis.jar \
 		$(PKGDIR)-java-common/usr/share/java/openoffice$(VER)/xml-apis.jar
 endif
 ifeq "$(SYSTEM_XERCES)" "y"
@@ -2332,12 +2333,15 @@ ifeq "$(BUILD_DBG_PACKAGE)" "y"
 	dh_strip --dbg-package=openoffice.org$(VER)-dbg -Xunowinreg.dll
 	# somehow they are stripped...
 	rm -rf $(PKGDIR)-dbg/usr/lib/debug/$(OODIR)/sdk
+        # dh_strip --dbg-package= is not idempotent, force copying of the binaries
+        # again...
+        rm -f $(STAMP_DIR)/install-arch
 else
 	dh_strip -Xunowinreg.dll
 endif
 	dh_desktop
 	dh_installxmlcatalogs
-	dh_compress
+	dh_compress -X.py -X.mk -X.sxd
 	dh_makeshlibs -n -V
 	dh_installdeb
 	cat debian/openoffice.org-core.shlibs.local > debian/shlibs.local
