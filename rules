@@ -123,6 +123,7 @@ USE_GSTREAMER=y
 USE_SYSTEM_NEON=y
 PACKAGE_QUICKSTART=y
 USE_OOO_BUILD_DESKTOPS=n
+PACKAGE_SDK=y
 RUN_SMOKETEST=y
 
 # when we have a package we want to have to be installed on older things with some older
@@ -907,6 +908,10 @@ ifeq "$(BUILD_DBG_PACKAGE)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.debug.in
 endif
+ifeq "$(PACKAGE_SDK)" "y"
+	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
+		>> debian/control < debian/control.sdk.in
+endif
 
 	perl -pi -e "s,%OOO_ARCHS%,$(OOO_ARCHS),g" debian/control
 
@@ -1088,6 +1093,8 @@ ifneq "$(USE_EXTERNAL_MYTHES)" "y"
 		mv libmythes_nopic.a $(CURDIR)/$(SOURCE_TREE)
 endif
 
+	touch $@
+
 test: $(STAMP_DIR)/test
 $(STAMP_DIR)/test: $(STAMP_DIR)/build
 ifeq "$(RUN_SMOKETEST)" "y"
@@ -1205,6 +1212,7 @@ endif
 	mv debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/gengal  \
 		debian/tmp/pkg/openoffice.org-dev/$(OODIR)/program
 
+ifeq "$(PACKAGE_SDK)" "y"
 	# move SDK documentation into own package
 	rm -rf debian/tmp/pkg/openoffice.org-dev-doc
 	mkdir -p debian/tmp/pkg/openoffice.org-dev-doc/usr/share/doc/openoffice.org-dev-doc
@@ -1220,6 +1228,7 @@ endif
 		debian/tmp/pkg/openoffice.org-dev-doc/usr/share/doc/openoffice.org-dev/sdk
 	mv debian/tmp/pkg/openoffice.org-dev/$(OODIR)/sdk/examples \
 		debian/tmp/pkg/openoffice.org-dev-doc/$(OODIR)/sdk
+endif
 
 	find debian/tmp ! -perm -200 | xargs -r chmod u+w
 
@@ -1654,6 +1663,7 @@ ifeq "$(ENABLE_MONO)" "y"
 		debian/libuno-cil/$(OODIR)/program
 endif
 
+ifeq "$(PACKAGE_SDK)" "y"
 ifeq "$(USE_SYSTEM_STLPORT)" "y"
 	# when we use external stlport, we just can and should do a symlink
 	# for the SDK includes
@@ -1719,6 +1729,7 @@ endif
 	  echo 'exec /$(OODIR)/program/gsicheck.bin "$$@"'; \
 	) > $(PKGDIR)-dev/$(OODIR)/program/gsicheck
 	chmod 755 $(PKGDIR)-dev/$(OODIR)/program/gsicheck
+endif
 
 ifeq "$(INTERNAL_STDLIBS)" "y"
 	# we have to do this manually; specifying --without-system-stdlibs
@@ -1773,6 +1784,7 @@ ifneq "$(USE_EXTERNAL_MYTHES)" "y"
 		debian/libmythes-dev/usr/share/mythes/th_gen_idx.pl
 endif
 
+ifeq "$(PACKAGE_SDK)" "y"
 ifeq "$(ENABLE_JAVA)" "y"
 	# install the UNO Java sources for e.g. eclipse
 	mkdir -p $(CURDIR)/$(PKGDIR)-dev/usr/share/java/openoffice$(VER)
@@ -1781,6 +1793,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 			cp $${i}_src.zip \
 			  $(CURDIR)/$(PKGDIR)-dev/usr/share/java/openoffice; \
 		done
+endif
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
@@ -1863,8 +1876,10 @@ $(STAMP_DIR)/install-indep: $(STAMP_DIR)/install
 	# Copy files placed by ooo-build/bin/package-ooo/install
 	rm -rf $(PKGDIR)-common $(PKGDIR)-common.*.debhelper; \
 	cp -r --preserve=mode debian/tmp/pkg/openoffice.org-common $(PKGDIR)-common || exit 1
+ifeq "$(PACKAGE_SDK)" "y"
 	rm -rf $(PKGDIR)-dev-doc $(PKGDIR)-dev-doc.*.debhelper; \
 	cp -r --preserve=mode debian/tmp/pkg/openoffice.org-dev-doc $(PKGDIR)-dev-doc || exit 1
+endif
 
 	dh_installdirs -i
 
@@ -1913,6 +1928,7 @@ ifeq "$(HELPISOS)" ""
 		$(PKGDIR)-common/$(OODIR)/help
 endif
 
+ifeq "$(PACKAGE_SDK)" "y"
 	chmod 644 $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev/docs/images/bg_table2.gif
 	chmod 644 $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev/docs/images/bg_table3.gif
 	chmod 644 $(PKGDIR)-dev-doc/$(OODIR)/sdk/examples/DevelopersGuide/ScriptingFramework/ScriptSelector/build.xml
@@ -1923,6 +1939,7 @@ endif
 	# online docs
 	find $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev/docs -name '*.html' \
 	  | xargs sed -ri 's,href="[^"]*DevelopersGuide/([^"]*\.(xhtml|pdf)[^"]*)".*,href="http://api.openoffice.org/docs/DevelopersGuide/\1,g'
+endif
 
 ifeq "$(ENABLE_JAVA)" "y"
 	rm -rf $(PKGDIR)-java-common
@@ -2164,7 +2181,8 @@ endif
 
 	# add "openoffice" symlink
 	cd $(PKGDIR)-common/usr/bin && ln -s ooo-wrapper openoffice
-	
+
+ifeq "$(PACKAGE_SDK)" "y"
 	# add symlinks for docs and examples
 	cd $(PKGDIR)-dev-doc/$(OODIR)/sdk && \
 		rm -rf docs && \
@@ -2175,7 +2193,8 @@ endif
 		ln -s /$(OODIR)/sdk/examples examples
 	cd $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev && \
 		ln -s /$(OODIR)/sdk/examples examples
-	
+endif
+
 	rm -f $(PKGDIR)-core/$(OODIR)/program/*updchk*
 
 	# add hertz units to AutoCorrects exception list
@@ -2256,12 +2275,15 @@ endif
 	dh_fixperms
 ifeq "$(BUILD_DBG_PACKAGE)" "y"
 	dh_strip --dbg-package=openoffice.org$(VER)-dbg
+	# dh_strip --dbg-package= is not idempotent, force copying of the binaries
+	# again...
+	rm -f $(STAMP_DIR)/install-arch
 else
 	dh_strip
 endif
 	dh_desktop
 	dh_installxmlcatalogs
-	dh_compress
+	dh_compress -X.py -X.mk -X.sxd
 	dh_makeshlibs -n -V
 	dh_installdeb
 	cat debian/openoffice.org-core.shlibs.local > debian/shlibs.local
