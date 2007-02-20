@@ -53,9 +53,9 @@ unexport LS_COLORS
 
 SRCNUM=680
 MWS=OOF680
-MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)" | cut -d~ -f2 | sed -e s/$(shell echo $(MWS) | tr A-Z a-z)//)
+#MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)" | cut -d~ -f2 | sed -e s/$(shell echo $(MWS) | tr A-Z a-z)//)
+MILESTONE=m8
 TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
-#TAG=ooe680-m6
 #OOO_BUILD_BRANCH=ooo-build-2-2
 SOURCE_TREE=ooo-build/build/$(TAG)
 STAMP_DIR=debian/stampdir
@@ -354,9 +354,11 @@ else
 endif
 
 ifeq "$(ENABLE_MONO)" "y"
-       BUILD_DEPS += , mono-mcs (>= 1.1.8) [$(OOO_ARCHS)], libmono-dev (>= 1.1.8) [$(OOO_ARCHS)], cli-common-dev (>= 0.4.0) [$(OOO_ARCHS)]
+       # gmcs for gmcs itself and -mcs for mkbundle. FIXME: Should we use mkbundle2 from -gmcs?
+       BUILD_DEPS += , mono-mcs (>= 1.2.3) [$(OOO_ARCHS)], mono-gmcs (>= 1.2.3) [$(OOO_ARCHS)], libmono-dev (>= 1.2.3) [$(OOO_ARCHS)], cli-common-dev (>= 0.4.0) [$(OOO_ARCHS)]
 	# http://pkg-mono.alioth.debian.org/cli-policy/ch-mono.html#s7.3
-	export MONO_SHARED_DIR=$(CURDIR)
+	MONO_SHARED_DIR = $(CURDIR)
+	export MONO_SHARED_DIR
 else
        CONFIGURE_FLAGS+= --disable-mono
 endif
@@ -1605,13 +1607,19 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare >/dev/null; pwd`" ;\
 	for p in writer calc impress draw math base; do \
 		mkdir -p -m755 $(PKGDIR)-$$p/usr/share/applications ;\
-		sed -e 's,Exec=openoffice.org-2.1 \(.*\) %U,Exec=ooffice$(VER) \1 %U,' \
-		    -e "s,Icon=openofficeorg-21-$$p,Icon=ooo-$$p," \
-			-e 's,Name=OpenOffice.org 2.1,Name=OpenOffice.org $(VER),' \
+		sed -e 's,Exec=openoffice.org-2.2 \(.*\) %U,Exec=ooffice$(VER) \1 %U,' \
+		    -e "s,Icon=openofficeorg-22-$$p,Icon=ooo-$$p," \
+			-e 's,Name=OpenOffice.org 2.2,Name=OpenOffice.org $(VER),' \
 			-e 's/  / /' \
 		   < $$dirname/$$p.desktop \
 		   > $(PKGDIR)-$$p/usr/share/applications/ooo$(VER)-$$p.desktop || exit 1 ;\
 	done
+	mkdir -p -m755 $(PKGDIR)-common/usr/share/applications ;\
+		sed -e 's,Exec=unopkg,Exec=$(OODIR)/unopkg,' \
+		    -e 's,Name=OpenOffice.org 2.2,Name=OpenOffice.org $(VER),' \
+		    -e 's/  / /' \
+		    < $$dirname/extension.desktop \
+		    > $(PKGDIR)-common/usr/share/applications/ooo$(VER)-extension.desktop || exit 1
 	for f in `find debian -name '*.desktop'`; do \
 		sed -i -e '/^Comment\[de\]/s/- *\([a-zA-Z0-9]*\) *macht.*glich.*$$/mit \1/' $$f; \
 		echo 'X-KDE-Protocols=file,http,smb,ftp,webdav' >> $$f; \
@@ -1619,6 +1627,7 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	sed -i -e '/^MimeType/s,text/rtf,text/rtf;application/rtf,' \
 		$(PKGDIR)-writer/usr/share/applications/ooo$(VER)-writer.desktop
 	sed -i -e 's/Office;/Office;Graphics;/' $(PKGDIR)-draw/usr/share/applications/ooo$(VER)-draw.desktop
+	sed -i -e 's/Office;/Office;System;/' $(PKGDIR)-common/usr/share/applications/ooo$(VER)-extension.desktop
 	#mv $(PKGDIR)-base/usr/share/applications/ooo$(VER)-base.desktop $(PKGDIR)-core/usr/share/applications
 	#rm -r $(PKGDIR)-base
 else
