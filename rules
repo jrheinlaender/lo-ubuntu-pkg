@@ -139,7 +139,7 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
 		--with-lang="$(ISOS)" \
                 --with-build-version="openoffice.org$(VER)-core $(BINARY_VERSION), `LANG=C date`" \
                 --disable-strip \
-                --enable-atkbridge \
+		--enable-atkbridge \
                 --enable-lockdown
 
 ifneq "$(PACKAGE_QUICKSTART)" "y"
@@ -170,6 +170,7 @@ ifeq "$(ETCH_BACKPORT)" "y"
   PATCHSET=$(DIST)Etch
   USE_STLPORT5=n
   USE_SYSTEM_LIBWPS=n
+  SYSTEM_ALTLINUXHYPH=n
 endif
 
 #############
@@ -192,6 +193,8 @@ endif
 ifeq "$(ARCH)" "amd64"
   PATCHSET:=$(PATCHSET)64
   USE_SYSTEM_BOOST=y
+  # hangs somehow...
+  RUN_SMOKETEST=n
 endif
 
 ifeq "$(ARCH)-linux-gnu" "sparc-linux-gnu"
@@ -1114,7 +1117,7 @@ ifeq "$(RUN_SMOKETEST)" "y"
 	# smoketest
 	cd $(SOURCE_TREE)/smoketestoo_native && \
 		. $(CURDIR)/$(SOURCE_TREE)/*.sh; \
-		PATH=$(BUILD_PATH) TEMP=$(CURDIR)/oosmoketest \
+		TEMP=$(CURDIR)/oosmoketest \
 		xvfb-run -a ../solenv/bin/build.pl && \
 		rm -rf $(CURDIR)/oosmoketest
 endif
@@ -1423,7 +1426,7 @@ endif
 
 ifeq "$(BUILD_KDE)" "y"
 	mkdir -p -m755 $(PKGDIR)-kde/$(OODIR)/program
-	for f in kdefilepicker libfps_kde.so libvclplug_kde[0-9]*.so libkab*so kdebe*so; do \
+	for f in kdefilepicker fps_kde.uno.so libvclplug_kde[0-9]*.so libkab*so kdebe*so; do \
 	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-kde/$(OODIR)/program || exit 1 ;\
 	done
 endif
@@ -1613,9 +1616,9 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 			-e 's/  / /' \
 		   < $$dirname/$$p.desktop \
 		   > $(PKGDIR)-$$p/usr/share/applications/ooo$(VER)-$$p.desktop || exit 1 ;\
-	done
+	done && \
 	mkdir -p -m755 $(PKGDIR)-common/usr/share/applications ;\
-		sed -e 's,Exec=unopkg,Exec=$(OODIR)/unopkg,' \
+		sed -e 's,Exec=unopkg,Exec=/$(OODIR)/unopkg,' \
 		    -e 's,Name=OpenOffice.org 2.2,Name=OpenOffice.org $(VER),' \
 		    -e 's/  / /' \
 		    < $$dirname/extension.desktop \
@@ -1876,6 +1879,9 @@ $(STAMP_DIR)/broffice: $(STAMP_DIR)/install $(STAMP_DIR)/install-arch $(STAMP_DI
 			| sed -e "s/ooff/broff/" | sed -e "s/OpenO/BrO/" \
 			> debian/broffice.org/usr/share/applications/ooo-$$i.desktop; \
 	done
+	cat $(PKGDIR)-common/usr/share/applications/ooo-extension.desktop \
+		| sed -e "s/ooff/broff/" | sed -e "s/OpenO/BrO/" \
+		> debian/broffice.org/usr/share/applications/ooo-extension.desktop
 	install -m644 debian/ooonologointro-broffice.org.bmp \
 		debian/broffice.org/$(OODIR)/program/intro.bmp
 	convert debian/openabout-broffice.org.png \
@@ -2243,6 +2249,10 @@ endif
 		tar xfvz $(CURDIR)/debian/Adobe-Core35_AFMs-314.tar.gz; \
 		mv Adobe-Core35_AFMs-314/*.afm .; rm Helvetica-Narrow*.afm; \
 		rm -rf Adobe-Core35_AFMs-314
+
+	# add iceape/icedove to senddoc
+	perl -pi -e 's,mozilla \| netscape \| thunderbird,iceape | mozilla | netscape | icedove | thunderbird,' \
+		$(PKGDIR)-common/$(OODIR)/program/senddoc
 
 	touch $@
 
