@@ -24,7 +24,7 @@ SOURCE_VERSION:=$(shell head -1 debian/changelog | cut -d\( -f2 | cut -d\) -f1)
 UPSTREAM_VERSION:=$(shell echo "$(SOURCE_VERSION)"| cut -d- -f1)
 BASE_VERSION:=$(UPSTREAM_VERSION)
 #HELP_L10N_VIRTUAL_VERSION:=$(UPSTREAM_VERSION)
-HELP_L10N_VIRTUAL_VERSION:=2.1
+HELP_L10N_VIRTUAL_VERSION:=2.2
 
 BINARY_VERSION=$(SOURCE_VERSION)
 #BINARY_VERSION=2.0.3-$(shell dpkg-parsechangelog  | grep urgency \
@@ -367,7 +367,11 @@ else
 endif
 
 ifeq "$(USE_SYSTEM_HUNSPELL)" "y"
+ifeq "$(ETCH_BACKPORT)" "y"
 		BUILD_DEPS += , libhunspell-dev (>= 1.0.8-3) [$(OOO_ARCHS)]
+else
+		BUILD_DEPS += , libhunspell-dev (>= 1.1.4-6) [$(OOO_ARCHS)]
+endif
 		CONFIGURE_FLAGS+= --with-system-hunspell
 endif
 
@@ -511,8 +515,10 @@ ifeq "$(ENABLE_JAVA)" "y"
 endif
 
 ifeq "$(USE_SYSTEM_LPSOLVE)" "y"
+	LPSOLVE_MIN_VERSION= (>= 5.5.0.10-2)
 	CONFIGURE_FLAGS += --with-system-lpsolve
-	BUILD_DEPS += , liblpsolve55-dev [$(OOO_ARCHS)], libufsparse-dev [$(OOO_ARCHS)]
+	BUILD_DEPS += , liblpsolve55-dev $(LPSOLVE_MIN_VERSION) [$(OOO_ARCHS)], lp-solve $(LPSOLVE_MIN_VERSION) [$(OOO_ARCHS)], libufsparse-dev [$(OOO_ARCHS)]
+	LPSOLVE_DEP = lp-solve $(LPSOLVE_MIN_VERSION)
 	DBG_DBG_SUGGESTS+= , libufsparse-dbg
 endif
 
@@ -1610,19 +1616,19 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare >/dev/null; pwd`" ;\
 	for p in writer calc impress draw math base; do \
 		mkdir -p -m755 $(PKGDIR)-$$p/usr/share/applications ;\
-		sed -e 's,Exec=openofficeorg2.2 \(.*\) %U,Exec=ooffice$(VER) \1 %U,' \
+		sed -e 's,Exec=openoffice.org2.2 \(.*\) %U,Exec=ooffice$(VER) \1 %U,' \
 		    -e "s,Icon=openofficeorg22-$$p,Icon=ooo-$$p," \
 			-e 's,Name=OpenOffice.org 2.2,Name=OpenOffice.org $(VER),' \
 			-e 's/  / /' \
 		   < $$dirname/$$p.desktop \
 		   > $(PKGDIR)-$$p/usr/share/applications/ooo$(VER)-$$p.desktop || exit 1 ;\
-	done && \
+	done; \
 	mkdir -p -m755 $(PKGDIR)-common/usr/share/applications ;\
-		sed -e 's,Exec=unopkg,Exec=/$(OODIR)/unopkg,' \
-		    -e 's,Name=OpenOffice.org 2.2,Name=OpenOffice.org $(VER),' \
-		    -e 's/  / /' \
-		    < $$dirname/extension.desktop \
-		    > $(PKGDIR)-common/usr/share/applications/ooo$(VER)-extension.desktop || exit 1
+	sed -e 's,Exec=unopkg,Exec=/$(OODIR)/program/unopkg,' \
+	    -e 's,Name=OpenOffice.org 2.2,Name=OpenOffice.org $(VER),' \
+	    -e 's/  / /' \
+	    < $$dirname/extension.desktop \
+	    > $(PKGDIR)-common/usr/share/applications/ooo$(VER)-extension.desktop || exit 1
 	for f in `find debian -name '*.desktop'`; do \
 		sed -i -e '/^Comment\[de\]/s/- *\([a-zA-Z0-9]*\) *macht.*glich.*$$/mit \1/' $$f; \
 		echo 'X-KDE-Protocols=file,http,smb,ftp,webdav' >> $$f; \
@@ -2250,9 +2256,13 @@ endif
 		mv Adobe-Core35_AFMs-314/*.afm .; rm Helvetica-Narrow*.afm; \
 		rm -rf Adobe-Core35_AFMs-314
 
-	# add iceape/icedove to senddoc
+	# add iceape/icedove/iceweasel to senddoc and open-url
 	perl -pi -e 's,mozilla \| netscape \| thunderbird,iceape | mozilla | netscape | icedove | thunderbird,' \
 		$(PKGDIR)-common/$(OODIR)/program/senddoc
+	perl -pi -e 's/firefox mozilla netscape/iceweasel firefox iceape mozilla netscape/' \
+		$(PKGDIR)-common/$(OODIR)/program/open-url
+	perl -pi -e 's/thunderbird mozilla netscape/icedove thunderbird iceape mozilla netscape/' \
+		$(PKGDIR)-common/$(OODIR)/program/open-url
 
 	touch $@
 
@@ -2353,6 +2363,7 @@ endif
 		-V'mozilla-nss-depends=$(MOZILLA_NSS_DEPENDS)' \
 		-V'Binary-Version=$(BINARY_VERSION)' \
 		-V'ooo-filter52-dep=$(OOO_FILTER52_DEP)' \
+		-V'lpsolve-dep=$(LPSOLVE_DEP)' \
 		-V'gstreamer-plugins-suggests=$(GSTREAMER_PLUGINS_SUGGESTS)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-v$(BINARY_VERSION)
