@@ -188,6 +188,19 @@ endif
 ifeq (,$(findstring $(ARCH),$(OOO_JAVA_ARCHS)))
        ENABLE_JAVA=n
 endif
+# mono
+OOO_MONO_ARCHS = i386
+#ifeq "$(BUILD_AMD64)" "y"
+#  OOO_MONO_ARCHS += amd64
+#endif
+ifeq "$(ARCH)" "sparc"
+  # no mono available
+  ENABLE_MONO=n
+endif
+ifeq "$(ARCH)" "powerpc"
+  # as fails
+  ENABLE_MONO=n
+endif
 
 # Changes for 64 bit build
 ifeq "$(ARCH)" "amd64"
@@ -357,11 +370,12 @@ else
 endif
 
 ifeq "$(ENABLE_MONO)" "y"
-       # gmcs for gmcs itself and -mcs for mkbundle. FIXME: Should we use mkbundle2 from -gmcs?
-       BUILD_DEPS += , mono-mcs (>= 1.2.3) [$(OOO_ARCHS)], mono-gmcs (>= 1.2.3) [$(OOO_ARCHS)], libmono-dev (>= 1.2.3) [$(OOO_ARCHS)], cli-common-dev (>= 0.4.0) [$(OOO_ARCHS)]
-	# http://pkg-mono.alioth.debian.org/cli-policy/ch-mono.html#s7.3
-	MONO_SHARED_DIR = $(CURDIR)
-	export MONO_SHARED_DIR
+       # gmcs for gmcs itself and mkbundle2 and -mcs for mcs itself and al.
+       BUILD_DEPS += , mono-mcs (>= 1.2.3) [$(OOO_MONO_ARCHS)], mono-gmcs (>= 1.2.3) [$(OOO_MONO_ARCHS)], libmono-dev (>= 1.2.3) [$(OOO_MONO_ARCHS)], cli-common-dev (>= 0.4.4) [$(OOO_MONO_ARCHS)]
+       # http://pkg-mono.alioth.debian.org/cli-policy/ch-mono.html#s7.3
+       MONO_SHARED_DIR = $(CURDIR)
+       export MONO_SHARED_DIR
+       CONFIGURE_FLAGS+= --enable-mono
 else
        CONFIGURE_FLAGS+= --disable-mono
 endif
@@ -922,6 +936,7 @@ ifeq "$(PACKAGE_SDK)" "y"
 endif
 
 	perl -pi -e "s,%OOO_ARCHS%,$(OOO_ARCHS),g" debian/control
+	perl -pi -e "s,%OOO_MONO_ARCHS%,$(OOO_MONO_ARCHS),g" debian/control
 
 ifeq "$(PACKAGE_QUICKSTART)" "y"
 	perl -pi -e 's#\(Widgets, Dialogs\)#\(Widgets, Dialogs, Quickstarter\)#' debian/control
@@ -1676,6 +1691,11 @@ ifeq "$(ENABLE_MONO)" "y"
 		debian/libuno-cil/$(OODIR)/program
 	mv $(PKGDIR)-core/$(OODIR)/program/cli_*.dll \
 		debian/libuno-cil/$(OODIR)/program
+	mkdir -p debian/libuno-cil/usr/lib/mono
+	ln -s /$(OODIR)/program \
+		debian/libuno-cil/usr/lib/mono/openoffice
+	install -D -m644 debian/tmp/usr/lib/pkgconfig/mono-ooo-2.1.pc \
+		debian/libuno-cil/usr/lib/pkgconfig/mono-ooo.pc
 endif
 
 ifeq "$(PACKAGE_SDK)" "y"
@@ -2330,6 +2350,7 @@ else
 	LD_LIBRARY_PATH="$(PKGDIR)-core/$(OODIR)/program" dh_shlibdeps $(SHLIBS_OVERRIDE)
 endif
 ifeq "$(ENABLE_MONO)" "y"
+	dh_makeclilibs -V
 	dh_clideps
 endif
 # This switch to dh_shlibdeps reduces the 'libXXX not found' warnings but
