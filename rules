@@ -54,7 +54,7 @@ unexport LS_COLORS
 SRCNUM=680
 MWS=OOF680
 #MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)" | cut -d~ -f2 | sed -e s/$(shell echo $(MWS) | tr A-Z a-z)//)
-MILESTONE=m13
+MILESTONE=m14
 TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
 #OOO_BUILD_BRANCH=ooo-build-2-2
 SOURCE_TREE=ooo-build/build/$(TAG)
@@ -196,7 +196,7 @@ ifeq "$(BUILD_AMD64)" "y"
   OOO_MONO_ARCHS += amd64
 endif
 ifeq (,$(findstring $(ARCH),$(OOO_MONO_ARCHS)))
-       ENABLE_MONO=y
+       ENABLE_MONO=n
 endif
 
 # Changes for 64 bit build
@@ -2353,7 +2353,11 @@ endif
 ifeq "$(ARCH)" "i386"
 	# this LD_ASSUME_KERNEL is for working around some bug which makes
 	# dh_shlibddeps report/find nothing with libc6-i686/TLS systems
-	LD_LIBRARY_PATH="$(PKGDIR)-core/$(OODIR)/program" LD_ASSUME_KERNEL="2.4.27" dh_shlibdeps $(SHLIBS_OVERRIDE)
+	if dpkg --compare-versions `dpkg -l libc6 | grep ^ii | awk '{print $$3}'` lt 2.5; then \
+		LD_LIBRARY_PATH="$(PKGDIR)-core/$(OODIR)/program" LD_ASSUME_KERNEL="2.4.27" dh_shlibdeps $(SHLIBS_OVERRIDE)
+	else
+		LD_LIBRARY_PATH="$(PKGDIR)-core/$(OODIR)/program" dh_shlibdeps $(SHLIBS_OVERRIDE)
+	endif
 else
 	LD_LIBRARY_PATH="$(PKGDIR)-core/$(OODIR)/program" dh_shlibdeps $(SHLIBS_OVERRIDE)
 endif
