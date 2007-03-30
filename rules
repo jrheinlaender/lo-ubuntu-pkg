@@ -61,6 +61,11 @@ TAG=OOF680_m14
 SOURCE_TREE=ooo-build/build/$(TAG)
 STAMP_DIR=debian/stampdir
 
+#CORE_TARBALL=$(TAG)-core.tar.bz2
+#SYSTEM_TARBALL=$(TAG)-system.tar.bz2
+CORE_TARBALL=OOo_2.2.0_src_core.tar.bz2
+SYSTEM_TARBALL=OOo_2.2.0_src_system.tar.bz2
+
 ifeq "$(DISTREL)" "etch"
   ETCH_BACKPORT=y
 endif
@@ -173,6 +178,7 @@ ifeq "$(ETCH_BACKPORT)" "y"
   USE_STLPORT5=n
   USE_SYSTEM_LIBWPS=n
   SYSTEM_ALTLINUXHYPH=n
+  ENABLE_MONO=n
 endif
 
 #############
@@ -530,11 +536,17 @@ ifeq "$(ENABLE_JAVA)" "y"
 endif
 
 ifeq "$(USE_SYSTEM_LPSOLVE)" "y"
+ifneq "$(ETCH_BACKPORT)" "y"
 	LPSOLVE_MIN_VERSION= (>= 5.5.0.10-2)
-	CONFIGURE_FLAGS += --with-system-lpsolve
-	BUILD_DEPS += , liblpsolve55-dev $(LPSOLVE_MIN_VERSION) [$(OOO_ARCHS)], lp-solve $(LPSOLVE_MIN_VERSION) [$(OOO_ARCHS)], libufsparse-dev [$(OOO_ARCHS)]
+	BUILD_DEPS += , liblpsolve55-dev $(LPSOLVE_MIN_VERSION) [$(OOO_ARCHS)], lp-solve $(LPSOLVE_MIN_VERSION) [$(OOO_ARCHS)]
 	LPSOLVE_DEP = lp-solve $(LPSOLVE_MIN_VERSION)
+else
+	LPSOLVE_MIN_VERSION=
+	BUILD_DEPS += , liblpsolve55-dev $(LPSOLVE_MIN_VERSION) [$(OOO_ARCHS)]
+endif
+	CONFIGURE_FLAGS += --with-system-lpsolve
 	DBG_DBG_SUGGESTS+= , libufsparse-dbg
+	BUILD_DEPS += , libufsparse-dev [$(OOO_ARCHS)]
 endif
 
 ifeq "$(USE_DBUS)" "y"
@@ -625,9 +637,9 @@ clean:
 build:
 	mkdir -p ooo-build/build
 	cd ooo-build/build && \
-		tar xfvj ../src/$(TAG)-core.tar.bz2 $(TAG)/lingucomponent/source/thesaurus/mythes \
+		tar xfvj ../src/$(CORE_TARBALL) $(TAG)/lingucomponent/source/thesaurus/mythes \
 			$(TAG)/lingucomponent/inc && \
-		tar xfvj ../src/$(TAG)-system.tar.bz2 $(TAG)/dictionaries/util
+		tar xfvj ../src/$(SYSTEM_TARBALL) $(TAG)/dictionaries/util
 	cd $(SOURCE_TREE)/lingucomponent/source/thesaurus/mythes && \
 		$(CXX) -O2 -Wall -ansi -pedantic -I. -I../../../inc/pch \
 			-c mythes.cxx && \
