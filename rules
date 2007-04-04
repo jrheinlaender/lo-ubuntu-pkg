@@ -1709,8 +1709,9 @@ ifeq "$(ENABLE_MONO)" "y"
 	mv $(PKGDIR)-core/$(OODIR)/program/cli_*.dll \
 		debian/libuno-cil/$(OODIR)/program
 	mkdir -p debian/libuno-cil/usr/lib/mono
-	install -D -m644 debian/tmp/usr/lib/pkgconfig/mono-openoffice$(VER).pc \
-		debian/libuno-cil/usr/lib/pkgconfig/mono-openoffice$(VER).pc
+	cat debian/tmp/usr/lib/pkgconfig/mono-openoffice$(VER).pc \
+		| sed -e s,/usr/lib/mono/openoffice,/$(OODIR)/program,g \
+		> debian/libuno-cil/usr/lib/pkgconfig/mono-openoffice$(VER).pc
 endif
 
 ifeq "$(PACKAGE_SDK)" "y"
@@ -2350,6 +2351,11 @@ else
 endif
 	dh_desktop
 	dh_installxmlcatalogs
+ifeq "$(ENABLE_MONO)" "y"
+	cat debian/libuno-cil.installcligac.in | \
+		sed -e s/@OODIR@/$(OODIR)/ > debian/libuno-cil.installcligac
+	dh_installcligac
+endif
 	dh_compress -X.py -X.mk -X.sxd
 	dh_makeshlibs -n -V
 	dh_installdeb
