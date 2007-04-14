@@ -1157,6 +1157,11 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/build $(STAMP_DIR)/test
 	dh_testroot
 
 	rm -rf $(CURDIR)/debian/tmp
+	# apparently setting this here globally doesn't work, so hack around. If we don't do this we get loads
+	# of harmless, but log-bloating warnings
+	if ! grep fakeroot $(SOURCE_TREE)/*.sh; then
+		perl -pi -e 's/LD_LIBRARY_PATH=\"(.*)\"/LD_LIBRARY_PATH=\"/usr/lib/libfakeroot:\1' $(SOURCE_TREE)/*.sh; \
+	done
 	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DESTDIR=$(CURDIR)/debian/tmp $(MAKE) install
 
 ifeq "$(HELPISOS)" ""
@@ -2387,12 +2392,12 @@ ifeq "$(ARCH)" "i386"
 	# this LD_ASSUME_KERNEL is for working around some bug which makes
 	# dh_shlibddeps report/find nothing with libc6-i686/TLS systems
 	if dpkg --compare-versions `dpkg -l libc6 | grep ^ii | awk '{print $$3}'` lt 2.5; then \
-		LD_LIBRARY_PATH="$(PKGDIR)-core/$(OODIR)/program" LD_ASSUME_KERNEL="2.4.27" dh_shlibdeps $(SHLIBS_OVERRIDE); \
+		LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" LD_ASSUME_KERNEL="2.4.27" dh_shlibdeps $(SHLIBS_OVERRIDE); \
 	else \
-		LD_LIBRARY_PATH="$(PKGDIR)-core/$(OODIR)/program" dh_shlibdeps $(SHLIBS_OVERRIDE); \
+		LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" dh_shlibdeps $(SHLIBS_OVERRIDE); \
 	fi
 else
-	LD_LIBRARY_PATH="$(PKGDIR)-core/$(OODIR)/program" dh_shlibdeps $(SHLIBS_OVERRIDE)
+	LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" dh_shlibdeps $(SHLIBS_OVERRIDE)
 endif
 ifeq "$(ENABLE_MONO)" "y"
 	dh_makeclilibs -V
