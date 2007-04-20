@@ -331,7 +331,7 @@ endif
 	JAWT_DEPENDS= , libgcj$(LIBGCJ_SONR)-awt
 export JAVA_HOME
 	CONFIGURE_FLAGS += --with-jdk-home=$(JAVA_HOME)
-	JAVA_COMMON_DEPENDS= , openoffice.org$(VER)-java-common
+	JAVA_COMMON_DEPENDS= , openoffice.org$(VER)-java-common (>> 2.2.0-4)
   ifeq "$(SYSTEM_XT)" "y"
 	CONFIGURE_FLAGS += --with-system-xt	
 	BUILD_DEPS += , libxt-java (>= 0.20050823) [$(OOO_JAVA_ARCHS)]
@@ -1203,15 +1203,16 @@ ifeq "$(ENABLE_JAVA)" "y"
 		mv openoffice.org-common/$(OODIR)/program/classes/officebean.jar \
 			openoffice.org-core/usr/share/java/openoffice$(VER)
 
-	# move hsqldb.jar and sdbc_hsqldb.jar into -base (do the move
+	# move sdbc_hsqldb.jar into -base (do the move
 	# to /usr/share/java here directly, we do it for the "rest"
 	# later
 	cd debian/tmp/pkg; \
 		mkdir -p openoffice.org-base/usr/share/java/openoffice$(VER); \
-		for i in *hsqldb.jar; do \
-			mv openoffice.org-common/$(OODIR)/program/classes/$$i \
-				openoffice.org-base/usr/share/java/openoffice$(VER); \
-		done
+		mkdir -p openoffice.org-base/$(OODIR)/program/classes; \
+		mv openoffice.org-common/$(OODIR)/program/classes/sdbc_hsqldb.jar \
+			openoffice.org-base/usr/share/java/openoffice$(VER); \
+		ln -s /usr/share/java/openoffice$(VER)/sdbc_hsqldb.jar \
+			openoffice.org-base/$(OODIR)/program/classes/sdbc_hsqldb.jar
 endif
 
 	# move .so to -dev
@@ -1583,17 +1584,18 @@ ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(USE_SYSTEM_HSQLDB)" "y"
 	# link to system hsqldb
 	ln -sf /usr/share/java/hsqldb.jar \
-	        $(PKGDIR)-base/usr/share/java/openoffice$(VER)/hsqldb.jar
+	        $(PKGDIR)-base/$(OODIR)/program/classes/hsqldb.jar
   endif
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
 	rm -rf $(PKGDIR)-officebean
-	mkdir -p -m755 $(PKGDIR)-officebean/$(OODIR)/program
+	mkdir -p -m755 $(PKGDIR)-officebean/$(OODIR)/program/classes
 	mkdir -p -m755 $(PKGDIR)-officebean/usr/share/java
 	mv $(PKGDIR)-core/usr/share/java/openoffice$(VER) \
 		$(PKGDIR)-officebean/usr/share/java
-	rm -rf $(PKGDIR)-core/usr/share/java
+	ln -s /usr/share/java/openoffice$(VER)/officebean.jar \
+		 $(PKGDIR)-officebean/$(OODIR)/program/classes/officebean.jar
 	mv $(PKGDIR)-core/$(OODIR)/program/libofficebean.so \
 		$(PKGDIR)-officebean/$(OODIR)/program
 endif
@@ -1742,14 +1744,17 @@ ifeq "$(ENABLE_JAVA)" "y"
 	# move SDK Java stuff into /usr/share/java/openoffice
 	rm -f $(PKGDIR)-dev/$(OODIR)/sdk/classes
 	mkdir -p $(PKGDIR)-dev/usr/share/java/openoffice$(VER)/win
-	mkdir -p $(PKGDIR)-dev/$(OODIR)/sdk/classes
-	mv $(PKGDIR)-dev/usr/share/openoffice/sdk/classes/com \
-		$(PKGDIR)-dev/usr/share/java/openoffice$(VER) && \
-	mv $(PKGDIR)-dev/usr/share/openoffice/sdk/classes/win/unowinreg.dll \
-		$(PKGDIR)-dev/usr/share/java/openoffice$(VER)/win
-	chmod 644 $(PKGDIR)-dev/usr/share/java/openoffice$(VER)/win/unowinreg.dll
-	cd $(PKGDIR)-dev/$(OODIR)/sdk/classes && \
-		ln -s /usr/share/java/openoffice$(VER)/com com
+	mkdir -p $(PKGDIR)-dev/usr/share/java/openoffice$(VER)/com/sun/star/lib/loader
+	mkdir -p $(PKGDIR)-dev/$(OODIR)/sdk/classes/com/sun/star/lib/loader
+	mv $(PKGDIR)-dev/usr/share/openoffice/sdk/classes/com/sun/star/lib/loader/* \
+		$(PKGDIR)-dev/usr/share/java/openoffice$(VER)/com/sun/star/lib/loader && \
+	mv $(PKGDIR)-dev/usr/share/openoffice/sdk/classes/win \
+		$(PKGDIR)-dev/$(OODIR)/sdk/classes
+	chmod 644 $(PKGDIR)-dev/$(OODIR)/sdk/classes/win/unowinreg.dll
+	cd $(PKGDIR)-dev/$(OODIR)/sdk/classes/com/sun/star/lib/loader && \
+		for i in $(CURDIR)/$(PKGDIR)-dev/usr/share/java/openoffice$(VER)/com/sun/star/lib/loader/*.class; do \
+			ln -s `echo $$i | sed -e 's,$(CURDIR)/$(PKGDIR)-dev,,'` `basename $$i`; \
+		done
 	rm -rf $(PKGDIR)-dev/usr/share/openoffice/sdk
 endif
 	chmod 644 $(PKGDIR)-dev/$(OODIR)/sdk/configure.pl
@@ -1879,7 +1884,8 @@ ifeq "$(ENABLE_JAVA)" "y"
 	mkdir -p $(PKGDIR)-writer/usr/share/java/openoffice$(VER)
 	mv $(PKGDIR)-writer/$(OODIR)/program/classes/writer2latex.jar \
 		$(PKGDIR)-writer/usr/share/java/openoffice$(VER) && \
-	rmdir $(PKGDIR)-writer/$(OODIR)/program/classes
+	ln -s /usr/share/java/openoffice$(VER)/writer2latex.jar \
+		$(PKGDIR)-writer/$(OODIR)/program/classes/writer2latex.jar
 endif
 
 	# remove empty resource directories
@@ -2019,29 +2025,27 @@ endif
 ifeq "$(ENABLE_JAVA)" "y"
 	rm -rf $(PKGDIR)-java-common
 	# move common Java stuff to -java-common
-	mkdir -p $(PKGDIR)-java-common/$(OODIR)/program
+	mkdir -p $(PKGDIR)-java-common/$(OODIR)/program/classes
 	mkdir -p $(PKGDIR)-java-common/$(OODIR)/share/Scripts
+	mkdir -p $(PKGDIR)-java-common/usr/share/java/openoffice$(VER)
 	mv $(PKGDIR)-common/$(OODIR)/program/JREProperties.class \
 		$(PKGDIR)-java-common/$(OODIR)/program
 	mv $(PKGDIR)-common/$(OODIR)/share/Scripts/java \
 		$(PKGDIR)-java-common/$(OODIR)/share/Scripts
-	mkdir -p $(PKGDIR)-java-common/usr/share/java/openoffice$(VER)
 	mv $(PKGDIR)-common/$(OODIR)/program/classes/* \
 		$(PKGDIR)-java-common/usr/share/java/openoffice$(VER)
-	rm -rf $(PKGDIR)-common/$(OODIR)/program/classes
-	ln -s /usr/share/java/openoffice$(VER) \
-		$(PKGDIR)-java-common/$(OODIR)/program/classes
-	cd $(PKGDIR)-common/$(OODIR)/program && \
-	  for i in jvmfwk3rc setuprc unorc; do \
-	    perl -pi -e \
-	      's,\$$ORIGIN/classes,file:///usr/share/java/openoffice$(VER),g' \
-		$$i; \
-	  done
+	cd $(PKGDIR)-java-common/$(OODIR)/program/classes && \
+		for i in $(CURDIR)/$(PKGDIR)-java-common/usr/share/java/openoffice$(VER)/*; do \
+			case "`basename $$i`" in aportisdoc.jar|pexcel.jar|pocketword.jar) continue ;; \
+			*) ln -s `echo $$i | sed -e 's,$(CURDIR)/$(PKGDIR)-java-common,,'` `basename $$i` ;; esac; \
+	done
 
 	# move into extra package
+	rm -rf $(PKGDIR)-filter-mobiledev
 	mkdir -p $(PKGDIR)-filter-mobiledev/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Filter
 	mkdir -p $(PKGDIR)-filter-mobiledev/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Types
 	mkdir -p $(PKGDIR)-filter-mobiledev/usr/share/java/openoffice$(VER)
+	mkdir -p $(PKGDIR)-filter-mobiledev/$(OODIR)/program/classes
 	for i in palm pocketexcel pocketword; do \
 	  mv $(PKGDIR)-common/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Filter/fcfg_$${i}_filters.xcu \
 	    $(PKGDIR)-filter-mobiledev/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Filter; \
@@ -2051,6 +2055,8 @@ ifeq "$(ENABLE_JAVA)" "y"
 	for i in aportisdoc pexcel pocketword; do \
 	  mv $(PKGDIR)-java-common/usr/share/java/openoffice$(VER)/$$i.jar \
 		$(PKGDIR)-filter-mobiledev/usr/share/java/openoffice$(VER); \
+	  ln -s /usr/share/java/openoffice$(VER)/$$i.jar \
+		$(PKGDIR)-filter-mobiledev/$(OODIR)/program/classes; \
 	done
 endif
 
@@ -2108,23 +2114,23 @@ ifeq "$(ENABLE_JAVA)" "y"
 	# symlink jars we use externally
 ifeq "$(SYSTEM_XT)" "y"
 	ln -sf /usr/share/java/xt.jar \
-		$(PKGDIR)-java-common/usr/share/java/openoffice$(VER)/xt.jar
+		$(PKGDIR)-java-common/$(OODIR)/program/classes/xt.jar
 endif
 ifeq "$(SYSTEM_XALAN)" "y"
 	ln -sf /usr/share/java/xalan2.jar \
-		$(PKGDIR)-java-common/usr/share/java/openoffice$(VER)/xalan.jar
+		$(PKGDIR)-java-common/$(OODIR)/program/classes/xalan.jar
 endif
 ifeq "$(SYSTEM_XML_APIS)" "y"
 	ln -sf /usr/share/java/xml-apis.jar \
-		$(PKGDIR)-java-common/usr/share/java/openoffice$(VER)/xml-apis.jar
+		$(PKGDIR)-java-common/$(OODIR)/program/classes/xml-apis.jar
 endif
 ifeq "$(SYSTEM_XERCES)" "y"
 	ln -sf /usr/share/java/xercesImpl.jar \
-		$(PKGDIR)-java-common/usr/share/java/openoffice$(VER)/xercesImpl.jar
+		$(PKGDIR)-java-common/$(OODIR)/program/classes/xercesImpl.jar
 endif
 ifeq "$(USE_SYSTEM_BSH)" "y"
 	ln -sf /usr/share/java/bsh.jar \
-	        $(PKGDIR)-java-common/usr/share/java/openoffice$(VER)/bsh.jar
+	        $(PKGDIR)-java-common/$(OODIR)/program/classes/bsh.jar
 endif
 endif
 	# remove extra license files
