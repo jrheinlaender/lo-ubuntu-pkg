@@ -236,12 +236,23 @@ ifneq "$(USE_EXTERNAL_MYTHES)" "y"
   endif
 endif
 
+ifeq "$(ETCH_BACKPORT)" "y"
+	BUILD_DEPS += , libcurl3-openssl-dev [$(OOO_ARCHS)]
+else
+	BUILD_DEPS += , libcurl4-openssl-dev [$(OOO_ARCHS)]
+endif
+
 ifneq "$(BUILD_DBG_PACKAGE)" "y"
 	SMALL_SYMBOLS = y
 else
 	# -g gives a far too big deb (>400M, ca. 1GB I-S)
 	SMALL_SYMBOLS = y
-	DBG_DBG_SUGGESTS+= , libatk1.0-dbg, libglib2.0-0-dbg, libgnomevfs2-0-dbg, libstdc++6-dbg, libx11-6-dbg, libxext6-dbg, libxaw7-dbg, libxml2-dbg, libgtk2.0-0-dbg, libxau6-dbg, libice6-dbg, libsm6-dbg, libcurl3-dbg, libxinerama1-dbg
+	DBG_DBG_SUGGESTS+= , libatk1.0-dbg, libglib2.0-0-dbg, libgnomevfs2-0-dbg, libstdc++6-dbg, libx11-6-dbg, libxext6-dbg, libxaw7-dbg, libxml2-dbg, libgtk2.0-0-dbg, libxau6-dbg, libice6-dbg, libsm6-dbg, libxinerama1-dbg
+ifeq "$(ETCH_BACKPORT)" "y"
+	DBG_DBG_SUGGESTS+= , libcurl3-dbg
+else
+	DBG_DBG_SUGGESTS+= , libcurl4-dbg
+endif
 endif
 
 ifeq "$(BUILD_PYUNO)" "y"
@@ -328,13 +339,13 @@ else
 	LIBGCJ_SONR=7
 endif
 	DBG_DBG_SUGGESTS+= , libgcj$(LIBGCJ_SONR)-dbg
-ifeq "$(shell dpkg --compare-versions `dpkg -l gcj-4.1 | grep ^ii | awk '{ print $$3 }'` ge '4.1.2-3' && echo true || echo false)" "true"
+ifeq "$(shell dpkg --compare-versions `dpkg -l gcj-4.1 | tail -n 1 | awk '{ print $$3 }'` ge '4.1.2-3' && echo true || echo false)" "true"
 	JAWT_DEPENDS= , libgcj$(LIBGCJ_SONR)-1-awt
 else
 	JAWT_DEPENDS= , libgcj$(LIBGCJ_SONR)-awt
 endif
 export JAVA_HOME
-	CONFIGURE_FLAGS += --with-jdk-home=$(JAVA_HOME)
+	CONFIGURE_FLAGS += --with-jdk-home=$(JAVA_HOME) --with-java-target-version=1.4
 	JAVA_COMMON_DEPENDS= , openoffice.org$(VER)-java-common (>> 2.2.0-4)
   ifeq "$(SYSTEM_XT)" "y"
 	CONFIGURE_FLAGS += --with-system-xt	
@@ -1573,8 +1584,6 @@ endif
 		mv $(PKGDIR)-core/$(OODIR)/program/$$i*uno.so \
 			$(PKGDIR)-calc/$(OODIR)/program; \
 	done
-	mv $(PKGDIR)-core/$(OODIR)/program/oovbaapi.rdb \
-		$(PKGDIR)-calc/$(OODIR)/program
 	mv $(PKGDIR)-core/$(OODIR)/program/scsolver.uno.so \
 		$(PKGDIR)-calc/$(OODIR)/program
 ifneq "$(USE_SYSTEM_LPSOLVE)" "y"
@@ -2412,7 +2421,7 @@ endif
 ifeq "$(ARCH)" "i386"
 	# this LD_ASSUME_KERNEL is for working around some bug which makes
 	# dh_shlibddeps report/find nothing with libc6-i686/TLS systems
-	if dpkg --compare-versions `dpkg -l libc6 | grep ^ii | awk '{print $$3}'` lt 2.5; then \
+	if dpkg --compare-versions `dpkg -l libc6 | tail -n 1 | awk '{print $$3}'` lt 2.5; then \
 		LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" LD_ASSUME_KERNEL="2.4.27" dh_shlibdeps -s $(SHLIBS_OVERRIDE); \
 	else \
 		LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" dh_shlibdeps -s $(SHLIBS_OVERRIDE); \
