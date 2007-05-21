@@ -1334,10 +1334,6 @@ ifneq "$(HELPISOS)" "en-US"
 	set -e; \
 	for iso in $(filter-out en-US,$(HELPISOS)); do \
 	  pkgiso=`echo $$iso | tr \[:upper:\] \[:lower:\]`; \
-	  diriso=`echo $$pkgiso | cut -d"-" -f1`; \
-	  if [ "$$pkgiso" = "pt-br" ]; then diriso=pt-BR; fi; \
-	  if [ "$$pkgiso" = "zh-cn" ]; then diriso=zh-CN; fi; \
-	  if [ "$$pkgiso" = "zh-tw" ]; then diriso=zh-TW; fi; \
 	  rm -rf $(PKGDIR)-help-$$pkgiso $(PKGDIR)-help-$$pkgiso.*.debhelper; \
 	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-help-$$iso \
 		$(PKGDIR)-help-$$pkgiso; \
@@ -1655,9 +1651,12 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	    -e 's/  / /' \
 	    < $$dirname/extension.desktop \
 	    > $(PKGDIR)-common/usr/share/applications/ooo$(VER)-extension.desktop || exit 1
-	sed -i -e 's,Exec=$${UNIXPRODUCTNAME}$${PRODUCTVERSION} \(.*\) %U,Exec=ooffice$(VER) \1 %U,' \
-	       -e 's,Name=$${PRODUCTNAME} $${PRODUCTVERSION},Name=OpenOffice.org $(VER),' \
-	       -e 's/  / /' \
+	# qstart.desktop is different to the above. Should be handled by --with-unix-wrapper of ooo-build
+	# but that somehow doesn't work as expected. FIXME.
+	PRODUCTVERSION=`grep PRODUCTVERSION $(SOURCE_TREE)/sysui/desktop/productversion.mk | head -n 1 | cut -d"=" -f2 | sed -e s/\ //g`; \
+	sed -i -e "s,Exec=openoffice.org$$PRODUCTVERSION,Exec=ooffice$(VER)," \
+	       -e "s,Name=OpenOffice.org $$PRODUCTVERSION,Name=OpenOffice.org $(VER)," \
+	       -e "s/  / /" \
 	       $(PKGDIR)-gtk/$(OODIR)/share/xdg/qstart.desktop
 	for f in `find debian -name '*.desktop'`; do \
 		sed -i -e '/^Comment\[de\]/s/- *\([a-zA-Z0-9]*\) *macht.*glich.*$$/mit \1/' $$f; \
