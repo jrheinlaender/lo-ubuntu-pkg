@@ -19,7 +19,7 @@ prep_rm_conffile() {
 
     if [ -e "$CONFFILE" ]; then
         md5sum="`md5sum \"$CONFFILE\" | sed -e \"s/ .*//\"`"
-        old_md5sum="`sed -n -e \"/^Conffiles:/,/^[^ ]/{\\\\' $CONFFILE'{s/.* //;p}}\" /var/lib/dpkg/status`"
+        old_md5sum="`dpkg-query -W -f='${Conffiles}' docbook-xml | grep $CONFFILE | awk '{print $2}'`"
         if [ "$md5sum" = "$old_md5sum" ]; then
             mv "$CONFFILE" "$CONFFILE.${THIS_PACKAGE}-tmp"
         fi
@@ -40,7 +40,7 @@ rm_conffile() {
 
     if [ -e "$CONFFILE" ]; then
         md5sum="`md5sum \"$CONFFILE\" | sed -e \"s/ .*//\"`"
-        old_md5sum="`sed -n -e \"/^Conffiles:/,/^[^ ]/{\\\\' $CONFFILE'{s/.* //;p}}\" /var/lib/dpkg/status`"
+        old_md5sum="`dpkg-query -W -f='${Conffiles}' docbook-xml | grep $CONFFILE | awk '{print $2}'`"
         if [ "$md5sum" != "$old_md5sum" ]; then
             echo "Obsolete conffile $CONFFILE has been modified by you."
             echo "Saving as $CONFFILE.dpkg-bak ..."

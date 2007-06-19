@@ -109,7 +109,6 @@ USE_SYSTEM_XMLSEC=n
 BUILD_CAIROCANVAS=y
 USE_SYSTEM_CAIRO=y
 CAIRO_FONTS_PATCH=y
-BUILD_MDBTOOLS=y
 USE_SYSTEM_MDBTOOLS=y
 BUILD_KDE=y
 BUILD_DBG_PACKAGE=y
@@ -126,7 +125,7 @@ USE_SYSTEM_NEON=y
 PACKAGE_QUICKSTART=y
 USE_OOO_BUILD_DESKTOPS=n
 PACKAGE_SDK=y
-RUN_SMOKETEST=n
+RUN_SMOKETEST=y
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
@@ -515,15 +514,6 @@ ifeq "$(BUILD_CAIROCANVAS)" "y"
   endif
 else
   CONFIGURE_FLAGS+= --disable-cairo
-endif
-
-ifneq "$(BUILD_MDBTOOLS)" "y"
-  CONFIGURE_FLAGS+= --disable-access
-else
-  ifeq "$(USE_SYSTEM_MDBTOOLS)" "y"
-    BUILD_DEPS += , mdbtools-dev (>= 0.5.99.0.6pre1.0.20050409-1) [$(OOO_ARCHS)]
-    CONFIGURE_FLAGS += --with-system-mdbtools
-  endif
 endif
 
 ifeq "$(BUILD_KDE)" "n"
@@ -1111,7 +1101,7 @@ endif
 	touch $@
 
 build: $(STAMP_DIR)/build
-$(STAMP_DIR)/build: ooo-build/config.status
+$(STAMP_DIR)/build: $build: ooo-build/config.status
 	dh_testdir
 
 ifeq "$(BUILD_KDE)" "n"
@@ -1154,9 +1144,15 @@ $(STAMP_DIR)/test: $(STAMP_DIR)/build
 ifeq "$(RUN_SMOKETEST)" "y"
 	# smoketest
 	cd $(SOURCE_TREE)/smoketestoo_native && \
+		mkdir -p $(CURDIR)/oosmoketest && \
 		. $(CURDIR)/$(SOURCE_TREE)/*.sh; \
-		PATH=$(BUILD_PATH) TEMP=$(CURDIR)/oosmoketest \
-		xvfb-run -a ../solenv/bin/build.pl && \
+		export PATH=$(BUILD_PATH); \
+		export TEMP=$(CURDIR)/oosmoketest; \
+		if test [ -n "$$DISPLAY" ]; then \
+			../solenv/bin/build.pl; \
+		else \
+			xvfb-run -a ../solenv/bin/build.pl; \
+		fi && \
 		rm -rf $(CURDIR)/oosmoketest
 endif
 
@@ -1554,11 +1550,6 @@ ifeq "$(ENABLE_JAVA)" "y"
 endif
 	mv $(PKGDIR)-core/$(OODIR)/program/libflat*so \
 		$(PKGDIR)-base/$(OODIR)/program; \
-
-ifeq "$(BUILD_MDBTOOLS)" "y"
-	mv $(PKGDIR)-core/$(OODIR)/program/libmdb*so \
-		$(PKGDIR)-base/$(OODIR)/program
-endif
 
 	# move vba stuff into -calc, they are calc-only and linked to
 	# libsc*
