@@ -87,6 +87,7 @@ ENABLE_JAVA=y
 ENABLE_MONO=y
 MONO_MINVER= (>= 1.2.3)
 USE_SYSTEM_HUNSPELL=y
+HUNSPELL_MIN_VER= (>= 1.1.5-2)
 SYSTEM_ALTLINUXHYPH=y
 LIBALTLINUXHYPH_MINVER= (>= 0.1.1-11)
 USE_AGG=n
@@ -119,6 +120,8 @@ USE_FIREFOX=n
 USE_XULRUNNER=n
 KDELIBS_MINVER= (>= 4:3.4.3-2)
 USE_SYSTEM_LPSOLVE=y
+USE_SHARED_LPSOLVE=y
+LPSOLVE_MIN_VERSION= (>= 5.5.0.10-2)
 USE_DBUS=y
 USE_GSTREAMER=y
 USE_SYSTEM_NEON=y
@@ -126,6 +129,7 @@ PACKAGE_QUICKSTART=y
 USE_OOO_BUILD_DESKTOPS=n
 PACKAGE_SDK=y
 RUN_SMOKETEST=y
+USE_LIBCURL4=y
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
@@ -178,6 +182,9 @@ ifeq "$(ETCH_BACKPORT)" "y"
   SYSTEM_ALTLINUXHYPH=n
   ENABLE_MONO=n
   CAIRO_FONTS_PATCH=n
+  HUNSPELL_MIN_VER= (>= 1.0.8-2)
+  USE_SHARED_LPSOLVE=y
+  LPSOLVE_MIN_VERSION=
 endif
 
 #############
@@ -229,7 +236,7 @@ ifneq "$(USE_EXTERNAL_MYTHES)" "y"
   endif
 endif
 
-ifeq "$(ETCH_BACKPORT)" "y"
+ifeq "$(USE_LIBCURL4)" "y"
 	BUILD_DEPS += , libcurl3-gnutls-dev [$(OOO_ARCHS)]
 else
 	BUILD_DEPS += , libcurl4-gnutls-dev [$(OOO_ARCHS)]
@@ -241,7 +248,7 @@ else
 	# -g gives a far too big deb (>400M, ca. 1GB I-S)
 	SMALL_SYMBOLS = y
 	DBG_DBG_SUGGESTS+= , libatk1.0-dbg, libglib2.0-0-dbg, libgnomevfs2-0-dbg, libstdc++6-dbg, libx11-6-dbg, libxext6-dbg, libxaw7-dbg, libxml2-dbg, libgtk2.0-0-dbg, libxau6-dbg, libice6-dbg, libsm6-dbg, libxinerama1-dbg
-ifeq "$(ETCH_BACKPORT)" "y"
+ifeq "$(USE_LIBCURL4)" "y"
 	DBG_DBG_SUGGESTS+= , libcurl3-dbg
 else
 	DBG_DBG_SUGGESTS+= , libcurl4-dbg
@@ -407,11 +414,7 @@ else
 endif
 
 ifeq "$(USE_SYSTEM_HUNSPELL)" "y"
-ifeq "$(ETCH_BACKPORT)" "y"
-		BUILD_DEPS += , libhunspell-dev (>= 1.0.8-3) [$(OOO_ARCHS)]
-else
-		BUILD_DEPS += , libhunspell-dev (>= 1.1.5-2) [$(OOO_ARCHS)]
-endif
+		BUILD_DEPS += , libhunspell-dev $(HUNSPELL_MIN_VER) [$(OOO_ARCHS)]
 		CONFIGURE_FLAGS+= --with-system-hunspell
 endif
 
@@ -550,12 +553,10 @@ ifeq "$(ENABLE_JAVA)" "y"
 endif
 
 ifeq "$(USE_SYSTEM_LPSOLVE)" "y"
-ifneq "$(ETCH_BACKPORT)" "y"
-	LPSOLVE_MIN_VERSION= (>= 5.5.0.10-2)
+ifneq "$(USE_SHARED_LPSOLVE)" "y"
 	BUILD_DEPS += , liblpsolve55-dev $(LPSOLVE_MIN_VERSION) [$(OOO_ARCHS)], lp-solve $(LPSOLVE_MIN_VERSION) [$(OOO_ARCHS)]
 	LPSOLVE_DEP = lp-solve $(LPSOLVE_MIN_VERSION)
 else
-	LPSOLVE_MIN_VERSION=
 	BUILD_DEPS += , liblpsolve55-dev $(LPSOLVE_MIN_VERSION) [$(OOO_ARCHS)]
 endif
 	CONFIGURE_FLAGS += --with-system-lpsolve
@@ -1141,6 +1142,7 @@ endif
 
 test: $(STAMP_DIR)/test
 $(STAMP_DIR)/test: $(STAMP_DIR)/build
+ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 ifeq "$(RUN_SMOKETEST)" "y"
 	# smoketest
 	cd $(SOURCE_TREE)/smoketestoo_native && \
@@ -1154,6 +1156,7 @@ ifeq "$(RUN_SMOKETEST)" "y"
 			xvfb-run -a ../solenv/bin/build.pl; \
 		fi && \
 		rm -rf $(CURDIR)/oosmoketest
+endif
 endif
 
 	touch $@
@@ -2523,7 +2526,7 @@ download: ooo-build/config.status
 
 # Update debian and ooo-build directories from version control
 vcsupdate:
-	cd debian && baz update
+	cd debian && bzr update
 	cd ooo-build && svn up
 
 .PHONY: control
