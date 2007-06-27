@@ -1151,12 +1151,19 @@ $(STAMP_DIR)/test: $(STAMP_DIR)/build
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 ifeq "$(RUN_SMOKETEST)" "y"
 	# smoketest
+	# apparently setting this here globally doesn't work, so hack around. If we don't do this we get loads
+	# of harmless, but log-bloating warnings
+	if ! grep fakeroot $(SOURCE_TREE)/*.sh; then \
+		perl -pi -e 's,LD_LIBRARY_PATH=\"(.*)\",LD_LIBRARY_PATH=\"/usr/lib/libfakeroot:\1\",' $(SOURCE_TREE)/*.sh; \
+	fi
 	cd $(SOURCE_TREE)/smoketestoo_native && \
 		mkdir -p $(CURDIR)/oosmoketest && \
 		. $(CURDIR)/$(SOURCE_TREE)/*.sh; \
 		export PATH=$(BUILD_PATH); \
+		export LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(BUILD_LD_LIBRARY_PATH)"; \
 		export TEMP=$(CURDIR)/oosmoketest; \
-		if test [ -n "$$DISPLAY" ]; then \
+		export SAL_IGNOREXERRORS=1; \
+		if [ -n "$$DISPLAY" ]; then \
 			../solenv/bin/build.pl; \
 		else \
 			xvfb-run -a ../solenv/bin/build.pl; \
