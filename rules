@@ -1161,7 +1161,6 @@ ifeq "$(RUN_SMOKETEST)" "y"
 		. $(CURDIR)/$(SOURCE_TREE)/*.sh; \
 		export PATH=$(BUILD_PATH); \
 		export TEMP=$(CURDIR)/oosmoketest; \
-		export SAL_IGNOREXERRORS=1; \
 		if [ -n "$$DISPLAY" ]; then \
 			../solenv/bin/build.pl; \
 		else \
@@ -2038,6 +2037,14 @@ ifeq "$(PACKAGE_SDK)" "y"
 	for i in `find . -type f | xargs`; do \
 		perl -pi -e 's,file:$(CURDIR)/ooo-build/build/(current|$(TAG))/odk/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/odkcommon/docs/common/ref/,,g' $$i; \
 	done
+
+ifeq "$(ENABLE_JAVA)" "y"
+	rm -rf $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev/docs/xmerge
+	mkdir -p $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev/docs/xmerge
+	# install XMerge SDK javadoc
+	cp -r $(BUILD_TREE)/xmerge/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/class/javadoc/* \
+		$(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev/docs/xmerge
+endif
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
@@ -2333,9 +2340,6 @@ ifneq "$(DIST)" "Ubuntu"
 	perl -pi -e "s/Ubuntu config/config/" $(PKGDIR)-common/$(OODIR)/program/soffice
 	perl -pi -e "s/Ubuntu stuff/stuff/" $(PKGDIR)-common/$(OODIR)/program/soffice
 endif
-
-	# hack around breakage with cairo 1.4.8
-	perl -pi -e 's/|\# execute soffice binary|\# hack for https://bugzilla.redhat.com/bugzilla/show_bug.cgi?id=243811, Debian #430135\nSAL_IGNOREXERRORS=1\nexport SAL_IGNOREXERRORS\n\n\# execute soffice binary|' $(PKGDIR)-common/$(OODIR)/program/soffice
 
 	for i in $(ARCH_INDEP_DEP_PACKAGES); do \
 		install -D -m644 debian/presubj \
