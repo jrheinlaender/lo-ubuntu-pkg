@@ -22,8 +22,8 @@ PKGSOURCE := $(shell dpkg-parsechangelog | awk '/^Source:/ {print $$2;exit 0}')
 SOURCE_VERSION:=$(shell head -1 debian/changelog | cut -d\( -f2 | cut -d\) -f1)
 UPSTREAM_VERSION:=$(shell echo "$(SOURCE_VERSION)"| cut -d- -f1)
 BASE_VERSION:=$(UPSTREAM_VERSION)
-#HELP_L10N_VIRTUAL_VERSION:=$(UPSTREAM_VERSION)
-HELP_L10N_VIRTUAL_VERSION:=2.2
+HELP_L10N_VIRTUAL_VERSION:=$(UPSTREAM_VERSION)
+#HELP_L10N_VIRTUAL_VERSION:=2.2
 
 BINARY_VERSION=$(SOURCE_VERSION)
 #BINARY_VERSION=2.2.0-$(shell dpkg-parsechangelog  | grep urgency \
@@ -52,19 +52,19 @@ export DH_ALWAYS_EXCLUDE=CVS
 unexport LS_COLORS
 
 SRCNUM=680
-MWS=OOF680
+MWS=SRC680
 #MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)" | cut -d~ -f2 | sed -e s/$(shell echo $(MWS) | tr A-Z a-z)//)
-MILESTONE=m18
-#TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
-TAG=$(MWS)_$(MILESTONE)
-OOO_BUILD_BRANCH=ooo-build-2-2
+MILESTONE=m216
+TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
+#TAG=$(MWS)_$(MILESTONE)
+#OOO_BUILD_BRANCH=ooo-build-2-2
 SOURCE_TREE=ooo-build/build/$(TAG)
 STAMP_DIR=debian/stampdir
 
-#CORE_TARBALL=$(TAG)-core.tar.bz2
-#SYSTEM_TARBALL=$(TAG)-system.tar.bz2
-CORE_TARBALL=OOo_2.2.1_src_core.tar.bz2
-SYSTEM_TARBALL=OOo_2.2.1_src_system.tar.bz2
+CORE_TARBALL=$(TAG)-core.tar.bz2
+SYSTEM_TARBALL=$(TAG)-system.tar.bz2
+#CORE_TARBALL=OOo_2.2.1_src_core.tar.bz2
+#SYSTEM_TARBALL=OOo_2.2.1_src_system.tar.bz2
 
 ifeq "$(DISTREL)" "etch"
   ETCH_BACKPORT=y
@@ -761,8 +761,10 @@ clean:
 		ooo-build/src/easter/*.png
 	rm -rf ooo-build/scratch/buildbot ooo-build/buildbot
 
+	rm -f ooo-build/scratch/offapi-vba/constants/constant_types.rdb
+
 	if [ -d ooo-build/test ]; then \
-		find ooo-build/test ooo-build/doc -type f \
+		find ooo-build/test ooo-build/doc ooo-build/scratch -type f \
 		     \( -name '*.xls' -o -name '*.sx?' -o -name '*.doc' \
 			-o -name '*.123' -o -name '*.lwp' -o -name '*.ppt' \
 			-o -name '*.wb2' -o -name '*.png' -o -name '*.WB2' \
@@ -790,11 +792,14 @@ clean:
 	rm -f build
 
 	# uuencode binary files
+	# FIXME:patches/vba/cws-npower8-bindata.diff sounds like nonsense.
+	# FIXME: Why isn't this built?
 	set -e; \
 	cd ooo-build ;\
 	  for f in src/ooo_*_images*.bz2 src/extras*bz2 \
 	    src/evolocal.odb src/*.gz src/GSI*bz2 src/xt*zip src/go-oo-team.png \
-	    templates/*.o?? src/biblio*bz2 src/tango_mainapp_16.png; do \
+	    templates/*.o?? src/biblio*bz2 src/tango_mainapp_16.png \
+	    patches/vba/cws-npower8-bindata.diff; do \
 	  if [ -s $$f ]; then \
 	    uuencode $$f $$f > $$f.uu.tmp && \
 	    ../debian/scripts/move-if-change $$f.uu.tmp $$f.uu; \
@@ -820,9 +825,9 @@ clean:
 	rm -f ooo-build/src/GSI*err
 	rm -f ooo-build/config.*
 
-	# uuencode broffice.org bitmaps, fixed intro.bmp and Adobe afms
+	# uuencode broffice.org bitmaps, fixed intro.bm
 	for f in debian/brintro.bmp debian/brabout.bmp \
-		ooo-build/src/ooonologointro.bmp debian/Adobe-Core35_AFMs-314.tar.gz; do \
+		ooo-build/src/ooonologointro.bmp; do \
 	  if [ -s $$f ]; then \
 	    uuencode $$f $$f > $$f.uu.tmp && \
 	    debian/scripts/move-if-change $$f.uu.tmp $$f.uu; \
@@ -1009,8 +1014,7 @@ ooo-build/config.status: ooo-build/configure
 		    debian/scripts/move-if-change \
 		    debian/scripts/cleandupes \
 		    ooo-build/configure \
-		    ooo-build/bin/[a-z]* \
-		    ooo-build/patches/apply.pl ;\
+		    ooo-build/bin/[a-z]* ;\
 	do \
 	  chmod 755 $$FILE ;\
 	done
@@ -1036,9 +1040,9 @@ ooo-build/config.status: ooo-build/configure
 	  fi; \
 	done
 
-	# uudecode broffice.org bitmaps, fixed intro.bmp and Adobe afms
+	# uudecode broffice.org bitmaps, fixed intro.bmp
 	for i in debian/brintro.bmp debian/brabout.bmp \
-		ooo-build/src/ooonologointro.bmp debian/Adobe-Core35_AFMs-314.tar.gz; do \
+		ooo-build/src/ooonologointro.bmp; do \
 	  if [ ! -s $$i ]; then \
 	    uudecode -o $$i $$i.uu ;\
 	    touch -r $$i.uu $$i; \
@@ -1101,6 +1105,11 @@ endif
 
 	# Make sure we have /proc mounted - otherwise idlc will fail later.
 	test -r /proc/version
+
+	# hrmpf. Empty in ooo-build and patch does not give them to us but
+	# configure need them. Create them...
+	touch ooo-build/distro-configs/Win32.conf.in
+	touch ooo-build/distro-configs/Solaris.conf.in
 
 	cd ooo-build ; \
 		PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ../ooo-build/configure $(CONFIGURE_FLAGS)
@@ -1614,7 +1623,7 @@ ifeq "$(PACKAGE_QA_TOOLS)" "y"
 
 ifeq "$(ENABLE_JAVA)" "y"
 	mkdir -p -m755 $(PKGDIR)-qa-tools/usr/share/java/openoffice$(VER)
-	cp $(SOURCE_TREE)/qadevOOo/unx*.pro/class/OOoRunnerLight.jar \
+	cp $(SOURCE_TREE)/qadevOOo/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/class/OOoRunnerLight.jar \
 		$(PKGDIR)-qa-tools/usr/share/java/openoffice$(VER)
 endif
 
@@ -2247,7 +2256,7 @@ endif
 	cp -r $(SOURCE_TREE)/qadevOOo/tests/basic $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/tests
 ifeq "$(ENABLE_JAVA)" "y"
 	for d in mod ifc; do \
-		cp -r $(SOURCE_TREE)/qadevOOo/unx*.pro/class/$$d $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/tests/java; \
+		cp -r $(SOURCE_TREE)/qadevOOo/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/class/$$d $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/tests/java; \
 	done
 endif
 
@@ -2302,33 +2311,6 @@ ifeq "$(PACKAGE_SDK)" "y"
 endif
 
 	rm -f $(PKGDIR)-core/$(OODIR)/program/*updchk*
-
-	# add hertz units to AutoCorrects exception list
-	TMP=`mktemp -d -q`; \
-	for i in $(CURDIR)/$(PKGDIR)-common/$(OODIR)/share/autocorr/acor_*.dat; do \
-		cd $$TMP; \
-		unzip $$i; \
-		if [ -e WordExceptList.xml ]; then \
-			perl -pi -e 's,(.*)(</block-list:block-list>$$),\1<block-list:block block-list:abbreviated-name="MHz"/>\2,' WordExceptList.xml; \
-			perl -pi -e 's,(.*)(</block-list:block-list>$$),\1<block-list:block block-list:abbreviated-name="GHz"/>\2,' WordExceptList.xml; \
-			perl -pi -e 's,(.*)(</block-list:block-list>$$),\1<block-list:block block-list:abbreviated-name="THz"/>\2,' WordExceptList.xml; \
-		else \
-			echo '<?xml version="1.0" encoding="UTF-8"?>' > WordExceptList.xml; \
-			echo '<block-list:block-list xmlns:block-list="http://openoffice.org/2001/block-list">' >> WordExceptList.xml; \
-			echo '    <block-list:block block-list:abbreviated-name="MHz"/>' >> WordExceptList.xml; \
-			echo '    <block-list:block block-list:abbreviated-name="GHz"/>' >> WordExceptList.xml; \
-			echo '    <block-list:block block-list:abbreviated-name="THz"/>' >> WordExceptList.xml; \
-			echo '</block-list:block-list>' >> WordExceptList.xml; \
-		fi; \
-		zip $$i *; \
-		rm -rf *; \
-	done
-
-	# install free afms
-	cd $(PKGDIR)-common/$(OODIR)/share/psprint/fontmetric; \
-		tar xfvz $(CURDIR)/debian/Adobe-Core35_AFMs-314.tar.gz; \
-		mv Adobe-Core35_AFMs-314/*.afm .; rm Helvetica-Narrow*.afm; \
-		rm -rf Adobe-Core35_AFMs-314
 
 	# add iceape/icedove/iceweasel to senddoc and open-url
 	perl -pi -e 's,mozilla \| netscape \| seamonkey \| thunderbird,iceape | seamonkey | mozilla | netscape | icedove | thunderbird,' \
