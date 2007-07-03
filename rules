@@ -54,7 +54,7 @@ unexport LS_COLORS
 SRCNUM=680
 MWS=SRC680
 #MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)" | cut -d~ -f2 | sed -e s/$(shell echo $(MWS) | tr A-Z a-z)//)
-MILESTONE=m216
+MILESTONE=m219
 TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
 #TAG=$(MWS)_$(MILESTONE)
 #OOO_BUILD_BRANCH=ooo-build-2-2
@@ -74,6 +74,7 @@ endif
 # Default package configuration
 #
 BUILD_AMD64=y
+BUILD_PPC64=y
 PATCHSET=$(DIST)
 BUILD_DEPS=
 BUILD_PYUNO=y
@@ -197,10 +198,16 @@ OOO_ARCHS= i386 powerpc sparc
 ifeq "$(BUILD_AMD64)" "y"
   OOO_ARCHS += amd64
 endif
+ifeq "$(BUILD_PPC64)" "y"
+  OOO_ARCHS += ppc64
+endif
 # Java...
 OOO_JAVA_ARCHS = i386 powerpc sparc
 ifeq "$(BUILD_AMD64)" "y"
   OOO_JAVA_ARCHS+= amd64
+endif
+ifeq "$(BUILD_PPC64)" "y"
+  OOO_JAVA_ARCHS+= ppc64
 endif
 ifeq (,$(findstring $(ARCH),$(OOO_JAVA_ARCHS)))
        ENABLE_JAVA=n
@@ -219,6 +226,9 @@ endif
 ifeq "$(ARCH)" "amd64"
   PATCHSET:=$(PATCHSET)64
 endif
+ifeq "$(ARCH)" "ppc64"
+  PATCHSET:=$(PATCHSET)64
+endif
 
 ifeq "$(ARCH)-linux-gnu" "sparc-linux-gnu"
 	# use 32-bit compiler
@@ -232,6 +242,11 @@ ifneq "$(USE_EXTERNAL_MYTHES)" "y"
        BUILD_ONLY_LIBMYTHES=y
   else
     ifeq "$(ARCH)" "amd64"
+      ifneq "$(BUILD_AMD64)" "y"
+               BUILD_ONLY_LIBMYTHES=y
+      endif
+    endif
+    ifeq "$(ARCH)" "ppc64"
       ifneq "$(BUILD_AMD64)" "y"
                BUILD_ONLY_LIBMYTHES=y
       endif
@@ -296,7 +311,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
     #ISOS=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
     ISOS:=en-US af as-IN be-BY bg bn br bs ca cs cy da de dz el \
 	en-GB en-ZA eo es et fa fi fr ga gl gu-IN he hi-IN hr hu it ja \
-	ka ko ku lo lt lv mk ml-IN nb ne nl nn nr ns or-IN pa-IN \
+	ka ko ku lo lt lv mk ml-IN mr-IN nb ne nl nn nr ns or-IN pa-IN \
 	pl pt pt-BR ru rw sk sl sr-CS ss st sv \
 	ta-IN te-IN tg th tn tr ts uk ve vi xh zh-CN zh-TW zu
     #HELPISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all') 
@@ -305,7 +320,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
     #LANGPACKISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
     LANGPACKISOS:=en-US af as-IN be-BY bg bn br bs ca cs cy da de dz el \
 	en-GB en-ZA eo es et fa fi fr ga gl gu-IN he hi-IN hr hu it ja \
-	ka ko ku lo lt lv mk ml-IN nb ne nl nn nr ns or-IN pa-IN \
+	ka ko ku lo lt lv mk ml-IN mr-IN nb ne nl nn nr ns or-IN pa-IN \
 	pl pt pt-BR ru rw sk sl sr-CS ss st sv \
 	ta-IN te-IN tg th tn tr ts uk ve vi xh zh-CN zh-TW zu
   endif
@@ -585,8 +600,8 @@ else
 endif
 
 ifeq "$(USE_SYSTEM_NEON)" "y"
-  BUILD_DEPS += , libneon25-dev [$(OOO_ARCHS)]
-  DBG_DBG_SUGGESTS+= , libneon25-dbg
+  BUILD_DEPS += , libneon26-dev [$(OOO_ARCHS)]
+  DBG_DBG_SUGGESTS+= , libneon26-dbg
   CONFIGURE_FLAGS += --with-system-neon
 endif
 
@@ -2311,14 +2326,6 @@ ifeq "$(PACKAGE_SDK)" "y"
 endif
 
 	rm -f $(PKGDIR)-core/$(OODIR)/program/*updchk*
-
-	# add iceape/icedove/iceweasel to senddoc and open-url
-	perl -pi -e 's,mozilla \| netscape \| seamonkey \| thunderbird,iceape | seamonkey | mozilla | netscape | icedove | thunderbird,' \
-		$(PKGDIR)-common/$(OODIR)/program/senddoc
-	perl -pi -e 's/firefox mozilla netscape/iceweasel firefox iceape mozilla netscape/' \
-		$(PKGDIR)-common/$(OODIR)/program/open-url
-	perl -pi -e 's/thunderbird mozilla netscape/icedove thunderbird iceape mozilla netscape/' \
-		$(PKGDIR)-common/$(OODIR)/program/open-url
 
 ifneq "$(DIST)" "Ubuntu"
 	perl -pi -e "s/Ubuntu helper/helper/" $(PKGDIR)-common/$(OODIR)/program/soffice
