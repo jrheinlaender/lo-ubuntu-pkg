@@ -859,15 +859,6 @@ clean:
 	rm -f ooo-build/src/GSI*err
 	rm -f ooo-build/config.*
 
-	# uuencode broffice.org bitmaps
-	for f in debian/brintro.bmp debian/brabout.bmp; do \
-	  if [ -s $$f ]; then \
-	    uuencode $$f $$f > $$f.uu.tmp && \
-	    debian/scripts/move-if-change $$f.uu.tmp $$f.uu; \
-            touch -r $$f $$f.uu ;\
-	  fi ;\
-	  rm -f $$f ;\
-	done
 	dh_clean
 
 	# Files created in debian directory
@@ -1047,6 +1038,7 @@ ooo-build/config.status: ooo-build/configure
 	for FILE in debian/scripts/installoverrides \
 		    debian/scripts/move-if-change \
 		    debian/scripts/cleandupes \
+		    debian/scripts/fix_image_rgb \
 		    ooo-build/configure \
 		    ooo-build/bin/[a-z]* ;\
 	do \
@@ -1071,14 +1063,6 @@ ooo-build/config.status: ooo-build/configure
 		ooo-build/desktop/48x48/ooo-$$i.png.uu ;\
 	    touch -r ooo-build/desktop/48x48/ooo-$$i.png.uu \
 		ooo-build/desktop/48x48/ooo-$$i.png ;\
-	  fi; \
-	done
-
-	# uudecode broffice.org bitmaps, fixed intro.bmp
-	for i in debian/brintro.bmp debian/brabout.bmp; do \
-	  if [ ! -s $$i ]; then \
-	    uudecode -o $$i $$i.uu ;\
-	    touch -r $$i.uu $$i; \
 	  fi; \
 	done
 
@@ -1966,9 +1950,17 @@ $(STAMP_DIR)/broffice: $(STAMP_DIR)/install $(STAMP_DIR)/install-arch $(STAMP_DI
 	cat $(PKGDIR)-common/usr/share/applications/ooo-template.desktop \
 		| sed -e "s/ooff/broff/" | sed -e "s/OpenO/BrO/" \
 		 > debian/broffice.org/usr/share/applications/ooo-template.desktop
-	install -m644 debian/brintro.bmp \
-		debian/broffice.org/$(OODIR)/program/intro.bmp
-	install -m644 debian/brabout.bmp \
+	# FIXME: This also needs removal of the Sun stuff there.
+	if dpkg-parsechangelog | grep urgency | grep -q $(SRCNUM); then \
+		debian/scripts/fix_image_rgb \
+			$(SOURCE_TREE)/ooo_custom_images/dev_broffice/introabout/intro.bmp \
+			debian/broffice.org/$(OODIR)/program/intro.bmp; \
+	else \
+		debian/scripts/fix_image_rgb \
+			$(SOURCE_TREE)/ooo_custom_images/broffice/introabout/intro.bmp \
+			debian/broffice.org/$(OODIR)/program/intro.bmp; \
+	fi
+	install -m644 $(SOURCE_TREE)/ooo_custom_images/broffice/introabout/about.bmp \
 		debian/broffice.org/$(OODIR)/program/about.bmp
 	cd debian/broffice.org/usr/bin && ln -s ooffice broffice
 
@@ -2332,7 +2324,18 @@ endif
 				debian/$$i/usr/share/bug/$$i/control; \
 		fi ;\
 	done
-	
+
+	# fix intro
+	if dpkg-parsechangelog | grep urgency | grep -q $(SRCNUM); then \
+		debian/scripts/fix_image_rgb \
+			$(SOURCE_TREE)/ooo_custom_images/dev_nologo/introabout/intro.bmp \
+			$(PKGDIR)-common/$(OODIR)/program/intro.bmp; \
+	else \
+		debian/scripts/fix_image_rgb \
+			$(SOURCE_TREE)/ooo_custom_images/nologo/introabout/intro.bmp \
+			$(PKGDIR)-common/$(OODIR)/program/intro.bmp; \
+	fi
+
 	touch $@
 
 binary-arch: $(STAMP_DIR)/binary-arch
