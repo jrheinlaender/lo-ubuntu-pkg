@@ -78,6 +78,7 @@ BUILD_PPC64=y
 PATCHSET=$(DIST)
 BUILD_DEPS=
 BUILD_PYUNO=y
+USE_PYCENTRAL=y
 PACKAGE_QA_TOOLS=y
 PACKAGE_TTF_OPENSYMBOL=y
 PACKAGE_NPSOPLUGIN=y
@@ -133,6 +134,7 @@ USE_LIBCURL4=y
 USE_SYSTEM_LIBSVG=y
 USE_SYSTEM_DMAKE=y
 USE_LIBSUITESPARSE=y
+USE_BZIP_COMPRESS=n
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
@@ -179,7 +181,51 @@ ifeq "$(DIST)" "Debian"
 endif
 
 ifeq "$(DIST)" "Ubuntu"
+  # common settings
+  PATCHSET=$(DIST)$(shell perl -e 'print ucfirst("$(DISTREL)");')
   USE_FIREFOX=y
+  SYSTEM_ALTLINUXHYPH=n
+  CONFIGURE_FLAGS += \
+       --with-intro-bitmaps=$(CURDIR)/ubuntu/openintro_ubuntu.bmp \
+       --with-about-bitmaps=$(CURDIR)/ubuntu/openabout_ubuntu.bmp
+  USE_OOO_BUILD_DESKTOPS=y
+  BUILD_DBG_PACKAGE=n
+  USE_BZIP_COMPRESS=y
+  USE_SYSTEM_LPSOLVE=n
+  USE_SYSTEM_PORTAUDIO=n
+
+  BUILD_DEPS += , translate-toolkit
+
+  ifeq "$(DISTREL)" "gutsy"
+
+  else ifeq "$(DISTREL)" "feisty"
+
+  else ifeq "$(DISTREL)" "edgy"
+    USE_SYSTEM_HUNSPELL=n
+    ENABLE_MONO=n
+
+  else ifeq "$(DISTREL)" "dapper"
+    USE_DBUS=n
+    USE_SYSTEM_HUNSPELL=n
+    USE_PYCENTRAL=n
+    USE_SYSTEM_LPSOLVE=n
+    DBVER=4.3
+    USE_SYSTEM_DMAKE=n
+    USE_BZIP_COMPRESS=n
+    USE_SYSTEM_LIBWPS=n
+    ENABLE_MONO=n
+    JAVA_GCJ_NATIVE_DEPENDS=
+    BUILD_CAIROCANVAS=n
+    CAIRO_FONTS_PATCH=n
+  else # fallback
+
+  endif
+
+  ifeq "$(PKGSOURCE)" "openoffice.org$(VER)-l10n"
+    INSTALLED_ODK=n
+    export OOO_RUN_SDK_INSTALLER = no
+  endif
+
 endif
 
 # Debian Etch backport
@@ -262,6 +308,11 @@ ifneq "$(USE_EXTERNAL_MYTHES)" "y"
   endif
 endif
 
+ifeq "$(USE_BZIP_COMPRESS)" "y"
+	DPKG_DEPENDS = dpkg (>= 1.10.24)
+	BUILDDEB_OPTIONS = -- -Zbzip2
+endif
+
 ifeq "$(USE_LIBCURL4)" "y"
 	BUILD_DEPS += , libcurl4-gnutls-dev [$(OOO_ARCHS)]
 else
@@ -282,7 +333,12 @@ endif
 endif
 
 ifeq "$(BUILD_PYUNO)" "y"
-    BUILD_DEPS += , python-central (>= 0.5) [$(OOO_ARCHS)], debhelper (>= 5.0.37.2), python-dev (>= 2.4) [$(OOO_ARCHS)]
+    ifeq "$(USE_PYCENTRAL)" "y"
+      BUILD_DEPS += , python-central (>= 0.5) [$(OOO_ARCHS)], debhelper (>= 5.0.37.2)
+    else
+      BUILD_DEPS += , debhelper (>= 5.0)
+    endif
+    BUILD_DEPS += , python-dev (>= 2.4) [$(OOO_ARCHS)]
     WRITER_PYUNO_DEP = python-uno (>= $(UPSTREAM_VERSION))
     DBG_DBG_SUGGESTS+= , python-dbg
 else 
@@ -416,7 +472,7 @@ endif
 
 ifeq "$(USE_FIREFOX)" "y"
 	CONFIGURE_FLAGS+= --with-firefox
-	BUILD_DEPS+= , firefox-dev [$(OOO_ARCHS)], libnspr-dev [$(OOO_ARCHS)]
+	BUILD_DEPS+= , firefox-dev [$(OOO_ARCHS)]
 else
  ifeq "$(USE_XULRUNNER)" "y"
 	CONFIGURE_FLAGS+= --with-xulrunner
@@ -557,7 +613,11 @@ endif
 ifeq "$(BUILD_KDE)" "n"
 	CONFIGURE_FLAGS+= --disable-kde
 	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-kde
-	CONFIGURE_FLAGS+= --with-images="industrial crystal hicontrast tango"
+	ifeq "$(DIST)" "Ubuntu"
+		CONFIGURE_FLAGS+= --with-images="industrial crystal hicontrast tango human"
+	else
+		CONFIGURE_FLAGS+= --with-images="industrial crystal hicontrast tango"
+	endif
 else
        BUILD_DEPS += , kdelibs4-dev $(KDELIBS_MINVER) [$(OOO_ARCHS)]
        DBG_DBG_SUGGESTS+= , kdelibs-dbg, qt-x11-free-dbg
@@ -660,6 +720,11 @@ export BUILD_FROM
 NUM_CPUS=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^\(.*,\)\?num-cpus=\([0-9]\+\).*$$/\2/p')
 ifneq "$(NUM_CPUS)" ""
   CONFIGURE_FLAGS += --with-num-cpus=$(NUM_CPUS)
+else ifeq "$(DIST)" "Ubuntu"
+  AVAIL_CPUS := $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
+  ifneq ($(AVAIL_CPUS),1)
+    CONFIGURE_FLAGS += --with-num-cpus=$(shell expr $(AVAIL_CPUS) + 1)
+  endif
 endif
 
 # Build python depends from current python version
