@@ -1971,6 +1971,20 @@ endif
 	install -D -m644 $(SOURCE_TREE)/scsolver/ChangeLog \
 		$(PKGDIR)-calc/usr/share/doc/openoffice.org$(VER)-calc/changelog.scsolver
 
+	# move rpt stuff into -reportdesigner
+	rm -rf $(PKGDIR)-reportdesigner
+	mkdir -p $(PKGDIR)-reportdesigner/$(OODIR)/program
+	mv $(PKGDIR)-base/$(OODIR)/program/librpt* \
+		$(PKGDIR)-reportdesigner/$(OODIR)/program
+ifeq "$(ENABLE_JAVA)" "y"
+	# install this; we need to register this ourselved later in
+	# the maintainer scripts. This is intended upstream (**rpt* stuff
+	# in 2.3 and the actual designer as an extension, without which
+	# the *rpt* stuff is a no-op.
+	install -D -m644 $(SOURCE_TREE)/reportdesign/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/reportdesign.oxt \
+		$(PKGDIR)-reportdesigner/$(OODIR)/share/extension/install/reportdesign.oxt
+endif
+
 	for i in $(ARCH_DEP_PACKAGES); do \
 		install -D -m644 debian/presubj \
 			debian/$$i/usr/share/bug/$$i/presubj; \
@@ -1979,7 +1993,7 @@ endif
 				debian/$$i/usr/share/bug/$$i/control; \
 		fi ;\
 	done
-	
+
 	touch $@
 	
 broffice: $(STAMP_DIR)/broffice
@@ -2285,8 +2299,7 @@ ifeq "$(HELPISOS)" ""
 	# Add them now because openoffice.org-help-* packaged in contrib or so
 	# will need them
 	set -e; \
-	for z in images.zip images_industrial.zip images_crystal.zip images_hicontrast.zip\
-		images_tango.zip; do \
+	for z in images.zip images_industrial.zip images_crystal.zip images_hicontrast.zip images_tango.zip; do \
 		echo "repackaging $$z..."; \
 		rm -rf $$z; mkdir $$z; \
 		cd $$z; \
@@ -2378,8 +2391,6 @@ ifeq "$(PACKAGE_SDK)" "y"
 	cd $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev && \
 		ln -s /$(OODIR)/sdk/examples examples
 endif
-
-	rm -f $(PKGDIR)-core/$(OODIR)/program/*updchk*
 
 ifneq "$(DIST)" "Ubuntu"
 	perl -pi -e "s/Ubuntu helper/helper/" $(PKGDIR)-common/$(OODIR)/program/soffice
@@ -2488,7 +2499,7 @@ endif
 # This switch to dh_shlibdeps reduces the 'libXXX not found' warnings but
 # causes ldd crashes sometimes when used with fakeroot:
 #          -l $(PKGDIR)-core/$(OPENOFFICEDIR)/program
-	dh_gencontrol -s -- \
+	dh_gencontrol -s -Nopenoffice.org$(VER)-reportdesigner -- \
 		-V'base-version=$(BASE_VERSION)' \
 		-V'help-l10n-virtual-version=$(HELP_L10N_VIRTUAL_VERSION)' \
 		-V'dev-stl-depends=$(DEV_STL_DEPENDS)' \
@@ -2504,6 +2515,8 @@ endif
 		-V'gstreamer-plugins-suggests=$(GSTREAMER_PLUGINS_SUGGESTS)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-v$(BINARY_VERSION)
+	dh_gencontrol -popenoffice.org$(VER)-reportdesigner -- \
+		-v$(shell grep "<version" $(SOURCE_TREE)/reportdesign/util/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+OOo$(BINARY_VERSION)
 	dh_md5sums -s
 	dh_builddeb -s
 	
