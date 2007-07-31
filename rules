@@ -136,6 +136,7 @@ USE_SYSTEM_LIBSVG=y
 USE_SYSTEM_DMAKE=y
 USE_LIBSUITESPARSE=y
 USE_BZIP_COMPRESS=n
+PRUNE_OOOBUILD=y
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
@@ -194,6 +195,7 @@ ifeq "$(DIST)" "Ubuntu"
   USE_BZIP_COMPRESS=y
   USE_SYSTEM_LPSOLVE=n
   USE_SYSTEM_PORTAUDIO=n
+  PRUNE_OOOBUILD=n
 
   BUILD_DEPS += , translate-toolkit
 
@@ -349,10 +351,12 @@ else
   BUILD_DEPS += python [$(OOO_ARCHS)]
 endif
 
-ifeq "$(BUILD_JARS_NATIVE)" "y"
+ifeq "$(ENABLE_JAVA)" "y"
+ ifeq "$(BUILD_JARS_NATIVE)" "y"
 	BUILD_DEPS += , dpkg-dev (>= 1.13.19)
 	STAMP_NATIVE_JARS = $(STAMP_DIR)/native-jars
 	JAVA_GCJ_DEPENDS = libgcj-common (>= 1:4.1.1-14)
+ endif
 endif
 
 ifneq "$(PACKAGE_QA_TOOLS)" "y"
@@ -860,38 +864,49 @@ clean:
 	  $(MAKE) -C ooo-build distclean || true ;\
 	fi
 
-	# we do not need them and they make problem with dpkg-source....
-	rm -f ooo-build/www/*.png \
-		ooo-build/www/images/*.png \
-		ooo-build/www/l10n/*.gif \
-		ooo-build/src/open*.png ooo-build/src/file-bug*.png \
-		ooo-build/src/*.jpg ooo-build/src/*.xcf \
-		ooo-build/src/*.ico ooo-build/src/open{intro,about}*.bmp \
-		ooo-build/src/Draft.jpg ooo-build/src/*_nld.* \
-		ooo-build/src/easter/*.png
-	rm -rf ooo-build/scratch/buildbot ooo-build/buildbot
-
-	rm -f ooo-build/scratch/offapi-vba/constants/constant_types.rdb
-
-	if [ -d ooo-build/test ]; then \
+	# prune upstream ooo-build files
+ifeq "$(DIST)" "PRUNE_OOOBUILD"
+	set -e; \
+	cd ooo-build ;\
+	rm -rf \
+	 buildbot \
+	 scratch/buildbot \
+	 scratch/offapi-vba/constants/constant_types.rdb \
+	 src/*.ico \
+	 src/*.jpg \
+	 src/*.xcf \
+	 src/*_nld.* \
+	 src/Draft.jpg \
+	 src/file-bug*.png \
+	 src/open*.png \
+	 src/open{intro,about}*.bmp \
+	 src/easter/*.png \
+	 patches/test/*.tar \
+	 www/images/*.png \
+	 www/l10n/*.gif ; \
+	 if [ -d ooo-build/test ]; then \
 		find ooo-build/test ooo-build/doc ooo-build/scratch -type f \
-		     \( -name '*.xls' -o -name '*.sx?' -o -name '*.doc' \
-			-o -name '*.123' -o -name '*.lwp' -o -name '*.ppt' \
-			-o -name '*.wb2' -o -name '*.png' -o -name '*.WB2' \
-			-o -name '*.odp' -o -name '*.odt' -o -name '*.ods' \
-			-o -name '*.XLS' -o -name '*.xlsx' -o -name '*.xls' \) \
+			\( -name '*.123' -o -name '*.doc' -o -name '*.lwp' \
+			-o -name '*.odp' -o -name "*.ods" -o -name '*.odt' \
+			-o -name '*.png' -o -name '*.ppt' -o -name '*.sx?' \
+			-o -name '*.wb2' -o -name '*.WB2' -o -name '*.xls' \
+			-o -name '*.XLS' -o -name '*.xlsx' \) \
 			-exec rm {} \; ;\
-	fi
-	rm -rf ooo-build/patches/test/*.tar ooo-build/patches/test/*.xls
-	find ooo-build/scratch ooo-build/src -type f \
-			\( -name '*.ott' -o -name '*.ods' -o -name '*.odg' \) \
-			-exec rm {} \;
-	rm -f ooo-build/fonts/symbols.xls
-	rm -rf ooo-build/desktop/*.desktop
-	rm -rf ooo-build/build
-	rm -f ooo-build/src/GSI*.sdf
-	rm -f ooo-build/po/.intltool-merge-cache
+	 fi
+	 find ooo-build/scratch ooo-build/src -type f \
+		\( -name '*.odg' -o -name '*.ods' -o -name '*.ott' \) \
+		-exec rm {} \;
+endif
+
+	# remove file with space in the name
+	rm -f ooo-build/test/macro/clock\ chart.xls
+
 	rm -rf ooo-build/autom4ate.cache
+	rm -rf ooo-build/build
+	rm -rf ooo-build/desktop/*.desktop
+	rm -f ooo-build/fonts/symbols.xls
+	rm -f ooo-build/po/.intltool-merge-cache
+	rm -f ooo-build/src/GSI*.sdf
 
 	# remove generated symlinks / java wrappers
 	rm -rf debian/usr
@@ -901,32 +916,97 @@ clean:
 	# convenience link
 	rm -f build
 
-	# uuencode binary files
-	set -e; \
-	cd ooo-build ;\
-	  for f in src/ooo_*_images*.bz2 src/extras*bz2 \
-	    src/evolocal.odb src/*.gz src/GSI*bz2 src/xt*zip src/go-oo-team.png \
-	    templates/*.o?? src/biblio*bz2 src/tango_mainapp_16.png; do \
-	  if [ -s $$f ]; then \
-	    uuencode $$f $$f > $$f.uu.tmp && \
-	    ../debian/scripts/move-if-change $$f.uu.tmp $$f.uu; \
-            touch -r $$f $$f.uu ;\
-	  fi ;\
-	  rm -f $$f ;\
-	done
-
-        # uuencode Ximian desktop icons
-	set -e; \
-	for f in ooo-build/desktop/*/*.png; do \
-	  if [ -s $$f ]; then \
-	    uuencode $$f $$f > $$f.uu.tmp && \
-	    debian/scripts/move-if-change $$f.uu.tmp $$f.uu; \
-            touch -r $$f $$f.uu ;\
-	  fi; \
-	done
-	rm -f ooo-build/desktop/*/*.png
 	rm -f ooo-build/src/GSI*err
 	rm -f ooo-build/config.*
+
+	# uuencode upstream ooo-build binary files
+	set -e; \
+	cd ooo-build ; \
+	 for f in \
+	   buildbot/buildbot-source/buildbot/*.png \
+	   buildbot/buildbot-source/docs/PyCon-2003/*.png \
+	   desktop/*/*.png \
+	   doc/*.ods \
+	   doc/*.sxw \
+	   patches/test/*.tar \
+	   scratch/buildbot/buildbot-0.7.3/buildbot/*.png \
+	   scratch/buildbot/buildbot-0.7.3/docs/PyCon-2003/*.png \
+	   scratch/offapi-vba/constants/*.rdb \
+	   scratch/sc-vba/TestDocuments/*.xls \
+	   scratch/scsolver/docs/*.odg \
+	   scratch/scsolver/workben/testcase/*.ods \
+	   src/*.bmp \
+	   src/*.ico \
+	   src/*.jpg \
+	   src/*.odb \
+	   src/*.png \
+	   src/easter/*.png \
+	   templates/*.ott \
+	   test/Lwp/*.lwp \
+	   test/Lwp/*.png \
+	   test/calc/*.xls \
+	   test/draw/*.odp \
+	   test/draw/*.ppt \
+	   test/draw/*.sxd \
+	   test/excel/*.xls \
+	   test/excel/*.xlsx \
+	   test/lotus/*.123 \
+	   test/macro/*.ods \
+	   test/macro/*.xls \
+	   test/macro/ConvertTests/*.xls \
+	   test/macro/vba_donated_docs/*.XLS \
+	   test/macro/vba_donated_docs/*.xls \
+	   test/qpro/*.png \
+	   test/qpro/*.WB2 \
+	   test/qpro/*.wb2 \
+	   test/qpro/*.xls \
+	   test/writer/*.odt \
+	   test/writer/*.sxw \
+	   www/images/*.png \
+	   www/l10n/*.gif \
+	   ; do \
+	  if [ -s $$f ]; then \
+	   uuencode $$f $$f > $$f.uu.tmp && \
+	   ../debian/scripts/move-if-change $$f.uu.tmp $$f.uu; \
+	   touch -r $$f $$f.uu ; \
+	   rm -f $$f ; \
+	  fi ; \
+	 done
+
+	# uuencode add-on ooo-build binary files
+	set -e; \
+	cd ooo-build ; \
+	 for f in \
+	   src/*.bz2 \
+	   src/*.dll \
+	   src/*.gz \
+	   ; do \
+	  if [ -s $$f ]; then \
+	   case "$$f" in src/src680*) continue ; esac ; \
+	   uuencode $$f $$f > $$f.uu.tmp && \
+	   ../debian/scripts/move-if-change $$f.uu.tmp $$f.uu; \
+	   touch -r $$f $$f.uu ; \
+	   rm -f $$f ; \
+	  fi ; \
+	 done
+
+	# uuencode ubuntu binary files
+ifeq "$(DIST)" "Ubuntu"
+	set -e; \
+	cd ubuntu ; \
+	 for f in \
+	   *.bmp \
+	   *.bz2 \
+	   *.otp \
+	   ; do \
+	  if [ -s $$f ]; then \
+	   uuencode $$f $$f > $$f.uu.tmp && \
+	   ../debian/scripts/move-if-change $$f.uu.tmp $$f.uu; \
+	   touch -r $$f $$f.uu ; \
+	   rm -f $$f ; \
+	  fi ; \
+	 done
+endif
 
 	dh_clean
 
@@ -1038,9 +1118,11 @@ ifneq "$(HELPISOS)" ""
 	perl -pi -e 's|(Depends: openoffice.org$(VER)-writer, openoffice.org$(VER)-l10n-en-us)|\1, ttf-devanagari-fonts|' \
 		debian/control
 endif
-ifeq "$(BUILD_JARS_NATIVE)" "y"
+ifeq "$(ENABLE_JAVA)" "y"
+ ifeq "$(BUILD_JARS_NATIVE)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.gcj.in
+ endif
 endif
 ifeq "$(ENABLE_MONO)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
@@ -1120,23 +1202,17 @@ ooo-build/config.status: ooo-build/configure
 	  
 	mkdir -p $(STAMP_DIR)
 
-	# uudecode source files
-	cd ooo-build; for uu in src/*.uu templates/*.uu; do \
-	  orig="`echo "$$uu" |sed -e 's#.uu$$##'`" ;\
-          if [ ! -s $$orig ]; then \
-            uudecode -o $$orig $$uu ;\
-            touch -r $$uu $$orig ;\
-          fi ;\
-	done
-
-        # uudecode Ximian desktop icons
-	for i in base calc draw impress math template web writer; do \
-	  if [ ! -s ooo-build/desktop/48x48/ooo-$$i.png ]; then \
-	    uudecode -o ooo-build/desktop/48x48/ooo-$$i.png \
-		ooo-build/desktop/48x48/ooo-$$i.png.uu ;\
-	    touch -r ooo-build/desktop/48x48/ooo-$$i.png.uu \
-		ooo-build/desktop/48x48/ooo-$$i.png ;\
-	  fi; \
+	# uudecode files, omit GSI files
+	set -e; \
+	for uu in \
+	  `find . -name *.uu` \
+	  ; do \
+	 case "$$uu" in ooo-build/src/GSI*) continue ; esac ; \
+	 orig="`echo "$$uu" |sed -e 's#.uu$$##'`" ;\
+	 if [ ! -s $$orig ]; then \
+	  uudecode -o $$orig $$uu ; \
+	  touch -r $$uu $$orig ; \
+	 fi ; \
 	done
 
 ifneq ($(GCC_VERSION),)
@@ -2147,11 +2223,13 @@ ifeq "$(PACKAGE_SDK)" "y"
 	find $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev/docs -name '*.html' \
 	  | xargs sed -ri 's,href="[^"]*DevelopersGuide/([^"]*\.(xhtml|pdf)[^"]*")(.*),href="http://api.openoffice.org/docs/DevelopersGuide/\1\3,g'
 
+ ifeq "$(ENABLE_JAVA)" "y"
         # fix links
 	cd $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev/docs/java/ref && \
 	for i in `find . -type f | xargs`; do \
 		perl -pi -e 's,file:$(CURDIR)/ooo-build/build/(current|$(TAG))/odk/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/odkcommon/docs/common/ref/,,g' $$i; \
 	done
+ endif
 
 endif
 
@@ -2562,9 +2640,11 @@ ifeq "$(PACKAGE_SDK)" "y"
 			> debian/openoffice.org-dev-doc.doc-base.udk-$$i-ref; \
 	done 
 	UDK_CPP_FILES=`find $(CURDIR)/debian/openoffice.org-dev-doc/usr/share/doc/openoffice.org-dev/docs/cpp/ref | sed -e 's,$(CURDIR)/debian/openoffice.org-dev-doc,,g' | xargs`; \
-	echo "Files: $$UDK_CPP_FILES" >> debian/openoffice.org-dev-doc.doc-base.udk-cpp-ref; \
+	echo "Files: $$UDK_CPP_FILES" >> debian/openoffice.org-dev-doc.doc-base.udk-cpp-ref
+ ifeq "$(ENABLE_JAVA)" "y"
 	UDK_JAVA_FILES=`find $(CURDIR)/debian/openoffice.org-dev-doc/usr/share/doc/openoffice.org-dev/docs/java/ref | sed -e 's,$(CURDIR)/debian/openoffice.org-dev-doc,,g' | xargs`; \
 	echo "Files: $$UDK_JAVA_FILES" >> debian/openoffice.org-dev-doc.doc-base.udk-java-ref
+ endif
 	# xargs strips the many files here so we need to post-process it.
 	UDK_COMMON_FILES=`find $(CURDIR)/debian/openoffice.org-dev-doc/usr/share/doc/openoffice.org-dev/docs/common/ref | sed -e 's,$(CURDIR)/debian/openoffice.org-dev-doc,,g' | xargs`; \
 	TMP=`mktemp -q`; \
