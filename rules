@@ -137,6 +137,7 @@ USE_SYSTEM_DMAKE=y
 USE_LIBSUITESPARSE=y
 USE_BZIP_COMPRESS=n
 PRUNE_OOOBUILD=y
+DBVER=4.4
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
@@ -186,41 +187,45 @@ endif
 ifeq "$(DIST)" "Ubuntu"
   # common settings
   PATCHSET=$(DIST)$(shell perl -e 'print ucfirst("$(DISTREL)");')
-  USE_FIREFOX=y
-  SYSTEM_ALTLINUXHYPH=n
   CONFIGURE_FLAGS += \
        --with-intro-bitmaps=$(CURDIR)/ubuntu/openintro_ubuntu.bmp \
        --with-about-bitmaps=$(CURDIR)/ubuntu/openabout_ubuntu.bmp
-  USE_OOO_BUILD_DESKTOPS=y
-  BUILD_DBG_PACKAGE=n
-  USE_BZIP_COMPRESS=y
-  USE_SYSTEM_LPSOLVE=n
-  USE_SYSTEM_PORTAUDIO=n
-  PRUNE_OOOBUILD=n
 
   BUILD_DEPS += , translate-toolkit
+
+  BUILD_DBG_PACKAGE=n
+  PRUNE_OOOBUILD=n
+  SYSTEM_ALTLINUXHYPH=n
+  USE_BZIP_COMPRESS=y
+  USE_FIREFOX=y
+  USE_OOO_BUILD_DESKTOPS=y
+  USE_PYCENTRAL=y
+  USE_SYSTEM_LPSOLVE=n
+  USE_SYSTEM_PORTAUDIO=n
+  USE_SYSTEM_XMLSEC=n
 
   ifeq "$(DISTREL)" "gutsy"
 
   else ifeq "$(DISTREL)" "feisty"
 
   else ifeq "$(DISTREL)" "edgy"
-    USE_SYSTEM_HUNSPELL=n
     ENABLE_MONO=n
+    USE_SYSTEM_HUNSPELL=n
 
   else ifeq "$(DISTREL)" "dapper"
-    USE_DBUS=n
-    USE_SYSTEM_HUNSPELL=n
-    USE_PYCENTRAL=n
-    USE_SYSTEM_LPSOLVE=n
     DBVER=4.3
-    USE_SYSTEM_DMAKE=n
-    USE_BZIP_COMPRESS=n
-    USE_SYSTEM_LIBWPS=n
-    ENABLE_MONO=n
-    JAVA_GCJ_NATIVE_DEPENDS=
+
     BUILD_CAIROCANVAS=n
     CAIRO_FONTS_PATCH=n
+    ENABLE_MONO=n
+    USE_BZIP_COMPRESS=n
+    USE_DBUS=n
+    USE_PYCENTRAL=n
+    USE_SYSTEM_DMAKE=n
+    USE_SYSTEM_HUNSPELL=n
+    USE_SYSTEM_LIBWPS=n
+    USE_SYSTEM_LPSOLVE=n
+
   else # fallback
 
   endif
@@ -444,6 +449,9 @@ export JAVA_HOME
   ifeq "$(SYSTEM_XT)" "y"
 	CONFIGURE_FLAGS += --with-system-xt	
 	BUILD_DEPS += , libxt-java (>= 0.20050823) [$(OOO_JAVA_ARCHS)]
+    ifneq "$(ETCH_BACKPORT)" "y"
+	JAVA_GCJ_DEPENDS += , libxt-java-gcj
+    endif
   endif
   ifeq "$(SYSTEM_XERCES)" "y"
 	CONFIGURE_FLAGS += --with-system-xerces
@@ -467,7 +475,9 @@ export JAVA_HOME
 	CONFIGURE_FLAGS += --with-system-xml-apis
 	# xml-apis.jar is already a link in xalan, see above
   endif
-	BUILD_DEPS += , libdb4.4-java [$(OOO_JAVA_ARCHS)]
+	CONFIGURE_FLAGS += --with-db-jar=/usr/share/java/libdb$(DBVER)-java.jar
+	BUILD_DEPS += , libdb$(DBVER)-dev [$(OOO_JAVA_ARCHS)]
+	BUILD_DEPS += , libdb$(DBVER)-java [$(OOO_JAVA_ARCHS)]
   ifeq "$(DIST)" "Debian"
 	BUILD_DEPS += , mingw32 [$(OOO_JAVA_ARCHS)]
 	CONFIGURE_FLAGS += --with-mingwin=i586-mingw32msvc-g++
@@ -539,9 +549,6 @@ else
       BUILD_DEPS += , libstlport4.6-dev $(LIBSTLPORT_MINVER) [$(OOO_ARCHS)]
       DEV_STL_DEPENDS=, libstlport4.6-dev $(LIBSTLPORT_MINVER)
     endif
-ifeq "$(USE_STLPORT5)" "y"
-else
-endif
     CONFIGURE_FLAGS+= --with-stlport=$(CURDIR)/stlport
   endif
 endif
@@ -651,6 +658,9 @@ ifeq "$(ENABLE_JAVA)" "y"
 	BUILD_DEPS += , libhsqldb-java (>= 1.8.0.0-2) [$(OOO_JAVA_ARCHS)]
 	BASE_HSQLDB_DEPENDS = libhsqldb-java (>= 1.8.0.0-2)
 	CONFIGURE_FLAGS+= --with-system-hsqldb
+    ifneq "$(ETCH_BACKPORT)" "y"
+	JAVA_GCJ_DEPENDS += , libhsqldb-java-gcj
+    endif
   endif
 
   ifeq "$(USE_SYSTEM_BSH)" "y"
