@@ -18,4 +18,4 @@ FILE_LOCKING=auto
 # If the environment variable SAL_NOOPENGL is set,
 # the setting if OPENGL_SUPPORT has no effect.
 
-OPENGL_SUPPORT=yes
+OPENGL_SUPPORT=no

@@ -117,8 +117,6 @@ BUILD_KDE=y
 BUILD_DBG_PACKAGE=y
 USE_SYSTEM_BSH=y
 USE_SYSTEM_HSQLDB=y
-USE_FIREFOX=n
-USE_XULRUNNER=n
 KDELIBS_MINVER= (>= 4:3.4.3-2)
 USE_SYSTEM_LPSOLVE=y
 USE_SHARED_LPSOLVE=y
@@ -137,6 +135,8 @@ USE_LIBSUITESPARSE=y
 USE_BZIP_COMPRESS=n
 PRUNE_OOOBUILD=y
 DBVER=4.4
+PARALLEL_BUILD=y
+MOZILLA=xulrunner
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
@@ -180,63 +180,6 @@ ifeq "$(DIST)" "Debian"
   endif
   SYSTEM_AGG=y
   USE_SYSTEM_HUNSPELL=y
-  USE_XULRUNNER=y
-endif
-
-ifeq "$(DIST)" "Ubuntu"
-  # common settings
-  PATCHSET=$(DIST)$(shell perl -e 'print ucfirst("$(DISTREL)");')
-  CONFIGURE_FLAGS += \
-       --with-intro-bitmaps=$(CURDIR)/ubuntu/openintro_ubuntu.bmp \
-       --with-about-bitmaps=$(CURDIR)/ubuntu/openabout_ubuntu.bmp
-
-  BUILD_DEPS += , translate-toolkit
-  
-  HUMAN=human
-  IMAGES_HUMAN_ZIP=images_human.zip
-
-  BUILD_DBG_PACKAGE=n
-  PRUNE_OOOBUILD=n
-  SYSTEM_ALTLINUXHYPH=n
-  USE_BZIP_COMPRESS=y
-  USE_FIREFOX=y
-  USE_OOO_BUILD_DESKTOPS=y
-  USE_PYCENTRAL=y
-  USE_SYSTEM_LPSOLVE=n
-  USE_SYSTEM_PORTAUDIO=n
-  USE_SYSTEM_XMLSEC=n
-
-  ifeq "$(DISTREL)" "gutsy"
-
-  else ifeq "$(DISTREL)" "feisty"
-
-  else ifeq "$(DISTREL)" "edgy"
-    ENABLE_MONO=n
-    USE_SYSTEM_HUNSPELL=n
-
-  else ifeq "$(DISTREL)" "dapper"
-    DBVER=4.3
-
-    BUILD_CAIROCANVAS=n
-    CAIRO_FONTS_PATCH=n
-    ENABLE_MONO=n
-    USE_BZIP_COMPRESS=n
-    USE_DBUS=n
-    USE_PYCENTRAL=n
-    USE_SYSTEM_DMAKE=n
-    USE_SYSTEM_HUNSPELL=n
-    USE_SYSTEM_LIBWPS=n
-    USE_SYSTEM_LPSOLVE=n
-
-  else # fallback
-
-  endif
-
-  ifeq "$(PKGSOURCE)" "openoffice.org$(VER)-l10n"
-    INSTALLED_ODK=n
-    export OOO_RUN_SDK_INSTALLER = no
-  endif
-
 endif
 
 # Debian Etch backport
@@ -406,15 +349,6 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	  ka km ko ku lo lt lv mk ml-IN mr-IN nb ne nl nn nr ns or-IN pa-IN \
 	  pl pt pt-BR ru rw sk sl sr-CS ss st sv \
 	  ta-IN te-IN tg th tn tr ts uk uz ve vi xh zh-CN zh-TW zu
-
-    ifeq "$(DIST)" "Ubuntu"
-	# additional things built in Ubuntu, having belocs-locales
-	ISOS := en-US $(sort $(filter-out en-US, $(ISOS)) kn sw ti-ER ur-IN)
-	HELPISOS := en-US $(sort $(filter-out en-US, $(HELPISOS)) br)
-	LANGPACKISOS := en-US $(sort $(filter-out en-US, $(LANGPACKISOS)) kn sw ti-ER ur-IN)
-	REMOVE_HELP := bs cy fi lt lv sh-YU sr-CS ur-IN
-	FILTER_HELP := ga hr pl rw sk th tr vi
-    endif
   endif
 else
 	ISOS=en-US
@@ -422,25 +356,6 @@ else
 	LANGPACKISOS=en-US
 endif
 BUILD_ISOS = $(ISOS)
-
-ifeq "$(DIST)" "Ubuntu"
-	LANGUAGES := $(ISOS)
-  ifeq "$(PKGSOURCE)" "openoffice.org$(VER)"
-	BUILD_ONLY_EN_US=y
-	ISOS := en-US
-	LANGPACKISOS := $(ISOS)
-	HELPISOS := 
-	OOO_L10N_DIR = $(CURDIR)/debian/l10n
-    ifeq (,$(findstring nogsi, $(DEB_BUILD_OPTIONS)))
-	GSI_EXPORT_STAMP = $(STAMP_DIR)/gsi-export
-    endif
-  endif
-  ifeq "$(PKGSOURCE)" "openoffice.org$(VER)-l10n"
-	PACKAGE_QA_TOOLS=n
-
-	DEBHELPER_OPTIONS += $(foreach p, $(shell echo $(PACKAGES) | egrep -v l10n) openoffice.org$(VER)-l10n-en-us,-N$(p))
-  endif
-endif
 
 ifeq "$(VER)" ""
 	CONFIGURE_FLAGS += --with-binsuffix=no
@@ -484,9 +399,6 @@ export JAVA_HOME
   ifeq "$(SYSTEM_XT)" "y"
 	CONFIGURE_FLAGS += --with-system-xt	
 	BUILD_DEPS += , libxt-java (>= 0.20050823) [$(OOO_JAVA_ARCHS)]
-    ifeq "$(DIST)" "Ubuntu"
-	JAVA_GCJ_DEPENDS += , libxt-java-gcj
-    endif
   endif
   ifeq "$(SYSTEM_XERCES)" "y"
 	CONFIGURE_FLAGS += --with-system-xerces
@@ -520,17 +432,16 @@ else
 	HELPISOS=
 endif
 
-ifeq "$(USE_FIREFOX)" "y"
-	CONFIGURE_FLAGS+= --with-system-mozilla=firefox
-	BUILD_DEPS+= , firefox-dev [$(OOO_ARCHS)]
-else
-  ifeq "$(USE_XULRUNNER)" "y"
-	CONFIGURE_FLAGS+= --with-xulrunner
+ifneq "$(MOZILLA)" ""
+  ifeq "$(MOZILLA)" "xulrunner"
 	BUILD_DEPS+= , libxul-dev [$(OOO_ARCHS)], libnss3-dev [$(OOO_ARCHS)]
 	DBG_DBG_SUGGESTS+= , libnss3-0d-dbg, libnspr4-0d-dbg
   else
-	CONFIGURE_FLAGS += --disable-mozilla
+	BUILD_DEPS += , $(MOZILLA)-dev [$(OOO_ARCHS)]
+	CONFIGURE_FLAGS += --with-system-mozilla=$(MOZILLA)
   endif
+else
+	CONFIGURE_FLAGS += --disable-mozilla
 endif
 
 ifeq "$(USE_SYSTEM_DMAKE)" "y"
@@ -649,7 +560,7 @@ ifeq "$(USE_LIBXSLT)" "y"
 endif
 
 ifeq "$(USE_SYSTEM_XMLSEC)" "y"
-  ifeq "$(USE_XULRUNNER)" "y"
+  ifeq "$(MOZILLA)" "xulrunner"
 	BUILD_DEPS += , libxmlsec1-dev (>= 1.2.9-1.1) [$(OOO_ARCHS)], libxmlsec1-nss (>= 1.2.9-1.1) [$(OOO_ARCHS)], libxmlsec1-openssl (>= 1.2.9-1.1) [$(OOO_ARCHS)]
   else
 	BUILD_DEPS += , libxmlsec1-dev (>= 1.2.9) [$(OOO_ARCHS)], libxmlsec1-nss (>= 1.2.9) [$(OOO_ARCHS)], libxmlsec1-openssl (>= 1.2.9) [$(OOO_ARCHS)]
@@ -691,9 +602,6 @@ ifeq "$(ENABLE_JAVA)" "y"
 	BUILD_DEPS += , libhsqldb-java (>= 1.8.0.0-2) [$(OOO_JAVA_ARCHS)]
 	BASE_HSQLDB_DEPENDS = libhsqldb-java (>= 1.8.0.0-2)
 	CONFIGURE_FLAGS+= --with-system-hsqldb
-    ifneq "$(DIST)" "Ubuntu"
-	JAVA_GCJ_DEPENDS += , libhsqldb-java-gcj
-    endif
   endif
   ifeq "$(USE_SYSTEM_BSH)" "y"
 	BUILD_DEPS += , bsh (>= 2.0b4-1) [$(OOO_JAVA_ARCHS)]
@@ -775,7 +683,7 @@ export BUILD_FROM
 NUM_CPUS=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^\(.*,\)\?num-cpus=\([0-9]\+\).*$$/\2/p')
 ifeq "$(NUM_CPUS)" ""
 	NUM_CPUS := 1
-  ifeq "$(DIST)" "Ubuntu"
+  ifeq "$(PARALLEL_BUILD)" "y"
 	AVAIL_CPUS := $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
     ifneq ($(AVAIL_CPUS),1)
 	NUM_CPUS := $(shell expr $(AVAIL_CPUS) + 1)
@@ -1053,24 +961,6 @@ endif
 	  fi ; \
 	 done
 
-ifeq "$(DIST)" "Ubuntu"
-	# uuencode ubuntu binary files
-	set -e; \
-	cd ubuntu ; \
-	 for f in \
-	   *.bmp \
-	   *.bz2 \
-	   *.otp \
-	   ; do \
-	  if [ -s $$f ]; then \
-	   uuencode $$f $$f > $$f.uu.tmp && \
-	   ../debian/scripts/move-if-change $$f.uu.tmp $$f.uu; \
-	   touch -r $$f $$f.uu ; \
-	   rm -f $$f ; \
-	  fi ; \
-	 done
-endif
-
 	dh_clean
 
 	# Files created in debian directory
@@ -1222,10 +1112,6 @@ ifeq "$(PKGSOURCE)" "openoffice.org$(VER)"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.debug.in
   endif
-  ifeq "$(DIST)" "Ubuntu"
-	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
-	       >> debian/control < debian/control.ubuntu.in
-  endif
   ifeq "$(PACKAGE_SDK)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.sdk.in
@@ -1289,12 +1175,6 @@ ooo-build/config.status: ooo-build/configure
 	  
 	mkdir -p $(STAMP_DIR)
 
-ifeq "$(PKGSOURCE)" "openoffice.org$(VER)-l10n"
-  ifeq "$(DIST)" "Ubuntu"
-	cp -p ooo-build/distro-configs/Ubuntu.conf.in ooo-build/distro-configs/UbuntuL10n.conf.in
-  endif
-endif
-
 	# uudecode files, omit GSI files
 	set -e; \
 	for uu in \
@@ -1340,17 +1220,6 @@ endif
 
 ifneq "$(BUILD_ONLY_EN_US)" "y"
   ifneq "$(LANGPACKISOS)" "en-US"
-    ifeq "$(DIST)" "Ubuntu"
-	cd ooo-build; for uu in src/GSI*.uu; do \
-	  iso=$$(echo $$uu | sed -n 's/.*GSI_\(.*\)\.sdf.*/\1/p'); \
-	  case " $(LANGPACKISOS) " in *\ $$iso\ *) ;; *) continue; esac; \
-          orig="`echo "$$uu" |sed -e 's#.uu$$##'`" ;\
-          if [ ! -s $$orig ]; then \
-	    uudecode -o $$orig $$uu ;\
-	    touch -r $$uu $$orig ;\
-	  fi ;\
-	done
-    endif
 	# extract extra GSIs
 	find ooo-build/src -name "*.sdf.bz2" -exec bunzip2 -k \{\} \;
 	for i in `find ooo-build/src/*.sdf.gz`; do gunzip -dc "$$i" > \
@@ -1598,9 +1467,6 @@ $(STAMP_DIR)/maintscripts: debian/shell-lib.sh debian/control
 
 	# generate maintainer scripts from *.in
 	for PKG in $(PACKAGES); do \
-	  if [ "$(DIST)" = Ubuntu ]; then \
-	    case $$PKG in *l10n-*|*help-*) continue; esac; \
-	  fi; \
 	  for FILE in postinst postrm preinst prerm; do \
 	    MAINTSCRIPT=debian/$$PKG.$$FILE ; \
 	    if [ -e $$MAINTSCRIPT.in ]; then \
@@ -1695,20 +1561,6 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/install $(STAMP_DIR)/install-indep ooo-buil
 		$(foreach d,$(shell echo $(filter-out en-US,$(LANGPACKISOS)) | tr A-Z a-z),debian/openoffice.org$(VER)-l10n-$(d)/$(OODIR)) \
 		> l10n.fdupes
 	debian/scripts/cleandupes --base=openoffice.org$(VER) --prefix=debian < l10n.fdupes
-
-       # install Ubuntu templates
-ifeq "$(DIST)" "Ubuntu"
-	otps=`cd ubuntu; echo *.otp`; \
-	for iso in $(LANGPACKISOS); do \
-	  [ "$$iso" = "en-US" ] && continue; \
-	  pkgiso=`echo $$iso | tr \[:upper:\] \[:lower:\]`; \
-	  mkdir -p $(PKGDIR)-l10n-$$pkgiso/$(OODIR)/share/template/$$iso/presnt; \
-	  for otp in $$otps; do \
-	    ln -sf ../../en-US/presnt/$$otp \
-	      $(PKGDIR)-l10n-$$pkgiso/$(OODIR)/share/template/$$iso/presnt/$$odt; \
-	  done; \
-	done
-endif
 
 	touch $@
 
@@ -2520,10 +2372,8 @@ endif
 		| perl -p -e 's/(.*)=(.*)/$$1=\$${\$$FHS_CONFIG_FILE:Bootstrap:$$1}/' \
 		>> $(PKGDIR)-common/$(OODIR)/program/sofficerc
 
-ifeq "$(DIST)" "Debian"
 	install -m 644 debian/soffice.sh \
 	  $(PKGDIR)-common/etc/openoffice$(VER)/soffice.sh
-endif
 
 ifeq "$(HELPISOS)" ""
 	# the helpimgs are not included when we don't build with help here.
@@ -2550,16 +2400,6 @@ endif
 		mv $(PKGDIR)-common/$(OODIR)/share/config/$$z \
 			$(PKGDIR)-style-$$s/$(OODIR)/share/config/; \
 	done
-
-ifeq "$(DIST)" "Ubuntu" 
-	rm -rf images
-	mkdir -p images
-	cd images; \
-	  unzip -q $(CURDIR)/$(PKGDIR)-style-tango/$(OODIR)/share/config/images_tango.zip; \
-	  tar xf ../ubuntu/images_new.tar.bz2; \
-	  zip -q -r $(CURDIR)/$(PKGDIR)-style-human/$(OODIR)/share/config/images_human.zip *
-	rm -rf images
-endif
 
 	rm -rf $(PKGDIR)-dtd-officedocument1.0
 	mkdir -p $(PKGDIR)-dtd-officedocument1.0/$(OODIR)/share/dtd
@@ -2634,6 +2474,7 @@ ifeq "$(PACKAGE_SDK)" "y"
 endif
 
 ifneq "$(DIST)" "Ubuntu"
+	# ooo-build has a patch with this hardcoded.
 	perl -pi -e "s/Ubuntu helper/helper/" $(PKGDIR)-common/$(OODIR)/program/soffice
 	perl -pi -e "s/Ubuntu config/config/" $(PKGDIR)-common/$(OODIR)/program/soffice
 	perl -pi -e "s/Ubuntu stuff/stuff/" $(PKGDIR)-common/$(OODIR)/program/soffice
