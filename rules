@@ -1815,7 +1815,7 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	#rm -r $(PKGDIR)-base
 	# invalid, according to lintian. make it shut up.
 	for i in writer calc impress draw math base; do \
-		perl -pi -e 's/Application;//; s/X-Red-Hat-Base//; s/X-SuSE-Core-Office//; s/X-MandrivaLinux-Office-Wordprocessors//' $(PKGDIR)-$$i/usr/share/applications/ooo$(VER)-$$i.desktop; \
+		perl -pi -e 's/Application;//; s/X-Red-Hat-Base;//; s/X-SuSE-Core-Office;//; s/X-MandrivaLinux-Office-Wordprocessors;//; X-MandrivaLinux-Office-Spreadsheets;//;' $(PKGDIR)-$$i/usr/share/applications/ooo$(VER)-$$i.desktop; \
 	done
 else
 	# menu files from ooo-build/desktop
@@ -2055,18 +2055,18 @@ endif
 	install -D -m644 $(SOURCE_TREE)/scsolver/ChangeLog \
 		$(PKGDIR)-calc/usr/share/doc/openoffice.org$(VER)-calc/changelog.scsolver
 
-	# move rpt stuff into -reportdesigner
-	rm -rf $(PKGDIR)-reportdesigner
-	mkdir -p $(PKGDIR)-reportdesigner/$(OODIR)/program
+	# move rpt stuff into -report-builder
+	rm -rf $(PKGDIR)-report-builder
+	mkdir -p $(PKGDIR)-report-builder/$(OODIR)/program
 	mv $(PKGDIR)-base/$(OODIR)/program/librpt* \
-		$(PKGDIR)-reportdesigner/$(OODIR)/program
+		$(PKGDIR)-report-builder/$(OODIR)/program
 ifeq "$(ENABLE_JAVA)" "y"
 	# install this; we need to register this ourselved later in
 	# the maintainer scripts. This is intended upstream (**rpt* stuff
-	# in 2.3 and the actual designer as an extension, without which
+	# in 2.3 and the actual report builde as an extension, without which
 	# the *rpt* stuff is a no-op.
-	install -D -m644 $(SOURCE_TREE)/reportdesign/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/reportdesign.oxt \
-		$(PKGDIR)-reportdesigner/$(OODIR)/share/extension/install/reportdesign.oxt
+	install -D -m644 $(SOURCE_TREE)/reportdesign/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/sun-report-builder.oxt \
+		$(PKGDIR)-report-builder/$(OODIR)/share/extension/install/sun-report-builder.oxt
 endif
 
 	for i in $(ARCH_DEP_PACKAGES); do \
@@ -2118,15 +2118,12 @@ $(STAMP_DIR)/broffice: $(STAMP_DIR)/install $(STAMP_DIR)/install-arch $(STAMP_DI
 		| sed -e "s/ooff/broff/" | sed -e "s/OpenO/BrO/" \
 		 > debian/broffice.org/usr/share/applications/ooo-template.desktop
 	if dpkg-parsechangelog | grep urgency | grep -q $(SRCNUM); then \
-		 gm convert -fill white -draw 'rectangle 0,225,500,500' \
-			$(SOURCE_TREE)/ooo_custom_images/dev_broffice/introabout/intro.bmp \
-			debian/broffice.org/$(OODIR)/program/intro.bmp; \
 		 debian/scripts/fix_image_rgb \
-			 debian/broffice.org/$(OODIR)/program/intro.bmp \
+			 $(SOURCE_TREE)/ooo_custom_images/dev_nologo_broffice/introabout/intro.bmp \
 			 debian/broffice.org/$(OODIR)/program/intro.bmp; \
 	else \
 		debian/scripts/fix_image_rgb \
-			$(SOURCE_TREE)/ooo_custom_images/broffice/introabout/intro.bmp \
+			$(SOURCE_TREE)/ooo_custom_images/nologo_broffice/introabout/intro.bmp \
 			debian/broffice.org/$(OODIR)/program/intro.bmp; \
 	fi
 	install -m644 $(SOURCE_TREE)/ooo_custom_images/broffice/introabout/about.bmp \
@@ -2699,7 +2696,7 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 # This switch to dh_shlibdeps reduces the 'libXXX not found' warnings but
 # causes ldd crashes sometimes when used with fakeroot:
 #          -l $(PKGDIR)-core/$(OPENOFFICEDIR)/program
-	dh_gencontrol -s -Nopenoffice.org$(VER)-reportdesigner -- \
+	dh_gencontrol -s -Nopenoffice.org$(VER)-report-builder -- \
 		-V'base-version=$(BASE_VERSION)' \
 		-V'help-l10n-virtual-version=$(HELP_L10N_VIRTUAL_VERSION)' \
 		-V'dev-stl-depends=$(DEV_STL_DEPENDS)' \
@@ -2715,8 +2712,8 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 		-V'gstreamer-plugins-suggests=$(GSTREAMER_PLUGINS_SUGGESTS)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-v$(BINARY_VERSION)
-	dh_gencontrol -popenoffice.org$(VER)-reportdesigner -- \
-		-v$(shell grep "<version" $(SOURCE_TREE)/reportdesign/util/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+OOo$(BINARY_VERSION)
+	dh_gencontrol -popenoffice.org$(VER)-report-builder -- \
+		-v$(shell grep "<version" $(SOURCE_TREE)/reportdesign/util/post.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+OOo$(BINARY_VERSION)
 	dh_md5sums -s
 	dh_builddeb -s $(BUILDDEB_OPTIONS)
 	
