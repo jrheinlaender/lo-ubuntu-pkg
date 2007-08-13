@@ -52,6 +52,24 @@ rm_conffile() {
     fi
 }
 
+remove_extension() {
+  if /usr/lib/openoffice/program/unopkg list --shared $1; then
+    INSTDIR=`mktemp -d`
+    /usr/lib/openoffice/program/unopkg remove --shared $1 \
+      "-env:UserInstallation=file:///$INSTDIR" \
+      "-env:UNO_JAVA_JFW_INSTALL_DATA=/usr/lib/openoffice/program/../share/javasettingsunopkginstall.xml"
+    if [ -n $INSTDIR ]; then rm -rf $INSTDIR; fi
+  fi
+}
+
+add_extension() {
+  INSTDIR=`mktemp -d`
+  /usr/lib/openoffice/program/unopkg add --shared $1 \
+    "-env:UserInstallation=file:///$INSTDIR" \
+    "-env:UNO_JAVA_JFW_INSTALL_DATA=/usr/lib/openoffice/program/../share/javasettingsunopkginstall.xml"
+  if [ -n $INSTDIR ]; then rm -rf $INSTDIR; fi
+}
+
 trap "message;\
       message \"Received signal.  Aborting script $0.\";\
       message;\
