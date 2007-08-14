@@ -992,7 +992,7 @@ endif
 # Generate control file, because we have so many different languages
 # Based on script by Martin Quinson <Martin.Quinson@tuxfamily.org>
 control: debian/control
-debian/control: debian/control.in debian/control.lang.in debian/control.help.in debian/control.fonts.in debian/control.sdk.in debian/control.mozilla.in debian/control.gcj.in debian/control.gcj.in debian/control.mono.in debian/control.qa.in ooo-build/bin/openoffice-xlate-lang debian/rules
+debian/control: debian/control.in debian/control.lang.in debian/control.help.in debian/control.fonts.in debian/control.sdk.in debian/control.mozilla.in debian/control.gcj.in debian/control.gcj.in debian/control.mono.in debian/control.qa.in debian/control.postgresql.in ooo-build/bin/openoffice-xlate-lang debian/rules
 	chmod 755 ooo-build/bin/openoffice-xlate-lang
 	sed -e "s#openoffice.orgVER#openoffice.org$(VER)#g" \
 	    -e "s#broffice.orgVER#broffice.org$(VER)#g" \
@@ -1116,6 +1116,8 @@ ifeq "$(PKGSOURCE)" "openoffice.org$(VER)"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.sdk.in
   endif
+	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
+		>> debian/control < debian/control.postgresql.in
 endif
 
 	perl -pi -e "s,%OOO_ARCHS%,$(OOO_ARCHS),g" debian/control
@@ -2066,6 +2068,10 @@ ifeq "$(ENABLE_JAVA)" "y"
 		$(PKGDIR)-report-builder/$(OODIR)/share/extension/install/sun-report-builder.oxt
 endif
 
+	rm -rf $(PKGDIR)-sdbc-postgresql
+	install -D -m644 $(SOURCE_TREE)/connectivity/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/postgresql-sdbc-$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g).zip \
+		$(PKGDIR)-sdbc-postgresql/$(OODIR)/share/extension/install/postgresql-sdbc-$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g).zip
+
 	for i in $(ARCH_DEP_PACKAGES); do \
 		install -D -m644 debian/presubj \
 			debian/$$i/usr/share/bug/$$i/presubj; \
@@ -2675,17 +2681,12 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
   ifeq "$(INTERNAL_STDLIBS)" "y"
 	cat debian/shlibs.override.stdlibs >> debian/shlibs.local
   endif
-  ifeq "$(ARCH)" "i386"
-	# this LD_ASSUME_KERNEL is for working around some bug which makes
-	# dh_shlibddeps report/find nothing with libc6-i686/TLS systems
-	if dpkg --compare-versions `dpkg -l libc6 | tail -n 1 | awk '{print $$3}'` lt 2.5; then \
-		LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" LD_ASSUME_KERNEL="2.4.27" dh_shlibdeps -s $(SHLIBS_OVERRIDE); \
-	else \
-		LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" dh_shlibdeps -s $(SHLIBS_OVERRIDE); \
-	fi
-  else
-	LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" dh_shlibdeps -s $(SHLIBS_OVERRIDE)
-  endif
+	LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" \
+		dh_shlibdeps -s $(SHLIBS_OVERRIDE)
+	LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" \
+		dpkg-shlibdeps -O \
+			$(SOURCE_TREE)/connectivity/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/postgresql-sdbc*.so \
+			> debian/openoffice.org$(VER)-sdbc-postgresql.substvars
   ifeq "$(ENABLE_MONO)" "y"
 	dh_makeclilibs -s -V
 	dh_clideps -s
@@ -2693,7 +2694,8 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 # This switch to dh_shlibdeps reduces the 'libXXX not found' warnings but
 # causes ldd crashes sometimes when used with fakeroot:
 #          -l $(PKGDIR)-core/$(OPENOFFICEDIR)/program
-	dh_gencontrol -s -Nopenoffice.org$(VER)-report-builder -- \
+	dh_gencontrol -s -Nopenoffice.org$(VER)-report-builder \
+		-Nopenoffice.org$(VER)-sdbc-postgresql -- \
 		-V'base-version=$(BASE_VERSION)' \
 		-V'help-l10n-virtual-version=$(HELP_L10N_VIRTUAL_VERSION)' \
 		-V'dev-stl-depends=$(DEV_STL_DEPENDS)' \
@@ -2711,6 +2713,8 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 		-v$(BINARY_VERSION)
 	dh_gencontrol -popenoffice.org$(VER)-report-builder -- \
 		-v$(shell grep "<version" $(SOURCE_TREE)/reportdesign/util/post.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+OOo$(BINARY_VERSION)
+	dh_gencontrol -popenoffice.org$(VER)-sdbc-postgresql -- \
+		-v$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g)+OOo$(BINARY_VERSION)
 	dh_md5sums -s
 	dh_builddeb -s $(BUILDDEB_OPTIONS)
 	
