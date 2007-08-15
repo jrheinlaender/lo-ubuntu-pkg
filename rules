@@ -22,7 +22,7 @@ PKGSOURCE := $(shell dpkg-parsechangelog | awk '/^Source:/ {print $$2;exit 0}')
 SOURCE_VERSION:=$(shell head -1 debian/changelog | cut -d\( -f2 | cut -d\) -f1)
 UPSTREAM_VERSION:=$(shell echo "$(SOURCE_VERSION)"| cut -d- -f1)
 BASE_VERSION:=$(UPSTREAM_VERSION)
-HELP_L10N_VIRTUAL_VERSION:=$(shell echo $(UPSTREAM_VERSION) | tr [~] [\\-])
+HELP_L10N_VIRTUAL_VERSION:=$(shell echo $(UPSTREAM_VERSION) | | sed -e s/^[0-9]:// | tr [~] [\\-])
 #HELP_L10N_VIRTUAL_VERSION:=2.2
 
 BINARY_VERSION=$(SOURCE_VERSION)
@@ -52,19 +52,19 @@ export DH_ALWAYS_EXCLUDE=CVS
 unexport LS_COLORS
 
 SRCNUM=680
-MWS=SRC680
-MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)" | cut -d~ -f2 | sed -e s/$(shell echo $(MWS) | tr A-Z a-z)//)
-#MILESTONE=m220
+MWS=OOG680
+#MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)" | cut -d~ -f2 | sed -e s/$(shell echo $(MWS) | tr A-Z a-z)//)
+MILESTONE=m1
 TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
 #TAG=$(MWS)_$(MILESTONE)
-#OOO_BUILD_BRANCH=ooo-build-2-2
+#OOO_BUILD_BRANCH=ooo-build-2-3
 SOURCE_TREE=ooo-build/build/$(TAG)
 STAMP_DIR=debian/stampdir
 
 CORE_TARBALL=$(TAG)-core.tar.bz2
 SYSTEM_TARBALL=$(TAG)-system.tar.bz2
-#CORE_TARBALL=OOo_2.2.1_src_core.tar.bz2
-#SYSTEM_TARBALL=OOo_2.2.1_src_system.tar.bz2
+#CORE_TARBALL=OOo_2.3.0_src_core.tar.bz2
+#SYSTEM_TARBALL=OOo_2.3.0_src_system.tar.bz2
 
 ifeq "$(DISTREL)" "etch"
   ETCH_BACKPORT=y
@@ -950,7 +950,7 @@ endif
 	   src/*.gz \
 	   ; do \
 	  if [ -s $$f ]; then \
-	   case "$$f" in src/src680*) continue ; esac ; \
+	   case "$$f" in src/$(TAG)*) continue ; esac ; \
 	   uuencode $$f $$f > $$f.uu.tmp && \
 	   ../debian/scripts/move-if-change $$f.uu.tmp $$f.uu; \
 	   touch -r $$f $$f.uu ; \
@@ -2708,9 +2708,9 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-v$(BINARY_VERSION)
 	dh_gencontrol -popenoffice.org$(VER)-report-builder -- \
-		-v$(shell grep "<version" $(SOURCE_TREE)/reportdesign/util/post.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+OOo$(BINARY_VERSION)
+		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep "<version" $(SOURCE_TREE)/reportdesign/util/post.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
 	dh_gencontrol -popenoffice.org$(VER)-sdbc-postgresql -- \
-		-v$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g)+OOo$(BINARY_VERSION)
+		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g)+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
 	dh_md5sums -s
 	dh_builddeb -s $(BUILDDEB_OPTIONS)
 	

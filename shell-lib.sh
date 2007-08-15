@@ -57,8 +57,8 @@ remove_extension() {
     echo -n "Removing extension $1..."
     INSTDIR=`mktemp -d`
     /usr/lib/openoffice/program/unopkg remove --shared $1 \
-      "-env:UserInstallation=file:///$INSTDIR" \
-      "-env:UNO_JAVA_JFW_INSTALL_DATA=file:///usr/lib/openoffice/program/../share/config/javasettingsunopkginstall.xml"
+      "-env:UserInstallation=file://////$INSTDIR" \
+      "-env:UNO_JAVA_JFW_INSTALL_DATA=file:\$ORIGIN../share/config/javasettingsunopkginstall.xml"
     if [ -n $INSTDIR ]; then rm -rf $INSTDIR; fi
     echo " done."
   fi
@@ -68,8 +68,8 @@ add_extension() {
   echo -n "Adding extension $1..."
   INSTDIR=`mktemp -d`
   /usr/lib/openoffice/program/unopkg add --shared $1 \
-    "-env:UserInstallation=file:///$INSTDIR" \
-    "-env:UNO_JAVA_JFW_INSTALL_DATA=file:///usr/lib/openoffice/program/../share/config/javasettingsunopkginstall.xml"
+    "-env:UserInstallation=file://////$INSTDIR" \
+    "-env:UNO_JAVA_JFW_INSTALL_DATA=\$ORIGIN../share/config/javasettingsunopkginstall.xml"
   if [ -n $INSTDIR ]; then rm -rf $INSTDIR; fi
   echo " done."
 }
