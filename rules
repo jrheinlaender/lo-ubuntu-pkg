@@ -22,7 +22,7 @@ PKGSOURCE := $(shell dpkg-parsechangelog | awk '/^Source:/ {print $$2;exit 0}')
 SOURCE_VERSION:=$(shell head -1 debian/changelog | cut -d\( -f2 | cut -d\) -f1)
 UPSTREAM_VERSION:=$(shell echo "$(SOURCE_VERSION)"| cut -d- -f1)
 BASE_VERSION:=$(UPSTREAM_VERSION)
-HELP_L10N_VIRTUAL_VERSION:=$(shell echo $(UPSTREAM_VERSION) | | sed -e s/^[0-9]:// | tr [~] [\\-])
+HELP_L10N_VIRTUAL_VERSION:=$(shell echo $(UPSTREAM_VERSION) | cut -d: -f2 | tr [~] [\\-])
 #HELP_L10N_VIRTUAL_VERSION:=2.2
 
 BINARY_VERSION=$(SOURCE_VERSION)
@@ -1802,14 +1802,16 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 		rm -f $$f; done
 	for f in `find debian -name '*.desktop'`; do \
 		sed -i -e '/^Comment\[de\]/s/- *\([a-zA-Z0-9]*\) *macht.*glich.*$$/mit \1/' $$f; \
-		echo 'X-KDE-Protocols=file,http,smb,ftp,webdav' >> $$f; \
+		if ! grep -q X-KDE-Protocols $$i; then \
+			echo 'X-KDE-Protocols=file,http,smb,ftp,webdav' >> $$f; \
+		fi; \
 	done
 	sed -i -e '/^MimeType/s,text/rtf,text/rtf;application/rtf,' \
 		$(PKGDIR)-writer/usr/share/applications/ooo$(VER)-writer.desktop
 	sed -i -e 's/Office;/Office;Graphics;/' $(PKGDIR)-draw/usr/share/applications/ooo$(VER)-draw.desktop
 	sed -i -e 's/Office;/Office;System;/' $(PKGDIR)-common/usr/share/applications/ooo$(VER)-extension.desktop
 	# invalid, according to lintian. make it shut up.
-	for i in writer calc impress draw math base; do \
+	for i in writer calc impress draw math base extension; do \
 		perl -pi -e 's/Application;//; s/X-Red-Hat-Base;//; s/X-SuSE-Core-Office;//; s/X-MandrivaLinux-.*;//;' $(PKGDIR)-$$i/usr/share/applications/ooo$(VER)-$$i.desktop; \
 	done
 	perl -pi -e 's/Application;//' $(PKGDIR)-gtk/$(OODIR)/share/xdg/qstart.desktop
