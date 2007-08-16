@@ -304,14 +304,12 @@ ifeq "$(BUILD_PYUNO)" "y"
 	DBG_DBG_SUGGESTS+= , python-dbg
 else 
 	BUILD_DEPS += , debhelper (>= 5)
-	BUILD_DEPS += python [$(OOO_ARCHS)]
+	BUILD_DEPS += , python [$(OOO_ARCHS)]
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(BUILD_JARS_NATIVE)" "y"
-    ifneq "$(PKGSOURCE)" "openoffice.org$(VER)-l10n"
 	STAMP_NATIVE_JARS = $(STAMP_DIR)/native-jars
-    endif
 	BUILD_DEPS += , dpkg-dev (>= 1.13.19)
 	JAVA_GCJ_DEPENDS = libgcj-common (>= 1:4.1.1-14)
   endif
@@ -795,13 +793,6 @@ clean-debdir:
 	dh_testdir
 	rm -f debian/*.postinst debian/*.postrm debian/*.preinst debian/*.prerm
 	rm -f $(STAMP_DIR)/setup
-ifeq "$(PKGSOURCE)" "openoffice.org$(VER)-l10n"
-	rm -rf debian/ttf-opensymbol \
-	       debian/openoffice.org$(VER)-common \
-	       debian/openoffice.org$(VER)-dev-doc \
-	       debian/openoffice.org$(VER)-java-common \
-	       debian/openoffice.org$(VER)-l10n-en-us
-endif
 	dh_clean
 
 # Clean compilation results, but leave solver (about 600Mb in addition to instsetoo)
@@ -880,14 +871,6 @@ endif
 
 ifneq "$(OOO_L10N_DIR)" ""
 	rm -rf $(OOO_L10N_DIR)
-endif
-
-ifeq "$(PKGSOURCE)" "openoffice.org$(VER)-l10n"
-	rm -rf debian/ttf-opensymbol \
-	       debian/openoffice.org$(VER)-common \
-	       debian/openoffice.org$(VER)-dev-doc \
-	       debian/openoffice.org$(VER)-java-common \
-	       debian/openoffice.org$(VER)-l10n-en-us
 endif
 
 	# uuencode upstream ooo-build binary files
@@ -1001,19 +984,6 @@ debian/control: debian/control.in debian/control.lang.in debian/control.help.in 
 	    -e "s#%BUILD_DEPS%#$(strip $(BUILD_DEPS))#g" \
 	    < debian/control.in > debian/control
 
-ifeq "$(DISTREL)" "dapper"
-	cat debian/control.2.in >> debian/control
-endif
-
-ifeq "$(PKGSOURCE)" "openoffice.org$(VER)-l10n"
-	awk '{print} /^ *$$/ {exit}' debian/control > debian/control.l10n
-	sed 's/Build-Depends:/Build-Depends-Indep:/' debian/control.l10n > debian/control
-	rm -f debian/control.l10n
-
-	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
-	       >> debian/control < debian/control.l10n.in
-endif
-
 	for LNUM in $(filter-out en-US,$(LANGPACKISOS)) ; do \
 	    [ "$$LNUM" = en-US -a "$(PKGSOURCE)" = "openoffice.org$(VER)-l10n" ] && continue; \
 	    LNAME=`ooo-build/bin/openoffice-xlate-lang -l $$LNUM | perl -e 'print ucfirst(<STDIN>);'`; \
@@ -1085,40 +1055,38 @@ ifneq "$(HELPISOS)" ""
 	perl -pi -e 's|(Depends: openoffice.org$(VER)-writer, openoffice.org$(VER)-l10n-en-us)|\1, ttf-devanagari-fonts|' \
 		debian/control
 endif
-ifeq "$(PKGSOURCE)" "openoffice.org$(VER)"
-  ifeq "$(ENABLE_JAVA)" "y"
-    ifeq "$(BUILD_JARS_NATIVE)" "y"
+ifeq "$(ENABLE_JAVA)" "y"
+  ifeq "$(BUILD_JARS_NATIVE)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.gcj.in
-    endif
   endif
-  ifeq "$(ENABLE_MONO)" "y"
+endif
+ifeq "$(ENABLE_MONO)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.mono.in
-  endif
-  ifeq "$(PACKAGE_QA_TOOLS)" "y"
+endif
+ifeq "$(PACKAGE_QA_TOOLS)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.qa.in
-  endif
-  ifeq "$(PACKAGE_NPSOPLUGIN)" "y"
+endif
+ifeq "$(PACKAGE_NPSOPLUGIN)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.mozilla.in
-  endif
-  ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
+endif
+ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.fonts.in
-  endif
-  ifeq "$(BUILD_DBG_PACKAGE)" "y"
+endif
+ifeq "$(BUILD_DBG_PACKAGE)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.debug.in
-  endif
-  ifeq "$(PACKAGE_SDK)" "y"
+endif
+ifeq "$(PACKAGE_SDK)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.sdk.in
-  endif
+endif
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.postgresql.in
-endif
 
 	perl -pi -e "s,%OOO_ARCHS%,$(OOO_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_MONO_ARCHS%,$(OOO_MONO_ARCHS),g" debian/control
