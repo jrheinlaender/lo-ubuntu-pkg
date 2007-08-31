@@ -2489,113 +2489,6 @@ endif
 
 	touch $@
 
-gsi-import:
-ifeq "$(PKGSOURCE)" "openoffice.org$(VER)-l10n"
-  ifneq "$(OOO_L10N_DIR)" ""
-	set -e; \
-	for i in $(OOO_L10N_DIR)/import/GSI*; do \
-	  [ -r $$i ] || continue; \
-	  lang=`basename $$i | sed 's,GSI_\(.*\)\.sdf.*,\1,'`; \
-	  case "$$lang" in en-US|de) continue; esac; \
-	  echo "updating GSI file for language $$lang ..."; \
-	  case "$$i" in \
-	    *.bz2) bzcat $$i > ooo-build/src/GSI_$$lang.sdf;; \
-	    *.gz) zcat $$i > ooo-build/src/GSI_$$lang.sdf;; \
-	    *.sdf) cp -p $$i ooo-build/src/GSI_$$lang.sdf;; \
-	    *) echo "    unknown file: $$i"; \
-	  esac; \
-	  rm -f ooo-build/src/GSI_$$lang.sdf.bz2; \
-	  bzip2 -9v ooo-build/src/GSI_$$lang.sdf; \
-	  uuencode -m ooo-build/src/GSI_$$lang.sdf.bz2 GSI_$$lang.sdf.bz2 > ooo-build/src/GSI_$$lang.sdf.bz2.uu; \
-	  rm ooo-build/src/GSI_$$lang.sdf.bz2; \
-	done
-  endif
-else
-	@echo "nothing to import, OOO_L10N_DIR is not set"
-endif
-
-GSI_LANGUAGES = $(LANGUAGES)
-gsi-export: $(GSI_EXPORT_STAMP)
-$(GSI_EXPORT_STAMP):
-	$(MAKE) -f debian/rules -j$(shell expr $(AVAIL_CPUS) + 1) $(STAMP_DIR)/gsi-export-parallel
-	: # tell pkgstriptranslations that the translations are built
-	-ls -l ../$(PKGSOURCE)_*_translations.tar.gz
-	rm -f ../$(PKGSOURCE)_*_translations.tar.gz
-	: # remove 0 byte translations to keep pkgstriptranslations from dying
-	find $(OOO_L10N_DIR)/po -size 0c -name *.po -exec rm -f -v \{\} \;
-	touch $@
-$(STAMP_DIR)/gsi-export-parallel: $(STAMP_DIR)/build $(foreach lang,$(GSI_LANGUAGES),$(STAMP_DIR)/gsi-export-$(lang))
-	touch $@
-$(STAMP_DIR)/gsi-export-en-US:
-	cd $(SOURCE_TREE); \
-	  . Linux*Env.Set.sh; \
-	  mkdir -p $(OOO_L10N_DIR)/export; \
-	  echo exporting GSI file for pot file generation; \
-	  echo localize -e -l en-US -f $(OOO_L10N_DIR)/export/GSI_en-US.sdf; \
-	  localize -e -l en-US -f $(OOO_L10N_DIR)/export/GSI_en-US.sdf
-
-	if [ -x /usr/bin/oo2po ]; then \
-	  chmod +x debian/splitgsi; \
-	  sh debian/convert2po en-US; \
-	fi
-	touch $@
-
-$(STAMP_DIR)/gsi-export-%:
-	cd $(SOURCE_TREE); \
-	  . Linux*Env.Set.sh; \
-	  mkdir -p $(OOO_L10N_DIR)/export; \
-	  i=$*; \
-	  if [ -f $(CURDIR)/ooo-build/src/GSI_$$i.sdf.bz2.uu ]; then \
-	    echo using existing GSI file for language $$i; \
-	    uudecode -o /dev/stdout $(CURDIR)/ooo-build/src/GSI_$$i.sdf.bz2.uu \
-	      | bzcat - > $(OOO_L10N_DIR)/export/GSI_$$i.sdf; \
-	  elif [ -f $(CURDIR)/ooo-build/src/GSI_$$i.sdf.gz.uu ]; then \
-	    echo using existing GSI file for language $$i; \
-	    uudecode -o /dev/stdout $(CURDIR)/ooo-build/src/GSI_$$i.sdf.gz.uu \
-	      | zcat - > $(OOO_L10N_DIR)/export/GSI_$$i.sdf; \
-	  else \
-	    echo exporting GSI file for language $$i; \
-	    echo localize -e -l en-US,$$i -f $(OOO_L10N_DIR)/export/GSI_$$i.sdf; \
-	    localize -e -l en-US,$$i -f $(OOO_L10N_DIR)/export/GSI_$$i.sdf; \
-	  fi
-
-	case " $(REMOVE_HELP) " in *\ $*\ *) \
-	  echo "Removing help ($*)"; \
-	  grep -v '^helpcontent2' $(OOO_L10N_DIR)/export/GSI_$*.sdf \
-	    > $(OOO_L10N_DIR)/export/GSI_$*.sdf.tmp; \
-	  debian/scripts/move-if-change $(OOO_L10N_DIR)/export/GSI_$*.sdf.tmp \
-	    $(OOO_L10N_DIR)/export/GSI_$*.sdf; \
-	esac
-
-	case " $(FILTER_HELP) " in *\ $*\ *) \
-	  echo "Filtering untranslated messages from help ($*)"; \
-	  python debian/gsifilter.py $(OOO_L10N_DIR)/export/GSI_$*.sdf; \
-	  debian/scripts/move-if-change $(OOO_L10N_DIR)/export/GSI_$*.sdf.tmp \
-	    $(OOO_L10N_DIR)/export/GSI_$*.sdf; \
-	esac
-
-	if [ -x /usr/bin/oo2po ]; then \
-	  chmod +x debian/splitgsi; \
-	  sh debian/convert2po $*; \
-	fi
-	touch $@
-
-rosetta2oo:
-	mkdir -p debian/l10n
-	ln -sf convert2po debian/convert2oo
-	sh debian/convert2oo $(GSI_LANGUAGES)
-
-ifeq "$(PKGSOURCE)" "openoffice.org$(VER)-l10n"
-# Simplified packaging, langpacks only
-
-binary-arch: $(STAMP_DIR)/binary-arch
-$(STAMP_DIR)/binary-arch:
-	: # nothing to do
-	touch $(STAMP_DIR)/install-arch
-	touch $@
-
-else
-
 binary-arch: $(STAMP_DIR)/binary-arch
 $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/maintscripts
 	dh_testdir
@@ -2620,47 +2513,49 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 		done; \
 	done
 	dh_installchangelogs -s -Nlibmythes-dev ooo-build/ChangeLog
-  ifneq "$(USE_EXTERNAL_MYTHES)" "y"
+ifneq "$(USE_EXTERNAL_MYTHES)" "y"
 	dh_installchangelogs -plibmythes-dev
-  endif
+endif
 	dh_installmime -s
 	dh_installmenu -s
-  ifeq "$(USE_PYCENTRAL)" "y"
+ifeq "$(USE_PYCENTRAL)" "y"
 	dh_pycentral -ppython-uno 
-  else
+else
 	dh_python
-  endif
+endif
 	debian/scripts/installoverrides -s
 	dh_link -s 
 	dh_fixperms -s
-  ifeq "$(BUILD_DBG_PACKAGE)" "y"
+ifeq "$(BUILD_DBG_PACKAGE)" "y"
 	dh_strip -s --dbg-package=openoffice.org$(VER)-dbg
 	# dh_strip --dbg-package= is not idempotent, force copying of the binaries
 	# again...
 	rm -f $(STAMP_DIR)/install-arch
-  else
+else
 	dh_strip -s
-  endif
+endif
 	dh_desktop -s 
+ifeq "$(ETCH_BACKPORT)" "y"
 	dh_icons -s
-  ifeq "$(ENABLE_MONO)" "y"
+endif
+ifeq "$(ENABLE_MONO)" "y"
 	cat debian/libuno-cil.installcligac.in | \
 		sed -e s,@OODIR@,$(OODIR), > debian/libuno-cil.installcligac
 	dh_installcligac -s
-  endif
+endif
 	dh_compress -s -X.py -X.mk -X.sxd
 	dh_makeshlibs -s -n -V -Xlibxmlsec
 	dh_installdeb -s
 	cat debian/openoffice.org-core.shlibs.local > debian/shlibs.local
-  ifneq "$(USE_SYSTEM_XMLSEC)" "y"
+ifneq "$(USE_SYSTEM_XMLSEC)" "y"
 	cat debian/shlibs.override.xmlsec >> debian/shlibs.local
-  endif
-  ifeq "$(USE_SYSTEM_ICU)" "n"
+endif
+ifeq "$(USE_SYSTEM_ICU)" "n"
 	cat debian/shlibs.override.icu >> debian/shlibs.local
-  endif
-  ifeq "$(INTERNAL_STDLIBS)" "y"
+endif
+ifeq "$(INTERNAL_STDLIBS)" "y"
 	cat debian/shlibs.override.stdlibs >> debian/shlibs.local
-  endif
+endif
 	LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" \
 		dh_shlibdeps -s $(SHLIBS_OVERRIDE)
 	# this is in an extension (.zip), so dh_shlibdeps doesn't get it. We need to do
@@ -2669,10 +2564,10 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 		dpkg-shlibdeps -O \
 			$(SOURCE_TREE)/connectivity/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/postgresql-sdbc*.so \
 			> debian/openoffice.org$(VER)-sdbc-postgresql.substvars
-  ifeq "$(ENABLE_MONO)" "y"
+ifeq "$(ENABLE_MONO)" "y"
 	dh_makeclilibs -s -V
 	dh_clideps -s
-  endif
+endif
 # This switch to dh_shlibdeps reduces the 'libXXX not found' warnings but
 # causes ldd crashes sometimes when used with fakeroot:
 #          -l $(PKGDIR)-core/$(OPENOFFICEDIR)/program
@@ -2701,7 +2596,6 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 	dh_builddeb -s $(BUILDDEB_OPTIONS)
 	
 	touch $@
-endif # binary-arch for openoffice.org source
 
 binary-indep: $(GSI_EXPORT_STAMP) $(STAMP_DIR)/binary-indep
 $(STAMP_DIR)/binary-indep: $(STAMP_DIR)/install-indep debian/control $(STAMP_DIR)/maintscripts $(STAMP_DIR)/langpacks $(STAMP_DIR)/helppacks $(STAMP_DIR)/broffice
@@ -2763,7 +2657,9 @@ endif
 	dh_link -i
 	dh_fixperms -i
 	dh_desktop -i
+ifeq "$(ETCH_BACKPORT)" "y"
 	dh_icons -i
+endif
 	dh_installxmlcatalogs -i
 	dh_compress -X.py -X.mk -X.sxd
 	dh_installdeb -i
