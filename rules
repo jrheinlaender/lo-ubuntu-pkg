@@ -132,6 +132,7 @@ USE_OOO_BUILD_DESKTOPS=n
 PACKAGE_SDK=y
 RUN_SMOKETEST=n
 RUN_UNIT_TESTS=n
+USE_SYSTEM_CURL=n
 USE_LIBCURL4=y
 USE_SYSTEM_LIBSVG=y
 USE_SYSTEM_DMAKE=y
@@ -199,6 +200,7 @@ ifeq "$(ETCH_BACKPORT)" "y"
   LPSOLVE_MIN_VERSION=
   USE_SYSTEM_LIBSVG=n
   USE_SYSTEM_DMAKE=n
+  USE_SYSTEM_CURL=y
   USE_LIBCURL4=n
   USE_LIBSUITESPARSE=n
   USE_SYSTEM_BOOST=y
@@ -266,10 +268,13 @@ ifeq "$(USE_BZIP_COMPRESS)" "y"
 	BUILDDEB_OPTIONS = -- -Zbzip2
 endif
 
-ifeq "$(USE_LIBCURL4)" "y"
+ifeq "$(USE_SYSTEM_CURL)" "y"
+  ifeq "$(USE_LIBCURL4)" "y"
 	BUILD_DEPS += , libcurl4-gnutls-dev [$(OOO_ARCHS)]
-else
+  else
 	BUILD_DEPS += , libcurl3-gnutls-dev [$(OOO_ARCHS)]
+  endif
+	CONFIGURE_FLAGS += --with-system-curl
 endif
 
 	# libdb-dev since 4.6 but it provides libdb4.6-dev, so keep this as-is...
@@ -1276,6 +1281,7 @@ endif
 
 test: $(STAMP_DIR)/test
 $(STAMP_DIR)/test: $(STAMP_DIR)/build
+ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 ifeq "$(RUN_UNIT_TESTS)" "y"
 	# build/run unit tests
 	cd $(SOURCE_TREE)/instsetoo_native; \
@@ -1296,6 +1302,7 @@ ifeq "$(RUN_SMOKETEST)" "y"
 			xvfb-run -a ../solenv/bin/build.pl; \
 		fi && \
 		rm -rf $(CURDIR)/oosmoketest
+endif
 endif
 
 	touch $@
