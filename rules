@@ -52,12 +52,12 @@ export DH_ALWAYS_EXCLUDE=CVS
 unexport LS_COLORS
 
 SRCNUM=680
-MWS=OOG680
+MWS=SRC680
 # note that this only makes sense for ~oo?680s. as o < r (as rcX). src680 would break the ordering (s > r).
 #MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)" | cut -d~ -f2 | sed -e s/$(shell echo $(MWS) | tr A-Z a-z)//)
 # For SRC680 milestones, use only ~mX
-#MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)" | cut -d~ -f2)//)
-MILESTONE=m5
+MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)" | cut -d~ -f2)//)
+#MILESTONE=m5
 #TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
 TAG=$(MWS)_$(MILESTONE)
 #OOO_BUILD_BRANCH=ooo-build-2-3
@@ -2569,6 +2569,10 @@ endif
 		dpkg-shlibdeps -O \
 			$(SOURCE_TREE)/connectivity/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/postgresql-sdbc*.so \
 			> debian/openoffice.org$(VER)-sdbc-postgresql.substvars
+	 LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" \
+	 	dpkg-shlibdeps -O \
+			$(SOURCE_TREE)/sdext/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/SunReportMinimizer.uno.so \
+			> debian/openoffice.org$(VER)-report-minimizer.substvars
 ifeq "$(ENABLE_MONO)" "y"
 	dh_makeclilibs -s -V
 	dh_clideps -s
@@ -2577,6 +2581,7 @@ endif
 # causes ldd crashes sometimes when used with fakeroot:
 #          -l $(PKGDIR)-core/$(OPENOFFICEDIR)/program
 	dh_gencontrol -s -Nopenoffice.org$(VER)-report-builder \
+		-Nopenoffice.org$(VER)-presentation-minimizer \
 		-Nopenoffice.org$(VER)-sdbc-postgresql -- \
 		-V'base-version=$(BASE_VERSION)' \
 		-V'help-l10n-virtual-version=$(HELP_L10N_VIRTUAL_VERSION)' \
@@ -2595,6 +2600,8 @@ endif
 		-v$(BINARY_VERSION)
 	dh_gencontrol -popenoffice.org$(VER)-report-builder -- \
 		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep "<version" $(SOURCE_TREE)/reportdesign/util/post.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
+	dh_gencontrol -popenoffice.org$(VER)-presenttion-minimizer -- \
+		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep "<version" $(SOURCE_TREE)/sdext/source/minimizer/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
 	dh_gencontrol -popenoffice.org$(VER)-sdbc-postgresql -- \
 		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g)+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
 	dh_md5sums -s
