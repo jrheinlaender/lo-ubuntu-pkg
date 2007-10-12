@@ -236,6 +236,14 @@ endif
 ifeq (,$(findstring $(ARCH),$(OOO_MONO_ARCHS)))
        ENABLE_MONO=n
 endif
+# Mozilla plugin. Crashes on amd64
+OOO_NPSOPLUGIN_ARCHS = i386 powerpc sparc
+ifeq "$(BUILD_AMD64)" "y"
+	PACKAGE_NPSOPLUGIN=n
+endif
+ifeq "$(BUILD_PPC64)" "y"
+	PACKAGE_NPSOPLUGIN=n
+endif
 
 ifeq "$(ARCH)-linux-gnu" "sparc-linux-gnu"
 	# use 32-bit compiler
@@ -677,8 +685,12 @@ ifeq "$(NUM_CPUS)" ""
 	NUM_CPUS := 1
   ifeq "$(PARALLEL_BUILD)" "y"
 	AVAIL_CPUS := $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
+    	# according to Pavel Janik, build -P<number of cores> -- -P2
+	# is ideal. This sets the first -P according to the number
+	# of CPUs (where dual-core CPUS report 2, too)
+	# Default to 2 on 1-processor machines anyway
     ifneq ($(AVAIL_CPUS),1)
-	NUM_CPUS := $(shell expr $(AVAIL_CPUS) + 1)
+	NUM_CPUS := $(shell expr $(AVAIL_CPUS))
     endif
   endif
 endif
@@ -1085,6 +1097,7 @@ endif
 
 	perl -pi -e "s,%OOO_ARCHS%,$(OOO_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_MONO_ARCHS%,$(OOO_MONO_ARCHS),g" debian/control
+	perl -pi -e "s,%OOO_NPSOPLUGIN_ARCHS%,$(OOO_NPSOPLUGIN_ARCHS),g" debian/control
 
 ifeq "$(PACKAGE_QUICKSTART)" "y"
 	perl -pi -e 's#\(Widgets, Dialogs\)#\(Widgets, Dialogs, Quickstarter\)#' debian/control
