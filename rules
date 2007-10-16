@@ -1780,13 +1780,7 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 		    -e 's/  / /' \
 		   < $$dirname/$$p.desktop \
 		   > $(PKGDIR)-$$p/usr/share/applications/ooo$(VER)-$$p.desktop || exit 1 ;\
-	done; \
-	mkdir -p -m755 $(PKGDIR)-common/usr/share/applications ;\
-	sed -e 's,Exec=unopkg,Exec=/$(OODIR)/program/unopkg,' \
-	    -e 's,Name=$${PRODUCTNAME} $${PRODUCTVERSION},Name=OpenOffice.org $(VER),' \
-	    -e 's/  / /' \
-	    < $$dirname/extension.desktop \
-	    > $(PKGDIR)-common/usr/share/applications/ooo$(VER)-extension.desktop || exit 1
+	done
 	# qstart.desktop is different to the above. Should be handled by --with-unix-wrapper of ooo-build
 	# but that somehow doesn't work as expected. FIXME.
 	PRODUCTVERSION=`grep PRODUCTVERSION $(SOURCE_TREE)/sysui/desktop/productversion.mk | head -n 1 | cut -d"=" -f2 | sed -e s/\ //g`; \
@@ -1806,10 +1800,8 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	sed -i -e '/^MimeType/s,text/rtf,text/rtf;application/rtf,' \
 		$(PKGDIR)-writer/usr/share/applications/ooo$(VER)-writer.desktop
 	sed -i -e 's/Office;/Office;Graphics;/' $(PKGDIR)-draw/usr/share/applications/ooo$(VER)-draw.desktop
-	sed -i -e 's/Office;/Office;System;/' $(PKGDIR)-common/usr/share/applications/ooo$(VER)-extension.desktop
 	# invalid, according to lintian. make it shut up.
-	for i in writer calc impress draw math base extension; do \
-		if [ "$$i" = "extension" ]; then p=common; else p=$$i; fi; \
+	for i in writer calc impress draw math base; do \
 		perl -pi -e 's/Application;//; s/X-Red-Hat-Base;//; s/X-SuSE-Core-Office;//; s/X-MandrivaLinux-.*;//;' $(PKGDIR)-$$p/usr/share/applications/ooo$(VER)-$$i.desktop; \
 	done
 	perl -pi -e 's/Application;//' $(PKGDIR)-gtk/$(OODIR)/share/xdg/qstart.desktop
@@ -2507,6 +2499,18 @@ endif
 			$(SOURCE_TREE)/ooo_custom_images/nologo/introabout/intro.bmp \
 			$(PKGDIR)-common/$(OODIR)/program/intro.bmp; \
 	fi
+
+ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
+	# menu files from sysui
+	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare >/dev/null; pwd`" ;\
+	mkdir -p -m755 $(PKGDIR)-common/usr/share/applications ;\
+	sed -e 's,Exec=unopkg,Exec=/$(OODIR)/program/unopkg,' \
+	    -e 's,Name=$${PRODUCTNAME} $${PRODUCTVERSION},Name=OpenOffice.org $(VER),' \
+	    -e 's/  / /' \
+	    < $$dirname/extension.desktop \
+	    > $(PKGDIR)-common/usr/share/applications/ooo$(VER)-extension.desktop || exit 1
+	sed -i -e 's/Office;/Office;System;/' $(PKGDIR)-common/usr/share/applications/ooo$(VER)-extension.desktop
+endif
 
 	touch $@
 
