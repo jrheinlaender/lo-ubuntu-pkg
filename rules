@@ -1795,13 +1795,7 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 		    -e 's/  / /' \
 		   < $$dirname/$$p.desktop \
 		   > $(PKGDIR)-$$p/usr/share/applications/ooo$(VER)-$$p.desktop || exit 1 ;\
-	done; \
-	mkdir -p -m755 $(PKGDIR)-common/usr/share/applications ;\
-	sed -e 's,Exec=unopkg,Exec=/$(OODIR)/program/unopkg,' \
-	    -e 's,Name=$${PRODUCTNAME} $${PRODUCTVERSION},Name=OpenOffice.org $(VER),' \
-	    -e 's/  / /' \
-	    < $$dirname/extension.desktop \
-	    > $(PKGDIR)-common/usr/share/applications/ooo$(VER)-extension.desktop || exit 1
+	done
 	# qstart.desktop is different to the above. Should be handled by --with-unix-wrapper of ooo-build
 	# but that somehow doesn't work as expected. FIXME.
 	PRODUCTVERSION=`grep PRODUCTVERSION $(SOURCE_TREE)/sysui/desktop/productversion.mk | head -n 1 | cut -d"=" -f2 | sed -e s/\ //g`; \
@@ -1821,11 +1815,9 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	sed -i -e '/^MimeType/s,text/rtf,text/rtf;application/rtf,' \
 		$(PKGDIR)-writer/usr/share/applications/ooo$(VER)-writer.desktop
 	sed -i -e 's/Office;/Office;Graphics;/' $(PKGDIR)-draw/usr/share/applications/ooo$(VER)-draw.desktop
-	sed -i -e 's/Office;/Office;System;/' $(PKGDIR)-common/usr/share/applications/ooo$(VER)-extension.desktop
 	# invalid, according to lintian. make it shut up.
-	for i in writer calc impress draw math base extension; do \
-		if [ "$$i" = "extension" ]; then p=common; else p=$$i; fi; \
-		perl -pi -e 's/Application;//; s/X-Red-Hat-Base;//; s/X-SuSE-Core-Office;//; s/X-MandrivaLinux-.*;//;' $(PKGDIR)-$$p/usr/share/applications/ooo$(VER)-$$i.desktop; \
+	for i in writer calc impress draw math base; do \
+		perl -pi -e 's/Application;//; s/X-Red-Hat-Base;//; s/X-SuSE-Core-Office;//; s/X-MandrivaLinux-.*;//;' $(PKGDIR)-$$i/usr/share/applications/ooo$(VER)-$$i.desktop; \
 	done
 	perl -pi -e 's/Application;//' $(PKGDIR)-gtk/$(OODIR)/share/xdg/qstart.desktop
 else
@@ -2523,6 +2515,19 @@ endif
 			$(PKGDIR)-common/$(OODIR)/program/intro.bmp; \
 	fi
 
+ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
+	# menu files from sysui
+	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare >/dev/null; pwd`" ;\
+	mkdir -p -m755 $(PKGDIR)-common/usr/share/applications ;\
+	sed -e 's,Exec=unopkg,Exec=/$(OODIR)/program/unopkg,' \
+	    -e 's,Name=$${PRODUCTNAME} $${PRODUCTVERSION},Name=OpenOffice.org $(VER),' \
+	    -e 's/  / /' \
+	    < $$dirname/extension.desktop \
+	    > $(PKGDIR)-common/usr/share/applications/ooo$(VER)-extension.desktop || exit 1
+	sed -i -e 's/Application;//' $(PKGDIR)-common/usr/share/applications/ooo$(VER)-extension.desktop
+	sed -i -e 's/Office;/Office;System;/' $(PKGDIR)-common/usr/share/applications/ooo$(VER)-extension.desktop
+endif
+
 	touch $@
 
 binary-arch: $(STAMP_DIR)/binary-arch
@@ -2664,7 +2669,10 @@ ifeq "$(PACKAGE_SDK)" "y"
 		      	      -e "s/@UDK_MICRO@/$$UDK_MICRO/" \
 		      	      -e "s/@VER@/$(VER)/" \
 			> debian/openoffice.org-dev-doc.doc-base.udk-$$i-ref; \
-	done 
+	done
+	# remove Autodoc_DiagnosticMessages.txt
+	find $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev-doc \
+		-name "Autodoc_DiagnosticMessages.txt" -exec rm {} \;
 	UDK_CPP_FILES=`find $(CURDIR)/debian/openoffice.org-dev-doc/usr/share/doc/openoffice.org-dev/docs/cpp/ref | sed -e 's,$(CURDIR)/debian/openoffice.org-dev-doc,,g' | xargs`; \
 	echo "Files: $$UDK_CPP_FILES" >> debian/openoffice.org-dev-doc.doc-base.udk-cpp-ref
   ifeq "$(ENABLE_JAVA)" "y"
@@ -2682,10 +2690,6 @@ ifeq "$(PACKAGE_SDK)" "y"
 	# since it doesn't affect the files at the end of the lines...
 	# But fix it..
 	perl -pi -e 's,html/,html /,g' debian/openoffice.org-dev-doc.doc-base.udk-common-ref
-	# remove Autodoc_DiagnosticMessages.txt from doc-base files
-	for i in common cpp; do \
-		perl -pi -e "s,/usr/share/doc/openoffice.org-dev/docs/$$i/ref/Autodoc_DiagnosticMessages.txt ,," debian/openoffice.org-dev-doc.doc-base.udk-$$i-ref; \
-	done
 endif
 	dh_installdocs -A  debian/README.Debian debian/tmp/pkg/openoffice.org-common/$(OODIR)/README
 	dh_installman -i
