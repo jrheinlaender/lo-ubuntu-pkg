@@ -142,6 +142,7 @@ DBVER=4.5
 NEONSONR=27
 PARALLEL_BUILD=n
 MOZILLA=xulrunner
+PACKAGE_URE=y
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
@@ -1079,6 +1080,10 @@ ifneq "$(HELPISOS)" ""
 	perl -pi -e 's|(Depends: openoffice.org$(VER)-writer, openoffice.org$(VER)-l10n-en-us)|\1, ttf-devanagari-fonts|' \
 		debian/control
 endif
+ifeq "$(PACKAGE_URE)" "y"
+	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
+		>> debian/control < debian/control.ure.in
+endif
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(BUILD_JARS_NATIVE)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
@@ -1618,6 +1623,17 @@ $(STAMP_DIR)/install-arch: $(STAMP_DIR)/install $(STAMP_NATIVE_JARS)
 	  rm -rf $(PKGDIR)-$$i $(PKGDIR)-$$i.*.debhelper ;\
 	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-$$i $(PKGDIR)-$$i || exit 1;\
 	done
+
+ifeq "$(PACKAGE_URE)" "y"
+	rm -rf debian/ure debian/ure.*.debhelper ;\
+	cp -r --preserve=mode debian/tmp/pkg/ure debian/ure || exit 1
+	# not needed
+	rm -f debian/ure/usr/lib/ure/LICENSE
+	rm -f debian/ure/usr/lib/ure/THIRDPARTYLICENSEREADME.html
+	# should go into /usr/share/doc
+	mkdir -p debian/ure/usr/share/doc/ure
+	mv debian/ure/usr/lib/ure/README debian/ure/usr/share/doc/ure
+endif
 
 	rm -rf debian/mozilla-openoffice.org debian/mozilla-openoffice.org.*.debhelper
 	rm -rf $(PKGDIR) $(PKGDIR).*.debhelper
@@ -2568,7 +2584,10 @@ endif
 	dh_link -s 
 	dh_fixperms -s
 ifeq "$(BUILD_DBG_PACKAGE)" "y"
-	dh_strip -s --dbg-package=openoffice.org$(VER)-dbg
+	dh_strip -s -Nure --dbg-package=openoffice.org$(VER)-dbg
+  ifeq "$(PACKAGE_URE)" "y"
+	dh_strip -pure --dbg-package=ure-dbg
+  endif
 	# dh_strip --dbg-package= is not idempotent, force copying of the binaries
 	# again...
 	rm -f $(STAMP_DIR)/install-arch
@@ -2585,7 +2604,10 @@ ifeq "$(ENABLE_MONO)" "y"
 	dh_installcligac -s
 endif
 	dh_compress -s -X.py -X.mk -X.sxd
-	dh_makeshlibs -s -n -V -Xlibxmlsec
+	dh_makeshlibs -s -Nure -n -V -Xlibxmlsec
+ifeq "$(PACKAGE_URE)" "y"
+	dh_makeshlibs -pure -n -V"ure (>= $(shell grep -A 1 "PRODUCTNAME URE" $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | tail -n 1 | awk '{ print $$2 }'))"
+endif
 	dh_installdeb -s
 	cat debian/openoffice.org-core.shlibs.local > debian/shlibs.local
 ifneq "$(USE_SYSTEM_XMLSEC)" "y"
@@ -2616,7 +2638,8 @@ endif
 # This switch to dh_shlibdeps reduces the 'libXXX not found' warnings but
 # causes ldd crashes sometimes when used with fakeroot:
 #          -l $(PKGDIR)-core/$(OPENOFFICEDIR)/program
-	dh_gencontrol -s -Nopenoffice.org$(VER)-report-builder \
+	dh_gencontrol -s -Nure -Nure-dbg \
+		-Nopenoffice.org$(VER)-report-builder \
 		-Nopenoffice.org$(VER)-presentation-minimizer \
 		-Nopenoffice.org$(VER)-sdbc-postgresql -- \
 		-V'base-version=$(BASE_VERSION)' \
@@ -2637,9 +2660,13 @@ endif
 	dh_gencontrol -popenoffice.org$(VER)-report-builder -- \
 		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep "<version" $(SOURCE_TREE)/reportdesign/util/post.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
 	dh_gencontrol -popenoffice.org$(VER)-presenttion-minimizer -- \
-		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep "<version" $(SOURCE_TREE)/sdext/source/minimizer/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
+		-v$(shell grep "<version" $(SOURCE_TREE)/sdext/source/minimizer/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
 	dh_gencontrol -popenoffice.org$(VER)-sdbc-postgresql -- \
 		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g)+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
+ifeq "$(PACKAGE_URE)" "y"
+	dh_gencontrol -pure -pure-dbg -- \
+		-v$(shell grep -A 1 "PRODUCTNAME URE" $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | tail -n 1 | awk '{ print $$2 }')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
+endif
 	dh_md5sums -s
 	dh_builddeb -s $(BUILDDEB_OPTIONS)
 	
