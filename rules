@@ -568,6 +568,11 @@ endif
 ifeq "$(USE_SYSTEM_ICU)" "y"
 	# 34 and 36 provide this and 38 changed the real name.
 	BUILD_DEPS += , libicu-dev [$(OOO_ARCHS)]
+  ifeq "$(BUILD_AMD64)" "y"
+    ifeq "$(shell dpkg --compare-versions `dpkg -l libicu36-dev | tail -n 1 | awk ' { print $$3 }'` ge 3.6-4 && echo 'true' || echo 'false')" "true"
+	BUILD_DEPS += , lib32icu36 [amd64]
+    endif
+  endif
 	CONFIGURE_FLAGS += --with-system-icu
 endif
 
@@ -1988,8 +1993,11 @@ ifeq "$(INTERNAL_STDLIBS)" "y"
 	echo "libgcc_s	$$LIBGCC_SOVER" >> debian/shlibs.override.stdlibs
 endif
 ifeq "$(USE_SYSTEM_STLPORT)" "y"
-	# remove a eventually sneaked-in stlport...
 	rm -f $(PKGDIR)-core/$(OODIR)/program/libstlport*
+  ifneq "$(USE_STLPORT5)" "y"
+	ln -s `readlink /usr/lib/libstlport_gcc.so` \
+		libstlport_gcc.so
+  endif
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
@@ -2698,7 +2706,7 @@ ifeq "$(PACKAGE_SDK)" "y"
 			> debian/openoffice.org-dev-doc.doc-base.udk-$$i-ref; \
 	done
 	# remove Autodoc_DiagnosticMessages.txt
-	find $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev-doc \
+	find $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev \
 		-name "Autodoc_DiagnosticMessages.txt" -exec rm {} \;
 	UDK_CPP_FILES=`find $(CURDIR)/debian/openoffice.org-dev-doc/usr/share/doc/openoffice.org-dev/docs/cpp/ref | sed -e 's,$(CURDIR)/debian/openoffice.org-dev-doc,,g' | xargs`; \
 	echo "Files: $$UDK_CPP_FILES" >> debian/openoffice.org-dev-doc.doc-base.udk-cpp-ref
