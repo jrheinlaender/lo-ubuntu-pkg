@@ -127,7 +127,6 @@ LPSOLVE_MIN_VERSION= (>= 5.5.0.10-4)
 USE_DBUS=y
 USE_GSTREAMER=y
 USE_SYSTEM_NEON=y
-PACKAGE_QUICKSTART=y
 USE_OOO_BUILD_DESKTOPS=n
 PACKAGE_SDK=y
 RUN_SMOKETEST=n
@@ -143,6 +142,7 @@ NEONSONR=27
 PARALLEL_BUILD=n
 MOZILLA=xulrunner
 PACKAGE_URE=y
+ENABLE_OPENGL=n
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
@@ -169,10 +169,6 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
 # distro-configs is too late; it already gets searched in unpack
 # when we don't do that here, too.
 CONFIGURE_FLAGS += --disable-access
-
-ifneq "$(PACKAGE_QUICKSTART)" "y"
-  CONFIGURE_FLAGS+= --disable-quickstart
-endif
 
 #############
 # Distro-specific overrides
@@ -290,6 +286,11 @@ endif
 ifeq "$(USE_BZIP_COMPRESS)" "y"
 	DPKG_DEPENDS = dpkg (>= 1.10.24)
 	BUILDDEB_OPTIONS = -- -Zbzip2
+endif
+
+ifeq "$(ENABLE_OPENGL)" "y"
+	BUILD_DEPS += , libgl1-mesa-dev, libglu1-mesa-dev
+	CONFIGURE_FLAGS += --enable-opengl
 endif
 
 ifeq "$(USE_LIBCURL4)" "y"
@@ -568,11 +569,6 @@ endif
 ifeq "$(USE_SYSTEM_ICU)" "y"
 	# 34 and 36 provide this and 38 changed the real name.
 	BUILD_DEPS += , libicu-dev [$(OOO_ARCHS)]
-  ifeq "$(BUILD_AMD64)" "y"
-    ifeq "$(shell dpkg --compare-versions `dpkg -l libicu36-dev | tail -n 1 | awk ' { print $$3 }'` ge 3.6-4 && echo 'true' || echo 'false')" "true"
-	BUILD_DEPS += , lib32icu36 [amd64]
-    endif
-  endif
 	CONFIGURE_FLAGS += --with-system-icu
 endif
 
@@ -1127,15 +1123,6 @@ endif
 	perl -pi -e "s,%OOO_MONO_ARCHS%,$(OOO_MONO_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_NPSOPLUGIN_ARCHS%,$(OOO_NPSOPLUGIN_ARCHS),g" debian/control
 
-ifeq "$(PACKAGE_QUICKSTART)" "y"
-	perl -pi -e 's#\(Widgets, Dialogs\)#\(Widgets, Dialogs, Quickstarter\)#' debian/control
-	perl -pi -e 's/GNOME\./GNOME. It also\n contains a QuickStarter for the \"notification area\"./' debian/control
-	perl -pi -e 's/Package: openoffice.org$(VER)-gtk$$/Package: openoffice.org-gtk\nConflicts: ooqstart-gnome, oooqs-kde/' debian/control
-	perl -pi -e 's/Conflicts: openoffice.org-thesaurus/Conflicts: openoffice.org-thesaurus, ooqstart-gnome, oooqs-kde/' debian/control
-else
-	perl -pi -e 's/Conflicts: openoffice.org-thesaurus/Conflicts: openoffice.org-thesaurus, ooqstart-gnome <= 0.8.3-8), oooqs-kde (<< 2.0.3-7)/' debian/control
-endif
-
 ifeq (he,$(findstring he,$(LANGPACKISOS)))
 	perl -pi -e 's/openoffice.org-help-he$$/openoffice.org-help-he, openoffice.org-ctl-he/' debian/control
 endif
@@ -1436,16 +1423,6 @@ endif
 	cd debian/tmp/pkg; \
 	rm -f openoffice.org-common/$(OODIR)/program/.testtoolrc
 
-ifeq "$(PACKAGE_QUICKSTART)" "y"
-	# ooqstart should go into -core; we have just a glib dependency
-	mkdir -p debian/tmp/pkg/openoffice.org-core/$(OODIR)/program
-	mv debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/ooqstart \
-		debian/tmp/pkg/openoffice.org-core/$(OODIR)/program
-	mkdir -p -m755 debian/tmp/pkg/openoffice.org-gnome/$(OODIR)/share/xdg
-	mv debian/tmp/pkg/openoffice.org-common/$(OODIR)/share/xdg/qstart.desktop \
-		debian/tmp/pkg/openoffice.org-gnome/$(OODIR)/share/xdg
-endif
-
 	# move gengal stuff into -dev
 	mkdir -p debian/tmp/pkg/openoffice.org-dev/$(OODIR)/program
 	mv debian/tmp/pkg/openoffice.org-core/$(OODIR)/program/gengal* \
@@ -1662,15 +1639,9 @@ endif
 	for f in gnome-open-url.bin fps_gnome.uno.so libvclplug_gtk[0-9]*.so; do \
 	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-gnome/$(OODIR)/program || exit 1;\
 	done
-ifeq "$(PACKAGE_QUICKSTART)" "y"
 	for f in libeggtray* libqstart_gtk*; do \
 	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-gnome/$(OODIR)/program || exit 1;\
 	done
-else
-	for f in libeggtray* libqstart_gtk*; do \
-	  rm -f $(PKGDIR)-core/$(OODIR)/program/$$f; \
-	done
-endif
 
 	# split out gtk stuff
 	rm -rf $(PKGDIR)-gtk
@@ -1817,14 +1788,7 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 		   < $$dirname/$$p.desktop \
 		   > $(PKGDIR)-$$p/usr/share/applications/ooo$(VER)-$$p.desktop || exit 1 ;\
 	done
-	# qstart.desktop is different to the above. Should be handled by --with-unix-wrapper of ooo-build
-	# but that somehow doesn't work as expected. FIXME.
-	PRODUCTVERSION=`grep PRODUCTVERSION $(SOURCE_TREE)/sysui/desktop/productversion.mk | head -n 1 | cut -d"=" -f2 | sed -e s/\ //g`; \
-	sed -i -e "s,Exec=openoffice.org$$PRODUCTVERSION,Exec=ooffice$(VER)," \
-	       -e "s,Name=OpenOffice.org $$PRODUCTVERSION,Name=OpenOffice.org $(VER)," \
-	       -e "s/  / /" \
-	       $(PKGDIR)-gtk/$(OODIR)/share/xdg/qstart.desktop
-	# we don't need the share/xdgs except qstart
+	# we don't need the share/xdgs
 	for f in `find debian -name '*.desktop' | grep xdg | grep -v qstart`; do \
 		rm -f $$f; done
 	for f in `find debian -name '*.desktop'`; do \
@@ -1840,7 +1804,6 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	for i in writer calc impress draw math base; do \
 		perl -pi -e 's/Application;//; s/X-Red-Hat-Base;//; s/X-SuSE-Core-Office;//; s/X-MandrivaLinux-.*;//;' $(PKGDIR)-$$i/usr/share/applications/ooo$(VER)-$$i.desktop; \
 	done
-	perl -pi -e 's/Application;//' $(PKGDIR)-gtk/$(OODIR)/share/xdg/qstart.desktop
 else
 	# menu files from ooo-build/desktop
 	for p in writer calc impress draw math base; do \
@@ -1996,7 +1959,7 @@ ifeq "$(USE_SYSTEM_STLPORT)" "y"
 	rm -f $(PKGDIR)-core/$(OODIR)/program/libstlport*
   ifneq "$(USE_STLPORT5)" "y"
 	ln -s `readlink /usr/lib/libstlport_gcc.so` \
-		libstlport_gcc.so
+		debian/openoffice.org$(VER)-core/$(OODIR)/program/libstlport_gcc.so
   endif
 endif
 
