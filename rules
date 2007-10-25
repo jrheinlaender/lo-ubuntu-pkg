@@ -1127,6 +1127,10 @@ ifeq (he,$(findstring he,$(LANGPACKISOS)))
 	perl -pi -e 's/openoffice.org-help-he$$/openoffice.org-help-he, openoffice.org-ctl-he/' debian/control
 endif
 
+ifeq "$(ETCH_BACKPORT)" "y"
+	perl -pi -e 's/Package: openoffice.org$(VER)-core/Package: openoffice.org$(VER)-core\nRecommends: nfs-common/' debian/control
+endif
+
 	python debian/scripts/joinctrl.py < debian/control > debian/control.tmp
 	mv debian/control.tmp debian/control
 
@@ -1423,6 +1427,11 @@ endif
 	cd debian/tmp/pkg; \
 	rm -f openoffice.org-common/$(OODIR)/program/.testtoolrc
 
+	# Gtk quickstarter for the eggtrtray stuff, so to -gtk (via -gnome)
+	mkdir -p -m755 debian/tmp/pkg/openoffice.org-gnome/$(OODIR)/share/xdg
+	mv debian/tmp/pkg/openoffice.org-common/$(OODIR)/share/xdg/qstart.desktop \
+		debian/tmp/pkg/openoffice.org-gnome/$(OODIR)/share/xdg
+
 	# move gengal stuff into -dev
 	mkdir -p debian/tmp/pkg/openoffice.org-dev/$(OODIR)/program
 	mv debian/tmp/pkg/openoffice.org-core/$(OODIR)/program/gengal* \
@@ -1647,12 +1656,8 @@ endif
 	rm -rf $(PKGDIR)-gtk
 	mkdir -p -m755 $(PKGDIR)-gtk/$(OODIR)/program
 	mv $(PKGDIR)-gnome/$(OODIR)/program/* $(PKGDIR)-gtk/$(OODIR)/program/
-ifeq "$(PACKAGE_QUICKSTART)" "y"
 	mkdir -p -m755 $(PKGDIR)-gtk/$(OODIR)/share
 	mv $(PKGDIR)-gnome/$(OODIR)/share/xdg $(PKGDIR)-gtk/$(OODIR)/share
-else
-	rm -rf $(PKGDIR)-gnome/$(OODIR)/share
-endif
 	mv $(PKGDIR)-gtk/$(OODIR)/program/ucpgvfs1.uno.so \
 		$(PKGDIR)-gnome/$(OODIR)/program/
 	mv $(PKGDIR)-gtk/$(OODIR)/program/gnome-set-default-application \
@@ -1788,7 +1793,16 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 		   < $$dirname/$$p.desktop \
 		   > $(PKGDIR)-$$p/usr/share/applications/ooo$(VER)-$$p.desktop || exit 1 ;\
 	done
-	# we don't need the share/xdgs
+
+	# qstart.desktop is different to the above. Should be handled by
+	# --with-unix-wrapper of ooo-build but that somehow doesn't work as
+	# expected. FIXME.
+	PRODUCTVERSION=`grep PRODUCTVERSION $(SOURCE_TREE)/sysui/desktop/productversion.mk | head -n 1 | cut -d"=" -f2 | sed -e s/\ //g`; \
+	sed -i -e "s,Exec=openoffice.org$$PRODUCTVERSION,Exec=ooffice$(VER)," \
+		-e "s,Name=OpenOffice.org $$PRODUCTVERSION,Name=OpenOffice.org $(VER)," \
+		-e "s/  / /" \
+		$(PKGDIR)-gtk/$(OODIR)/share/xdg/qstart.desktop
+	# we don't need the share/xdgs except qstart
 	for f in `find debian -name '*.desktop' | grep xdg | grep -v qstart`; do \
 		rm -f $$f; done
 	for f in `find debian -name '*.desktop'`; do \
@@ -1804,6 +1818,7 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	for i in writer calc impress draw math base; do \
 		perl -pi -e 's/Application;//; s/X-Red-Hat-Base;//; s/X-SuSE-Core-Office;//; s/X-MandrivaLinux-.*;//;' $(PKGDIR)-$$i/usr/share/applications/ooo$(VER)-$$i.desktop; \
 	done
+	perl -pi -e 's/Application;//' $(PKGDIR)-gtk/$(OODIR)/share/xdg/qstart.desktop
 else
 	# menu files from ooo-build/desktop
 	for p in writer calc impress draw math base; do \
