@@ -85,6 +85,7 @@ USE_PYCENTRAL=y
 PACKAGE_QA_TOOLS=y
 PACKAGE_TTF_OPENSYMBOL=y
 PACKAGE_NPSOPLUGIN=y
+PACKAGE_PCVSLIB=y
 BUILD_JARS_NATIVE=n
 BUILD_BINFILTERS=y
 BUILD_ONLY_EN_US=n
@@ -340,6 +341,11 @@ endif
 ifneq "$(PACKAGE_QA_TOOLS)" "y"
 	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-qa-tools -Nopenoffice.org$(VER)-qa-api-tests
 	CONFIGURE_FLAGS += --disable-qadevooo
+endif
+
+ifeq "$(PACKAGE_PCVSLIB)" "y"
+	# for the tests
+	BUILD_DEPS += , cvs
 endif
 
 ifeq "$(RUN_SMOKETEST)" "y"
@@ -1099,6 +1105,10 @@ ifeq "$(PACKAGE_QA_TOOLS)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.qa.in
 endif
+ifeq "$(PACKAGE_PCVSLIB)" "y"
+	cat debian/control.pcvslib.in \
+		>> debian/control
+endif
 ifeq "$(PACKAGE_NPSOPLUGIN)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.mozilla.in
@@ -1285,6 +1295,11 @@ endif
 
 	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 $(MAKE)
 
+ifeq "$(PACKAGE_PCVSLIB)" "y"
+	cd $(SOURCE_TREE)/solenv/bin/modules/PCVSLib; \
+		perl Makefile.PL && $(MAKE)
+endif
+
 	if [ -d ooo-build/build/current -a ! -d $(SOURCE_TREE) ]; then \
 		ln -sf current $(SOURCE_TREE); \
 	fi
@@ -1310,6 +1325,10 @@ endif
 test: $(STAMP_DIR)/test
 $(STAMP_DIR)/test: $(STAMP_DIR)/build
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
+ifeq "$(PACKAGE_PCVSLIB)" "y"
+	-cd $(SOURCE_TREE)/solenv/bin/modules/PCVSLib; \
+		$(MAKE) test
+endif
 ifeq "$(RUN_UNIT_TESTS)" "y"
 	# build/run unit tests
 	cd $(SOURCE_TREE)/instsetoo_native; \
@@ -1347,6 +1366,11 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/build $(STAMP_DIR)/test
 		perl -pi -e 's,LD_LIBRARY_PATH=\"(.*)\",LD_LIBRARY_PATH=\"/usr/lib/libfakeroot:\1\",' $(SOURCE_TREE)/*.sh; \
 	fi
 	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(BUILD_LD_LIBRARY_PATH)" DESTDIR=$(CURDIR)/debian/tmp $(MAKE) install
+
+ifeq "$(PACKAGE_PCVSLIB)" "y"
+	cd $(SOURCE_TREE)/solenv/bin/modules/PCVSLib; \
+		$(MAKE) install DESTDIR=$(CURDIR)/debian/libpcvslib-perl SITEPREFIX=/usr
+endif
 
 ifeq "$(HELPISOS)" ""
 	for i in common calc math draw writer impress base; do \
@@ -2705,6 +2729,10 @@ ifeq "$(PACKAGE_SDK)" "y"
 	perl -pi -e 's,html/,html /,g' debian/openoffice.org-dev-doc.doc-base.udk-common-ref
 endif
 	dh_installdocs -A  debian/README.Debian debian/tmp/pkg/openoffice.org-common/$(OODIR)/README
+ifeq "$(PACKAGE_PCVSLIB)" "y"
+	dh_installexamples -plibpcvslib-perl \
+		$(SOURCE_TREE)/solenv/bin/modules/PCVSLib/samples/*
+endif
 	dh_installman -i
 	for i in `find $(PKGDIR)-common -type l -name "o*.1"`; do \
 		mv $$i $$i.gz; \
@@ -2723,7 +2751,7 @@ endif
 	dh_installxmlcatalogs -i
 	dh_compress -X.py -X.mk -X.sxd
 	dh_installdeb -i
-	dh_gencontrol -i -- \
+	dh_gencontrol -i -Nlibpcvslib-perl -- \
 		-V'base-version=$(BASE_VERSION)' \
 		-V'help-l10n-virtual-version=$(HELP_L10N_VIRTUAL_VERSION)' \
 		-V'common-bsh-depends=$(COMMON_BSH_DEPENDS)' \
@@ -2733,6 +2761,10 @@ endif
 		-V'ooo-binfilter-dep=$(OOO_BINFILTER_DEP)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-v$(BINARY_VERSION)
+ifeq "$(PACKAGE_PCVSLIB)" "y"
+	dh_gencontrol -i -plibpcvslib-perl -- \
+		-v0.02+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
+endif
 	dh_md5sums -i
 	dh_builddeb -i $(BUILDDEB_OPTIONS)
 	
