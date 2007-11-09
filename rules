@@ -97,8 +97,7 @@ SYSTEM_ALTLINUXHYPH=y
 LIBALTLINUXHYPH_MINVER= (>= 0.1.1-11)
 USE_AGG=n
 SYSTEM_AGG=n
-USE_STLPORT=y
-USE_STLPORT5=n
+USE_STLPORT=n
 USE_SYSTEM_STLPORT=y
 USE_SYSTEM_BOOST=y
 USE_SYSTEM_VIGRA=y
@@ -186,7 +185,6 @@ endif
 # Debian Etch backport
 ifeq "$(ETCH_BACKPORT)" "y"
   PATCHSET=$(DIST)Etch
-  USE_STLPORT5=n
   USE_SYSTEM_LIBWPS=n
   SYSTEM_ALTLINUXHYPH=n
   ENABLE_MONO=n
@@ -206,6 +204,11 @@ endif
 
 #############
 # Architecture-specific changes
+
+OOO_STLPORT_ARCHS= i386
+ifeq "$(ARCH)" "i386"
+	USE_STLPORT=y
+endif
 
 OOO_ARCHS= i386 powerpc sparc
 ifeq "$(BUILD_AMD64)" "y"
@@ -295,7 +298,7 @@ ifneq "$(BUILD_DBG_PACKAGE)" "y"
 else
 	# -g gives a far too big deb (>400M, ca. 1GB I-S)
 	SMALL_SYMBOLS = y
-	DBG_DBG_SUGGESTS+= , libc6.1-dbg [alpha ia64], libc0.1-dbg [kfreebsd-i386 kfreebsd-amd64], libc0.3-dbg [hurd-i386], libc6-dbg [!ia64 !alpha !kfreebsd-i386 !kfreebsd-amd64 !hurd-i386], libatk1.0-dbg, libglib2.0-0-dbg, libgnomevfs2-0-dbg, libstdc++6-dbg, libx11-6-dbg, libxext6-dbg, libxaw7-dbg, libxml2-dbg, libgtk2.0-0-dbg, libxau6-dbg, libice6-dbg, libsm6-dbg, libxinerama1-dbg, libfontconfig1-dbg
+	DBG_DBG_SUGGESTS+= , libc6.1-dbg [alpha ia64], libc0.1-dbg [kfreebsd-i386 kfreebsd-amd64], libc0.3-dbg [hurd-i386], libc6-dbg [!ia64 !alpha !kfreebsd-i386 !kfreebsd-amd64 !hurd-i386], libatk1.0-dbg, libglib2.0-0-dbg, libgnomevfs2-0-dbg, libstdc++6-$(shell g++ --version | head -n 1 | cut -d' ' -f3 | cut -d'.' -f1,2)-dbg, libx11-6-dbg, libxext6-dbg, libxaw7-dbg, libxml2-dbg, libgtk2.0-0-dbg, libxau6-dbg, libice6-dbg, libsm6-dbg, libxinerama1-dbg, libfontconfig1-dbg
   ifeq "$(USE_LIBCURL4)" "y"
 	DBG_DBG_SUGGESTS+= , libcurl3-dbg
   else
@@ -499,20 +502,14 @@ ifeq "$(USE_AGG)" "y"
 endif
 
 ifneq "$(USE_STLPORT)" "y"
-	CONFIGURE_FLAGS += --without-stlport
+	CONFIGURE_FLAGS += --without-stlport4
+	DEV_STL_DEPENDS=, libstdc++6-$(shell g++ --version | head -n 1 | cut -d' ' -f3 | cut -d'.' -f1,2)
 else
   ifeq "$(USE_SYSTEM_STLPORT)" "y"
-    ifeq "$(USE_STLPORT5)" "y"
-	LIBSTLPORT_MINVER= (>= 5.0.99rc2-5)
-	BUILD_DEPS += , libstlport5.1-dev $(LIBSTLPORT_MINVER) [$(OOO_ARCHS)]
-	DEV_STL_DEPENDS=, libstlport5.1-dev $(LIBSTLPORT_MINVER)
-	DBG_DBG_SUGGESTS+= , libstlport5.1-dbg
-    else
 	LIBSTLPORT_MINVER= (>= 4.6.2-3)
-	BUILD_DEPS += , libstlport4.6-dev $(LIBSTLPORT_MINVER) [$(OOO_ARCHS)]
-	DEV_STL_DEPENDS=, libstlport4.6-dev $(LIBSTLPORT_MINVER)
-    endif
-	CONFIGURE_FLAGS+= --with-stlport=$(CURDIR)/stlport
+	BUILD_DEPS += , libstlport4.6-dev $(LIBSTLPORT_MINVER) [$(OOO_STLPORT_ARCHS)]
+	DEV_STL_DEPENDS=, libstlport4.6-dev $(LIBSTLPORT_MINVER) [$(OOO_STLPORT_ARCHS)]
+	CONFIGURE_FLAGS+= --with-stlport4=$(CURDIR)/stlport
   endif
 endif
 
@@ -1197,13 +1194,15 @@ ifneq ($(GCC_VERSION),)
   endif
 endif
 
-ifeq "$(USE_SYSTEM_STLPORT)" "y"
+ifeq "$(USE_STLPORT)" "y"
+  ifeq "$(USE_SYSTEM_STLPORT)" "y"
 	# stlport home
 	if [ ! -d stlport ]; then \
 		mkdir -p stlport; \
 		ln -sf /usr/include/stlport stlport/stlport; \
 		ln -sf /usr/lib stlport/lib; \
 	fi
+  endif
 endif
 
 ifneq "$(BUILD_ONLY_EN_US)" "y"
@@ -1873,10 +1872,6 @@ ifeq "$(PACKAGE_SDK)" "y"
 	# for the SDK includes
 	cd $(PKGDIR)-dev/usr/include/openoffice$(VER) && \
 		rm -rf stl && ln -s /usr/include/stlport stl
-    ifeq "$(USE_STLPORT5)" "y"
-	perl -pi -e "s/STORELIB=-lstore/STORELIB=-lstore\nSTLPORT_VER=500/" \
-		 $(PKGDIR)-dev/$(OODIR)/sdk/settings/settings.mk
-    endif
   endif
   ifeq "$(ENABLE_JAVA)" "y"
 	# move SDK Java stuff into /usr/share/java/openoffice
@@ -1952,10 +1947,8 @@ ifeq "$(INTERNAL_STDLIBS)" "y"
 endif
 ifeq "$(USE_SYSTEM_STLPORT)" "y"
 	rm -f $(PKGDIR)-core/$(OODIR)/program/libstlport*
-  ifneq "$(USE_STLPORT5)" "y"
 	ln -s `readlink /usr/lib/libstlport_gcc.so` \
 		debian/openoffice.org$(VER)-core/$(OODIR)/program/libstlport_gcc.so
-  endif
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
