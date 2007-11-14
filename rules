@@ -57,7 +57,7 @@ MWS=SRC680
 #MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)" | cut -d~ -f2 | sed -e s/$(shell echo $(MWS) | tr A-Z a-z)//)
 # For SRC680 milestones, use only ~mX
 MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)" | cut -d~ -f2)
-#MILESTONE=m5
+#MILESTONE=m8
 TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
 #TAG=$(MWS)_$(MILESTONE)
 #OOO_BUILD_BRANCH=ooo-build-2-3
@@ -86,7 +86,7 @@ PACKAGE_QA_TOOLS=y
 PACKAGE_TTF_OPENSYMBOL=y
 PACKAGE_NPSOPLUGIN=y
 PACKAGE_PCVSLIB=y
-BUILD_JARS_NATIVE=n
+BUILD_JARS_NATIVE=y
 BUILD_BINFILTERS=y
 BUILD_ONLY_EN_US=n
 ENABLE_JAVA=y
@@ -98,8 +98,7 @@ SYSTEM_ALTLINUXHYPH=y
 LIBALTLINUXHYPH_MINVER= (>= 0.1.1-11)
 USE_AGG=n
 SYSTEM_AGG=n
-USE_STLPORT=y
-USE_STLPORT5=n
+USE_STLPORT=n
 USE_SYSTEM_STLPORT=y
 USE_SYSTEM_BOOST=y
 USE_SYSTEM_VIGRA=y
@@ -188,7 +187,6 @@ endif
 # Debian Etch backport
 ifeq "$(ETCH_BACKPORT)" "y"
   PATCHSET=$(DIST)Etch
-  USE_STLPORT5=n
   USE_SYSTEM_LIBWPS=n
   SYSTEM_ALTLINUXHYPH=n
   ENABLE_MONO=n
@@ -208,6 +206,11 @@ endif
 
 #############
 # Architecture-specific changes
+
+OOO_STLPORT_ARCHS= i386
+ifeq "$(ARCH)" "i386"
+	USE_STLPORT=y
+endif
 
 OOO_ARCHS= i386 powerpc sparc
 ifeq "$(BUILD_AMD64)" "y"
@@ -236,6 +239,18 @@ endif
 ifeq (,$(findstring $(ARCH),$(OOO_MONO_ARCHS)))
        ENABLE_MONO=n
 endif
+# Mozilla plugin. Crashes on amd64
+OOO_NPSOPLUGIN_ARCHS = i386 powerpc sparc
+ifeq "$(BUILD_AMD64)" "y"
+  ifeq "$(ARCH)" "amd64"
+	PACKAGE_NPSOPLUGIN=n
+  endif
+endif
+ifeq "$(BUILD_PPC64)" "y"
+  ifeq "$(ARCH)" "ppc64"
+	PACKAGE_NPSOPLUGIN=n
+  endif
+endif
 
 ifeq "$(ARCH)-linux-gnu" "sparc-linux-gnu"
 	# use 32-bit compiler
@@ -248,14 +263,6 @@ ifeq "$(BUILD_AMD64)" "y"
 endif
 ifeq "$(BUILD_PPC64)" "y"
 	OOO_MOZILLA_ARCHS += ppc64
-endif
-# Mozilla plugin. Crashes on amd64
-OOO_NPSOPLUGIN_ARCHS = i386 powerpc sparc
-ifeq "$(BUILD_AMD64)" "y"
-	PACKAGE_NPSOPLUGIN=n
-endif
-ifeq "$(BUILD_PPC64)" "y"
-	PACKAGE_NPSOPLUGIN=n
 endif
 
 # We only build the main openoffice.org packages on those architectures where it works
@@ -301,7 +308,7 @@ ifneq "$(BUILD_DBG_PACKAGE)" "y"
 else
 	# -g gives a far too big deb (>400M, ca. 1GB I-S)
 	SMALL_SYMBOLS = y
-	DBG_DBG_SUGGESTS+= , libc6.1-dbg [alpha ia64], libc0.1-dbg [kfreebsd-i386 kfreebsd-amd64], libc0.3-dbg [hurd-i386], libc6-dbg [!ia64 !alpha !kfreebsd-i386 !kfreebsd-amd64 !hurd-i386], libatk1.0-dbg, libglib2.0-0-dbg, libgnomevfs2-0-dbg, libstdc++6-dbg, libx11-6-dbg, libxext6-dbg, libxaw7-dbg, libxml2-dbg, libgtk2.0-0-dbg, libxau6-dbg, libice6-dbg, libsm6-dbg, libxinerama1-dbg
+	DBG_DBG_SUGGESTS+= , libc6.1-dbg [alpha ia64], libc0.1-dbg [kfreebsd-i386 kfreebsd-amd64], libc0.3-dbg [hurd-i386], libc6-dbg [!ia64 !alpha !kfreebsd-i386 !kfreebsd-amd64 !hurd-i386], libatk1.0-dbg, libglib2.0-0-dbg, libgnomevfs2-0-dbg, libstdc++6-$(shell g++ --version | head -n 1 | cut -d' ' -f3 | cut -d'.' -f1,2)-dbg, libx11-6-dbg, libxext6-dbg, libxaw7-dbg, libxml2-dbg, libgtk2.0-0-dbg, libxau6-dbg, libice6-dbg, libsm6-dbg, libxinerama1-dbg, libfontconfig1-dbg
   ifeq "$(USE_LIBCURL4)" "y"
 	DBG_DBG_SUGGESTS+= , libcurl3-dbg
   else
@@ -357,7 +364,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	# one to that gid_Module_Root always is english and the other langpacks
 	# have gid_Module_Root.$iso
 	#ISOS=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
-	ISOS:=en-US af as-IN be-BY bg bn br bs ca cs da de dz el \
+	ISOS:=en-US af ar as-IN be-BY bg bn br bs ca cs da de dz el \
 	  en-GB en-ZA eo es et fa fi fr ga gl gu-IN he hi-IN hr hu it ja \
 	  ka km ko ku lo lt lv mk ml-IN mr-IN nb ne nl nn nr ns or-IN pa-IN \
 	  pl pt pt-BR ru rw sk sl sr-CS ss st sv \
@@ -366,7 +373,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	HELPISOS:=en-US cs da de dz en-GB es et fr gl hi-IN hu it ja km ko nl \
 	  pl pt pt-BR ru sl sv zh-CN zh-TW
 	#LANGPACKISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
-	LANGPACKISOS:=en-US af as-IN be-BY bg bn br bs ca cs da de dz el \
+	LANGPACKISOS:=en-US af ar as-IN be-BY bg bn br bs ca cs da de dz el \
 	  en-GB en-ZA eo es et fa fi fr ga gl gu-IN he hi-IN hr hu it ja \
 	  ka km ko ku lo lt lv mk ml-IN mr-IN nb ne nl nn nr ns or-IN pa-IN \
 	  pl pt pt-BR ru rw sk sl sr-CS ss st sv \
@@ -389,7 +396,11 @@ ifeq "$(ENABLE_JAVA)" "y"
 	JAVA_HOME=/usr/lib/jvm/java-gcj
 	CONFIGURE_FLAGS += --enable-gcjaot
   ifeq "$(BUILD_JARS_NATIVE)" "y"
+    ifeq "$(shell gcj --version | head -n 1 | cut -d' ' -f3 | cut -d'.' -f1,2)" "4.2"
+    	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.76-7) [$(OOO_JAVA_ARCHS)]
+    else
 	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.65-4) [$(OOO_JAVA_ARCHS)]
+    endif
   else
 	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.56) [$(OOO_JAVA_ARCHS)]
   endif
@@ -448,6 +459,10 @@ export JAVA_HOME
 	BUILD_DEPS += , mingw32 [$(OOO_JAVA_ARCHS)]
 	CONFIGURE_FLAGS += --with-mingwin=i586-mingw32msvc-g++
   endif
+	# report-builder
+	REPORT_BUILDER_BUILD_DEPS += , libjcommon-java (>= 1.0.10) [$(OOO_JAVA_ARCHS)], libsac-java [$(OOO_JAVA_ARCHS)], libxml-java [$(OOO_JAVA_ARCHS)], libflute-1.3-jfree-java [$(OOO_JAVA_ARCHS)], libjfreereport-java (>= 0.9.0-05) [$(OOO_JAVA_ARCHS)], liblayout-java [$(OOO_JAVA_ARCHS)], libloader-java [$(OOO_JAVA_ARCHS)], libformula-java [$(OOO_JAVA_ARCHS)], librepository-java [$(OOO_JAVA_ARCHS)], libfonts-java (>= 0.2.6) [$(OOO_JAVA_ARCHS)], libjcommon-serializer-java [$(OOO_JAVA_ARCHS)]
+	REPORT_BUILDER_JAR_DEPENDS := $(REPORT_BUILDER_BUILD_DEPS)
+	BUILD_DEPS += $(REPORT_BUILDER_BUILD_DEPS)
 else
 	CONFIGURE_FLAGS += --without-java
 	DEBHELPER_OPTIONS += -Nopenoffice.org$(VER)-officebean -Nopenoffice.org$(VER)-java-common -Nopenoffice.org$(VER)-filter-mobiledev
@@ -502,20 +517,14 @@ ifeq "$(USE_AGG)" "y"
 endif
 
 ifneq "$(USE_STLPORT)" "y"
-	CONFIGURE_FLAGS += --without-stlport
+	CONFIGURE_FLAGS += --without-stlport4
+	DEV_STL_DEPENDS=, libstdc++6-$(shell g++ --version | head -n 1 | cut -d' ' -f3 | cut -d'.' -f1,2)
 else
   ifeq "$(USE_SYSTEM_STLPORT)" "y"
-    ifeq "$(USE_STLPORT5)" "y"
-	LIBSTLPORT_MINVER= (>= 5.0.99rc2-5)
-	BUILD_DEPS += , libstlport5.1-dev $(LIBSTLPORT_MINVER) [$(OOO_ARCHS)]
-	DEV_STL_DEPENDS=, libstlport5.1-dev $(LIBSTLPORT_MINVER)
-	DBG_DBG_SUGGESTS+= , libstlport5.1-dbg
-    else
 	LIBSTLPORT_MINVER= (>= 4.6.2-3)
-	BUILD_DEPS += , libstlport4.6-dev $(LIBSTLPORT_MINVER) [$(OOO_ARCHS)]
-	DEV_STL_DEPENDS=, libstlport4.6-dev $(LIBSTLPORT_MINVER)
-    endif
-	CONFIGURE_FLAGS+= --with-stlport=$(CURDIR)/stlport
+	BUILD_DEPS += , libstlport4.6-dev $(LIBSTLPORT_MINVER) [$(OOO_STLPORT_ARCHS)]
+	DEV_STL_DEPENDS=, libstlport4.6-dev $(LIBSTLPORT_MINVER) [$(OOO_STLPORT_ARCHS)]
+	CONFIGURE_FLAGS+= --with-stlport4=$(CURDIR)/stlport
   endif
 endif
 
@@ -1208,13 +1217,15 @@ ifneq ($(GCC_VERSION),)
   endif
 endif
 
-ifeq "$(USE_SYSTEM_STLPORT)" "y"
+ifeq "$(USE_STLPORT)" "y"
+  ifeq "$(USE_SYSTEM_STLPORT)" "y"
 	# stlport home
 	if [ ! -d stlport ]; then \
 		mkdir -p stlport; \
 		ln -sf /usr/include/stlport stlport/stlport; \
 		ln -sf /usr/lib stlport/lib; \
 	fi
+  endif
 endif
 
 ifneq "$(BUILD_ONLY_EN_US)" "y"
@@ -1909,10 +1920,6 @@ ifeq "$(PACKAGE_SDK)" "y"
 	# for the SDK includes
 	cd $(PKGDIR)-dev/usr/include/openoffice$(VER) && \
 		rm -rf stl && ln -s /usr/include/stlport stl
-    ifeq "$(USE_STLPORT5)" "y"
-	perl -pi -e "s/STORELIB=-lstore/STORELIB=-lstore\nSTLPORT_VER=500/" \
-		 $(PKGDIR)-dev/$(OODIR)/sdk/settings/settings.mk
-    endif
   endif
   ifeq "$(ENABLE_JAVA)" "y"
 	# move SDK Java stuff into /usr/share/java/openoffice
@@ -1988,10 +1995,8 @@ ifeq "$(INTERNAL_STDLIBS)" "y"
 endif
 ifeq "$(USE_SYSTEM_STLPORT)" "y"
 	rm -f $(PKGDIR)-core/$(OODIR)/program/libstlport*
-  ifneq "$(USE_STLPORT5)" "y"
 	ln -s `readlink /usr/lib/libstlport_gcc.so` \
 		debian/openoffice.org$(VER)-core/$(OODIR)/program/libstlport_gcc.so
-  endif
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
@@ -2660,6 +2665,7 @@ endif
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-v$(BINARY_VERSION)
 	dh_gencontrol -popenoffice.org$(VER)-report-builder -- \
+		-V'report-builder-jar-depends=$(REPORT_BUILDER_JAR_DEPENDS)' \
 		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep "<version" $(SOURCE_TREE)/reportdesign/util/post.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
 	dh_gencontrol -popenoffice.org$(VER)-presenttion-minimizer -- \
 		-v$(shell grep "<version" $(SOURCE_TREE)/sdext/source/minimizer/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
