@@ -85,7 +85,7 @@ USE_PYCENTRAL=y
 PACKAGE_QA_TOOLS=y
 PACKAGE_TTF_OPENSYMBOL=y
 PACKAGE_NPSOPLUGIN=y
-PACKAGE_PCVSLIB=y
+PACKAGE_PCVSLIB=n
 BUILD_JARS_NATIVE=y
 BUILD_BINFILTERS=y
 BUILD_ONLY_EN_US=n
@@ -143,6 +143,7 @@ PARALLEL_BUILD=n
 MOZILLA=xulrunner
 PACKAGE_URE=y
 ENABLE_OPENGL=n
+SYSTEM_OPENSSL=y
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
@@ -212,7 +213,7 @@ ifeq "$(ARCH)" "i386"
 	USE_STLPORT=y
 endif
 
-OOO_ARCHS= i386 powerpc sparc
+OOO_ARCHS= i386 powerpc sparc mips mipsel
 ifeq "$(BUILD_AMD64)" "y"
   OOO_ARCHS += amd64
 endif
@@ -220,7 +221,7 @@ ifeq "$(BUILD_PPC64)" "y"
   OOO_ARCHS += ppc64
 endif
 # Java...
-OOO_JAVA_ARCHS = i386 powerpc sparc
+OOO_JAVA_ARCHS = i386 powerpc sparc mips mipsel
 ifeq "$(BUILD_AMD64)" "y"
   OOO_JAVA_ARCHS+= amd64
 endif
@@ -240,7 +241,7 @@ ifeq (,$(findstring $(ARCH),$(OOO_MONO_ARCHS)))
        ENABLE_MONO=n
 endif
 # Mozilla plugin. Crashes on amd64
-OOO_NPSOPLUGIN_ARCHS = i386 powerpc sparc
+OOO_NPSOPLUGIN_ARCHS = i386 powerpc sparc mipsel
 ifeq "$(BUILD_AMD64)" "y"
   ifeq "$(ARCH)" "amd64"
 	PACKAGE_NPSOPLUGIN=n
@@ -257,7 +258,7 @@ ifeq "$(ARCH)-linux-gnu" "sparc-linux-gnu"
 	CC_PREFIX=sparc-linux-gnu-
 endif
 
-OOO_MOZILLA_ARCHS=i386 powerpc sparc
+OOO_MOZILLA_ARCHS=i386 powerpc sparc mips mipsel
 ifeq "$(BUILD_AMD64)" "y"
 	OOO_MOZILLA_ARCHS += amd64
 endif
@@ -295,9 +296,15 @@ ifeq "$(ENABLE_OPENGL)" "y"
 endif
 
 ifeq "$(USE_LIBCURL4)" "y"
-	BUILD_DEPS += , libcurl4-gnutls-dev [$(OOO_ARCHS)]
+	BUILD_DEPS += , libcurl4-openssl-dev [$(OOO_ARCHS)]
 else
-	BUILD_DEPS += , libcurl3-gnutls-dev [$(OOO_ARCHS)]
+	BUILD_DEPS += , libcurl3-openssl-dev [$(OOO_ARCHS)]
+endif
+
+ifeq "$(SYSTEM_OPENSSL)" "y"
+	BUILD_DEPS += , libssl-dev [$(OOO_ARCHS)]
+	CONFIGURE_FLAGS += --with-system-openssl
+	DBG_DBG_SUGGESTS += , libssl$(shell  readlink /usr/lib/libssl.so | cut -d"." -f3,4,5)-dbg
 endif
 
 	# libdb-dev since 4.6 but it provides libdb4.6-dev, so keep this as-is...
@@ -671,8 +678,8 @@ else
 endif
 
 ifeq "$(USE_SYSTEM_NEON)" "y"
-	BUILD_DEPS += , libneon$(NEONSONR)-gnutls-dev [$(OOO_ARCHS)]
-	DBG_DBG_SUGGESTS+= , libneon$(NEONSONR)-gnutls-dbg
+	BUILD_DEPS += , libneon$(NEONSONR)-openssl-dev [$(OOO_ARCHS)]
+	DBG_DBG_SUGGESTS+= , libneon$(NEONSONR)-openssl-dbg
 	CONFIGURE_FLAGS += --with-system-neon
 endif
 
