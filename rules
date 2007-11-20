@@ -142,7 +142,7 @@ NEONSONR=27
 PARALLEL_BUILD=n
 MOZILLA=xulrunner
 PACKAGE_URE=y
-ENABLE_OPENGL=n
+ENABLE_OPENGL=y
 SYSTEM_OPENSSL=y
 
 # when we have a package we want to have to be installed on older things with some older
@@ -291,7 +291,7 @@ ifeq "$(USE_BZIP_COMPRESS)" "y"
 endif
 
 ifeq "$(ENABLE_OPENGL)" "y"
-	BUILD_DEPS += , libgl1-mesa-dev, libglu1-mesa-dev
+	BUILD_DEPS += , libgl1-mesa-dev [$(OOO_ARCHS)], libglu1-mesa-dev [$(OOO_ARCHS)]
 	CONFIGURE_FLAGS += --enable-opengl
 endif
 
@@ -1120,6 +1120,10 @@ endif
 ifeq "$(PACKAGE_NPSOPLUGIN)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.mozilla.in
+endif
+ifeq "$(ENABLE_OPENGL)" "y"
+	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
+		>> debian/control < debian/control.ogltrans.in
 endif
 ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
@@ -2106,9 +2110,19 @@ ifeq "$(ENABLE_JAVA)" "y"
 	done
 endif
 
+	rm -rf $(PKGDIR)-presentation-minimizer
+	install -D -m644 $(SOURCE_TREE)/sdext/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/sun-presentation-minimizer.oxt \
+		$(PKGDIR)-presentation-minimizer/$(OODIR)/share/extension/install/sun-presentation-minimizer.oxt
+	
 	rm -rf $(PKGDIR)-sdbc-postgresql
 	install -D -m644 $(SOURCE_TREE)/connectivity/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/postgresql-sdbc-$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g).zip \
 		$(PKGDIR)-sdbc-postgresql/$(OODIR)/share/extension/install/postgresql-sdbc-$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g).zip
+
+ifeq "$(ENABLE_OPENGL)" "y"
+	rm -rf $(PKGDIR)-ogltrans
+	install -D -m644 $(SOURCE_TREE)/slideshow/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/libOGLTrans.uno.so \
+		$(PKGDIR)-ogltrans/$(OODIR)/share/extension/install/libOGLTrans.uno.so
+endif
 
 	for i in $(ARCH_DEP_PACKAGES); do \
 		install -D -m644 debian/presubj \
