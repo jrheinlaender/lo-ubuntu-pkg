@@ -141,6 +141,7 @@ NEONSONR=27
 PARALLEL_BUILD=n
 MOZILLA=xulrunner
 ENABLE_OPENGL=n
+NEW_DPKG_SHLIBDEPS=y
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
@@ -279,6 +280,13 @@ ifeq "$(USE_BZIP_COMPRESS)" "y"
 	BUILDDEB_OPTIONS = -- -Zbzip2
 endif
 
+ifeq "$(NEW_DPKG_SHLIBDEPS)" "y"
+	# new dpkg-dev with --ignore-missing-info, when not using it it
+	# fails with the new dpkg-shlibdeps
+	BUILD_DEPS += , dpkg-dev (>= 1.14.9) [$(OOO_ARCHS)]
+	SHLIBS_OVERRIDE= -- --ignore-missing-info
+endif
+
 ifeq "$(ENABLE_OPENGL)" "y"
 	BUILD_DEPS += , libgl1-mesa-dev [$(OOO_ARCHS)], libglu1-mesa-dev [$(OOO_ARCHS)]
 	CONFIGURE_FLAGS += --enable-opengl
@@ -323,7 +331,9 @@ endif
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(BUILD_JARS_NATIVE)" "y"
 	STAMP_NATIVE_JARS = $(STAMP_DIR)/native-jars
+    ifeq "$(NEW_DPKG_SHLIBDEPS)" "n"
 	BUILD_DEPS += , dpkg-dev (>= 1.13.19)
+    endif
 	JAVA_GCJ_DEPENDS = libgcj-common (>= 1:4.1.1-14)
   endif
 endif
@@ -2583,7 +2593,9 @@ ifeq "$(INTERNAL_STDLIBS)" "y"
 	cat debian/shlibs.override.stdlibs >> debian/shlibs.local
 endif
 	LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" \
-		dh_shlibdeps -s $(SHLIBS_OVERRIDE)
+		dh_shlibdeps -s \
+			-l$(PKGDIR)-core/$(OODIR)/program:/usr/lib/gcj-4.2-81 \
+			$(SHLIBS_OVERRIDE)
 	# this is in an extension (.zip), so dh_shlibdeps doesn't get it. We need to do
 	# it manually.
 	LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" \
