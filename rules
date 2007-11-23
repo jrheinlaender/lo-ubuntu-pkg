@@ -60,14 +60,14 @@ MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)" | cut -d~ -f2)
 #MILESTONE=m9
 TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
 #TAG=$(MWS)_$(MILESTONE)
-#OOO_BUILD_BRANCH=ooo-build-2-3
+#OOO_BUILD_BRANCH=ooo-build-2-4
 SOURCE_TREE=ooo-build/build/$(TAG)
 STAMP_DIR=debian/stampdir
 
 CORE_TARBALL=$(TAG)-core.tar.bz2
 SYSTEM_TARBALL=$(TAG)-system.tar.bz2
-#CORE_TARBALL=OOo_2.3.0_src_core.tar.bz2
-#SYSTEM_TARBALL=OOo_2.3.0_src_system.tar.bz2
+#CORE_TARBALL=OOo_2.4.0_src_core.tar.bz2
+#SYSTEM_TARBALL=OOo_2.4.0_src_system.tar.bz2
 
 ifeq "$(DISTREL)" "etch"
   ETCH_BACKPORT=y
@@ -144,6 +144,7 @@ MOZILLA=xulrunner
 PACKAGE_URE=y
 ENABLE_OPENGL=y
 SYSTEM_OPENSSL=y
+NEW_DPKG_SHLIBDEPS=y
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
@@ -290,6 +291,13 @@ ifeq "$(USE_BZIP_COMPRESS)" "y"
 	BUILDDEB_OPTIONS = -- -Zbzip2
 endif
 
+ifeq "$(NEW_DPKG_SHLIBDEPS)" "y"
+	# new dpkg-dev with --ignore-missing-info, when not using it it
+	# fails with the new dpkg-shlibdeps
+	BUILD_DEPS += , dpkg-dev (>= 1.14.10) [$(OOO_ARCHS)]
+	SHLIBS_OVERRIDE= -- --ignore-missing-info
+endif
+
 ifeq "$(ENABLE_OPENGL)" "y"
 	BUILD_DEPS += , libgl1-mesa-dev [$(OOO_ARCHS)], libglu1-mesa-dev [$(OOO_ARCHS)]
 	CONFIGURE_FLAGS += --enable-opengl
@@ -340,7 +348,9 @@ endif
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(BUILD_JARS_NATIVE)" "y"
 	STAMP_NATIVE_JARS = $(STAMP_DIR)/native-jars
+    ifeq "$(NEW_DPKG_SHLIBDEPS)" "n"
 	BUILD_DEPS += , dpkg-dev (>= 1.13.19)
+    endif
 	JAVA_GCJ_DEPENDS = libgcj-common (>= 1:4.1.1-14)
   endif
 endif
@@ -371,7 +381,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	# one to that gid_Module_Root always is english and the other langpacks
 	# have gid_Module_Root.$iso
 	#ISOS=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
-	ISOS:=en-US af ar as-IN be-BY bg bn br bs ca cs da de dz el \
+	ISOS:=en-US af ar as-IN be-BY bg bn br bs ca cs cy da de dz el \
 	  en-GB en-ZA eo es et fa fi fr ga gl gu-IN he hi-IN hr hu it ja \
 	  ka km ko ku lo lt lv mk ml-IN mr-IN nb ne nl nn nr ns or-IN pa-IN \
 	  pl pt pt-BR ru rw sk sl sr-CS ss st sv \
@@ -380,7 +390,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	HELPISOS:=en-US cs da de dz en-GB es et fr gl hi-IN hu it ja km ko nl \
 	  pl pt pt-BR ru sl sv zh-CN zh-TW
 	#LANGPACKISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
-	LANGPACKISOS:=en-US af ar as-IN be-BY bg bn br bs ca cs da de dz el \
+	LANGPACKISOS:=en-US af ar as-IN be-BY bg bn br bs ca cs cy da de dz el \
 	  en-GB en-ZA eo es et fa fi fr ga gl gu-IN he hi-IN hr hu it ja \
 	  ka km ko ku lo lt lv mk ml-IN mr-IN nb ne nl nn nr ns or-IN pa-IN \
 	  pl pt pt-BR ru rw sk sl sr-CS ss st sv \
@@ -432,6 +442,11 @@ ifeq "$(ENABLE_JAVA)" "y"
     else
 	GCJ_JAWT_DEPENDS= libgcj$(LIBGCJ_SONR)-awt
     endif
+  endif
+  ifeq "$(ETCH_BACKPORT)" "y"
+  	GCJ_JAWT_DIR=/usr/lib/gcj-4.1
+  else
+  	GCJ_JAWT_DIR=/usr/lib/gcj-4.2-81
   endif
 export JAVA_HOME
 	CONFIGURE_FLAGS += --with-jdk-home=$(JAVA_HOME)
@@ -2647,8 +2662,18 @@ endif
 ifeq "$(INTERNAL_STDLIBS)" "y"
 	cat debian/shlibs.override.stdlibs >> debian/shlibs.local
 endif
+	# we need to do it in two steps. The new dpkg-shlibdeps doesn't find
+	# /usr/lib/libgcj-bc.so when specifying -l/usr/lib/gcj-4.2-81
+	# and therefore we must not use it for -gcj. But we *do* need it
+	# for -officebean (libjawt.so is there)
 	LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" \
-		dh_shlibdeps -s $(SHLIBS_OVERRIDE)
+		dh_shlibdeps -s -Nopenoffice.org$(VER)-officebean \
+			-l$(PKGDIR)-core/$(OODIR)/program \
+			$(SHLIBS_OVERRIDE)
+	LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" \
+		dh_shlibdeps -popenoffice.org$(VER)-officebean \
+			-l$(PKGDIR)-core/$(OODIR)/program:$(GCJ_JAWT_DIR) \
+			$(SHLIBS_OVERRIDE)
 	# this is in an extension (.zip), so dh_shlibdeps doesn't get it. We need to do
 	# it manually.
 	LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" \
