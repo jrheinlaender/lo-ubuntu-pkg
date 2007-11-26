@@ -281,10 +281,9 @@ ifeq "$(USE_BZIP_COMPRESS)" "y"
 endif
 
 ifeq "$(NEW_DPKG_SHLIBDEPS)" "y"
-	# new dpkg-dev with --ignore-missing-info, when not using it it
-	# fails with the new dpkg-shlibdeps
-	BUILD_DEPS += , dpkg-dev (>= 1.14.10) [$(OOO_ARCHS)]
-	SHLIBS_OVERRIDE= -- --ignore-missing-info
+	# new dpkg-dev whcih works - in contrast to 1.4.9 and .10 -
+	# without --ignore-missing-info
+	BUILD_DEPS += , dpkg-dev (>= 1.14.11) [$(OOO_ARCHS)]
 endif
 
 ifeq "$(ENABLE_OPENGL)" "y"
@@ -984,6 +983,7 @@ endif
 	if [ -d "$(STAMP_DIR)" ]; then rm -rf "$(STAMP_DIR)"; fi
 	rm -f debian/shlibs.override.stdlibs
 	rm -f debian/libuno-cil.installcligac
+	rm -f debian/scripts/aotcompile.py
 
 ifeq "$(ENABLE_MONO)" "y"
 	rm -rf $(MONO_SHARED_DIR)/.wapi
@@ -1601,8 +1601,25 @@ $(STAMP_NATIVE_JARS): $(STAMP_DIR)/install
 	: # remove problematic ones
 	rm -f debian/tmp/native-jars/ridl.jar
 	: # compile the others
+ifneq "$(DIST)" "Ubuntu"
+  ifneq "$(ETCH_BACKPORT)" "y"
+	# the Debian i386 buildd, although having much ram still OOMs without
+	# this (at unoil.jar).
+	# Also the native jar build is MUCH faster with this. But it
+	# won't be accepted into the official java-gcj-compat so this hack
+	# here is needed.
+	cp /usr/share/pycentral/java-gcj-compat-dev/site-packages/aotcompile.py \
+		debian/scripts
+	cd debian/scripts && \
+		patch -p0 < $(CURDIR)/debian/aotcompile-256M-default.diff
+	PYTHONPATH="debian/scripts:$(shell echo $(PYTHON_SITE) | sed -e s,debian/python-uno,,)"
 	AOT_MAKEFLAGS=-j$(NUM_CPUS) aot-compile -L /usr/lib/gcj/openoffice \
 	    debian/tmp/native-jars debian/tmp/native-jars/gcj
+  endif
+else
+	AOT_MAKEFLAGS=-j$(NUM_CPUS) aot-compile -L /usr/lib/gcj/openoffice \
+	    debian/tmp/native-jars debian/tmp/native-jars/gcj
+endif
 	$(GCJ_DBTOOL) -n debian/tmp/native-jars/tmp.db 64
 	find debian/tmp/native-jars/gcj -name '*.db' -print0 \
 	    | xargs -r -0 \
