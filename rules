@@ -87,8 +87,8 @@ PACKAGE_TTF_OPENSYMBOL=y
 PACKAGE_NPSOPLUGIN=y
 PACKAGE_PCVSLIB=n
 BUILD_JARS_NATIVE=y
-BUILD_BINFILTERS=y
-BUILD_ONLY_EN_US=n
+BUILD_BINFILTERS=n
+BUILD_ONLY_EN_US=y
 ENABLE_JAVA=y
 ENABLE_MONO=n
 MONO_MINVER= (>= 1.2.3)
@@ -1327,6 +1327,12 @@ endif
 
 	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 $(MAKE)
 
+	# not built per default...
+	cd $(SOURCE_TREE)/sdext && \
+		. $(CURDIR)/$(SOURCE_TREE)/*.sh; \
+		PATH=$(BUILD_PATH) DPKG="dpkg" PKGFORMAT="deb" NO_PKG_MANGLE=go-away \
+		../solenv/bin/build.pl && ../solenv/bin/deliver.pl
+
 ifeq "$(PACKAGE_PCVSLIB)" "y"
 	cd $(SOURCE_TREE)/solenv/bin/modules/PCVSLib; \
 		perl Makefile.PL && $(MAKE)
@@ -1478,6 +1484,9 @@ ifeq "$(PACKAGE_QA_TOOLS)" "y"
 	cd debian/tmp/pkg; \
 	mv openoffice.org-common/$(OODIR)/program/testtoolrc \
 		openoffice.org-core/$(OODIR)/program
+else
+	cd debian/tmp/pkg; \
+	rm -f openoffice.org-common/$(OODIR)/program/testtoolrc
 endif
 	# remove eventually sneaked in .testtoolrc
 	cd debian/tmp/pkg; \
@@ -1512,13 +1521,6 @@ ifeq "$(PACKAGE_SDK)" "y"
 	mv debian/tmp/pkg/openoffice.org-dev/$(OODIR)/sdk/examples \
 		debian/tmp/pkg/openoffice.org-dev-doc/$(OODIR)/sdk
 endif
-
-	# FIXME: Is there a reason this moved from -math to -common?
-	mkdir -p debian/tmp/pkg/openoffice.org-math/$(OODIR)/share/registry/modules/org/openoffice/Office/Common/
-	mv  debian/tmp/pkg/openoffice.org-common/$(OODIR)/share/registry/modules/org/openoffice/Office/Common/Common-math.xcu \
-		debian/tmp/pkg/openoffice.org-math/$(OODIR)/share/registry/modules/org/openoffice/Office/Common/Common-math.xcu
-
-	find debian/tmp ! -perm -200 | xargs -r chmod u+w
 
 	touch $@
 
@@ -1682,11 +1684,15 @@ $(STAMP_DIR)/install-arch: $(STAMP_DIR)/install $(STAMP_NATIVE_JARS)
 	umask 022
 
 	# Copy files placed by ooo-build/bin/package-ooo	
-	for i in base calc core draw impress math writer gnome dev headless \
-		filter-binfilter; do \
+	for i in base calc core draw impress math writer gnome dev headless; do \
 	  rm -rf $(PKGDIR)-$$i $(PKGDIR)-$$i.*.debhelper ;\
 	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-$$i $(PKGDIR)-$$i || exit 1;\
 	done
+
+ifeq "$(BUILD_BINFILTERS)" "y"
+	  rm -rf $(PKGDIR)-filter-binfilter $(PKGDIR)-filter-binfilter.*.debhelper
+	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-filter-binfilter $(PKGDIR)-filter-binfilter || exit 1
+endif
 
 ifeq "$(PACKAGE_URE)" "y"
 	rm -rf debian/ure debian/ure.*.debhelper ;\
@@ -2155,8 +2161,12 @@ endif
 
 ifeq "$(ENABLE_OPENGL)" "y"
 	rm -rf $(PKGDIR)-ogltrans
-	install -D -m644 $(SOURCE_TREE)/slideshow/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/OGLTrans.uno.so \
-		$(PKGDIR)-ogltrans/$(OODIR)/share/extension/install/OGLTrans.uno.so
+#	install -D -m644 $(SOURCE_TREE)/slideshow/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/OGLTrans.uno.so \
+#		$(PKGDIR)-ogltrans/$(OODIR)/share/extension/install/OGLTrans.uno.so
+	mkdir -p $(PKGDIR)-ogltrans/$(OODIR)/share/extension/install
+	mv $(PKGDIR)-core/$(OODIR)/program/OGLTrans.uno.so \
+		$(PKGDIR)-ogltrans/$(OODIR)/share/extension/install
+	rm -f 
 endif
 
 	for i in $(ARCH_DEP_PACKAGES); do \
@@ -2702,8 +2712,8 @@ endif
 			> debian/openoffice.org$(VER)-sdbc-postgresql.substvars
 	 LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" \
 	 	dpkg-shlibdeps -O \
-			$(SOURCE_TREE)/sdext/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/SunReportMinimizer.uno.so \
-			> debian/openoffice.org$(VER)-report-minimizer.substvars
+			$(SOURCE_TREE)/sdext/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/SunPresentationMinimizer.uno.so \
+			> debian/openoffice.org$(VER)-presentation-minimizer.substvars
 ifeq "$(ENABLE_MONO)" "y"
 	dh_makeclilibs -s -V
 	dh_clideps -s
@@ -2733,8 +2743,8 @@ endif
 	dh_gencontrol -popenoffice.org$(VER)-report-builder -- \
 		-V'report-builder-jar-depends=$(REPORT_BUILDER_JAR_DEPENDS)' \
 		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep "<version" $(SOURCE_TREE)/reportdesign/util/post.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
-	dh_gencontrol -popenoffice.org$(VER)-presenttion-minimizer -- \
-		-v$(shell grep "<version" $(SOURCE_TREE)/sdext/source/minimizer/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
+	dh_gencontrol -popenoffice.org$(VER)-presentation-minimizer -- \
+		-v$(shell grep "<version" $(SOURCE_TREE)/sdext/source/minimizer/description.xml | perl -pi -e 's,<version value=\"(.*)\" />,\1,; s/^\s+//')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
 	dh_gencontrol -popenoffice.org$(VER)-sdbc-postgresql -- \
 		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g)+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
 ifeq "$(PACKAGE_URE)" "y"
