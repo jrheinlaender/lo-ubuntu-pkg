@@ -95,7 +95,9 @@ MONO_MINVER= (>= 1.2.3)
 USE_SYSTEM_HUNSPELL=y
 HUNSPELL_MIN_VER= (>= 1.1.5-2)
 SYSTEM_ALTLINUXHYPH=y
+USE_LIBHYPHEN=y
 LIBALTLINUXHYPH_MINVER= (>= 0.1.1-11)
+LIBHYPHEN_MINVER= (>= 2.3-3)
 USE_AGG=n
 SYSTEM_AGG=n
 USE_STLPORT=n
@@ -191,6 +193,7 @@ ifeq "$(ETCH_BACKPORT)" "y"
   PATCHSET=$(DIST)Etch
   USE_SYSTEM_LIBWPS=n
   SYSTEM_ALTLINUXHYPH=n
+  USE_LIBHYPHEN=n
   ENABLE_MONO=n
   CAIRO_FONTS_PATCH=n
   HUNSPELL_MIN_VER= (>= 1.0.8-2)
@@ -527,7 +530,11 @@ ifeq "$(USE_SYSTEM_HUNSPELL)" "y"
 endif
 
 ifeq "$(SYSTEM_ALTLINUXHYPH)" "y"
+  ifeq "$(USE_LIBHYPHEN)" "y"
+  	BUILD_DEPS += , libhyphen-dev $(LIBHYPHEN_MINVER) [$(OOO_ARCHS)]
+  else
 	BUILD_DEPS += , libaltlinuxhyph-dev $(LIBALTLINUXHYPH_MINVER) [$(OOO_ARCHS)]
+  endif
 	CONFIGURE_FLAGS += --with-system-altlinuxhyph
 endif
 
@@ -1409,6 +1416,12 @@ ifeq "$(PACKAGE_PCVSLIB)" "y"
 	cd $(SOURCE_TREE)/solenv/bin/modules/PCVSLib; \
 		$(MAKE) install DESTDIR=$(CURDIR)/debian/libpcvslib-perl SITEPREFIX=/usr
 endif
+
+	# these have to go to -core, otherwise we get problems with the new
+	# dpkg-shibdeps...
+	for i in `find in debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/*.so.*`; do \
+		mv $$i `echo $$i | sed -e s/common/core/`; \
+	done
 
 ifeq "$(HELPISOS)" ""
 	for i in common calc math draw writer impress base; do \
