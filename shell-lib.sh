@@ -52,15 +52,21 @@ rm_conffile() {
     fi
 }
 
+flush_unopkg_cache() {
+	/usr/lib/openoffice/program/unopkg list --shared > /dev/null 2>&1
+}
+
 remove_extension() {
   if /usr/lib/openoffice/program/unopkg list --shared $1 >/dev/null; then
     echo -n "Removing extension $1..."
     INSTDIR=`mktemp -d`
     /usr/lib/openoffice/program/unopkg remove --shared $1 \
       "-env:UserInstallation=file://$INSTDIR" \
-      '-env:UNO_JAVA_JFW_INSTALL_DATA=$ORIGIN/../share/config/javasettingsunopkginstall.xml'
+      '-env:UNO_JAVA_JFW_INSTALL_DATA=$ORIGIN/../share/config/javasettingsunopkginstall.xml' \
+      "-env:JFW_PLUGIN_DO_NOT_CHECK_ACCESSIBILITY=1"
     if [ -n $INSTDIR ]; then rm -rf $INSTDIR; fi
     echo " done."
+    flush_unopkg_cache
   fi
 }
 
@@ -69,7 +75,8 @@ add_extension() {
   INSTDIR=`mktemp -d`
   /usr/lib/openoffice/program/unopkg add --shared $1 \
     "-env:UserInstallation=file:///$INSTDIR" \
-    '-env:UNO_JAVA_JFW_INSTALL_DATA=$ORIGIN/../share/config/javasettingsunopkginstall.xml'
+    '-env:UNO_JAVA_JFW_INSTALL_DATA=$ORIGIN/../share/config/javasettingsunopkginstall.xml' \
+    "-env:JFW_PLUGIN_DO_NOT_CHECK_ACCESSIBILITY=1"
   if [ -n $INSTDIR ]; then rm -rf $INSTDIR; fi
   echo " done."
 }
