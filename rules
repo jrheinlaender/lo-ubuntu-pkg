@@ -144,6 +144,7 @@ PARALLEL_BUILD=n
 MOZILLA=xulrunner
 ENABLE_OPENGL=n
 NEW_DPKG_SHLIBDEPS=y
+ENABLE_REPORTDESIGN=y
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
@@ -203,6 +204,7 @@ ifeq "$(ETCH_BACKPORT)" "y"
   USE_SYSTEM_BOOST=y
   USE_SYSTEM_LIBWPG=n
   USE_SYSTEM_HSQLDB=n
+  ENABLE_REPORTDESIGN=n
   NEONSONR=26
 endif
 
@@ -461,10 +463,15 @@ export JAVA_HOME
 	BUILD_DEPS += , mingw32 [$(OOO_JAVA_ARCHS)]
 	CONFIGURE_FLAGS += --with-mingwin=i586-mingw32msvc-g++
   endif
+  ifeq "$(ENABLE_REPORTDESIGN)" "y"
 	# report-builder
 	REPORT_BUILDER_BUILD_DEPS += , libjcommon-java (>= 1.0.10) [$(OOO_JAVA_ARCHS)], libsac-java [$(OOO_JAVA_ARCHS)], libxml-java [$(OOO_JAVA_ARCHS)], libflute-1.3-jfree-java [$(OOO_JAVA_ARCHS)], libjfreereport-java (>= 0.9.0-05) [$(OOO_JAVA_ARCHS)], liblayout-java [$(OOO_JAVA_ARCHS)], libloader-java [$(OOO_JAVA_ARCHS)], libformula-java [$(OOO_JAVA_ARCHS)], librepository-java [$(OOO_JAVA_ARCHS)], libfonts-java (>= 0.2.6) [$(OOO_JAVA_ARCHS)], libjcommon-serializer-java [$(OOO_JAVA_ARCHS)]
 	REPORT_BUILDER_JAR_DEPENDS := $(REPORT_BUILDER_BUILD_DEPS)
 	BUILD_DEPS += $(REPORT_BUILDER_BUILD_DEPS)
+	CONFIGURE_FLAGS += --with-system-jfreereport
+  else
+	CONFIGURE_FLAGS += --disable-reportdesign
+  endif
 else
 	CONFIGURE_FLAGS += --without-java
 	DEBHELPER_OPTIONS += -Nopenoffice.org$(VER)-officebean -Nopenoffice.org$(VER)-java-common -Nopenoffice.org$(VER)-filter-mobiledev
@@ -572,11 +579,6 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
 	BUILD_DEPS += , libwpg-dev [$(OOO_ARCHS)]
 	CONFIGURE_FLAGS += --with-system-libwpg
   endif
-endif
-
-ifeq "$(USE_SYSTEM_LIBSVG)" "y"
-	BUILD_DEPS += , libsvg-dev [$(OOO_ARCHS)]
-	CONFIGURE_FLAGS += --with-system-libsvg
 endif
 
 ifeq "$(USE_SYSTEM_ICU)" "y"
@@ -990,7 +992,7 @@ endif
 	if [ -d "$(STAMP_DIR)" ]; then rm -rf "$(STAMP_DIR)"; fi
 	rm -f debian/shlibs.override.stdlibs
 	rm -f debian/libuno-cil.installcligac
-	rm -f debian/scripts/aotcompile.py
+	rm -f debian/scripts/aotcompile.py*
 
 ifeq "$(ENABLE_MONO)" "y"
 	rm -rf $(MONO_SHARED_DIR)/.wapi
@@ -1116,6 +1118,10 @@ endif
 ifeq "$(ENABLE_OPENGL)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.ogltrans.in
+endif
+ifeq "$(ENABLE_REPORTDESIGN)" "y"
+	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
+		>> debian/control < debian/control.reportdesign.in
 endif
 ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
@@ -2087,12 +2093,13 @@ endif
 	install -D -m644 $(SOURCE_TREE)/scsolver/ChangeLog \
 		$(PKGDIR)-calc/usr/share/doc/openoffice.org$(VER)-calc/changelog.scsolver
 
+ifeq "$(ENABLE_REPORTDESIGN)" "y"
 	# move rpt stuff into -report-builder
 	rm -rf $(PKGDIR)-report-builder
 	mkdir -p $(PKGDIR)-report-builder/$(OODIR)/program
 	mv $(PKGDIR)-base/$(OODIR)/program/librpt* \
 		$(PKGDIR)-report-builder/$(OODIR)/program
-ifeq "$(ENABLE_JAVA)" "y"
+  ifeq "$(ENABLE_JAVA)" "y"
 	# install this; we need to register this ourselved later in
 	# the maintainer scripts. This is intended upstream (**rpt* stuff
 	# in 2.3 and the actual report builde as an extension, without which
@@ -2103,6 +2110,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 	for i in THIRDPARTYREADMELICENSE.html license_en-US.html readme_en-US.html readme_en-US.txt; do \
 		zip -d $(CURDIR)/$(PKGDIR)-report-builder/$(OODIR)/share/extension/install/sun-report-builder.oxt $$i; \
 	done
+  endif
 endif
 
 	rm -rf $(PKGDIR)-sdbc-postgresql
@@ -2639,6 +2647,7 @@ endif
 	LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" \
 		dh_shlibdeps -s -Nopenoffice.org$(VER)-officebean \
 			-l$(PKGDIR)-core/$(OODIR)/program \
+			-l$(PKGDIR)-base/$(OODIR)/program \
 			$(SHLIBS_OVERRIDE)
 	LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" \
 		dh_shlibdeps -popenoffice.org$(VER)-officebean \
@@ -2674,9 +2683,11 @@ endif
 		-V'gstreamer-plugins-suggests=$(GSTREAMER_PLUGINS_SUGGESTS)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-v$(BINARY_VERSION)
+ifeq "$(ENABLE_REPORTDESIGN)" "y"
 	dh_gencontrol -popenoffice.org$(VER)-report-builder -- \
 		-V'report-builder-jar-depends=$(REPORT_BUILDER_JAR_DEPENDS)' \
 		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep "<version" $(SOURCE_TREE)/reportdesign/util/post.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
+endif
 	dh_gencontrol -popenoffice.org$(VER)-sdbc-postgresql -- \
 		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g)+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
 	dh_md5sums -s
