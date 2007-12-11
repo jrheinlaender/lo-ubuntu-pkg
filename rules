@@ -206,14 +206,22 @@ ifeq "$(ETCH_BACKPORT)" "y"
   USE_SYSTEM_HSQLDB=n
   ENABLE_REPORTDESIGN=n
   NEONSONR=26
+  NEW_DPKG_SHLIBDEPS=n
+  DBVER=4.4
+  USE_SYSTEM_ICU=n
+  USE_STLPORT=y
 endif
 
 #############
 # Architecture-specific changes
 
-OOO_STLPORT_ARCHS= i386
-ifeq "$(ARCH)" "i386"
+ifneq "$(ETCH_BACKPORT)" "y"
+	OOO_STLPORT_ARCHS= i386
+  ifeq "$(ARCH)" "i386"
 	USE_STLPORT=y
+  endif
+else
+	OOO_STLPORT_ARCHS=$(OOO_ARCHS)
 endif
 
 OOO_ARCHS= i386 powerpc sparc
@@ -395,7 +403,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 	JAVA_HOME=/usr/lib/jvm/java-gcj
 	CONFIGURE_FLAGS += --enable-gcjaot
   ifeq "$(BUILD_JARS_NATIVE)" "y"
-    ifeq "$(shell gcj --version | head -n 1 | cut -d' ' -f3 | cut -d'.' -f1,2)" "4.2"
+    ifeq "$(ETCH_BACKPORT)" "n"
     	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.76-7) [$(OOO_JAVA_ARCHS)]
     else
 	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.65-4) [$(OOO_JAVA_ARCHS)]
@@ -1632,6 +1640,9 @@ ifneq "$(DIST)" "Ubuntu"
 	cd debian/scripts && \
 		patch -p0 < $(CURDIR)/debian/aotcompile-256M-default.diff
 	PYTHONPATH="debian/scripts:$(shell echo $(PYTHON_SITE) | sed -e s,debian/python-uno,,)" \
+	AOT_MAKEFLAGS=-j$(NUM_CPUS) aot-compile -L /usr/lib/gcj/openoffice \
+	    debian/tmp/native-jars debian/tmp/native-jars/gcj
+  else
 	AOT_MAKEFLAGS=-j$(NUM_CPUS) aot-compile -L /usr/lib/gcj/openoffice \
 	    debian/tmp/native-jars debian/tmp/native-jars/gcj
   endif
