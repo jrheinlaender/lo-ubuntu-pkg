@@ -104,8 +104,6 @@ USE_STLPORT=n
 USE_SYSTEM_STLPORT=y
 USE_SYSTEM_BOOST=y
 USE_SYSTEM_VIGRA=y
-USE_SYSTEM_PORTAUDIO=y
-USE_PORTAUDIO_V19=y
 USE_EXTERNAL_CXXLIBS=y
 LIBWPD8_MINVER= (>= 0.8.3-3)
 USE_SYSTEM_SABLOT=n
@@ -130,7 +128,7 @@ USE_DBUS=y
 USE_GSTREAMER=y
 USE_SYSTEM_NEON=y
 USE_OOO_BUILD_DESKTOPS=n
-PACKAGE_SDK=y
+PACKAGE_SDK=n
 RUN_SMOKETEST=n
 RUN_UNIT_TESTS=n
 USE_LIBCURL4=y
@@ -148,6 +146,9 @@ ENABLE_OPENGL=y
 SYSTEM_OPENSSL=y
 NEW_DPKG_SHLIBDEPS=y
 ENABLE_REPORTDESIGN=y
+PACKAGE_WRITER2LATEX=n
+USE_EXTERNAL_WRITER2LATEX=y
+ENABLE_SDEXT=y
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
@@ -213,6 +214,7 @@ ifeq "$(ETCH_BACKPORT)" "y"
   DBVER=4.4
   USE_SYSTEM_ICU=n
   USE_STLPORT=y
+  PACKAGE_WRITER2LATEX=y
 endif
 
 #############
@@ -229,7 +231,7 @@ endif
 
 OOO_OGLTRANS_ARCHS= $(OOO_ARCHS)
 
-OOO_ARCHS= i386 powerpc sparc mips mipsel
+OOO_ARCHS= i386 powerpc sparc mips mipsel arm
 ifeq "$(BUILD_AMD64)" "y"
   OOO_ARCHS += amd64
 endif
@@ -257,7 +259,7 @@ ifeq (,$(findstring $(ARCH),$(OOO_MONO_ARCHS)))
        ENABLE_MONO=n
 endif
 # Mozilla plugin. Crashes on amd64
-OOO_NPSOPLUGIN_ARCHS = i386 powerpc sparc mipsel
+OOO_NPSOPLUGIN_ARCHS = i386 powerpc sparc mips mipsel arm
 ifeq "$(BUILD_AMD64)" "y"
   ifeq "$(ARCH)" "amd64"
 	PACKAGE_NPSOPLUGIN=n
@@ -274,7 +276,7 @@ ifeq "$(ARCH)-linux-gnu" "sparc-linux-gnu"
 	CC_PREFIX=sparc-linux-gnu-
 endif
 
-OOO_MOZILLA_ARCHS=i386 powerpc sparc mips mipsel
+OOO_MOZILLA_ARCHS=i386 powerpc sparc mips mipsel arm
 ifeq "$(BUILD_AMD64)" "y"
 	OOO_MOZILLA_ARCHS += amd64
 endif
@@ -314,8 +316,15 @@ endif
 
 ifeq "$(ENABLE_OPENGL)" "y"
 	BUILD_DEPS += , libgl1-mesa-dev [$(OOO_OGLTRANS_ARCHS)], libglu1-mesa-dev [$(OOO_OGLTRANS_ARCHS)]
-else
-	CONFIGURE_FLAGS += --disable-opengl
+	CONFIGURE_FLAGS += --enable-opengl
+endif
+
+ifneq "$(PACKAGE_SDK)" "y"
+	CONFIGURE_FLAGS += --disable-odk
+endif
+
+ifeq "$(ENABLE_SDEXT)" "y"
+	CONFIGURE_FLAGS += --enable-sdext
 endif
 
 ifeq "$(USE_LIBCURL4)" "y"
@@ -373,6 +382,13 @@ endif
 ifneq "$(PACKAGE_QA_TOOLS)" "y"
 	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-qa-tools -Nopenoffice.org$(VER)-qa-api-tests
 	CONFIGURE_FLAGS += --disable-qadevooo
+endif
+
+ifeq "$(PACKAGE_WRITER2LATEX)" "n"
+       CONFIGURE_FLAGS += --without-writer2latex
+  ifeq "$(USE_EXTERNAL_WRITER2LATEX)" "y"
+       WRITER_W2L_DEP = openoffice.org-writer2latex
+  endif
 endif
 
 ifeq "$(PACKAGE_PCVSLIB)" "y"
@@ -563,13 +579,13 @@ ifeq "$(USE_AGG)" "y"
 endif
 
 ifneq "$(USE_STLPORT)" "y"
-	CONFIGURE_FLAGS += --without-stlport4
+	CONFIGURE_FLAGS += --without-stlport
 else
   ifeq "$(USE_SYSTEM_STLPORT)" "y"
 	LIBSTLPORT_MINVER= (>= 4.6.2-3)
 	BUILD_DEPS += , libstlport4.6-dev $(LIBSTLPORT_MINVER) [$(OOO_STLPORT_ARCHS)]
 	DEV_STL_DEPENDS=, libstlport4.6-dev $(LIBSTLPORT_MINVER) [$(OOO_STLPORT_ARCHS)]
-	CONFIGURE_FLAGS+= --with-stlport4=$(CURDIR)/stlport
+	CONFIGURE_FLAGS+= --with-stlport=$(CURDIR)/stlport
   endif
 endif
 
@@ -581,15 +597,6 @@ endif
 ifeq "$(USE_SYSTEM_VIGRA)" "y"
 	BUILD_DEPS += , libvigraimpex-dev [$(OOO_ARCHS)]
 	CONFIGURE_FLAGS += --with-system-vigra
-endif
-
-ifeq "$(USE_SYSTEM_PORTAUDIO)" "y"
-  ifeq "$(USE_PORTAUDIO_V19)" "y"
-	BUILD_DEPS += , portaudio19-dev [$(OOO_ARCHS)]
-  else
-	BUILD_DEPS += , libportaudio-dev [$(OOO_ARCHS)]
-  endif
-	CONFIGURE_FLAGS += --with-system-portaudio
 endif
 
 ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
@@ -1347,22 +1354,22 @@ ifeq "$(BUILD_KDE)" "n"
 	fi
 endif
 
-	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 $(MAKE)
+	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 VERBOSE=true $(MAKE)
+	# apparently setting this here globally doesn't work, so hack around.
+	# If we don't do this we get loads of harmless, but log-bloating
+	# warnings
+	if ! grep fakeroot $(SOURCE_TREE)/*.sh; then \
+		perl -pi -e 's,LD_LIBRARY_PATH=\"(.*)\",LD_LIBRARY_PATH=\"/usr/lib/libfakeroot:\1\",' $(SOURCE_TREE)/*.sh; \
+	fi
 
-	# not built per default...
-	cd $(SOURCE_TREE)/sdext && \
-		. $(CURDIR)/$(SOURCE_TREE)/*.sh; \
-		PATH=$(BUILD_PATH) DPKG="dpkg" PKGFORMAT="deb" NO_PKG_MANGLE=go-away \
-		../solenv/bin/build.pl && ../solenv/bin/deliver.pl
+	if [ -d ooo-build/build/current -a ! -d $(SOURCE_TREE) ]; then \
+		ln -sf current $(SOURCE_TREE); \
+	fi
 
 ifeq "$(PACKAGE_PCVSLIB)" "y"
 	cd $(SOURCE_TREE)/solenv/bin/modules/PCVSLib; \
 		perl Makefile.PL && $(MAKE)
 endif
-
-	if [ -d ooo-build/build/current -a ! -d $(SOURCE_TREE) ]; then \
-		ln -sf current $(SOURCE_TREE); \
-	fi
 
 	# DPKG is only set on with-EPM build what we don't do and the menu stuff
 	# is only built wenn DPKG is set.. Same with PKGFORMAT.
@@ -1391,7 +1398,7 @@ ifeq "$(PACKAGE_PCVSLIB)" "y"
 endif
 ifeq "$(RUN_UNIT_TESTS)" "y"
 	# build/run unit tests
-	cd $(SOURCE_TREE)/instsetoo_native; \
+	-cd $(SOURCE_TREE)/instsetoo_native; \
 		. $(CURDIR)/$(SOURCE_TREE)/*.sh; \
 		PATH=$(BUILD_PATH) DPKG="dpkg" PKGFORMAT="deb" NO_PKG_MANGLE=go-away \
 		../solenv/bin/build.pl --ignore --all check
@@ -1420,11 +1427,6 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/build $(STAMP_DIR)/test
 	dh_testroot
 
 	rm -rf $(CURDIR)/debian/tmp
-	# apparently setting this here globally doesn't work, so hack around. If we don't do this we get loads
-	# of harmless, but log-bloating warnings
-	if ! grep fakeroot $(SOURCE_TREE)/*.sh; then \
-		perl -pi -e 's,LD_LIBRARY_PATH=\"(.*)\",LD_LIBRARY_PATH=\"/usr/lib/libfakeroot:\1\",' $(SOURCE_TREE)/*.sh; \
-	fi
 	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(BUILD_LD_LIBRARY_PATH)" DESTDIR=$(CURDIR)/debian/tmp $(MAKE) install
 
 ifeq "$(PACKAGE_PCVSLIB)" "y"
@@ -2199,9 +2201,9 @@ endif
 
 ifeq "$(ENABLE_OPENGL)" "y"
 	rm -rf $(PKGDIR)-ogltrans
-	mkdir -p $(PKGDIR)-ogltrans/$(OODIR)/share/extension/install
+	mkdir -p $(PKGDIR)-ogltrans/$(OODIR)/program
 	mv $(PKGDIR)-core/$(OODIR)/program/OGLTrans.uno.so \
-		$(PKGDIR)-ogltrans/$(OODIR)/share/extension/install
+		$(PKGDIR)-ogltrans/$(OODIR)/program
 	rm -f 
 endif
 
@@ -2766,6 +2768,7 @@ endif
 		-V'help-l10n-virtual-version=$(HELP_L10N_VIRTUAL_VERSION)' \
 		-V'dev-stl-depends=$(DEV_STL_DEPENDS)' \
 		-V'writer-pyuno-dep=$(WRITER_PYUNO_DEP)' \
+		-V'writer-w2l-dep=$(WRITER_W2L_DEP)' \
 		-V'base-hsqldb-depends=$(BASE_HSQLDB_DEPENDS)' \
 		-V'java-common-depends=$(JAVA_COMMON_DEPENDS)' \
 		-V'gcj-jawt-depends=$(GCJ_JAWT_DEPENDS)' \
