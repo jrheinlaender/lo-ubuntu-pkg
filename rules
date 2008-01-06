@@ -644,6 +644,9 @@ ifeq "$(ENABLE_JAVA)" "y"
 	BUILD_DEPS += , libhsqldb-java (>= 1.8.0.9-1) [$(OOO_JAVA_ARCHS)]
 	BASE_HSQLDB_DEPENDS = libhsqldb-java (>= 1.8.0.9-1)
 	CONFIGURE_FLAGS+= --with-system-hsqldb
+    ifneq "$(ETCH_BACKPORT)" "y"
+	JAVA_GCJ_DEPENDS += , libhsqldb-java-gcj
+    endif
   endif
   ifeq "$(USE_SYSTEM_BSH)" "y"
 	BUILD_DEPS += , bsh (>= 2.0b4-1) [$(OOO_JAVA_ARCHS)]
@@ -722,14 +725,13 @@ export BUILD_FROM
 # Build n projects in parallel?
 # DEB_BUILD_OPTIONS=parallel=<n>
 NUM_CPUS=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^\(.*,\)\?parallel=\([0-9]\+\).*$$/\2/p')
+AVAIL_CPUS := $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
 ifeq "$(NUM_CPUS)" ""
 	NUM_CPUS := 1
   ifeq "$(PARALLEL_BUILD)" "y"
-	AVAIL_CPUS := $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
     	# according to Pavel Janik, build -P<number of cores> -- -P2
 	# is ideal. This sets the first -P according to the number
 	# of CPUs (where dual-core CPUS report 2, too)
-	# Default to 2 on 1-processor machines anyway
     ifneq ($(AVAIL_CPUS),1)
 	NUM_CPUS := $(shell expr $(AVAIL_CPUS))
     endif
