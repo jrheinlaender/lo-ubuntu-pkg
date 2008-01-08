@@ -145,7 +145,11 @@ PACKAGE_URE=y
 ENABLE_OPENGL=y
 SYSTEM_OPENSSL=y
 NEW_DPKG_SHLIBDEPS=y
-ENABLE_REPORTDESIGN=y
+ifeq "$(ENABLE_JAVA)" "y"
+  ENABLE_REPORTDESIGN=y
+else
+  ENABLE_REPORTDESIGN=n
+endif
 PACKAGE_WRITER2LATEX=n
 USE_EXTERNAL_WRITER2LATEX=y
 ENABLE_SDEXT=y
@@ -229,7 +233,17 @@ else
 	OOO_STLPORT_ARCHS=$(OOO_ARCHS)
 endif
 
-OOO_OGLTRANS_ARCHS= $(OOO_ARCHS)
+# doesn't make that much sense on arm(el) and mips(el), does it? :)
+OOO_OGLTRANS_ARCHS= i386 powerpc sparc
+ifeq "$(BUILD_AMD64)" "y"
+  OOO_OGLTRANS_ARCHS+= amd64
+endif
+ifeq "$(BUILD_PPC64)" "y"
+  OOO_OGLTRANS_ARCHS+= ppc64
+endif
+ifeq (,$(findstring $(ARCH),$(OOO_OGLTRANS_ARCHS)))
+       ENABLE_OGLTRANS=n
+endif
 
 OOO_ARCHS= i386 powerpc sparc mips mipsel arm armel
 ifeq "$(BUILD_AMD64)" "y"
@@ -474,6 +488,14 @@ ifeq "$(ENABLE_JAVA)" "y"
 	GCJ_JAWT_DEPENDS= libgcj$(LIBGCJ_SONR)-awt
     endif
   endif
+  JAVA_RUNTIME_DEPENDS = java-gcj-compat
+  ifneq (,$(GCJ_JAWT_DEPENDS))
+    JAVA_RUNTIME_DEPENDS += | $(GCJ_JAWT_DEPENDS)
+  endif
+  ifneq (,$(filter $(ARCH), amd64 i386))
+    JAVA_RUNTIME_DEPENDS += | sun-java5-jre | sun-java6-jre
+  endif
+  JAVA_RUNTIME_DEPENDS += | java2-runtime
   ifeq "$(ETCH_BACKPORT)" "y"
   	GCJ_JAWT_DIR=/usr/lib/gcj-4.1
   else
@@ -524,7 +546,6 @@ export JAVA_HOME
 else
 	CONFIGURE_FLAGS += --without-java
 	DEBHELPER_OPTIONS += -Nopenoffice.org$(VER)-officebean -Nopenoffice.org$(VER)-java-common -Nopenoffice.org$(VER)-filter-mobiledev
-	HELPISOS=
 endif
 
 ifneq "$(MOZILLA)" ""
@@ -1167,9 +1188,11 @@ ifeq "$(ENABLE_OPENGL)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.ogltrans.in
 endif
-ifeq "$(ENABLE_REPORTDESIGN)" "y"
+ifeq "$(ENABLE_JAVA)" "y"
+  ifeq "$(ENABLE_REPORTDESIGN)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.reportdesign.in
+  endif
 endif
 ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
@@ -2172,10 +2195,6 @@ endif
 		rm -rf $(PKGDIR)-$$i/$(OODIR)/program/resource; \
 	done
 
-	# install scsolvers ChangeLog
-	install -D -m644 $(SOURCE_TREE)/scsolver/ChangeLog \
-		$(PKGDIR)-calc/usr/share/doc/openoffice.org$(VER)-calc/changelog.scsolver
-
 ifeq "$(ENABLE_REPORTDESIGN)" "y"
 	# move rpt stuff into -report-builder
 	rm -rf $(PKGDIR)-report-builder
@@ -2209,7 +2228,9 @@ ifeq "$(ENABLE_OPENGL)" "y"
 	mkdir -p $(PKGDIR)-ogltrans/$(OODIR)/program
 	mv $(PKGDIR)-core/$(OODIR)/program/OGLTrans.uno.so \
 		$(PKGDIR)-ogltrans/$(OODIR)/program
-	rm -f 
+	mkdir -p $(PKGDIR)-ogltrans/$(OODIR)/share/config/soffice.cfg/simpress/
+	mv $(PKGDIR)-impress/$(OODIR)/share/config/soffice.cfg/simpress/transitions-ogl.xml \
+		$(PKGDIR)-ogltrans/$(OODIR)/share/config/soffice.cfg/simpress/transitions-ogl.xml
 endif
 
 	for i in $(ARCH_DEP_PACKAGES); do \
@@ -2744,10 +2765,12 @@ endif
 			-l$(PKGDIR)-core/$(OODIR)/program \
 			-l$(PKGDIR)-base/$(OODIR)/program \
 			$(SHLIBS_OVERRIDE)
+ifeq "$(ENABLE_JAVA)" "y"
 	LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" \
 		dh_shlibdeps -popenoffice.org$(VER)-officebean \
 			-l$(PKGDIR)-core/$(OODIR)/program:$(GCJ_JAWT_DIR) \
 			$(SHLIBS_OVERRIDE)
+endif
 	# this is in an extension (.zip), so dh_shlibdeps doesn't get it. We need to do
 	# it manually.
 	LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" \
@@ -2765,7 +2788,7 @@ endif
 # This switch to dh_shlibdeps reduces the 'libXXX not found' warnings but
 # causes ldd crashes sometimes when used with fakeroot:
 #          -l $(PKGDIR)-core/$(OPENOFFICEDIR)/program
-	dh_gencontrol -s -Nure -Nure-dbg \
+	dh_gencontrol -s $(DEBHELPER_OPTIONS) -Nure -Nure-dbg \
 		-Nopenoffice.org$(VER)-report-builder \
 		-Nopenoffice.org$(VER)-presentation-minimizer \
 		-Nopenoffice.org$(VER)-sdbc-postgresql -- \
@@ -2776,7 +2799,7 @@ endif
 		-V'writer-w2l-dep=$(WRITER_W2L_DEP)' \
 		-V'base-hsqldb-depends=$(BASE_HSQLDB_DEPENDS)' \
 		-V'java-common-depends=$(JAVA_COMMON_DEPENDS)' \
-		-V'gcj-jawt-depends=$(GCJ_JAWT_DEPENDS)' \
+		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-V'java-gcj-depends=$(JAVA_GCJ_DEPENDS)' \
 		-V'mozilla-nss-depends=$(MOZILLA_NSS_DEPENDS)' \
 		-V'Binary-Version=$(BINARY_VERSION)' \
@@ -2799,7 +2822,7 @@ ifeq "$(PACKAGE_URE)" "y"
 		-v$(shell grep -A 1 "PRODUCTNAME URE" $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | tail -n 1 | awk '{ print $$2 }')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
 endif
 	dh_md5sums -s
-	dh_builddeb -s $(BUILDDEB_OPTIONS)
+	dh_builddeb -s $(DEBHELPER_OPTIONS)
 	
 	touch $@
 
@@ -2872,7 +2895,7 @@ endif
 	dh_installxmlcatalogs -i
 	dh_compress -X.py -X.mk -X.sxd
 	dh_installdeb -i
-	dh_gencontrol -i -Nlibpcvslib-perl -- \
+	dh_gencontrol -i $(DEBHELPER_OPTIONS) -Nlibpcvslib-perl -- \
 		-V'base-version=$(BASE_VERSION)' \
 		-V'help-l10n-virtual-version=$(HELP_L10N_VIRTUAL_VERSION)' \
 		-V'common-bsh-depends=$(COMMON_BSH_DEPENDS)' \
@@ -2883,11 +2906,11 @@ endif
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-v$(BINARY_VERSION)
 ifeq "$(PACKAGE_PCVSLIB)" "y"
-	dh_gencontrol -i -plibpcvslib-perl -- \
+	dh_gencontrol -plibpcvslib-perl -- \
 		-v0.02+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
 endif
 	dh_md5sums -i
-	dh_builddeb -i $(BUILDDEB_OPTIONS)
+	dh_builddeb -i $(DEBHELPER_OPTIONS)
 	
 	touch $@
 
