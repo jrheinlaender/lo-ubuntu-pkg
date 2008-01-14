@@ -121,6 +121,7 @@ BUILD_DBG_PACKAGE=y
 USE_SYSTEM_BSH=y
 USE_SYSTEM_HSQLDB=y
 KDELIBS_MINVER= (>= 4:3.4.3-2)
+ENABLE_SCSOLVER=y
 USE_SYSTEM_LPSOLVE=y
 USE_SHARED_LPSOLVE=y
 LPSOLVE_MIN_VERSION= (>= 5.5.0.10-4)
@@ -283,6 +284,11 @@ ifeq "$(BUILD_PPC64)" "y"
   ifeq "$(ARCH)" "ppc64"
 	PACKAGE_NPSOPLUGIN=n
   endif
+endif
+
+# lp-solve and libsuitesparse not available
+ifeq "$(ARCH)" "armel"
+	ENABLE_SCSOLVER=n
 endif
 
 ifeq "$(ARCH)-linux-gnu" "sparc-linux-gnu"
@@ -708,21 +714,25 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
 endif
 
-ifeq "$(USE_SYSTEM_LPSOLVE)" "y"
-  ifeq "$(USE_SHARED_LPSOLVE)" "y"
+ifeq "$(ENABLE_SCSOLVER)" "y"
+  ifeq "$(USE_SYSTEM_LPSOLVE)" "y"
+    ifeq "$(USE_SHARED_LPSOLVE)" "y"
 	BUILD_DEPS += , liblpsolve55-dev $(LPSOLVE_MIN_VERSION) [$(OOO_ARCHS)], lp-solve $(LPSOLVE_MIN_VERSION) [$(OOO_ARCHS)]
 	LPSOLVE_DEP = lp-solve $(LPSOLVE_MIN_VERSION)
-  else
+    else
 	BUILD_DEPS += , liblpsolve55-dev $(LPSOLVE_MIN_VERSION) [$(OOO_ARCHS)]
-  endif
+    endif
 	CONFIGURE_FLAGS += --with-system-lpsolve
-  ifeq "$(USE_LIBSUITESPARSE)" "y"
+    ifeq "$(USE_LIBSUITESPARSE)" "y"
 	DBG_DBG_SUGGESTS+= , libsuitesparse-dbg
 	BUILD_DEPS += , libsuitesparse-dev [$(OOO_ARCHS)]
-  else	
+    else	
 	DBG_DBG_SUGGESTS+= , libufsparse-dbg
 	BUILD_DEPS += , libufsparse-dev [$(OOO_ARCHS)]
+    endif
   endif
+else
+	CONFIGURE_FLAGS += --disable-scsolver
 endif
 
 ifeq "$(USE_DBUS)" "y"
@@ -1858,11 +1868,13 @@ endif
 		mv $(PKGDIR)-core/$(OODIR)/program/$$i*uno.so \
 			$(PKGDIR)-calc/$(OODIR)/program; \
 	done
+ifeq "$(ENABLE_SCSOLVER)" "y"
 	mv $(PKGDIR)-core/$(OODIR)/program/scsolver.uno.so \
 		$(PKGDIR)-calc/$(OODIR)/program
-ifneq "$(USE_SYSTEM_LPSOLVE)" "y"
+  ifneq "$(USE_SYSTEM_LPSOLVE)" "y"
 	mv $(PKGDIR)-core/$(OODIR)/program/liblpsolve55.so \
 		$(PKGDIR)-calc/$(OODIR)/program
+  endif
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
