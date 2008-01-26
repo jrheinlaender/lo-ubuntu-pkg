@@ -23,7 +23,7 @@ SOURCE_VERSION:=$(shell head -1 debian/changelog | cut -d\( -f2 | cut -d\) -f1)
 UPSTREAM_VERSION:=$(shell echo "$(SOURCE_VERSION)"| cut -d- -f1)
 BASE_VERSION:=$(UPSTREAM_VERSION)
 #HELP_L10N_VIRTUAL_VERSION:=$(shell echo $(UPSTREAM_VERSION) | cut -d: -f2 | tr [~] [\\-])
-HELP_L10N_VIRTUAL_VERSION:=2.3
+HELP_L10N_VIRTUAL_VERSION:=2.4
 
 BINARY_VERSION=$(SOURCE_VERSION)
 #BINARY_VERSION=2.2.0-$(shell dpkg-parsechangelog  | grep urgency \
@@ -502,47 +502,37 @@ ifeq "$(ENABLE_JAVA)" "y"
 	CONFIGURE_FLAGS += --enable-gcjaot
   ifeq "$(BUILD_JARS_NATIVE)" "y"
     ifeq "$(ETCH_BACKPORT)" "n"
-    	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.76-7) [$(OOO_JAVA_ARCHS)]
+    	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.76-7) [$(OOO_JAVA_ARCHS)], libgcj-bc
     else
-	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.65-4) [$(OOO_JAVA_ARCHS)]
+	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.65-4) [$(OOO_JAVA_ARCHS)], libgcj-bc
     endif
   else
-	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.56) [$(OOO_JAVA_ARCHS)]
+	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.56) [$(OOO_JAVA_ARCHS)], libgcj-bc
   endif
 	BUILD_DEPS += , ant (>= 1.6.5) [$(OOO_JAVA_ARCHS)]
-	GCJ_VERSION = $(shell $(JAVA_HOME)/bin/gcj --version | head -n 1 | awk '{ print $$3; }' | cut -d"." -f1,2)
+	GCJ_VERSION = $(shell basename `readlink $(JAVA_HOME)/bin/gcj` | sed -e s/gcj-//)
 	GCJ_DBTOOL = gcj-dbtool-$(GCJ_VERSION)
 	SYSTEM_XALAN=y
 	SYSTEM_XERCES=y
 	SYSTEM_XML_APIS=y
-  ifeq "$(GCJ_VERSION)" "4.2"
-	LIBGCJ_SONR=8
-  else
-	LIBGCJ_SONR=7
-  endif
-	DBG_DBG_SUGGESTS+= , libgcj$(LIBGCJ_SONR)-dbg
-  ifeq "$(shell dpkg --compare-versions `dpkg -l gcj-4.1 | tail -n 1 | awk '{ print $$3 }'` ge '4.1.2-3' && echo true || echo false)" "true"
-	GCJ_JAWT_DEPENDS= libgcj$(LIBGCJ_SONR)-1-awt
-  else
-    ifeq "$(GCJ_VERSION)" "4.2"
-	GCJ_JAWT_DEPENDS= libgcj$(LIBGCJ_SONR)-1-awt
-    else
-	GCJ_JAWT_DEPENDS= libgcj$(LIBGCJ_SONR)-awt
-    endif
-  endif
-  JAVA_RUNTIME_DEPENDS = java-gcj-compat
+	GCJ_JAWT_DEPENDS= $(shell dpkg -S /usr/lib/`readlink /usr/lib/libgcj_bc.so.1` | cut -d: -f1 | sed -e s/$$/-awt/)
+	# workaround for etch; etch only has libgcj7-awt
+ifeq "$(ETCH_BACKPORT)" "y"
+	GCJ_JAWT_DEPENDS= $(shell echo $(GCJ_JAWT_DEPENDS) | sed -e s/-0//)
+endif
+	DBG_DBG_SUGGESTS+= , $(shell echo $(GCJ_AWT_DEPENDS) | sed -e s/awt/dbg/)
+  	JAVA_RUNTIME_DEPENDS = java-gcj-compat
   ifneq (,$(GCJ_JAWT_DEPENDS))
-    JAVA_RUNTIME_DEPENDS += | $(GCJ_JAWT_DEPENDS)
+    	JAVA_RUNTIME_DEPENDS += | $(GCJ_JAWT_DEPENDS)
+  endif
+  ifneq (,$(filter $(ARCH), amd64 i386 powerpc))
+    	JAVA_RUNTIME_DEPENDS += | icedtea-java7-jre
   endif
   ifneq (,$(filter $(ARCH), amd64 i386))
-    JAVA_RUNTIME_DEPENDS += | sun-java5-jre | sun-java6-jre
+    	JAVA_RUNTIME_DEPENDS += | sun-java5-jre | sun-java6-jre
   endif
-  JAVA_RUNTIME_DEPENDS += | java2-runtime
-  ifeq "$(ETCH_BACKPORT)" "y"
-  	GCJ_JAWT_DIR=/usr/lib/gcj-4.1
-  else
-  	GCJ_JAWT_DIR=/usr/lib/gcj-4.2-81
-  endif
+  	JAVA_RUNTIME_DEPENDS += | java2-runtime
+  	GCJ_JAWT_DIR=$(shell dirname `dpkg -L $(GCJ_JAWT_DEPENDS) | grep libjawt.so`)
 export JAVA_HOME
 	CONFIGURE_FLAGS += --with-jdk-home=$(JAVA_HOME)
 	JAVA_COMMON_DEPENDS= , openoffice.org$(VER)-java-common (>> 2.2.0-4)
