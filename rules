@@ -16,7 +16,8 @@
 #VER:=2
 SHELL:=/bin/bash
 PKGDIR:=debian/openoffice.org$(VER)
-OODIR:=usr/lib/openoffice$(VER)
+OODIRNAME=openoffice$(VER)
+OODIR:=usr/lib/$(OODIRNAME)
 
 PKGSOURCE := $(shell dpkg-parsechangelog | awk '/^Source:/ {print $$2;exit 0}')
 SOURCE_VERSION:=$(shell head -1 debian/changelog | cut -d\( -f2 | cut -d\) -f1)
@@ -125,7 +126,7 @@ KDELIBS_MINVER= (>= 4:3.4.3-2)
 ENABLE_SCSOLVER=y
 USE_SYSTEM_LPSOLVE=y
 USE_SHARED_LPSOLVE=y
-LPSOLVE_MIN_VERSION= (>= 5.5.0.10-4)
+LPSOLVE_MIN_VERSION= (>= 5.5.0.10-10)
 USE_DBUS=y
 USE_GSTREAMER=y
 USE_SYSTEM_NEON=y
@@ -168,7 +169,7 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
                 --with-distro=$(PATCHSET) \
 		--with-vendor='$(OOO_VENDOR)' \
                 --enable-package-directories \
-                --with-installed-ooo-dirname=openoffice$(VER) \
+                --with-installed-ooo-dirname=$(OODIRNAME) \
                 --mandir=/usr/share/man \
                 --with-docdir=/usr/share/doc/openoffice.org \
 		--with-lang="$(BUILD_ISOS)" \
@@ -748,14 +749,14 @@ ifeq "$(ENABLE_SCSOLVER)" "y"
   ifeq "$(USE_SYSTEM_LPSOLVE)" "y"
     ifeq "$(USE_SHARED_LPSOLVE)" "y"
 	BUILD_DEPS += , liblpsolve55-dev $(LPSOLVE_MIN_VERSION) [$(OOO_SCSOLVER_ARCHS)], lp-solve $(LPSOLVE_MIN_VERSION) [$(OOO_SCSOLVER_ARCHS)]
-	LPSOLVE_DEP = lp-solve $(LPSOLVE_MIN_VERSION)
+	LPSOLVE_DEP = lp-solve $(LPSOLVE_MIN_VERSION) [$(OOO_SCSOLVER_ARCHS)]
     else
 	BUILD_DEPS += , liblpsolve55-dev $(LPSOLVE_MIN_VERSION) [$(OOO_SCSOLVER_ARCHS)]
     endif
 	CONFIGURE_FLAGS += --with-system-lpsolve
     ifeq "$(USE_LIBSUITESPARSE)" "y"
 	DBG_DBG_SUGGESTS+= , libsuitesparse-dbg
-	BUILD_DEPS += , libsuitesparse-dev [$(OOO_SCSOLVER_ARCHS)]
+	BUILD_DEPS += , libsuitesparse-dev (>> 3.1.0) [$(OOO_SCSOLVER_ARCHS)]
     else	
 	DBG_DBG_SUGGESTS+= , libufsparse-dbg
 	BUILD_DEPS += , libufsparse-dev [$(OOO_SCSOLVER_ARCHS)]
@@ -1514,7 +1515,7 @@ endif
 
 	# these have to go to -core, otherwise we get problems with the new
 	# dpkg-shibdeps...
-	for i in `find in debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/*.so.*`; do \
+	for i in `find debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/*.so.*`; do \
 		mv $$i `echo $$i | sed -e s/common/core/`; \
 	done
 
@@ -1556,19 +1557,19 @@ ifeq "$(ENABLE_JAVA)" "y"
 	# move officebean.jar into -officebean (They will be moved out of -core
 	# in the install-arch target). Do the /usr/share/java move here already
 	cd debian/tmp/pkg; \
-		mkdir -p openoffice.org-core/usr/share/java/openoffice$(VER); \
+		mkdir -p openoffice.org-core/usr/share/java/$(OODIRNAME); \
 		mv openoffice.org-common/$(OODIR)/program/classes/officebean.jar \
-			openoffice.org-core/usr/share/java/openoffice$(VER)
+			openoffice.org-core/usr/share/java/$(OODIRNAME)
 
 	# move sdbc_hsqldb.jar into -base (do the move
 	# to /usr/share/java here directly, we do it for the "rest"
 	# later
 	cd debian/tmp/pkg; \
-		mkdir -p openoffice.org-base/usr/share/java/openoffice$(VER); \
+		mkdir -p openoffice.org-base/usr/share/java/$(OODIRNAME); \
 		mkdir -p openoffice.org-base/$(OODIR)/program/classes; \
 		mv openoffice.org-common/$(OODIR)/program/classes/sdbc_hsqldb.jar \
-			openoffice.org-base/usr/share/java/openoffice$(VER); \
-		ln -s /usr/share/java/openoffice$(VER)/sdbc_hsqldb.jar \
+			openoffice.org-base/usr/share/java/$(OODIRNAME); \
+		ln -s /usr/share/java/$(OODIRNAME)/sdbc_hsqldb.jar \
 			openoffice.org-base/$(OODIR)/program/classes/sdbc_hsqldb.jar
 endif
 
@@ -1754,10 +1755,10 @@ $(STAMP_NATIVE_JARS): $(STAMP_DIR)/install
 	    debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/classes/*.jar \
 		debian/tmp/native-jars/
 	cp -a \
-	    debian/tmp/pkg/openoffice.org-core/usr/share/java/openoffice$(VER)/*.jar \
+	    debian/tmp/pkg/openoffice.org-core/usr/share/java/$(OODIRNAME)/*.jar \
 	        debian/tmp/native-jars/
 	cp -a \
-	    debian/tmp/pkg/openoffice.org-base/usr/share/java/openoffice$(VER)/*.jar \
+	    debian/tmp/pkg/openoffice.org-base/usr/share/java/$(OODIRNAME)/*.jar \
 	        debian/tmp/native-jars/
 ifeq "$(PACKAGE_WRITER2LATEX)" "y"
 	cp -a \
@@ -1940,9 +1941,9 @@ ifeq "$(ENABLE_JAVA)" "y"
 	rm -rf $(PKGDIR)-officebean
 	mkdir -p -m755 $(PKGDIR)-officebean/$(OODIR)/program/classes
 	mkdir -p -m755 $(PKGDIR)-officebean/usr/share/java
-	mv $(PKGDIR)-core/usr/share/java/openoffice$(VER) \
+	mv $(PKGDIR)-core/usr/share/java/$(OODIRNAME) \
 		$(PKGDIR)-officebean/usr/share/java
-	ln -s /usr/share/java/openoffice$(VER)/officebean.jar \
+	ln -s /usr/share/java/$(OODIRNAME)/officebean.jar \
 		 $(PKGDIR)-officebean/$(OODIR)/program/classes/officebean.jar
 	mv $(PKGDIR)-core/$(OODIR)/program/libofficebean.so \
 		$(PKGDIR)-officebean/$(OODIR)/program
@@ -1963,9 +1964,9 @@ ifeq "$(PACKAGE_QA_TOOLS)" "y"
 	done
 
   ifeq "$(ENABLE_JAVA)" "y"
-	mkdir -p -m755 $(PKGDIR)-qa-tools/usr/share/java/openoffice$(VER)
+	mkdir -p -m755 $(PKGDIR)-qa-tools/usr/share/java/$(OODIRNAME)
 	cp $(SOURCE_TREE)/qadevOOo/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/class/OOoRunnerLight.jar \
-		$(PKGDIR)-qa-tools/usr/share/java/openoffice$(VER)
+		$(PKGDIR)-qa-tools/usr/share/java/$(OODIRNAME)
   endif
 
 	mkdir -p -m755 $(PKGDIR)-qa-tools/$(OODIR)/smoketest
@@ -2091,31 +2092,31 @@ ifeq "$(ENABLE_MONO)" "y"
 		debian/libuno-cil/$(OODIR)/program
 	mkdir -p debian/libuno-cil/usr/lib/mono
 	mkdir -p debian/libuno-cil/usr/lib/pkgconfig
-	cat debian/tmp/usr/lib/pkgconfig/mono-openoffice$(VER).pc \
+	cat debian/tmp/usr/lib/pkgconfig/mono-$(OODIRNAME).pc \
 		| sed -e s,/usr/lib/mono/openoffice,/$(OODIR)/program,g \
-		> debian/libuno-cil/usr/lib/pkgconfig/mono-openoffice$(VER).pc
+		> debian/libuno-cil/usr/lib/pkgconfig/mono-$(OODIRNAME).pc
 endif
 
 ifeq "$(PACKAGE_SDK)" "y"
   ifeq "$(USE_SYSTEM_STLPORT)" "y"
 	# when we use external stlport, we just can and should do a symlink
 	# for the SDK includes
-	cd $(PKGDIR)-dev/usr/include/openoffice$(VER) && \
+	cd $(PKGDIR)-dev/usr/include/$(OODIRNAME) && \
 		rm -rf stl && ln -s /usr/include/stlport stl
   endif
   ifeq "$(ENABLE_JAVA)" "y"
 	# move SDK Java stuff into /usr/share/java/openoffice
 	rm -f $(PKGDIR)-dev/$(OODIR)/sdk/classes
-	mkdir -p $(PKGDIR)-dev/usr/share/java/openoffice$(VER)/win
-	mkdir -p $(PKGDIR)-dev/usr/share/java/openoffice$(VER)/com/sun/star/lib/loader
+	mkdir -p $(PKGDIR)-dev/usr/share/java/$(OODIRNAME)/win
+	mkdir -p $(PKGDIR)-dev/usr/share/java/$(OODIRNAME)/com/sun/star/lib/loader
 	mkdir -p $(PKGDIR)-dev/$(OODIR)/sdk/classes/com/sun/star/lib/loader
 	mv $(PKGDIR)-dev/usr/share/openoffice/sdk/classes/com/sun/star/lib/loader/* \
-		$(PKGDIR)-dev/usr/share/java/openoffice$(VER)/com/sun/star/lib/loader && \
+		$(PKGDIR)-dev/usr/share/java/$(OODIRNAME)/com/sun/star/lib/loader && \
 	mv $(PKGDIR)-dev/usr/share/openoffice/sdk/classes/win \
 		$(PKGDIR)-dev/$(OODIR)/sdk/classes
 	chmod 644 $(PKGDIR)-dev/$(OODIR)/sdk/classes/win/unowinreg.dll
 	cd $(PKGDIR)-dev/$(OODIR)/sdk/classes/com/sun/star/lib/loader && \
-		for i in $(CURDIR)/$(PKGDIR)-dev/usr/share/java/openoffice$(VER)/com/sun/star/lib/loader/*.class; do \
+		for i in $(CURDIR)/$(PKGDIR)-dev/usr/share/java/$(OODIRNAME)/com/sun/star/lib/loader/*.class; do \
 			ln -s `echo $$i | sed -e 's,$(CURDIR)/$(PKGDIR)-dev,,'` `basename $$i`; \
 		done
 	rm -rf $(PKGDIR)-dev/usr/share/openoffice/sdk
@@ -2224,7 +2225,7 @@ endif
 ifeq "$(PACKAGE_SDK)" "y"
   ifeq "$(ENABLE_JAVA)" "y"
 	# install the UNO Java sources for e.g. eclipse
-	mkdir -p $(CURDIR)/$(PKGDIR)-dev/usr/share/java/openoffice$(VER)
+	mkdir -p $(CURDIR)/$(PKGDIR)-dev/usr/share/java/$(OODIRNAME)
 	cd $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin && \
 		for i in juh jurt jut ridl unoloader; do \
 			cp $${i}_src.zip \
@@ -2250,10 +2251,10 @@ endif
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(PACKAGE_WRITER2LATEX)" "y"
 	# move writer2latex.jar into the right dir
-	mkdir -p $(PKGDIR)-writer/usr/share/java/openoffice$(VER)
+	mkdir -p $(PKGDIR)-writer/usr/share/java/$(OODIRNAME)
 	mv $(PKGDIR)-writer/$(OODIR)/program/classes/writer2latex.jar \
-		$(PKGDIR)-writer/usr/share/java/openoffice$(VER) && \
-	ln -s /usr/share/java/openoffice$(VER)/writer2latex.jar \
+		$(PKGDIR)-writer/usr/share/java/$(OODIRNAME) && \
+	ln -s /usr/share/java/$(OODIRNAME)/writer2latex.jar \
 		$(PKGDIR)-writer/$(OODIR)/program/classes/writer2latex.jar
   endif
 endif
@@ -2424,9 +2425,9 @@ endif
 		> $(PKGDIR)-common/usr/share/applications/ooo-template.desktop
 
 	# install openoffice-xlate-lang
-	install -d -m755 $(PKGDIR)-common/usr/share/openoffice$(VER)/bin
+	install -d -m755 $(PKGDIR)-common/usr/share/$(OODIRNAME)/bin
 	install -m755 ooo-build/bin/openoffice-xlate-lang \
-		$(PKGDIR)-common/usr/share/openoffice$(VER)/bin
+		$(PKGDIR)-common/usr/share/$(OODIRNAME)/bin
 
 ifeq "$(HELPISOS)" ""
 	# when we don't build helpcontent2 here we are missing helpxsl.zip so
@@ -2444,6 +2445,8 @@ ifeq "$(PACKAGE_SDK)" "y"
 	chmod 644 `find $(PKGDIR)-dev-doc/$(OODIR)/sdk/examples/java/Inspector -type f | xargs`
 	chmod 644 `find $(PKGDIR)-dev-doc/$(OODIR)/sdk/examples/java/EmbedDocument -type f | xargs`
 	rm -f $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev-doc/LICENSE
+	perl -pi -e 's,license.html,http://www.gnu.org/licenses/lgpl.html,' \
+		$(PKGDIR)-dev-doc/$(OODIR)/sdk/index.html
 
   ifeq "$(ENABLE_JAVA)" "y"
         # fix links
@@ -2459,15 +2462,15 @@ ifeq "$(ENABLE_JAVA)" "y"
 	# move common Java stuff to -java-common
 	mkdir -p $(PKGDIR)-java-common/$(OODIR)/program/classes
 	mkdir -p $(PKGDIR)-java-common/$(OODIR)/share/Scripts
-	mkdir -p $(PKGDIR)-java-common/usr/share/java/openoffice$(VER)
+	mkdir -p $(PKGDIR)-java-common/usr/share/java/$(OODIRNAME)
 	mv $(PKGDIR)-common/$(OODIR)/program/JREProperties.class \
 		$(PKGDIR)-java-common/$(OODIR)/program
 	mv $(PKGDIR)-common/$(OODIR)/share/Scripts/java \
 		$(PKGDIR)-java-common/$(OODIR)/share/Scripts
 	mv $(PKGDIR)-common/$(OODIR)/program/classes/* \
-		$(PKGDIR)-java-common/usr/share/java/openoffice$(VER)
+		$(PKGDIR)-java-common/usr/share/java/$(OODIRNAME)
 	cd $(PKGDIR)-java-common/$(OODIR)/program/classes && \
-		for i in $(CURDIR)/$(PKGDIR)-java-common/usr/share/java/openoffice$(VER)/*; do \
+		for i in $(CURDIR)/$(PKGDIR)-java-common/usr/share/java/$(OODIRNAME)/*; do \
 			case "`basename $$i`" in aportisdoc.jar|pexcel.jar|pocketword.jar) continue ;; \
 			*) ln -s `echo $$i | sed -e 's,$(CURDIR)/$(PKGDIR)-java-common,,'` `basename $$i` ;; esac; \
 	done
@@ -2476,7 +2479,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 	rm -rf $(PKGDIR)-filter-mobiledev
 	mkdir -p $(PKGDIR)-filter-mobiledev/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Filter
 	mkdir -p $(PKGDIR)-filter-mobiledev/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Types
-	mkdir -p $(PKGDIR)-filter-mobiledev/usr/share/java/openoffice$(VER)
+	mkdir -p $(PKGDIR)-filter-mobiledev/usr/share/java/$(OODIRNAME)
 	mkdir -p $(PKGDIR)-filter-mobiledev/$(OODIR)/program/classes
 	for i in palm pocketexcel pocketword; do \
 	  mv $(PKGDIR)-common/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Filter/fcfg_$${i}_filters.xcu \
@@ -2485,9 +2488,9 @@ ifeq "$(ENABLE_JAVA)" "y"
 	    $(PKGDIR)-filter-mobiledev/$(OODIR)/share/registry/modules/org/openoffice/TypeDetection/Types; \
 	done
 	for i in aportisdoc pexcel pocketword; do \
-	  mv $(PKGDIR)-java-common/usr/share/java/openoffice$(VER)/$$i.jar \
-		$(PKGDIR)-filter-mobiledev/usr/share/java/openoffice$(VER); \
-	  ln -s /usr/share/java/openoffice$(VER)/$$i.jar \
+	  mv $(PKGDIR)-java-common/usr/share/java/$(OODIRNAME)/$$i.jar \
+		$(PKGDIR)-filter-mobiledev/usr/share/java/$(OODIRNAME); \
+	  ln -s /usr/share/java/$(OODIRNAME)/$$i.jar \
 		$(PKGDIR)-filter-mobiledev/$(OODIR)/program/classes; \
 	done
 endif
@@ -2505,11 +2508,11 @@ endif
 	# move uno_packages/cache to /var and create symlink for for
 	# documentation referencing it...
 	rm -rf $(PKGDIR)-common/$(OODIR)/share/uno_packages/cache
-	mkdir -p $(PKGDIR)-common/var/spool/openoffice$(VER)/uno_packages/cache
-	ln -s /var/spool/openoffice$(VER)/uno_packages/cache \
+	mkdir -p $(PKGDIR)-common/var/spool/$(OODIRNAME)/uno_packages/cache
+	ln -s /var/spool/$(OODIRNAME)/uno_packages/cache \
 		$(PKGDIR)-common/$(OODIR)/share/uno_packages/cache
 	perl -pi -e \
-	      's,\$$UNO_SHARED_PACKAGES/cache,file:///var/spool/openoffice$(VER)/uno_packages/cache,g' \
+	      's,\$$UNO_SHARED_PACKAGES/cache,file:///var/spool/$(OODIRNAME)/uno_packages/cache,g' \
 		$(PKGDIR)-common/$(OODIR)/program/unorc
 
 	# install DicOOo; we need to do this manually; the
@@ -2585,30 +2588,30 @@ endif
 	mv $$TMP $(PKGDIR)-common/$(OODIR)/program/jvmfwk3rc
 
 	# move psprint.conf into /etc
-	mkdir -p $(PKGDIR)-common/etc/openoffice$(VER)
+	mkdir -p $(PKGDIR)-common/etc/$(OODIRNAME)
 	mv $(PKGDIR)-common/$(OODIR)/share/psprint/psprint.conf \
-		$(PKGDIR)-common/etc/openoffice$(VER)
-	ln -s /etc/openoffice$(VER)/psprint.conf \
+		$(PKGDIR)-common/etc/$(OODIRNAME)
+	ln -s /etc/$(OODIRNAME)/psprint.conf \
 		$(PKGDIR)-common/$(OODIR)/share/psprint/psprint.conf
 
 	# prepare a fake sofficerc in the place where OOo expects it
 	# which does nothing except reference the "normal" one
 	# which we put into /etc
 	mv $(PKGDIR)-common/$(OODIR)/program/sofficerc \
-		$(PKGDIR)-common/etc/openoffice$(VER)/sofficerc
+		$(PKGDIR)-common/etc/$(OODIRNAME)/sofficerc
 	( \
 	  echo "# *DO NOT* CHANGE THIS FILE. IT ONLY TAKES THE SETTINGS FROM"; \
-	  echo "# /etc/openoffice$(VER)/sofficerc. CHANGE THAT FILE IF YOU"; \
+	  echo "# /etc/$(OODIRNAME)/sofficerc. CHANGE THAT FILE IF YOU"; \
 	  echo "# REALLY WANT TO CHANGE SOMETHING."; \
-	  echo "FHS_CONFIG_FILE=file:///etc/openoffice$(VER)/sofficerc"; \
+	  echo "FHS_CONFIG_FILE=file:///etc/$(OODIRNAME)/sofficerc"; \
 	  echo "" >> $(PKGDIR)-common/$(OODIR)/program/sofficerc; \
 	) > $(PKGDIR)-common/$(OODIR)/program/sofficerc	
-	cat $(PKGDIR)-common/etc/openoffice$(VER)/sofficerc \
+	cat $(PKGDIR)-common/etc/$(OODIRNAME)/sofficerc \
 		| perl -p -e 's/(.*)=(.*)/$$1=\$${\$$FHS_CONFIG_FILE:Bootstrap:$$1}/' \
 		>> $(PKGDIR)-common/$(OODIR)/program/sofficerc
 
 	install -m 644 debian/soffice.sh \
-	  $(PKGDIR)-common/etc/openoffice$(VER)/soffice.sh
+	  $(PKGDIR)-common/etc/$(OODIRNAME)/soffice.sh
 
 ifeq "$(HELPISOS)" ""
 	# the helpimgs are not included when we don't build with help here.
