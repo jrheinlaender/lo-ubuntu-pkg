@@ -58,17 +58,17 @@ MWS=OOH680
 #MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)" | cut -d~ -f2 | sed -e s/$(shell echo $(MWS) | tr A-Z a-z)//)
 # For SRC680 milestones, use only ~mX
 #MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)" | cut -d~ -f2)
-MILESTONE=m7
-TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
-#TAG=$(MWS)_$(MILESTONE)
+MILESTONE=m8
+#TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
+TAG=$(MWS)_$(MILESTONE)
 #OOO_BUILD_BRANCH=ooo-build-2-4
 SOURCE_TREE=ooo-build/build/$(TAG)
 STAMP_DIR=debian/stampdir
 
-CORE_TARBALL=$(TAG)-core.tar.bz2
-SYSTEM_TARBALL=$(TAG)-system.tar.bz2
-#CORE_TARBALL=OOo_2.4.0_src_core.tar.bz2
-#SYSTEM_TARBALL=OOo_2.4.0_src_system.tar.bz2
+#CORE_TARBALL=$(TAG)-core.tar.bz2
+#SYSTEM_TARBALL=$(TAG)-system.tar.bz2
+CORE_TARBALL=OOo_2.4.0_src_core.tar.bz2
+SYSTEM_TARBALL=OOo_2.4.0_src_system.tar.bz2
 
 ifeq "$(DISTREL)" "etch"
   ETCH_BACKPORT=y
@@ -519,10 +519,11 @@ ifeq "$(ENABLE_JAVA)" "y"
 	SYSTEM_XALAN=y
 	SYSTEM_XERCES=y
 	SYSTEM_XML_APIS=y
+ifneq "$(ETCH_BACKPORT)" "y"
 	GCJ_JAWT_DEPENDS= $(shell dpkg -S /usr/lib/`readlink /usr/lib/libgcj_bc.so.1` | cut -d: -f1 | sed -e s/$$/-awt/)
+else
 	# workaround for etch; etch only has libgcj7-awt
-ifeq "$(ETCH_BACKPORT)" "y"
-	GCJ_JAWT_DEPENDS= $(shell echo $(GCJ_JAWT_DEPENDS) | sed -e s/-0//)
+	GCJ_JAWT_DEPENDS= $(shell dpkg -S /usr/lib/`readlink /usr/lib/libgcj_bc.so.1` | cut -d: -f1 | sed -e s/$$/-awt/ | sed -e s/-0//)
 endif
 	DBG_DBG_SUGGESTS+= , $(shell echo $(GCJ_AWT_DEPENDS) | sed -e s/awt/dbg/)
   	JAVA_RUNTIME_DEPENDS = java-gcj-compat
@@ -2907,6 +2908,7 @@ endif
 		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g)+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
 ifeq "$(PACKAGE_URE)" "y"
 	dh_gencontrol -pure -pure-dbg -- \
+		-V"ure:Version=$(shell grep -A 1 "PRODUCTNAME URE" $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | tail -n 1 | awk '{ print $$2 }')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`" \
 		-v$(shell grep -A 1 "PRODUCTNAME URE" $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | tail -n 1 | awk '{ print $$2 }')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
 endif
 	dh_md5sums -s
