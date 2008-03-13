@@ -427,15 +427,7 @@ else
 	BUILD_DEPS += , python [$(OOO_ARCHS)]
 endif
 
-ifeq "$(ETCH_BACKPORT)" "y"
-  ifeq "$(USE_PYCENTRAL)" "y"
-	BUILD_DEPS += , debhelper (>= 5.0.37.2)
-  else
-  	BUILD_DEPS += , debhelper (>= 5)
-  endif
-else
-	BUILD_DEPS += , debhelper (>= 5.0.51~)
-endif
+	BUILD_DEPS += , debhelper (>= 6.0.7~)
 
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(BUILD_JARS_NATIVE)" "y"
@@ -910,8 +902,7 @@ binary-arch: install
 	dh_testroot
 	dh_installdocs -plibmythes-dev
 	dh_installchangelogs -plibmythes-dev
-	chmod 755 debian/scripts/installoverrides
-	debian/scripts/installoverrides
+	dh_lintian
 	dh_link -plibmythes-dev
 	dh_fixperms -plibmythes-dev
 	dh_compress -plibmythes-dev
@@ -1124,7 +1115,7 @@ endif
 	rm -f debian/openoffice.org-dev-doc.doc-base.*
 	rm -f debian/*.menu
 	for i in base calc draw impress math writer; do \
-		rm -f debian/openoffice.org-$$i.overrides.lintian; \
+		rm -f debian/openoffice.org-$$i.lintian-overrides; \
 	done
 
 	$(MAKE) -f debian/rules control
@@ -1320,8 +1311,7 @@ ooo-build/config.status: ooo-build/configure
 
 	# Make sure needed scripts are executable
 	set -e;\
-	for FILE in debian/scripts/installoverrides \
-		    debian/scripts/move-if-change \
+	for FILE in debian/scripts/move-if-change \
 		    debian/scripts/cleandupes \
 		    debian/scripts/fix_image_rgb \
 		    ooo-build/configure \
@@ -2053,15 +2043,15 @@ else
 				> $(PKGDIR)-$$p/usr/share/applications/ooo$(VER)-$$p.desktop || exit 1 ;\
 	done
 endif
-	# add version to .menu and .overrides.lintian
+	# add version to .menu and .lintian-overrides
 	ICONVERSION=`grep PRODUCTVERSION $(SOURCE_TREE)/sysui/desktop/productversion.mk | head -n 1 | cut -d"=" -f2 | sed -e s/\ //g | sed -e s/\\\.//`; \
 	for i in base calc draw impress math writer; do \
 		cat debian/openoffice.org$(VER)-$$i.menu.in \
 			| sed -e s/@ICONVERSION@/$$ICONVERSION/ \
 			> debian/openoffice.org$(VER)-$$i.menu; \
-		cat debian/openoffice.org$(VER)-$$i.overrides.lintian.in \
+		cat debian/openoffice.org$(VER)-$$i.lintian-overrides.in \
 			| sed -e s/@ICONVERSION@/$$ICONVERSION/ \
-			> debian/openoffice.org$(VER)-$$i.overrides.lintian; \
+			> debian/openoffice.org$(VER)-$$i.lintian-overrides; \
 	done
 
 ifeq "$(BUILD_PYUNO)" "y"
@@ -2807,7 +2797,7 @@ ifeq "$(USE_PYCENTRAL)" "y"
 else
 	dh_python
 endif
-	debian/scripts/installoverrides -s
+	dh_lintian -s
 	dh_link -s 
 	dh_fixperms -s
 ifeq "$(BUILD_DBG_PACKAGE)" "y"
@@ -2982,7 +2972,7 @@ endif
 		fi; \
 	done
 	dh_installchangelogs -i ooo-build/ChangeLog
-	debian/scripts/installoverrides -i
+	dh_lintian -i
 	dh_link -i
 	dh_fixperms -i
 	dh_desktop -i
