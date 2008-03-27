@@ -86,7 +86,7 @@ PACKAGE_TTF_OPENSYMBOL=y
 PACKAGE_NPSOPLUGIN=y
 PACKAGE_PCVSLIB=n
 BUILD_JARS_NATIVE=y
-BUILD_BINFILTERS=y
+BUILD_BINFILTERS=n
 BUILD_ONLY_EN_US=n
 ENABLE_JAVA=y
 ENABLE_MONO=y
@@ -224,6 +224,8 @@ endif
 
 #############
 # Architecture-specific changes
+
+LIBSUFFIX := $(shell grep LIBSUFFIX debian/scripts/vars.$(ARCH) | cut -d"=" -f2)
 
 ifneq "$(ETCH_BACKPORT)" "y"
 	OOO_STLPORT_ARCHS= i386
@@ -1524,19 +1526,6 @@ ifeq "$(HELPISOS)" ""
 		rm -rf debian/tmp/pkg/openoffice.org-$$i/$(OODIR)/help; \
 	done
 else
-	# install *english* help; we can't do that later since this is in
-	# arch-dep and arch-indep stuff..
-	cd debian/tmp/pkg; \
-		mkdir -p openoffice.org-help-en-us/$(OODIR)/help/en; \
-		for i in common calc math draw writer impress base; do \
-			cp -r ./openoffice.org-$$i/$(OODIR)/help/en/* \
-			 ./openoffice.org-help-en-us/$(OODIR)/help/en && \
-			if [ "$$i" = "common" ]; then \
-				rm -rf ./openoffice.org-$$i/$(OODIR)/help/en; \
-			else \
-				rm -rf ./openoffice.org-$$i/$(OODIR)/help; \
-			fi; \
-		done
 	# save space by removing non-packaged localized help; we don't need
 	# them anyway
 	cd debian/tmp/pkg && \
@@ -1631,11 +1620,6 @@ ifeq "$(PACKAGE_SDK)" "y"
 		debian/tmp/pkg/openoffice.org-dev-doc/$(OODIR)/sdk
 endif
 
-	# FIXME: Is there a reason this moved from -math to -common?
-	mkdir -p debian/tmp/pkg/openoffice.org-math/$(OODIR)/share/registry/modules/org/openoffice/Office/Common/
-	mv  debian/tmp/pkg/openoffice.org-common/$(OODIR)/share/registry/modules/org/openoffice/Office/Common/Common-math.xcu \
-	debian/tmp/pkg/openoffice.org-math/$(OODIR)/share/registry/modules/org/openoffice/Office/Common/Common-math.xcu
-	
 	find debian/tmp ! -perm -200 | xargs -r chmod u+w
 	
 	touch $@
@@ -1674,7 +1658,7 @@ ifneq "$(HELPISOS)" ""
 	# we assume here that when we want to build/package help here we want
 	# to do that with en-US anyway...
 	rm -rf $(PKGDIR)-help-en-us $(PKGDIR)-help-en-us.*.debhelper; \
-	cp -r --preserve=mode debian/tmp/pkg/openoffice.org-help-en-us $(PKGDIR)-help-en-us || exit 1
+	cp -r --preserve=mode debian/tmp/pkg/openoffice.org-help-en-US $(PKGDIR)-help-en-us || exit 1
   ifneq "$(HELPISOS)" "en-US"
 	set -e; \
 	for iso in $(filter-out en-US,$(HELPISOS)); do \
@@ -1837,7 +1821,7 @@ endif
 
 ifeq "$(BUILD_KDE)" "y"
 	mkdir -p -m755 $(PKGDIR)-kde/$(OODIR)/program
-	for f in kdefilepicker fps_kde.uno.so libvclplug_kde[0-9]*.so libkab*so kdebe*so; do \
+	for f in kdefilepicker fps_kde.uno.so libvclplug_kde*.so libkab*so kdebe*so; do \
 	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-kde/$(OODIR)/program || exit 1 ;\
 	done
 endif
@@ -1845,7 +1829,7 @@ endif
 	# move the GNOME stuff which are *not* in gid_Module_Optional_Gnome
 	# (which is moved into -gnome in package-ooo) into -gnome
 	mkdir -p -m755 $(PKGDIR)-gnome/$(OODIR)/program
-	for f in gnome-open-url.bin fps_gnome.uno.so libvclplug_gtk[0-9]*.so; do \
+	for f in gnome-open-url.bin fps_gnome.uno.so libvclplug_gtk*.so; do \
 	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-gnome/$(OODIR)/program || exit 1;\
 	done
 	for f in libeggtray* libqstart_gtk*; do \
@@ -1887,7 +1871,7 @@ endif
 	# OOo's package split sucks...
 	mv $(PKGDIR)-core/$(OODIR)/program/libsw* \
 		$(PKGDIR)-writer/$(OODIR)/program
-	mv $(PKGDIR)-core/$(OODIR)/program/libsd6* \
+	mv $(PKGDIR)-core/$(OODIR)/program/libsd$(LIBSUFFIX)* \
 	   $(PKGDIR)-core/$(OODIR)/program/libsdd* \
 	   $(PKGDIR)-core/$(OODIR)/program/libsdui* \
 		$(PKGDIR)-draw/$(OODIR)/program
@@ -1899,9 +1883,9 @@ endif
 	# except for libdba680l?.so itself
 	rm -rf $(PKGDIR)-base-core
 	mkdir -p $(PKGDIR)-base-core/$(OODIR)/program
-	mv $(PKGDIR)-base/$(OODIR)/program/libdba680l?.so \
+	mv $(PKGDIR)-base/$(OODIR)/program/libdba$(LIBSUFFIX).so \
 		 $(PKGDIR)-base-core/$(OODIR)/program
-	for i in odbcbase2 dbpool2 jdbc2 odbc2 sdbc2 mysql2 adabas2; do \
+	for i in odbcbase2 dbpool2 jdbc2 odbc2 sdbc2 mysql2 adabas; do \
 		mv $(PKGDIR)-core/$(OODIR)/program/lib$$i* \
 		   $(PKGDIR)-base/$(OODIR)/program; \
 	done
@@ -2348,12 +2332,12 @@ $(STAMP_DIR)/broffice: $(STAMP_DIR)/install $(STAMP_DIR)/install-arch $(STAMP_DI
 			| sed -e "s/ooff/broff/" | sed -e "s/OpenO/BrO/" \
 			> debian/broffice.org/usr/share/applications/ooo-$$i.desktop; \
 	done
-	cat $(PKGDIR)-common/usr/share/applications/ooo-extension.desktop \
+	cat $(PKGDIR)-common/usr/share/applications/ooo-extensionmgr.desktop \
 		| sed -e "s/ooff/broff/" | sed -e "s/OpenO/BrO/" \
-		> debian/broffice.org/usr/share/applications/ooo-extension.desktop
-	cat $(PKGDIR)-common/usr/share/applications/ooo-template.desktop \
+		> debian/broffice.org/usr/share/applications/ooo-extensionmgr.desktop
+	cat $(PKGDIR)-common/usr/share/applications/ooo-startcenter.desktop \
 		| sed -e "s/ooff/broff/" | sed -e "s/OpenO/BrO/" \
-		 > debian/broffice.org/usr/share/applications/ooo-template.desktop
+		 > debian/broffice.org/usr/share/applications/ooo-startcenter.desktop
 	if dpkg-parsechangelog | grep urgency | grep -q "\~.*m[0123456789]\+"; then \
 		 debian/scripts/fix_image_rgb \
 			 $(SOURCE_TREE)/ooo_custom_images/dev_nologo_broffice/introabout/intro.bmp \
@@ -2421,8 +2405,8 @@ endif
 #		$(PKGDIR)-common/usr/share/mime/packages
 
 	mkdir -p $(PKGDIR)-common/usr/share/applications
-	sed 's/@VER@/$(VER)/g' debian/template.desktop.in \
-		> $(PKGDIR)-common/usr/share/applications/ooo-template.desktop
+	sed 's/@VER@/$(VER)/g' debian/startcenter.desktop.in \
+		> $(PKGDIR)-common/usr/share/applications/ooo-startcenter.desktop
 
 	# install openoffice-xlate-lang
 	install -d -m755 $(PKGDIR)-common/usr/share/$(OODIRNAME)/bin
@@ -2752,10 +2736,10 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	sed -e 's,Exec=unopkg,Exec=/$(OODIR)/program/unopkg,' \
 	    -e 's,Name=$${PRODUCTNAME} $${PRODUCTVERSION},Name=OpenOffice.org $(VER),' \
 	    -e 's/  / /' \
-	    < $$dirname/extension.desktop \
-	    > $(PKGDIR)-common/usr/share/applications/ooo$(VER)-extension.desktop || exit 1
-	sed -i -e 's/Application;//' $(PKGDIR)-common/usr/share/applications/ooo$(VER)-extension.desktop
-	sed -i -e 's/Office;/Office;System;/' $(PKGDIR)-common/usr/share/applications/ooo$(VER)-extension.desktop
+	    < $$dirname/extensionmgr.desktop \
+	    > $(PKGDIR)-common/usr/share/applications/ooo$(VER)-extensionmgr.desktop || exit 1
+	sed -i -e 's/Application;//' $(PKGDIR)-common/usr/share/applications/ooo$(VER)-extensionmgr.desktop
+	sed -i -e 's/Office;/Office;System;/' $(PKGDIR)-common/usr/share/applications/ooo$(VER)-extensionmgr.desktop
 endif
 
 	touch $@
@@ -2771,7 +2755,7 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 	done
 
 	dh_installdocs -A -Nlibmythes-dev debian/README.Debian \
-		debian/tmp/pkg/openoffice.org-common/$(OODIR)/README
+		debian/tmp/pkg/openoffice.org-l10n-en-US/$(OODIR)/README
 	dh_installdocs -plibmythes-dev debian/copyright
 	dh_installman -s
 	# fix manpage symlinks
@@ -2956,7 +2940,8 @@ ifeq "$(PACKAGE_SDK)" "y"
 	# But fix it..
 	perl -pi -e 's,html/,html /,g' debian/openoffice.org-dev-doc.doc-base.udk-common-ref
 endif
-	dh_installdocs -A  debian/README.Debian debian/tmp/pkg/openoffice.org-common/$(OODIR)/README
+	dh_installdocs -A  debian/README.Debian \
+		debian/tmp/pkg/openoffice.org-l10n-en-US/$(OODIR)/README
 ifeq "$(PACKAGE_PCVSLIB)" "y"
 	dh_installexamples -plibpcvslib-perl \
 		$(SOURCE_TREE)/solenv/bin/modules/PCVSLib/samples/*
