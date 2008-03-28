@@ -251,7 +251,7 @@ ifeq (,$(findstring $(ARCH),$(OOO_OGLTRANS_ARCHS)))
        ENABLE_OGLTRANS=n
 endif
 
-OOO_ARCHS= i386 powerpc sparc mips mipsel arm armel s390
+OOO_ARCHS= i386 powerpc sparc mips mipsel armel s390
 ifeq "$(BUILD_AMD64)" "y"
   OOO_ARCHS += amd64
 endif
@@ -273,11 +273,11 @@ ifeq "$(BUILD_IA64)" "y"
   OOO_JAVA_ARCHS+= ia64
 endif
 ifeq (,$(findstring $(ARCH),$(OOO_JAVA_ARCHS)))
-       ENABLE_JAVA=n
+	ENABLE_JAVA=n
 else
 	# extra step needed for arm, as the if matches the arm in armel..
   ifeq "$(ARCH)" "arm"
-  	ENABLE_JAVA=n
+	ENABLE_JAVA=n
   endif
 endif
 # mono
@@ -293,7 +293,7 @@ ifeq (,$(findstring $(ARCH),$(OOO_MONO_ARCHS)))
        ENABLE_MONO=n
 endif
 # Mozilla plugin. Crashes on amd64
-OOO_NPSOPLUGIN_ARCHS = i386 powerpc sparc mips mipsel arm armel s390
+OOO_NPSOPLUGIN_ARCHS = i386 powerpc sparc mips mipsel armel s390
 ifeq "$(BUILD_AMD64)" "y"
   ifeq "$(ARCH)" "amd64"
 	PACKAGE_NPSOPLUGIN=n
@@ -316,19 +316,23 @@ ifeq "$(ARCH)" "armel"
 endif
 OOO_SCSOLVER_ARCHS= $(filter-out armel,$(OOO_ARCHS))
 
+# builds long...
+ifneq (,$(findstring arm,$(ARCH)))
+	BUILD_BINFILTERS=n
+endif
+OOO_BINFILTER_ARCHS=$(filter-out arm,$(filter-out armel,$(OOO_ARCHS)))
+
 ifeq "$(ARCH)-linux-gnu" "sparc-linux-gnu"
 	# use 32-bit compiler
 	CC_PREFIX=sparc-linux-gnu-
 endif
-ifeq (s390,$(findstring s390,$(OOO_ARCHS)))
-	BUILD_DEPS += , g++-4.3 [s390], gcc-4.3 [s390]
-  ifeq "$(ARCH)" "s390"
-	# 4.2 ICEs
-	GCC_VERSION := 4.3
+ifneq "$(ETCH_BACKPORT)" "y"
+  ifeq (s390,$(findstring s390,$(OOO_ARCHS)))
+	BUILD_DEPS += , g++ (>> 4.3.0) [s390], gcc (>> 4.3.0) [s390]
   endif
 endif
 
-OOO_MOZILLA_ARCHS=i386 powerpc sparc mips mipsel arm armel s390
+OOO_MOZILLA_ARCHS=i386 powerpc sparc mips mipsel armel s390
 ifeq "$(BUILD_AMD64)" "y"
 	OOO_MOZILLA_ARCHS += amd64
 endif
@@ -345,6 +349,10 @@ ifneq "$(USE_EXTERNAL_MYTHES)" "y"
   ifneq ($(ARCH),$(findstring $(ARCH),$(OOO_ARCHS)))
        BUILD_ONLY_LIBMYTHES=y
   else
+    # extra step needed for arm, as the if matches the arm in armel..
+    ifeq "$(ARCH)" "arm"
+               BUILD_ONLY_LIBMYTHES=y
+    endif
     ifeq "$(ARCH)" "amd64"
       ifneq "$(BUILD_AMD64)" "y"
                BUILD_ONLY_LIBMYTHES=y
@@ -422,7 +430,7 @@ ifeq "$(BUILD_PYUNO)" "y"
 	BUILD_DEPS += , python-dev (>= 2.4) [$(OOO_ARCHS)]
 	WRITER_PYUNO_DEP = python-uno (>= $(UPSTREAM_VERSION))
 	DBG_DBG_SUGGESTS+= , python-dbg
-else 
+else
 	BUILD_DEPS += , python [$(OOO_ARCHS)]
 endif
 
@@ -504,7 +512,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 	CONFIGURE_FLAGS += --enable-gcjaot
   ifeq "$(BUILD_JARS_NATIVE)" "y"
     ifeq "$(ETCH_BACKPORT)" "n"
-    	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.76-7) [$(OOO_JAVA_ARCHS)], libgcj-bc [$(OOO_JAVA_ARCHS)]
+	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.76-7) [$(OOO_JAVA_ARCHS)], libgcj-bc [$(OOO_JAVA_ARCHS)]
     else
 	BUILD_DEPS += , java-gcj-compat-dev (>= 1.0.65-4) [$(OOO_JAVA_ARCHS)], libgcj-bc [$(OOO_JAVA_ARCHS)]
     endif
@@ -524,18 +532,18 @@ else
 	GCJ_JAWT_DEPENDS= $(shell dpkg -S /usr/lib/`readlink /usr/lib/libgcj_bc.so.1` | cut -d: -f1 | sed -e s/$$/-awt/ | sed -e s/-0//)
 endif
 	DBG_DBG_SUGGESTS+= , $(shell echo $(GCJ_AWT_DEPENDS) | sed -e s/awt/dbg/)
-  	JAVA_RUNTIME_DEPENDS = java-gcj-compat
+	JAVA_RUNTIME_DEPENDS = java-gcj-compat
 #  ifneq (,$(GCJ_JAWT_DEPENDS))
 #    	JAVA_RUNTIME_DEPENDS += | $(GCJ_JAWT_DEPENDS)
 #  endif
   ifneq (,$(filter $(ARCH), amd64 i386 powerpc))
-    	JAVA_RUNTIME_DEPENDS += | icedtea-java7-jre
+	JAVA_RUNTIME_DEPENDS += | icedtea-java7-jre
   endif
   ifneq (,$(filter $(ARCH), amd64 i386))
-    	JAVA_RUNTIME_DEPENDS += | sun-java5-jre | sun-java6-jre
+	JAVA_RUNTIME_DEPENDS += | sun-java5-jre | sun-java6-jre
   endif
-  	JAVA_RUNTIME_DEPENDS += | java2-runtime
-  	GCJ_JAWT_DIR=$(shell dirname `dpkg -L $(GCJ_JAWT_DEPENDS) | grep libjawt.so`)
+	JAVA_RUNTIME_DEPENDS += | java2-runtime
+	GCJ_JAWT_DIR=$(shell dirname `dpkg -L $(GCJ_JAWT_DEPENDS) | grep libjawt.so`)
 export JAVA_HOME
 	CONFIGURE_FLAGS += --with-jdk-home=$(JAVA_HOME)
 	JAVA_COMMON_DEPENDS= , openoffice.org$(VER)-java-common (>> 2.2.0-4)
@@ -617,7 +625,7 @@ endif
 
 ifeq "$(SYSTEM_ALTLINUXHYPH)" "y"
   ifeq "$(USE_LIBHYPHEN)" "y"
-  	BUILD_DEPS += , libhyphen-dev $(LIBHYPHEN_MINVER) [$(OOO_ARCHS)]
+	BUILD_DEPS += , libhyphen-dev $(LIBHYPHEN_MINVER) [$(OOO_ARCHS)]
   else
 	BUILD_DEPS += , libaltlinuxhyph-dev $(LIBALTLINUXHYPH_MINVER) [$(OOO_ARCHS)]
   endif
@@ -756,7 +764,7 @@ ifeq "$(ENABLE_SCSOLVER)" "y"
     ifeq "$(USE_LIBSUITESPARSE)" "y"
 	DBG_DBG_SUGGESTS+= , libsuitesparse-dbg
 	BUILD_DEPS += , libsuitesparse-dev (>> 3.1.0) [$(OOO_SCSOLVER_ARCHS)]
-    else	
+    else
 	DBG_DBG_SUGGESTS+= , libufsparse-dbg
 	BUILD_DEPS += , libufsparse-dev [$(OOO_SCSOLVER_ARCHS)]
     endif
@@ -773,7 +781,7 @@ endif
 ifeq "$(USE_GSTREAMER)" "y"
 	BUILD_DEPS += , libgstreamer-plugins-base0.10-dev [$(OOO_ARCHS)]
 	GSTREAMER_PLUGINS_SUGGESTS += , gstreamer0.10-plugins-base, gstreamer0.10-plugins-good, gstreamer0.10-plugins-ugly, gstreamer0.10-plugins-bad, gstreamer0.10-ffmpeg
-	DBG_DBG_SUGGESTS+= , libgstreamer0.10-0-dbg 
+	DBG_DBG_SUGGESTS+= , libgstreamer0.10-0-dbg
 else
 	CONFIGURE_FLAGS += --disable-gstreamer
 endif
@@ -819,7 +827,7 @@ AVAIL_CPUS := $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
 ifeq "$(NUM_CPUS)" ""
 	NUM_CPUS := 1
   ifeq "$(PARALLEL_BUILD)" "y"
-    	# according to Pavel Janik, build -P<number of cores> -- -P2
+	# according to Pavel Janik, build -P<number of cores> -- -P2
 	# is ideal. This sets the first -P according to the number
 	# of CPUs (where dual-core CPUS report 2, too)
     ifneq ($(AVAIL_CPUS),1)
@@ -859,7 +867,7 @@ clean:
 
 	rm -rf ooo-build/build
 	rm -rf debian/libmythes-dev
-	
+
 	dh_clean
 
 build:
@@ -1263,7 +1271,7 @@ ifeq "$(DIST)" "Debian"
 	if echo $(LANGPACKISOS) | grep -q sr; then \
 		sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 			 >> debian/control < debian/control.etch_lenny_transitional.in; \
-		perl -pi -e 's/(openoffice.org2-l10n-sr)/\1, openoffice.org-l10n-sr-cs/' debian/control; \
+		perl -pi -e 's/\n/, openoffice.org-l10n-sr-cs\n/ if /^Replaces:.*l10n-sr$$/' debian/control; \
 	fi
 endif
 
@@ -1272,6 +1280,7 @@ endif
 	perl -pi -e "s,%OOO_MONO_ARCHS%,$(OOO_MONO_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_NPSOPLUGIN_ARCHS%,$(OOO_NPSOPLUGIN_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_OGLTRANS_ARCHS%,$(OOO_OGLTRANS_ARCHS),g" debian/control
+	perl -pi -e "s,%OOO_BINFILTER_ARCHS%,$(OOO_BINFILTER_ARCHS),g" debian/control
 
 ifeq (he,$(findstring he,$(LANGPACKISOS)))
 	perl -pi -e 's/openoffice.org-help-he$$/openoffice.org-help-he, openoffice.org-ctl-he/' debian/control
@@ -1318,7 +1327,7 @@ ooo-build/config.status: ooo-build/configure
 	do \
 	  chmod 755 $$FILE ;\
 	done
-	  
+
 	mkdir -p $(STAMP_DIR)
 
 	# uudecode files, omit GSI files
@@ -1621,7 +1630,7 @@ ifeq "$(PACKAGE_SDK)" "y"
 endif
 
 	find debian/tmp ! -perm -200 | xargs -r chmod u+w
-	
+
 	touch $@
 
 #
@@ -1647,7 +1656,7 @@ $(STAMP_DIR)/maintscripts: debian/shell-lib.sh debian/control
 	    fi; \
 	  done; \
 	done
-	
+
 	touch $@
 
 # Install files generated by setup into package directories
@@ -1694,12 +1703,12 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/install $(STAMP_DIR)/install-indep ooo-buil
 	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-l10n-$$iso \
 		$(PKGDIR)-l10n-$$pkgiso || exit 1; \
 	done
-	
+
 	# remove empty uno_packages dirs somehow in the langpacks(?)
 	for iso in `echo $(LANGPACKISOS) | tr A-Z a-z`; do \
 		rm -rf $(PKGDIR)-l10n-$$iso/$(OODIR)/share/uno_packages; \
 	done
-	
+
 	# remove ooo dirs somehow in the langpacks(?)
 	for iso in `echo $(LANGPACKISOS) | tr A-Z a-z`; do \
 		rm -rf $(PKGDIR)-l10n-$$iso/$(OODIR)/share/dict/ooo; \
@@ -1710,7 +1719,7 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/install $(STAMP_DIR)/install-indep ooo-buil
 		rm -rf $(PKGDIR)-l10n-$$iso/$(OODIR)/licenses; \
 		rm -rf $(PKGDIR)-l10n-$$iso/$(OODIR)/share/readme/LICENSE*; \
 	done
-	
+
 	# remove extra readme files
 	for iso in `echo $(LANGPACKISOS) | tr A-Z a-z`; do \
 		rm -rf $(PKGDIR)-l10n-$$iso/$(OODIR)/readmes; \
@@ -2039,7 +2048,7 @@ ifeq "$(BUILD_PYUNO)" "y"
 	# PyUNO packging
 	rm -rf debian/python-uno debian/python-uno.*.debhelper
 	cp -r --preserve=mode debian/tmp/pkg/python-uno debian/python-uno
-	
+
 	install -d $(PYTHON_SITE)
 	mv debian/python-uno/$(OODIR)/program/uno.py $(PYTHON_SITE)
 	mv debian/python-uno/$(OODIR)/program/unohelper.py $(PYTHON_SITE)
@@ -2271,7 +2280,7 @@ endif
 	rm -rf $(PKGDIR)-presentation-minimizer
 	install -D -m644 $(SOURCE_TREE)/sdext/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/sun-presentation-minimizer.oxt \
 		$(PKGDIR)-presentation-minimizer/$(OODIR)/share/extension/install/sun-presentation-minimizer.oxt
-	
+
 	rm -rf $(PKGDIR)-sdbc-postgresql
 	install -D -m644 $(SOURCE_TREE)/connectivity/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/postgresql-sdbc-$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g).zip \
 		$(PKGDIR)-sdbc-postgresql/$(OODIR)/share/extension/install/postgresql-sdbc-$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g).zip
@@ -2300,7 +2309,7 @@ endif
 	done
 
 	touch $@
-	
+
 broffice: $(STAMP_DIR)/broffice
 $(STAMP_DIR)/broffice: $(STAMP_DIR)/install $(STAMP_DIR)/install-arch $(STAMP_DIR)/install-indep $(STAMP_DIR)/langpacks
 	dh_testdir
@@ -2589,7 +2598,7 @@ endif
 	  echo "# REALLY WANT TO CHANGE SOMETHING."; \
 	  echo "FHS_CONFIG_FILE=file:///etc/$(OODIRNAME)/sofficerc"; \
 	  echo "" >> $(PKGDIR)-common/$(OODIR)/program/sofficerc; \
-	) > $(PKGDIR)-common/$(OODIR)/program/sofficerc	
+	) > $(PKGDIR)-common/$(OODIR)/program/sofficerc
 	cat $(PKGDIR)-common/etc/$(OODIRNAME)/sofficerc \
 		| perl -p -e 's/(.*)=(.*)/$$1=\$${\$$FHS_CONFIG_FILE:Bootstrap:$$1}/' \
 		>> $(PKGDIR)-common/$(OODIR)/program/sofficerc
@@ -2774,12 +2783,12 @@ endif
 	dh_installmime -s
 	dh_installmenu -s
 ifeq "$(USE_PYCENTRAL)" "y"
-	dh_pycentral -ppython-uno 
+	dh_pycentral -ppython-uno
 else
 	dh_python
 endif
 	dh_lintian -s
-	dh_link -s 
+	dh_link -s
 	dh_fixperms -s
 ifeq "$(BUILD_DBG_PACKAGE)" "y"
 	dh_strip -s -Nure --dbg-package=openoffice.org$(VER)-dbg
@@ -2792,7 +2801,7 @@ ifeq "$(BUILD_DBG_PACKAGE)" "y"
 else
 	dh_strip -s
 endif
-	dh_desktop -s 
+	dh_desktop -s
 ifneq "$(ETCH_BACKPORT)" "y"
 	dh_icons -s
 endif
@@ -2891,7 +2900,7 @@ ifeq "$(PACKAGE_URE)" "y"
 endif
 	dh_md5sums -s
 	dh_builddeb -s $(DEBHELPER_OPTIONS)
-	
+
 	touch $@
 
 binary-indep: $(GSI_EXPORT_STAMP) $(STAMP_DIR)/binary-indep
@@ -2980,7 +2989,7 @@ ifeq "$(PACKAGE_PCVSLIB)" "y"
 endif
 	dh_md5sums -i
 	dh_builddeb -i $(DEBHELPER_OPTIONS)
-	
+
 	touch $@
 
 binary: binary-arch binary-indep
