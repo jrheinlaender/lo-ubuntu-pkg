@@ -148,12 +148,17 @@ NEW_DPKG_SHLIBDEPS=y
 ifeq "$(ENABLE_JAVA)" "y"
   ENABLE_REPORTDESIGN=y
   USE_SYSTEM_JFREEREPORT=y
+  # n until https://bugzilla.novell.com/show_bug.cgi?id=361061 is fixed
+  ENABLE_MEDIAWIKI=n
+  USE_SYSTEM_JAVA_COMMONS=y
 else
   ENABLE_REPORTDESIGN=n
+  ENABLE_MEDIAWIKI=n
 endif
 PACKAGE_WRITER2LATEX=n
 USE_EXTERNAL_WRITER2LATEX=y
-ENABLE_SDEXT=y
+ENABLE_MINIMIZER=y
+ENABLE_PRESENTER_SCREEN=y
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
@@ -214,6 +219,7 @@ ifeq "$(ETCH_BACKPORT)" "y"
   USE_SYSTEM_HSQLDB=n
   ENABLE_REPORTDESIGN=y
   USE_SYSTEM_JFREEREPORT=n
+  ENABLE_MEDIAWIKI=y
   NEONSONR=26
   NEW_DPKG_SHLIBDEPS=n
   DBVER=4.4
@@ -391,8 +397,11 @@ ifneq "$(PACKAGE_SDK)" "y"
 	CONFIGURE_FLAGS += --disable-odk
 endif
 
-ifeq "$(ENABLE_SDEXT)" "y"
-	CONFIGURE_FLAGS += --enable-sdext
+ifeq "$(ENABLE_MINIMIZER)" "y"
+	CONFIGURE_FLAGS += --enable-minimizer
+endif
+ifeq "$(ENABLE_PRESENTER_SCREEN)" "y"
+	CONFIGURE_FLAGS += --enable-presenter-screen
 endif
 
 ifeq "$(USE_LIBCURL4)" "y"
@@ -572,6 +581,16 @@ export JAVA_HOME
   ifeq "$(DIST)" "Debian"
 	BUILD_DEPS += , mingw32 [$(OOO_JAVA_ARCHS)]
 	CONFIGURE_FLAGS += --with-mingwin=i586-mingw32msvc-g++
+  endif
+  ifeq "$(ENABLE_MEDIAWIKI)" "y"
+	# mediawiki
+	CONFIGURE_FLAGS += --enable-mediawiki
+    ifeq "$(USE_SYSTEM_JAVA_COMMONS)" "y"
+	MEDIAWIKI_BUILD_DEPS += , libcommons-codec-java [$(OOO_JAVA_ARCHS)], libcommons-httpclient-java [$(OOO_JAVA_ARCHS)], libcommons-lang-java [$(OOO_JAVA_ARCHS)], libcommons-logging-java [$(OOO_JAVA_ARCHS)]
+	MEDIAWIKI_JAR_DEPENDS := $(MEDIAWIKI_BUILD_DEPS)
+	BUILD_DEPS += $(MEDIAWIKI_BUILD_DEPS)
+	CONFIGURE_FLAGS += --with-system-java-commons
+    endif
   endif
   ifeq "$(ENABLE_REPORTDESIGN)" "y"
 	# report-builder
@@ -1253,10 +1272,22 @@ ifeq "$(ENABLE_OPENGL)" "y"
 		>> debian/control < debian/control.ogltrans.in
 endif
 ifeq "$(ENABLE_JAVA)" "y"
+  ifeq "$(ENABLE_MEDIAWIKI)" "y"
+	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
+		>> debian/control < debian/control.mediawiki.in
+  endif
   ifeq "$(ENABLE_REPORTDESIGN)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.reportdesign.in
   endif
+endif
+ifeq "$(ENABLE_MINIMIZER)" "y"
+	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
+		>> debian/control < debian/control.minimizer.in
+endif
+ifeq "$(ENABLE_PRESENTER_SCREEN)" "y"
+	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
+		>> debian/control < debian/control.presenter.in
 endif
 ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
@@ -2282,9 +2313,23 @@ ifeq "$(ENABLE_REPORTDESIGN)" "y"
   endif
 endif
 
+ifeq "$(ENABLE_MEDIAWIKI)" "y"
+	rm -rf $(PKGDIR)-wiki-publisher
+	install -D -m644 $(SOURCE_TREE)/swext/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/wiki-publisher.oxt \
+	$(PKGDIR)-wiki-publisher/$(OODIR)/share/extension/install/wiki-publisher.oxt
+endif
+
+ifeq "$(ENABLE_MINIMIZER)" "y"
 	rm -rf $(PKGDIR)-presentation-minimizer
 	install -D -m644 $(SOURCE_TREE)/sdext/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/sun-presentation-minimizer.oxt \
 		$(PKGDIR)-presentation-minimizer/$(OODIR)/share/extension/install/sun-presentation-minimizer.oxt
+endif
+
+ifeq "$(ENABLE_PRESENTER_SCREEN)" "y"
+	rm -rf $(PKGDIR)-presenter-screen
+	install -m644 $(SOURCE_TREE)/sdext/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/presenter-screen.oxt \
+		 $(PKGDIR)-presenter-screen/$(OODIR)/share/extension/install/presenter-screen.oxt
+endif
 
 	rm -rf $(PKGDIR)-sdbc-postgresql
 	install -D -m644 $(SOURCE_TREE)/connectivity/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/postgresql-sdbc-$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g).zip \
@@ -2852,10 +2897,18 @@ endif
 		dpkg-shlibdeps -O \
 			$(SOURCE_TREE)/connectivity/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/postgresql-sdbc*.so \
 			> debian/openoffice.org$(VER)-sdbc-postgresql.substvars
+ifeq "$(ENABLE_MINIMIZER)" "y"
 	 LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" \
 	 	dpkg-shlibdeps -O \
 			$(SOURCE_TREE)/sdext/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/SunPresentationMinimizer.uno.so \
 			> debian/openoffice.org$(VER)-presentation-minimizer.substvars
+endif
+ifeq "$(ENABLE_PRESENTER_SCREEN)" "y"
+	 LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" \
+	 	dpkg-shlibdeps -O \
+			$(SOURCE_TREE)/sdext/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/PresenterScreen.uno.so \
+			> debian/openoffice.org$(VER)-presenter-screen.substvars
+endif
 ifeq "$(ENABLE_MONO)" "y"
 	dh_makeclilibs -s -V
 	dh_clideps -s
@@ -2866,6 +2919,8 @@ endif
 	dh_gencontrol -s $(DEBHELPER_OPTIONS) -Nure -Nure-dbg \
 		-Nopenoffice.org$(VER)-report-builder \
 		-Nopenoffice.org$(VER)-presentation-minimizer \
+		-Nopenoffice.org$(VER)-presenter-screen \
+		-Nopenoffice.org$(VER)-wiki-publisher \
 		-Nopenoffice.org$(VER)-sdbc-postgresql -- \
 		-V'base-version=$(BASE_VERSION)' \
 		-V'help-l10n-virtual-version=$(HELP_L10N_VIRTUAL_VERSION)' \
@@ -2894,8 +2949,19 @@ ifeq "$(ENABLE_REPORTDESIGN)" "y"
 		-V'report-builder-jar-depends=$(REPORT_BUILDER_JAR_DEPENDS)' \
 		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep "<version" $(SOURCE_TREE)/reportdesign/util/post.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
 endif
+ifeq "$(ENABLE_MEDIAWIKI)" "y"
+	dh_gencontrol -popenoffice.org$(VER)-wiki-publisher -- \
+		-V'mediawiki-jar-depends=$(MEDIAWIKI_JAR_DEPENDS)' \
+		-v$(shell grep "<version" $(SOURCE_TREE)/swext/mediawiki/src/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')++OOo`echo $(BINARY_VERSION) | cut -d: -f2`
+endif
+ifeq "$(ENABLE_MINIMIZER)" "y"
 	dh_gencontrol -popenoffice.org$(VER)-presentation-minimizer -- \
 		-v$(shell grep "<version" $(SOURCE_TREE)/sdext/source/minimizer/description.xml | perl -pi -e 's,<version value=\"(.*)\" />,\1,; s/^\s+//')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
+endif
+ifeq "$(ENABLE_PRESENTER_SCREEN)" "y"
+	dh_gencontrol -popenoffice.org$(VER)-presenter-screen -- \
+		-v$(shell grep "<version" $(SOURCE_TREE)/sdext/source/presenter/description.xml | perl -pi -e 's,<version value=\"(.*)\" />,\1,; s/^\s+//')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
+endif
 	dh_gencontrol -popenoffice.org$(VER)-sdbc-postgresql -- \
 		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g)+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
 ifeq "$(PACKAGE_URE)" "y"
