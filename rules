@@ -159,6 +159,8 @@ PACKAGE_WRITER2LATEX=n
 USE_EXTERNAL_WRITER2LATEX=y
 ENABLE_MINIMIZER=y
 ENABLE_PRESENTER_SCREEN=y
+# n until https://bugzilla.novell.com/show_bug.cgi?id=361061 is fixed.?
+ENABLE_PDFIMPORT=n
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
@@ -1289,6 +1291,10 @@ ifeq "$(ENABLE_PRESENTER_SCREEN)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.presenter.in
 endif
+ifeq "$(ENABLE_PDFIMPORT)" "y"
+	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
+		>> debian/control < debian/control.pdfimport.in
+endif
 ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.fonts.in
@@ -2345,6 +2351,11 @@ ifeq "$(ENABLE_OPENGL)" "y"
 		$(PKGDIR)-ogltrans/$(OODIR)/share/config/soffice.cfg/simpress/transitions-ogl.xml
 endif
 
+ifeq "$(ENABLE_PDFIMPORT)" "y"
+	rm -rf $(PKGDIR)-pdfimport
+	install -D -m644 $(SOURCE_TREE)/filter/pdfimport/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/pdfimport.oxt \
+	$(PKGDIR)-wiki-publisher/$(OODIR)/share/extension/install/pdfimport.oxt
+endif
 	for i in $(ARCH_DEP_PACKAGES); do \
 		install -D -m644 debian/presubj \
 			debian/$$i/usr/share/bug/$$i/presubj; \
@@ -2953,6 +2964,10 @@ ifeq "$(ENABLE_MEDIAWIKI)" "y"
 	dh_gencontrol -popenoffice.org$(VER)-wiki-publisher -- \
 		-V'mediawiki-jar-depends=$(MEDIAWIKI_JAR_DEPENDS)' \
 		-v$(shell grep "<version" $(SOURCE_TREE)/swext/mediawiki/src/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')++OOo`echo $(BINARY_VERSION) | cut -d: -f2`
+endif
+ifeq "$(ENABLE_PDFIMPORT)" "y"
+	dh_gencontrol -popenoffice.org$(VER)-pdfimport -- \
+		-v$(shell grep "<version" $(SOURCE_TREE)/filter/pdfimport/config/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')++OOo`echo $(BINARY_VERSION) | cut -d: -f2`
 endif
 ifeq "$(ENABLE_MINIMIZER)" "y"
 	dh_gencontrol -popenoffice.org$(VER)-presentation-minimizer -- \
