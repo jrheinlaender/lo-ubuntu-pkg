@@ -37,6 +37,9 @@ OS := $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
 ARCH := $(shell dpkg-architecture -qDEB_HOST_ARCH)
 DIST := $(shell lsb_release -is)
 DISTREL := $(shell lsb_release -cs)
+DEB_HOST_GNU_TYPE   ?= $(shell dpkg-architecture -qDEB_HOST_GNU_TYPE)
+DEB_BUILD_GNU_TYPE  ?= $(shell dpkg-architecture -qDEB_BUILD_GNU_TYPE)
+
 # Figure out who's building this package.
 OOO_VENDOR:=Debian
 ifeq "$(DIST)" "Ubuntu"
@@ -91,7 +94,7 @@ BUILD_ONLY_EN_US=n
 ENABLE_JAVA=y
 ENABLE_MONO=y
 MONO_MINVER= (>= 1.2.3)
-USE_SYSTEM_HUNSPELL=n
+USE_SYSTEM_HUNSPELL=y
 HUNSPELL_MIN_VER= (>= 1.1.5-2)
 SYSTEM_ALTLINUXHYPH=y
 USE_LIBHYPHEN=y
@@ -185,7 +188,8 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
                 --enable-lockdown \
 		--enable-openxml \
 		--with-drink=coffee \
-		--libdir=/usr/lib
+		--libdir=/usr/lib \
+		--host=$(DEB_HOST_GNU_TYPE) --build=$(DEB_BUILD_GNU_TYPE)
 
 # distro-configs is too late; it already gets searched in unpack
 # when we don't do that here, too.
@@ -258,7 +262,7 @@ ifeq "$(BUILD_IA64)" "y"
   OOO_OGLTRANS_ARCHS+= ia64
 endif
 ifeq (,$(findstring $(ARCH),$(OOO_OGLTRANS_ARCHS)))
-       ENABLE_OGLTRANS=n
+       ENABLE_OPENGL=n
 endif
 
 OOO_ARCHS= i386 powerpc sparc mips mipsel armel s390
@@ -272,7 +276,7 @@ ifeq "$(BUILD_IA64)" "y"
   OOO_ARCHS += ia64
 endif
 # Java...
-OOO_JAVA_ARCHS = i386 powerpc sparc mips mipsel armel s390
+OOO_JAVA_ARCHS = i386 powerpc sparc mips mipsel s390
 ifeq "$(BUILD_AMD64)" "y"
   OOO_JAVA_ARCHS+= amd64
 endif
@@ -303,7 +307,7 @@ ifeq (,$(findstring $(ARCH),$(OOO_MONO_ARCHS)))
        ENABLE_MONO=n
 endif
 # Mozilla plugin. Crashes on amd64
-OOO_NPSOPLUGIN_ARCHS = i386 powerpc sparc mips mipsel armel s390
+OOO_NPSOPLUGIN_ARCHS = i386 powerpc sparc mips mipsel s390
 ifeq "$(BUILD_AMD64)" "y"
   ifeq "$(ARCH)" "amd64"
 	PACKAGE_NPSOPLUGIN=n
@@ -342,7 +346,7 @@ ifneq "$(ETCH_BACKPORT)" "y"
   endif
 endif
 
-OOO_MOZILLA_ARCHS=i386 powerpc sparc mips mipsel armel s390
+OOO_MOZILLA_ARCHS=i386 powerpc sparc mips mipsel s390
 ifeq "$(BUILD_AMD64)" "y"
 	OOO_MOZILLA_ARCHS += amd64
 endif
@@ -351,6 +355,9 @@ ifeq "$(BUILD_PPC64)" "y"
 endif
 ifeq "$(BUILD_IA64)" "y"
 	OOO_MOZILLA_ARCHS += ia64
+endif
+ifeq (,$(findstring $(ARCH),$(OOO_MOZILLA_ARCHS)))
+       MOZILLA=
 endif
 
 # We only build the main openoffice.org packages on those architectures where it works
@@ -557,7 +564,7 @@ endif
 #    	JAVA_RUNTIME_DEPENDS += | $(GCJ_JAWT_DEPENDS)
 #  endif
   ifneq (,$(filter $(ARCH), amd64 i386 powerpc))
-	JAVA_RUNTIME_DEPENDS += | icedtea-java7-jre
+	JAVA_RUNTIME_DEPENDS += | openjdk-6-jre
   endif
   ifneq (,$(filter $(ARCH), amd64 i386))
 	JAVA_RUNTIME_DEPENDS += | sun-java5-jre | sun-java6-jre
@@ -674,7 +681,7 @@ ifneq "$(USE_STLPORT)" "y"
 	CONFIGURE_FLAGS += --without-stlport
 else
   ifeq "$(USE_SYSTEM_STLPORT)" "y"
-	LIBSTLPORT_MINVER= (>= 4.6.2-3)
+	LIBSTLPORT_MINVER= (>= 4.6.2-3.1)
 	BUILD_DEPS += , libstlport4.6-dev $(LIBSTLPORT_MINVER) [$(OOO_STLPORT_ARCHS)]
 	DEV_STL_DEPENDS=, libstlport4.6-dev $(LIBSTLPORT_MINVER) [$(OOO_STLPORT_ARCHS)]
 	CONFIGURE_FLAGS+= --with-stlport=$(CURDIR)/stlport
@@ -1819,8 +1826,12 @@ ifneq "$(DIST)" "Ubuntu"
 	# Also the native jar build is MUCH faster with this. But it
 	# won't be accepted into the official java-gcj-compat package so this
 	# hack here is needed.
-	cp /usr/share/pycentral/java-gcj-compat-dev/site-packages/aotcompile.py \
-		debian/scripts
+	if [ -e /usr/share/pyshared/aotcompile.py ]; then \
+		aotcompile_py=/usr/share/pyshared/aotcompile.py; \
+	else \
+		aotcompile_py=/usr/share/pycentral/java-gcj-compat-dev/site-packages/aotcompile.py; \
+	fi && \
+	cp $$aotcompile_py debian/scripts
 	cd debian/scripts && \
 		patch -p0 < $(CURDIR)/debian/aotcompile-256M-default.diff
 	PYTHONPATH="debian/scripts:$(shell echo $(PYTHON_SITE) | sed -e s,debian/python-uno,,)" \
@@ -2971,6 +2982,12 @@ ifneq "$(ETCH_BACKPORT)" "y"
   ifeq "$(ENABLE_JAVA)" "y"
 	perl -pi -e "s/java-gcj-compat/java-gcj-compat (>= 1.0.77-4)/" \
 		debian/openoffice.org$(VER)-officebean/DEBIAN/control
+  endif
+endif
+ifeq "$(SYSTEM_ALTLINUXHYPH)" "y"
+  ifeq "$(USE_LIBHYPHEN)" "y"
+	perl -pi -e "s/libhyphen0/libhyphen0 (>= 2.3.1-3)/" \
+		debian/openoffice.org$(VER)-core/DEBIAN/control
   endif
 endif
 ifeq "$(ENABLE_REPORTDESIGN)" "y"
