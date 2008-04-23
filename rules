@@ -306,6 +306,8 @@ endif
 ifeq (,$(findstring $(ARCH),$(OOO_MONO_ARCHS)))
        ENABLE_MONO=n
 endif
+
+ifeq "$(PACKAGE_NPSOPLUGIN)" "y"
 # Mozilla plugin. Crashes on amd64
 OOO_NPSOPLUGIN_ARCHS = i386 powerpc sparc mips mipsel s390
 ifeq "$(BUILD_AMD64)" "y"
@@ -323,12 +325,9 @@ ifeq "$(BUILD_IA64)" "y"
 	PACKAGE_NPSOPLUGIN=n
   endif
 endif
-
-# lp-solve and libsuitesparse not available
-ifeq "$(ARCH)" "armel"
-	ENABLE_SCSOLVER=n
+else
+OOO_NPSOPLUGIN_ARCHS=
 endif
-OOO_SCSOLVER_ARCHS= $(filter-out armel,$(OOO_ARCHS))
 
 # builds long...
 ifneq (,$(findstring arm,$(ARCH)))
@@ -621,6 +620,7 @@ export JAVA_HOME
   else
 	CONFIGURE_FLAGS += --disable-reportdesign
   endif
+	OOO_OFFICEBEAN_DEP = openoffice.org$(VER)-officebean
 else
 	CONFIGURE_FLAGS += --without-java
 	DEBHELPER_OPTIONS += -Nopenoffice.org$(VER)-officebean -Nopenoffice.org$(VER)-java-common -Nopenoffice.org$(VER)-filter-mobiledev
@@ -636,6 +636,7 @@ ifneq "$(MOZILLA)" ""
 	CONFIGURE_FLAGS += --with-system-mozilla=$(MOZILLA)
 else
 	CONFIGURE_FLAGS += --disable-mozilla --without-system-mozilla
+	PACKAGE_NPSOPLUGIN=n
 endif
 
 ifeq "$(USE_SYSTEM_DMAKE)" "y"
@@ -681,7 +682,7 @@ ifneq "$(USE_STLPORT)" "y"
 	CONFIGURE_FLAGS += --without-stlport
 else
   ifeq "$(USE_SYSTEM_STLPORT)" "y"
-	LIBSTLPORT_MINVER= (>= 4.6.2-3.1)
+	LIBSTLPORT_MINVER= (>= 4.6.2-3)
 	BUILD_DEPS += , libstlport4.6-dev $(LIBSTLPORT_MINVER) [$(OOO_STLPORT_ARCHS)]
 	DEV_STL_DEPENDS=, libstlport4.6-dev $(LIBSTLPORT_MINVER) [$(OOO_STLPORT_ARCHS)]
 	CONFIGURE_FLAGS+= --with-stlport=$(CURDIR)/stlport
@@ -1020,7 +1021,8 @@ ifeq "$(PRUNE_OOOBUILD)" "y"
 	 src/easter/*.png \
 	 patches/test/*.tar \
 	 www/images/*.png \
-	 www/l10n/*.gif
+	 www/l10n/*.gif \
+	 doc/class_diagram.odg
 	 if [ -d ooo-build/test ]; then \
 		find ooo-build/test ooo-build/doc ooo-build/scratch -type f \
 			\( -name '*.123' -o -name '*.doc' -o -name '*.lwp' \
@@ -1114,6 +1116,7 @@ endif
 	   desktop/mimetypes/48x48/*.png \
 	   www/images/*.png \
 	   www/l10n/*.gif \
+	   doc/class_diagram.odg \
 	   ; do \
 	  if [ -s $$f ]; then \
 	   uuencode $$f $$f > $$f.uu.tmp && \
@@ -1281,7 +1284,7 @@ ifeq "$(PACKAGE_PCVSLIB)" "y"
 	cat debian/control.pcvslib.in \
 		>> debian/control
 endif
-ifeq "$(PACKAGE_NPSOPLUGIN)" "y"
+ifneq "$(OOO_NPSOPLUGIN_ARCHS)" ""
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.mozilla.in
 endif
@@ -2471,7 +2474,7 @@ endif
 	rm -f $(PKGDIR)-common/$(OODIR)/program/oo_product.bmp
 
 	# Extract and install icons
-	cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/desktop-integration && dpkg --extract openoffice.org-debian-menus_*_all.deb . && cd usr/share/icons; \
+	cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/desktop-integration && dpkg --extract openoffice.org-debian-menus_*_all.deb . && cd usr/share/icons && \
 	for d in `find -type d`; do \
 	  install -d -m755 $(CURDIR)/$(PKGDIR)-common/usr/share/icons/$$d || exit 1 ;\
 	done &&\
@@ -2974,6 +2977,7 @@ endif
 		-V'mozilla-nss-depends=$(MOZILLA_NSS_DEPENDS)' \
 		-V'Binary-Version=$(BINARY_VERSION)' \
 		-V'ooo-binfilter-dep=$(OOO_BINFILTER_DEP)' \
+		-V'ooo-officebean-dep=$(OOO_OFFICEBEAN_DEP)' \
 		-V'lpsolve-dep=$(LPSOLVE_DEP)' \
 		-V'gstreamer-plugins-suggests=$(GSTREAMER_PLUGINS_SUGGESTS)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
