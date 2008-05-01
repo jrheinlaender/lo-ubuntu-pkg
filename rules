@@ -150,9 +150,8 @@ NEW_DPKG_SHLIBDEPS=y
 ifeq "$(ENABLE_JAVA)" "y"
   ENABLE_REPORTDESIGN=y
   USE_SYSTEM_JFREEREPORT=y
-  # n until https://bugzilla.novell.com/show_bug.cgi?id=361061 is fixed
-  ENABLE_MEDIAWIKI=n
-  USE_SYSTEM_JAVA_COMMONS=y
+  ENABLE_MEDIAWIKI=y
+  USE_SYSTEM_APACHE_COMMONS=y
 else
   ENABLE_REPORTDESIGN=n
   ENABLE_MEDIAWIKI=n
@@ -161,8 +160,6 @@ PACKAGE_WRITER2LATEX=n
 USE_EXTERNAL_WRITER2LATEX=y
 ENABLE_MINIMIZER=y
 ENABLE_PRESENTER_SCREEN=y
-# n until https://bugzilla.novell.com/show_bug.cgi?id=361061 is fixed.?
-# Also the extension currently is integrated known-broken:
 # http://qa.openoffice.org/issues/show_bug.cgi?id=88073
 ENABLE_PDFIMPORT=n
 
@@ -623,11 +620,12 @@ export JAVA_HOME
 	CONFIGURE_FLAGS += --with-mingwin=i586-mingw32msvc-g++
   endif
   ifeq "$(ENABLE_MEDIAWIKI)" "y"
-    ifeq "$(USE_SYSTEM_JAVA_COMMONS)" "y"
+    ifeq "$(USE_SYSTEM_APACHE_COMMONS)" "y"
 	MEDIAWIKI_BUILD_DEPS += , libcommons-codec-java [$(OOO_JAVA_ARCHS)], libcommons-httpclient-java [$(OOO_JAVA_ARCHS)], libcommons-lang-java [$(OOO_JAVA_ARCHS)], libcommons-logging-java [$(OOO_JAVA_ARCHS)]
 	MEDIAWIKI_JAR_DEPENDS := $(MEDIAWIKI_BUILD_DEPS)
 	BUILD_DEPS += $(MEDIAWIKI_BUILD_DEPS)
-	CONFIGURE_FLAGS += --with-system-java-commons
+	CONFIGURE_FLAGS += --with-system-apache-commons --with-commons-codec-jar=/usr/share/java/commons-codec.jar --with-commons-lang-jar=/usr/share/java/commons-lang.jar --with-commons-httpclient-jar=/usr/share/java/commons-httpclient.jar --with-commons-logging-jar=/usr/share/java/commons-logging.jar
+	CONFIGURE_FLAGS += --with-system-servlet-api --with-servlet-api-jar=$(shell dpkg -L `apt-cache show libcommons-logging-java | grep Depends | cut -d"," -f2 | sed -e s/^\ //` | grep \.jar$$)
     endif
   else
 	CONFIGURE_FLAGS += --disable-mediawiki
@@ -2361,6 +2359,8 @@ ifeq "$(ENABLE_MEDIAWIKI)" "y"
 	rm -rf $(PKGDIR)-wiki-publisher
 	install -D -m644 $(SOURCE_TREE)/swext/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/wiki-publisher.oxt \
 	$(PKGDIR)-wiki-publisher/$(OODIR)/share/extension/install/wiki-publisher.oxt
+	# unneeded license file
+	zip -d $(CURDIR)/$(PKGDIR)/wiki-publisher/$(OODIR)/share/extension/install/wiki-publisher.oxt license
 endif
 
 ifeq "$(ENABLE_MINIMIZER)" "y"
