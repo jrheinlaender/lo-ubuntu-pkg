@@ -64,11 +64,6 @@ TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
 SOURCE_TREE=ooo-build/build/$(TAG)
 STAMP_DIR=debian/stampdir
 
-#CORE_TARBALL=$(TAG)-core.tar.bz2
-#SYSTEM_TARBALL=$(TAG)-system.tar.bz2
-CORE_TARBALL=OOo_3.0.0_src_core.tar.bz2
-SYSTEM_TARBALL=OOo_3.0.0_src_system.tar.bz2
-
 ifeq "$(DISTREL)" "etch"
   ETCH_BACKPORT=y
 endif
@@ -336,8 +331,6 @@ else
 OOO_NPSOPLUGIN_ARCHS=
 endif
 
-OOO_SCSOLVER_ARCHS= $(OOO_ARCHS)
-
 # builds long...
 ifneq (,$(findstring arm,$(ARCH)))
 	BUILD_BINFILTERS=n
@@ -368,34 +361,6 @@ ifeq (,$(findstring $(ARCH),$(OOO_MOZILLA_ARCHS)))
        MOZILLA=
 endif
 
-# We only build the main openoffice.org packages on those architectures where it works
-# all other architectures build libmythes-dev
-ifneq "$(USE_EXTERNAL_MYTHES)" "y"
-  ifneq ($(ARCH),$(findstring $(ARCH),$(OOO_ARCHS)))
-       BUILD_ONLY_LIBMYTHES=y
-  else
-    # extra step needed for arm, as the if matches the arm in armel..
-    ifeq "$(ARCH)" "arm"
-               BUILD_ONLY_LIBMYTHES=y
-    endif
-    ifeq "$(ARCH)" "amd64"
-      ifneq "$(BUILD_AMD64)" "y"
-               BUILD_ONLY_LIBMYTHES=y
-      endif
-    endif
-    ifeq "$(ARCH)" "ppc64"
-      ifneq "$(BUILD_AMD64)" "y"
-               BUILD_ONLY_LIBMYTHES=y
-      endif
-    endif
-    ifeq "$(ARCH)" "ia64"
-      ifneq "$(BUILD_IA64)" "y"
-               BUILD_ONLY_LIBMYTHES=y
-      endif
-    endif
-  endif
-endif
-
 ifeq "$(USE_BZIP_COMPRESS)" "y"
 	DPKG_DEPENDS = dpkg (>= 1.10.24)
 	BUILDDEB_OPTIONS = -- -Zbzip2
@@ -404,7 +369,7 @@ endif
 ifeq "$(NEW_DPKG_SHLIBDEPS)" "y"
 	# new dpkg-dev whcih works - in contrast to 1.4.9 and .10 -
 	# without --ignore-missing-info
-	BUILD_DEPS += , dpkg-dev (>= 1.14.11) [$(OOO_ARCHS)]
+	BUILD_DEPS += , dpkg-dev (>= 1.14.11)
 endif
 
 ifeq "$(ENABLE_OPENGL)" "y"
@@ -427,19 +392,19 @@ ifeq "$(ENABLE_PDFIMPORT)" "n"
 endif
 
 ifeq "$(USE_LIBCURL4)" "y"
-	BUILD_DEPS += , libcurl4-openssl-dev [$(OOO_ARCHS)]
+	BUILD_DEPS += , libcurl4-openssl-dev
 else
-	BUILD_DEPS += , libcurl3-openssl-dev [$(OOO_ARCHS)]
+	BUILD_DEPS += , libcurl3-openssl-dev
 endif
 
 ifeq "$(SYSTEM_OPENSSL)" "y"
-	BUILD_DEPS += , libssl-dev [$(OOO_ARCHS)]
+	BUILD_DEPS += , libssl-dev
 	CONFIGURE_FLAGS += --with-system-openssl
 	DBG_DBG_SUGGESTS += , libssl$(shell readlink /usr/lib/libssl.so | cut -d"." -f3,4,5)-dbg
 endif
 
 	# libdb-dev since 4.6 but it provides libdb4.6-dev, so keep this as-is...
-	BUILD_DEPS += , libdb$(DBVER)-dev [$(OOO_ARCHS)]
+	BUILD_DEPS += , libdb$(DBVER)-dev
 
 ifneq "$(BUILD_DBG_PACKAGE)" "y"
 	SMALL_SYMBOLS = y
@@ -456,9 +421,10 @@ endif
 
 ifeq "$(BUILD_PYUNO)" "y"
   ifeq "$(USE_PYCENTRAL)" "y"
-	BUILD_DEPS += , python-central (>= 0.5) [$(OOO_ARCHS)]
+	BUILD_DEPS += , python-central (>= 0.5)
   endif
-	BUILD_DEPS += , python-dev (>= 2.4) [$(OOO_ARCHS)]
+	BUILD_DEPS += , python-dev (>= 2.4)
+	WRITER_PYUNO_DEP = python-uno (>= $(UPSTREAM_VERSION))
 	DBG_DBG_SUGGESTS+= , python-dbg
 else
 	BUILD_DEPS += , python [$(OOO_ARCHS)]
@@ -496,7 +462,7 @@ ifeq "$(PACKAGE_PCVSLIB)" "y"
 endif
 
 ifeq "$(RUN_SMOKETEST)" "y"
-	BUILD_DEPS += , xvfb [$(OOO_ARCHS)], xbase-clients [$(OOO_ARCHS)], xfonts-base [$(OOO_ARCHS)]
+	BUILD_DEPS += , xvfb, xbase-clients, xfonts-base
 endif
 
 ifneq "$(BUILD_ONLY_EN_US)" "y"
@@ -666,7 +632,7 @@ else
 endif
 
 ifeq "$(USE_SYSTEM_DMAKE)" "y"
-	BUILD_DEPS += , dmake (>= 1:4.11) [$(OOO_ARCHS)]
+	BUILD_DEPS += , dmake (>= 1:4.11)
 endif
 
 ifeq "$(ENABLE_MONO)" "y"
@@ -683,15 +649,15 @@ else
 endif
 
 ifeq "$(USE_SYSTEM_HUNSPELL)" "y"
-	BUILD_DEPS += , libhunspell-dev $(HUNSPELL_MIN_VER) [$(OOO_ARCHS)]
+	BUILD_DEPS += , libhunspell-dev $(HUNSPELL_MIN_VER)
 	CONFIGURE_FLAGS+= --with-system-hunspell
 endif
 
 ifeq "$(SYSTEM_ALTLINUXHYPH)" "y"
   ifeq "$(USE_LIBHYPHEN)" "y"
-	BUILD_DEPS += , libhyphen-dev $(LIBHYPHEN_MINVER) [$(OOO_ARCHS)]
+	BUILD_DEPS += , libhyphen-dev $(LIBHYPHEN_MINVER)
   else
-	BUILD_DEPS += , libaltlinuxhyph-dev $(LIBALTLINUXHYPH_MINVER) [$(OOO_ARCHS)]
+	BUILD_DEPS += , libaltlinuxhyph-dev $(LIBALTLINUXHYPH_MINVER)
   endif
 	CONFIGURE_FLAGS += --with-system-altlinuxhyph
 endif
@@ -699,7 +665,7 @@ endif
 ifeq "$(USE_AGG)" "y"
 	CONFIGURE_FLAGS+= --with-agg
   ifeq "$(SYSTEM_AGG)" "y"
-	BUILD_DEPS += , libagg-dev (>= 2.3-2) [$(OOO_ARCHS)]
+	BUILD_DEPS += , libagg-dev (>= 2.3-2)
 	CONFIGURE_FLAGS += --with-system-agg
   endif
 endif
@@ -716,61 +682,61 @@ else
 endif
 
 ifeq "$(USE_SYSTEM_BOOST)" "y"
-	BUILD_DEPS += , libboost-dev [$(OOO_ARCHS)]
+	BUILD_DEPS += , libboost-dev
 	CONFIGURE_FLAGS += --with-system-boost
 endif
 
 ifeq "$(USE_SYSTEM_VIGRA)" "y"
-	BUILD_DEPS += , libvigraimpex-dev [$(OOO_ARCHS)]
+	BUILD_DEPS += , libvigraimpex-dev
 	CONFIGURE_FLAGS += --with-system-vigra
 endif
 
 ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
-	BUILD_DEPS += , libwpd8-dev $(LIBWPD8_MINVER) [$(OOO_ARCHS)]
+	BUILD_DEPS += , libwpd8-dev $(LIBWPD8_MINVER)
 	CONFIGURE_FLAGS+=  --with-system-libwpd
   ifeq "$(USE_SYSTEM_SABLOT)" "y"
-	BUILD_DEPS += , libsablot0-dev (>= 1.0.2-4) [$(OOO_ARCHS)]
+	BUILD_DEPS += , libsablot0-dev (>= 1.0.2-4)
 	CONFIGURE_FLAGS += --with-system-sablot
   endif
   ifeq "$(USE_EXTERNAL_MYTHES)" "y"
-	BUILD_DEPS += , libmythes-dev (>= 1:1.0-3) [$(OOO_ARCHS)]
+	BUILD_DEPS += , libmythes-dev (>= 1:1.0-3)
 	CONFIGURE_FLAGS += --with-system-mythes
 	DEBHELPER_OPTIONS+= -Nlibmythes-dev
   endif
   ifeq "$(USE_SYSTEM_LIBWPS)" "y"
-	BUILD_DEPS += , libwps-dev [$(OOO_ARCHS)]
+	BUILD_DEPS += , libwps-dev
 	CONFIGURE_FLAGS += --with-system-libwps
   endif
   ifeq "$(USE_SYSTEM_LIBWPG)" "y"
-	BUILD_DEPS += , libwpg-dev [$(OOO_ARCHS)]
+	BUILD_DEPS += , libwpg-dev
 	CONFIGURE_FLAGS += --with-system-libwpg
   endif
 endif
 
 ifeq "$(USE_SYSTEM_ICU)" "y"
 	# 34 and 36 provide this and 38 changed the real name.
-	BUILD_DEPS += , libicu-dev [$(OOO_ARCHS)]
+	BUILD_DEPS += , libicu-dev
 	CONFIGURE_FLAGS += --with-system-icu
 endif
 
 ifeq "$(USE_LIBXSLT)" "y"
 	CONFIGURE_FLAGS += --with-system-libxslt
-	BUILD_DEPS += , libxslt1-dev [$(OOO_ARCHS)]
+	BUILD_DEPS += , libxslt1-dev
 	DBG_DBG_SUGGESTS+= , libxslt1-dbg
 endif
 
 ifeq "$(USE_SYSTEM_XMLSEC)" "y"
   ifneq (,$(findstring xul,$(MOZILLA)))
-	BUILD_DEPS += , libxmlsec1-dev (>= 1.2.9-1.1) [$(OOO_ARCHS)], libxmlsec1-nss (>= 1.2.9-1.1) [$(OOO_ARCHS)], libxmlsec1-openssl (>= 1.2.9-1.1) [$(OOO_ARCHS)]
+	BUILD_DEPS += , libxmlsec1-dev (>= 1.2.9-1.1), libxmlsec1-nss (>= 1.2.9-1.1), libxmlsec1-openssl (>= 1.2.9-1.1)
   else
-	BUILD_DEPS += , libxmlsec1-dev (>= 1.2.9) [$(OOO_ARCHS)], libxmlsec1-nss (>= 1.2.9) [$(OOO_ARCHS)], libxmlsec1-openssl (>= 1.2.9) [$(OOO_ARCHS)]
+	BUILD_DEPS += , libxmlsec1-dev (>= 1.2.9), libxmlsec1-nss (>= 1.2.9), libxmlsec1-openssl (>= 1.2.9)
   endif
 	CONFIGURE_FLAGS += --with-system-xmlsec
 endif
 
 ifeq "$(BUILD_CAIROCANVAS)" "y"
   ifeq "$(USE_SYSTEM_CAIRO)" "y"
-	BUILD_DEPS+= , libcairo2-dev [$(OOO_ARCHS)]
+	BUILD_DEPS+= , libcairo2-dev
 	CONFIGURE_FLAGS+= --with-system-cairo
   endif
 else
@@ -782,7 +748,7 @@ ifeq "$(BUILD_KDE)" "n"
 	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-kde
 	CONFIGURE_FLAGS+= --with-images="industrial crystal hicontrast tango $(HUMAN)"
 else
-	BUILD_DEPS += , kdelibs4-dev $(KDELIBS_MINVER) [$(OOO_ARCHS)]
+	BUILD_DEPS += , kdelibs4-dev $(KDELIBS_MINVER)
 	DBG_DBG_SUGGESTS+= , kdelibs-dbg, qt-x11-free-dbg
 endif
 
@@ -816,30 +782,32 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
 endif
 
-ifeq "$(USE_SYSTEM_LPSOLVE)" "y"
-  ifeq "$(USE_SHARED_LPSOLVE)" "y"
-	BUILD_DEPS += , liblpsolve55-dev $(LPSOLVE_MIN_VERSION) [$(OOO_SCSOLVER_ARCHS)], lp-solve $(LPSOLVE_MIN_VERSION) [$(OOO_SCSOLVER_ARCHS)]
-	LPSOLVE_DEP = lp-solve $(LPSOLVE_MIN_VERSION) [$(OOO_SCSOLVER_ARCHS)]
-  else
-	BUILD_DEPS += , liblpsolve55-dev $(LPSOLVE_MIN_VERSION) [$(OOO_SCSOLVER_ARCHS)]
-  endif
+ifeq "$(ENABLE_SCSOLVER)" "y"
+  ifeq "$(USE_SYSTEM_LPSOLVE)" "y"
+    ifeq "$(USE_SHARED_LPSOLVE)" "y"
+	BUILD_DEPS += , liblpsolve55-dev $(LPSOLVE_MIN_VERSION), lp-solve $(LPSOLVE_MIN_VERSION)
+	LPSOLVE_DEP = lp-solve $(LPSOLVE_MIN_VERSION)
+    else
+	BUILD_DEPS += , liblpsolve55-dev $(LPSOLVE_MIN_VERSION)
+    endif
 	CONFIGURE_FLAGS += --with-system-lpsolve
   ifeq "$(USE_LIBSUITESPARSE)" "y"
 	DBG_DBG_SUGGESTS+= , libsuitesparse-dbg
-	BUILD_DEPS += , libsuitesparse-dev (>> 3.1.0) [$(OOO_SCSOLVER_ARCHS)]
-  else
+	BUILD_DEPS += , libsuitesparse-dev (>> 3.1.0)
+    else
 	DBG_DBG_SUGGESTS+= , libufsparse-dbg
-	BUILD_DEPS += , libufsparse-dev [$(OOO_SCSOLVER_ARCHS)]
+	BUILD_DEPS += , libufsparse-dev
+    endif
   endif
 endif
 
 ifeq "$(USE_DBUS)" "y"
-	BUILD_DEPS += , libdbus-glib-1-dev (>= 0.60) [$(OOO_ARCHS)]
+	BUILD_DEPS += , libdbus-glib-1-dev (>= 0.60)
 	CONFIGURE_FLAGS += --enable-dbus
 endif
 
 ifeq "$(USE_GSTREAMER)" "y"
-	BUILD_DEPS += , libgstreamer-plugins-base0.10-dev [$(OOO_ARCHS)]
+	BUILD_DEPS += , libgstreamer-plugins-base0.10-dev
 	GSTREAMER_PLUGINS_SUGGESTS += , gstreamer0.10-plugins-base, gstreamer0.10-plugins-good, gstreamer0.10-plugins-ugly, gstreamer0.10-plugins-bad, gstreamer0.10-ffmpeg
 	DBG_DBG_SUGGESTS+= , libgstreamer0.10-0-dbg
 else
@@ -847,19 +815,19 @@ else
 endif
 
 ifeq "$(USE_SYSTEM_NEON)" "y"
-	BUILD_DEPS += , libneon$(NEONSONR)-dev [$(OOO_ARCHS)]
+	BUILD_DEPS += , libneon$(NEONSONR)-dev
 	DBG_DBG_SUGGESTS+= , libneon$(NEONSONR)-dbg
 	CONFIGURE_FLAGS += --with-system-neon
 endif
 
 # CairoFonts patchset is applied for sid and this patch needs Gtk 2.10
 ifneq "$(CAIRO_FONTS_PATCH)" "y"
-	BUILD_DEPS += , libgtk2.0-dev [$(OOO_ARCHS)]
+	BUILD_DEPS += , libgtk2.0-dev
 else
-	BUILD_DEPS += , libgtk2.0-dev (>= 2.10) [$(OOO_ARCHS)]
+	BUILD_DEPS += , libgtk2.0-dev (>= 2.10)
   # cairo canvas might be disabled, but the patch needs cairo headers
   ifneq "$(BUILD_CAIROCANVAS)" "y"
-	BUILD_DEPS += , libcairo2-dev [$(OOO_ARCHS)]
+	BUILD_DEPS += , libcairo2-dev
 	CONFIGURE_FLAGS += --with-system-cairo
   endif
 endif
@@ -920,64 +888,6 @@ endif
 BUILD_PATH := $(CURDIR)/debian/usr/bin:$(BUILD_PATH)
 BUILD_LD_LIBRARY_PATH := $(BUILD_LD_LIBRARY_PATH):$(GCJ_JAWT_DIR)
 
-ifeq "$(BUILD_ONLY_LIBMYTHES)" "y"
-clean:
-	dh_testdir
-	dh_testroot
-
-	rm -rf ooo-build/build
-	rm -rf debian/libmythes-dev
-
-	dh_clean
-
-build:
-	mkdir -p ooo-build/build
-	cd ooo-build/build && \
-		tar xfvj ../src/$(CORE_TARBALL) $(TAG)/lingucomponent/source/thesaurus/mythes \
-			$(TAG)/lingucomponent/inc && \
-		tar xfvj ../src/$(SYSTEM_TARBALL) $(TAG)/dictionaries/util
-	cd $(SOURCE_TREE)/lingucomponent/source/thesaurus/mythes && \
-		$(CXX) -O2 -Wall -ansi -pedantic -I. -I../../../inc/pch \
-			-c mythes.cxx && \
-		ar rc libmythes.a mythes.o && ranlib libmythes.a && \
-		mv libmythes.a $(CURDIR)/ooo-build/build
-	cd $(SOURCE_TREE)/lingucomponent/source/thesaurus/mythes && \
-		$(CXX) -fPIC -O2 -Wall -ansi -pedantic -I. -I../../../inc/pch \
-			-c mythes.cxx && \
-		ar rc libmythes_pic.a mythes.o && ranlib libmythes_pic.a && \
-		mv libmythes_pic.a $(CURDIR)/ooo-build/build
-
-install: $(CURDIR)/ooo-build/build/libmythes.a $(CURDIR)/ooo-build/build/libmythes_pic.a
-	mkdir -p debian/libmythes-dev/usr/lib
-	mkdir -p debian/libmythes-dev/usr/include
-	mkdir -p debian/libmythes-dev/usr/share/mythes
-	install -m644 \
-		$(CURDIR)/ooo-build/build/libmythes.a \
-		debian/libmythes-dev/usr/lib/libmythes.a
-	install -m644 \
-		$(CURDIR)/ooo-build/build/libmythes_pic.a \
-		debian/libmythes-dev/usr/lib/libmythes_pic.a
-	install -m644 $(SOURCE_TREE)/lingucomponent/source/thesaurus/mythes/mythes.hxx \
-		debian/libmythes-dev/usr/include
-	install -m755 $(SOURCE_TREE)/dictionaries/util/th_gen_idx.pl \
-		debian/libmythes-dev/usr/share/mythes/th_gen_idx.pl
-
-binary: binary-arch
-
-binary-arch: install
-	dh_testdir
-	dh_testroot
-	dh_installdocs -plibmythes-dev
-	dh_installchangelogs -plibmythes-dev
-	dh_lintian
-	dh_link -plibmythes-dev
-	dh_fixperms -plibmythes-dev
-	dh_compress -plibmythes-dev
-	dh_installdeb -plibmythes-dev
-	dh_gencontrol -plibmythes-dev -- -v$(BINARY_VERSION)
-	dh_md5sums -plibmythes-dev
-	dh_builddeb -plibmythes-dev
-else
 # Because of the stampdir magic, when you actually want to run a rule
 # over, you would have to remove the stamp manually.  Now, just do
 # 'debian/rules <target> <target> ... FORCE=1', and the stamp files
@@ -3158,6 +3068,5 @@ vcsupdate:
 .PHONY: clean-debdir clean-instsetoo clean-objectdirs clean default configure
 .PHONY: build build-indep build-arch install-arch install-indep
 .PHONY: $(stampdir_targets)
-endif
 
 # vim:set noet ai sts=8 sw=8 tw=0:
