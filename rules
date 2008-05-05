@@ -65,6 +65,11 @@ MILESTONE=m12
 #TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
 TAG=$(MWS)_$(MILESTONE)
 OOO_BUILD_BRANCH=ooo-build-2-4
+ifeq "" "$(OOO_BUILD_BRANCH)"
+	OOO_BUILD_SVN=svn://svn.gnome.org/svn/ooo-build/trunk
+else
+	OOO_BUILD_SVN=svn://svn.gnome.org/svn/ooo-build/branches/$(OOO_BUILD_BRANCH)
+endif
 SOURCE_TREE=ooo-build/build/$(TAG)
 STAMP_DIR=debian/stampdir
 
@@ -1232,14 +1237,7 @@ endif
 	perl -pi -e "s,%OOO_NPSOPLUGIN_ARCHS%,$(OOO_NPSOPLUGIN_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_OGLTRANS_ARCHS%,$(OOO_OGLTRANS_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_BINFILTER_ARCHS%,$(OOO_BINFILTER_ARCHS),g" debian/control
-
-ifeq "" "$(OOO_BUILD_BRANCH)"
-	perl -pi -e "s,%OOO_BUILD_SVN%,svn://svn.gnome.org/svn/ooo-build/trunk," \
-		debian/control
-else
-	perl -pi -e "s,%OOO_BUILD_SVN%,svn://svn.gnome.org/svn/ooo-build/branches/$(OOO_BUILD_BRANCH)," \
-		debian/control
-endif
+	perl -pi -e "s,%OOO_BUILD_SVN%,$(OOO_BUILD_SVN)," debian/control
 
 ifeq (he,$(findstring he,$(LANGPACKISOS)))
 	perl -pi -e 's/openoffice.org-help-he$$/openoffice.org-help-he, openoffice.org-ctl-he/' debian/control
@@ -2985,11 +2983,7 @@ binary: binary-arch binary-indep
 
 # Get ooo-build
 get-ooo-build:
-ifeq "" "$(OOO_BUILD_BRANCH)"
-	svn co svn://svn.gnome.org/svn/ooo-build/trunk ooo-build
-else
-	svn co svn://svn.gnome.org/svn/ooo-build/branches/$(OOO_BUILD_BRANCH) ooo-build
-endif
+	svn co $(OOO_BUILD_SVN) ooo-build
 	cd ooo-build && NOCONFIGURE=1 ./autogen.sh
 
 # Download the latest sources needed for ooo-build. Note that is
