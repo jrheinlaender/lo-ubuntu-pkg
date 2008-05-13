@@ -61,6 +61,11 @@ MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)" | cut -d~ -f2 | sed -e s/$(shell e
 TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
 #TAG=$(MWS)_$(MILESTONE)
 #OOO_BUILD_BRANCH=ooo-build-3-0
+ifeq "" "$(OOO_BUILD_BRANCH)"
+	OOO_BUILD_SVN=svn://svn.gnome.org/svn/ooo-build/trunk
+else
+	OOO_BUILD_SVN=svn://svn.gnome.org/svn/ooo-build/branches/$(OOO_BUILD_BRANCH)
+endif
 SOURCE_TREE=ooo-build/build/$(TAG)
 STAMP_DIR=debian/stampdir
 
@@ -94,7 +99,7 @@ HUNSPELL_MIN_VER= (>= 1.1.5-2)
 SYSTEM_ALTLINUXHYPH=y
 USE_LIBHYPHEN=y
 LIBALTLINUXHYPH_MINVER= (>= 0.1.1-11)
-LIBHYPHEN_MINVER= (>= 2.3-3)
+LIBHYPHEN_MINVER= (>= 2.4)
 USE_AGG=n
 SYSTEM_AGG=n
 USE_STLPORT=n
@@ -137,7 +142,7 @@ PRUNE_OOOBUILD=y
 DBVER=4.6
 NEONSONR=27
 PARALLEL_BUILD=n
-MOZILLA=xulrunner
+MOZILLA=iceape
 ENABLE_OPENGL=y
 SYSTEM_OPENSSL=y
 NEW_DPKG_SHLIBDEPS=y
@@ -224,6 +229,7 @@ ifeq "$(ETCH_BACKPORT)" "y"
   USE_SYSTEM_ICU=n
   USE_STLPORT=y
   PACKAGE_WRITER2LATEX=y
+  MOZILLA=xulrunner
 endif
 
 #############
@@ -608,7 +614,7 @@ export JAVA_HOME
 	OOO_OFFICEBEAN_DEP = openoffice.org$(VER)-officebean
 else
 	CONFIGURE_FLAGS += --without-java
-	DEBHELPER_OPTIONS += -Nopenoffice.org$(VER)-officebean -Nopenoffice.org$(VER)-java-common -Nopenoffice.org$(VER)-filter-mobiledev
+	DEBHELPER_OPTIONS += -Nopenoffice.org$(VER)-officebean -Nopenoffice.org$(VER)-java-common -Nopenoffice.org$(VER)-filter-mobiledev -Nopenoffice.org$(VER)-gcj
 endif
 
 ifneq "$(MOZILLA)" ""
@@ -1269,6 +1275,8 @@ endif
 	perl -pi -e "s,%OOO_NPSOPLUGIN_ARCHS%,$(OOO_NPSOPLUGIN_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_OGLTRANS_ARCHS%,$(OOO_OGLTRANS_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_BINFILTER_ARCHS%,$(OOO_BINFILTER_ARCHS),g" debian/control
+
+	perl -pi -e "s,%OOO_BUILD_SVN%,$(OOO_BUILD_SVN)," debian/control
 
 ifeq (he,$(findstring he,$(LANGPACKISOS)))
 	perl -pi -e 's/openoffice.org-help-he$$/openoffice.org-help-he, openoffice.org-ctl-he/' debian/control
@@ -2833,7 +2841,7 @@ endif
 	# we need to do it in two steps. The new dpkg-shlibdeps doesn't find
 	# /usr/lib/libgcj-bc.so when specifying -l/usr/lib/$(GCJ_JAWT_DIR)
 	# and therefore we must not use it for -gcj. But we *do* need it
-	# for -officebean (libjawt.so is there)
+	# for -officebean (libjawt.so is referenced there)
 	LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" \
 		dh_shlibdeps -s -Nopenoffice.org$(VER)-officebean \
 			-l$(PKGDIR)-core/$(OODIR)/program \
@@ -2907,12 +2915,6 @@ ifneq "$(ETCH_BACKPORT)" "y"
   ifeq "$(ENABLE_JAVA)" "y"
 	perl -pi -e "s/java-gcj-compat/java-gcj-compat (>= 1.0.77-4)/" \
 		debian/openoffice.org$(VER)-officebean/DEBIAN/control
-  endif
-endif
-ifeq "$(SYSTEM_ALTLINUXHYPH)" "y"
-  ifeq "$(USE_LIBHYPHEN)" "y"
-	perl -pi -e "s/libhyphen0/libhyphen0 (>= 2.3.1-3)/" \
-		debian/openoffice.org$(VER)-core/DEBIAN/control
   endif
 endif
 ifeq "$(ENABLE_REPORTDESIGN)" "y"
@@ -3041,11 +3043,7 @@ binary: binary-arch binary-indep
 
 # Get ooo-build
 get-ooo-build:
-ifeq "" "$(OOO_BUILD_BRANCH)"
-	svn co svn://svn.gnome.org/svn/ooo-build/trunk ooo-build
-else
-	svn co svn://svn.gnome.org/svn/ooo-build/branches/$(OOO_BUILD_BRANCH) ooo-build
-endif
+	svn co $(OOO_BUILD_SVN) ooo-build
 	cd ooo-build && NOCONFIGURE=1 ./autogen.sh
 
 # Download the latest sources needed for ooo-build. Note that is
