@@ -2269,14 +2269,6 @@ ifeq "$(ENABLE_REPORTDESIGN)" "y"
   endif
 endif
 
-ifeq "$(ENABLE_MEDIAWIKI)" "y"
-	rm -rf $(PKGDIR)-wiki-publisher
-	install -D -m644 $(SOURCE_TREE)/swext/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/wiki-publisher.oxt \
-	$(PKGDIR)-wiki-publisher/$(OODIR)/share/extension/install/wiki-publisher.oxt
-	# unneeded license file
-	zip -d $(CURDIR)/$(PKGDIR)-wiki-publisher/$(OODIR)/share/extension/install/wiki-publisher.oxt license/THIRDPARTYLICENSEREADME.html
-endif
-
 ifeq "$(ENABLE_MINIMIZER)" "y"
 	rm -rf $(PKGDIR)-presentation-minimizer
 	install -D -m644 $(SOURCE_TREE)/sdext/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/sun-presentation-minimizer.oxt \
@@ -2730,6 +2722,14 @@ ifneq "$(DIST)" "Ubuntu"
 	perl -pi -e "s/Ubuntu stuff/stuff/" $(PKGDIR)-common/$(OODIR)/program/soffice
 endif
 
+ifeq "$(ENABLE_MEDIAWIKI)" "y"
+	rm -rf $(PKGDIR)-wiki-publisher
+	install -D -m644 $(SOURCE_TREE)/swext/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/wiki-publisher.oxt \
+	$(PKGDIR)-wiki-publisher/$(OODIR)/share/extension/install/wiki-publisher.oxt
+	# unneeded license file
+	zip -d $(CURDIR)/$(PKGDIR)-wiki-publisher/$(OODIR)/share/extension/install/wiki-publisher.oxt license/THIRDPARTYLICENSEREADME.html
+endif
+
 	for i in $(ARCH_INDEP_DEP_PACKAGES); do \
 		install -D -m644 debian/presubj \
 			debian/$$i/usr/share/bug/$$i/presubj; \
@@ -2891,7 +2891,6 @@ endif
 		-Nopenoffice.org$(VER)-report-builder \
 		-Nopenoffice.org$(VER)-presentation-minimizer \
 		-Nopenoffice.org$(VER)-presenter-screen \
-		-Nopenoffice.org$(VER)-wiki-publisher \
 		-Nopenoffice.org$(VER)-pdfimport \
 		-Nopenoffice.org$(VER)-sdbc-postgresql -- \
 		-V"ure:Version=$(shell grep -A 1 "PRODUCTNAME URE" $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | tail -n 1 | awk '{ print $$2 }')+OOo`echo $(BINARY_VERSION) | cut -d: -f2` \
@@ -2921,12 +2920,6 @@ ifeq "$(ENABLE_REPORTDESIGN)" "y"
 	dh_gencontrol -popenoffice.org$(VER)-report-builder -- \
 		-V'report-builder-jar-depends=$(REPORT_BUILDER_JAR_DEPENDS)' \
 		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep "<version" $(SOURCE_TREE)/reportdesign/util/post.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
-endif
-ifeq "$(ENABLE_MEDIAWIKI)" "y"
-	dh_gencontrol -popenoffice.org$(VER)-wiki-publisher -- \
-		-V'mediawiki-jar-depends=$(MEDIAWIKI_JAR_DEPENDS)' \
-		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
-		-v$(shell grep "<version" $(SOURCE_TREE)/swext/mediawiki/src/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')++OOo`echo $(BINARY_VERSION) | cut -d: -f2`
 endif
 ifeq "$(ENABLE_PDFIMPORT)" "y"
 	dh_gencontrol -popenoffice.org$(VER)-pdfimport -- \
@@ -3020,7 +3013,8 @@ endif
 	dh_installxmlcatalogs -i
 	dh_compress -X.py -X.mk -X.sxd
 	dh_installdeb -i
-	dh_gencontrol -i $(DEBHELPER_OPTIONS) -Nlibpcvslib-perl -- \
+	dh_gencontrol -i $(DEBHELPER_OPTIONS) -Nlibpcvslib-perl \
+		-Nopenoffice.org$(VER)-wiki-publisher -- \
 		-V'base-version=$(BASE_VERSION)' \
 		-V'help-l10n-virtual-version=$(HELP_L10N_VIRTUAL_VERSION)' \
 		-V'common-bsh-depends=$(COMMON_BSH_DEPENDS)' \
@@ -3030,6 +3024,12 @@ endif
 		-V'ooo-binfilter-dep=$(OOO_BINFILTER_DEP)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-v$(BINARY_VERSION)
+ifeq "$(ENABLE_MEDIAWIKI)" "y"
+	dh_gencontrol -popenoffice.org$(VER)-wiki-publisher -- \
+		-V'mediawiki-jar-depends=$(MEDIAWIKI_JAR_DEPENDS)' \
+		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
+		-v$(shell grep "<version" $(SOURCE_TREE)/swext/mediawiki/src/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')++OOo`echo $(BINARY_VERSION) | cut -d: -f2`
+endif
 ifeq "$(PACKAGE_PCVSLIB)" "y"
 	dh_gencontrol -plibpcvslib-perl -- \
 		-v0.02+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
