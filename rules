@@ -14,10 +14,16 @@
 ###################################################################################
 
 #VER:=3
+OOVER:=3.0
 SHELL:=/bin/bash
 PKGDIR:=debian/openoffice.org$(VER)
 OODIRNAME=openoffice$(VER)
-OODIR:=usr/lib/$(OODIRNAME)
+OOBASISDIR:=usr/lib/$(OODIRNAME)/basis$(OOVER)
+OOBRANDDIR:=usr/lib/openoffice
+OOUREDIR:=usr/lib/openoffice/ure
+OOSDKDIR:=usr/lib/openoffice/sdk
+# compatability
+OODIR:=$(OOBASISDIR)
 
 PKGSOURCE := $(shell dpkg-parsechangelog | awk '/^Source:/ {print $$2;exit 0}')
 SOURCE_VERSION:=$(shell head -1 debian/changelog | cut -d\( -f2 | cut -d\) -f1)
@@ -130,7 +136,7 @@ USE_DBUS=y
 USE_GSTREAMER=y
 USE_SYSTEM_NEON=y
 USE_OOO_BUILD_DESKTOPS=n
-PACKAGE_SDK=y
+PACKAGE_SDK=n
 RUN_SMOKETEST=n
 RUN_UNIT_TESTS=n
 USE_LIBCURL4=y
@@ -1543,9 +1549,9 @@ endif
 
 	# move resources which have been installed outside of common there
 	cd debian/tmp/pkg; \
-		for i in `find . -name "*en-US.res" | grep -v common`; do \
-			mv $$i openoffice.org-common/$(OODIR)/program/resource/`basename $$i`; \
-		done
+		cp -r openoffice.org-l10n-en-US/* \
+			openoffice.org-common && \
+		rm -rf openoffice.org-l10n-en-US
 
 ifeq "$(ENABLE_JAVA)" "y"
 	# move officebean.jar into -officebean (They will be moved out of -core
@@ -1596,9 +1602,9 @@ endif
 	rm -f openoffice.org-common/$(OODIR)/program/.testtoolrc
 
 	# Gtk quickstarter for the eggtrtray stuff, so to -gtk (via -gnome)
-	mkdir -p -m755 debian/tmp/pkg/openoffice.org-gnome/$(OODIR)/share/xdg
-	mv debian/tmp/pkg/openoffice.org-common/$(OODIR)/share/xdg/qstart.desktop \
-		debian/tmp/pkg/openoffice.org-gnome/$(OODIR)/share/xdg
+	mkdir -p -m755 debian/tmp/pkg/openoffice.org-gnome/$(OOBRANDDIR)/share/xdg
+	mv debian/tmp/pkg/openoffice.org-common/$(OOBRANDDIR)/share/xdg/qstart.desktop \
+		debian/tmp/pkg/openoffice.org-gnome/$(OOBRANDDIR)/share/xdg
 
 	# move gengal stuff into -dev
 	mkdir -p debian/tmp/pkg/openoffice.org-dev/$(OODIR)/program
@@ -1645,11 +1651,12 @@ $(STAMP_DIR)/maintscripts: debian/shell-lib.sh debian/control
 	      sed -n '1,/^#INCLUDE_SHELL_LIB#$$/p' < $$MAINTSCRIPT.in | sed -e '/^#INCLUDE_SHELL_LIB#$$/d' > $$MAINTSCRIPT; \
 	      grep LIBSUFFIX debian/scripts/vars.$(ARCH) >> $$MAINTSCRIPT; \
 	      grep PLATFORMID debian/scripts/vars.$(ARCH) >> $$MAINTSCRIPT; \
-	      echo "" >>  $$MAINTSCRIPT; \
+	      echo "" >> $$MAINTSCRIPT; \
 	      cat debian/shell-lib.sh >> $$MAINTSCRIPT; \
 	      sed -n '/^#INCLUDE_SHELL_LIB#$$/,$$p' < $$MAINTSCRIPT.in | sed -e '/^#INCLUDE_SHELL_LIB#$$/d' >> $$MAINTSCRIPT; \
 	      perl -pi -e "s/\@LANGPACKISOS\@/$(LANGPACKISOS)/" $$MAINTSCRIPT; \
 	      perl -pi -e "s,\@OODIR\@,$(OODIR),g" $$MAINTSCRIPT; \
+	      perl -pi -e "s,\@OOBRANDDIR\@,$(OOBRANDDIR),g" $$MAINTSCRIPT; \
 	      perl -pi -e "s/\@VER\@/$(VER)/g" $$MAINTSCRIPT; \
 	    fi; \
 	  done; \
@@ -1812,12 +1819,24 @@ endif
 
 	rm -rf debian/ure debian/ure.*.debhelper ;\
 	cp -r --preserve=mode debian/tmp/pkg/ure debian/ure || exit 1
-	# not needed
-	rm -f debian/ure/usr/lib/ure/LICENSE
-	rm -f debian/ure/usr/lib/ure/THIRDPARTYLICENSEREADME.html
-	# should go into /usr/share/doc
-	mkdir -p debian/ure/usr/share/doc/ure
-	mv debian/ure/usr/lib/ure/README debian/ure/usr/share/doc/ure
+	# move URE Java stuff to /usr/share/java
+	mkdir -p debian/ure/usr/share/java/$(OODIRNAME)
+	mv debian/ure/$(OOUREDIR)/lib//JREProperties.class \
+		debian/ure/usr/share/java/$(OODIRNAME)
+	mv debian/ure/$(OOUREDIR)/share/java/* \
+		debian/ure/usr/share/java/$(OODIRNAME)
+	ln -sf /usr/share/java/$(OODIRNAME)/JREProperties.class \
+		debian/ure/$(OOUREDIR)/lib/JREProperties.class
+	cd debian/ure/$(OOUREDIR)/share/java && \
+		for i in $(CURDIR)/debian/ure/usr/share/java/$(OODIRNAME)/*.jar; do \
+			ln -sf `echo $$i | sed -e 's,$(CURDIR)/debian/ure,,'` `basename $$i`; \
+		done
+
+	# add MySQL, MaxDB and PostgreSQL JDBC drivers to OOos CLASSPATH
+	sed -i -e 's|\(UNO_JAVA_JFW_CLASSPATH_URLS=.*\)|\1 file:///usr/share/java/mysql.jar|' \
+	    -e 's|\(UNO_JAVA_JFW_CLASSPATH_URLS=.*\)|\1 file:///usr/share/java/sapdbc.jar|' \
+	    -e 's|\(UNO_JAVA_JFW_CLASSPATH_URLS=.*\)|\1 file:///usr/share/java/postgresql.jar|' \
+	    debian/ure/$(OOUREDIR)/lib/jvmfwk3rc
 
 	rm -rf debian/mozilla-openoffice.org debian/mozilla-openoffice.org.*.debhelper
 	rm -rf $(PKGDIR) $(PKGDIR).*.debhelper
@@ -1849,11 +1868,9 @@ endif
 	rm -rf $(PKGDIR)-gtk
 	mkdir -p -m755 $(PKGDIR)-gtk/$(OODIR)/program
 	mv $(PKGDIR)-gnome/$(OODIR)/program/* $(PKGDIR)-gtk/$(OODIR)/program/
-	mkdir -p -m755 $(PKGDIR)-gtk/$(OODIR)/share
-	mv $(PKGDIR)-gnome/$(OODIR)/share/xdg $(PKGDIR)-gtk/$(OODIR)/share
+	mkdir -p -m755 $(PKGDIR)-gtk/$(OOBRANDDIR)/share
+	mv $(PKGDIR)-gnome/$(OOBRANDDIR)/share/xdg $(PKGDIR)-gtk/$(OOBRANDDIR)/share
 	mv $(PKGDIR)-gtk/$(OODIR)/program/ucpgvfs1.uno.so \
-		$(PKGDIR)-gnome/$(OODIR)/program/
-	mv $(PKGDIR)-gtk/$(OODIR)/program/gnome-set-default-application \
 		$(PKGDIR)-gnome/$(OODIR)/program/
 	mv $(PKGDIR)-gtk/$(OODIR)/program/gconfbe* \
 		$(PKGDIR)-gnome/$(OODIR)/program
@@ -1993,7 +2010,7 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	sed -i -e "s,Exec=openoffice.org$$PRODUCTVERSION,Exec=ooffice$(VER)," \
 		-e "s,Name=OpenOffice.org $$PRODUCTVERSION,Name=OpenOffice.org $(VER)," \
 		-e "s/  / /" \
-		$(PKGDIR)-gtk/$(OODIR)/share/xdg/qstart.desktop
+		$(PKGDIR)-gtk/$(OOBRANDDIR)/share/xdg/qstart.desktop
 	# we don't need the share/xdgs except qstart
 	for f in `find debian -name '*.desktop' | grep xdg | grep -v qstart`; do \
 		rm -f $$f; done
@@ -2054,9 +2071,8 @@ ifeq "$(BUILD_PYUNO)" "y"
 	  echo 'PYTHONPATH=$$PYTHONHOME $$PYTHONHOME/site-packages $$PYTHONHOME/lib-dynload $$PYTHONHOME/lib-tk $$ORIGIN' \
 	) > debian/python-uno/$(OODIR)/program/pythonloader.unorc
 	chmod u-w debian/python-uno/$(OODIR)/program/pythonloader.unorc
-	chmod 755 debian/python-uno/$(OODIR)/program/mailmerge.py
 	perl -pi -e 's,/bin,/usr/bin,' \
-		 debian/python-uno/$(OODIR)/program/mailmerge.py
+		 debian/openoffice.org-emailmerge/$(OODIR)/program/mailmerge.py
 
 	mkdir -p debian/python-uno/usr/share/doc/python-uno
 	for i in doc demo; do \
@@ -2157,8 +2173,8 @@ ifeq "$(INTERNAL_STDLIBS)" "y"
 	LIBGCC=`readlink `PATH=$(BUILD_PATH) gcc --print-file-name=libgcc_s.so``; \
 	LIBSTDCPP_SOVER=`echo $$LIBSTDCPP | sed -e 's/.*\.//'`; \
 	LIBGCC_SOVER=`echo $$LIBGCC | sed -e 's/.*\.//'`; \
-	cp $$LIBSTDCPP $(PKGDIR)-core/$(OODIR)/program; \
-	cp $$LIBGCC $(PKGDIR)-core/$(OODIR)/program; \
+	cp $$LIBSTDCPP debian/ure/$(OOUREDIR)/lib; \
+	cp $$LIBGCC debian/ure/$(OOUREDIR)/lib; \
 	echo "libstdc++	$$LIBSTDCPP_SOVER" > debian/shlibs.override.stdlibs; \
 	echo "libgcc_s	$$LIBGCC_SOVER" >> debian/shlibs.override.stdlibs
 endif
@@ -2262,10 +2278,10 @@ ifeq "$(ENABLE_REPORTDESIGN)" "y"
 	# in 2.3 and the actual report builde as an extension, without which
 	# the *rpt* stuff is a no-op.
 	install -D -m644 $(SOURCE_TREE)/reportdesign/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/sun-report-builder.oxt \
-		$(PKGDIR)-report-builder/$(OODIR)/share/extension/install/sun-report-builder.oxt
+		$(PKGDIR)-report-builder/$(OOBRANDDIR)/share/extension/install/sun-report-builder.oxt
 	# unneeded license files
-	for i in THIRDPARTYREADMELICENSE.html license_en-US.html readme_en-US.html readme_en-US.txt; do \
-		zip -d $(CURDIR)/$(PKGDIR)-report-builder/$(OODIR)/share/extension/install/sun-report-builder.oxt $$i; \
+	for i in THIRDPARTYREADMELICENSE.html readme_en-US.html readme_en-US.txt; do \
+		zip -d $(CURDIR)/$(PKGDIR)-report-builder/$(OOBRANDDIR)/share/extension/install/sun-report-builder.oxt $$i; \
 	done
   endif
 endif
@@ -2273,18 +2289,18 @@ endif
 ifeq "$(ENABLE_MINIMIZER)" "y"
 	rm -rf $(PKGDIR)-presentation-minimizer
 	install -D -m644 $(SOURCE_TREE)/sdext/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/sun-presentation-minimizer.oxt \
-		$(PKGDIR)-presentation-minimizer/$(OODIR)/share/extension/install/sun-presentation-minimizer.oxt
+		$(PKGDIR)-presentation-minimizer/$(OOBRANDDIR)/share/extension/install/sun-presentation-minimizer.oxt
 endif
 
 ifeq "$(ENABLE_PRESENTER_SCREEN)" "y"
 	rm -rf $(PKGDIR)-presenter-screen
 	install -D -m644 $(SOURCE_TREE)/sdext/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/presenter-screen.oxt \
-		 $(PKGDIR)-presenter-screen/$(OODIR)/share/extension/install/presenter-screen.oxt
+		 $(PKGDIR)-presenter-screen/$(OOBRANDDIR)/share/extension/install/presenter-screen.oxt
 endif
 
 	rm -rf $(PKGDIR)-sdbc-postgresql
 	install -D -m644 $(SOURCE_TREE)/connectivity/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/postgresql-sdbc-$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g).zip \
-		$(PKGDIR)-sdbc-postgresql/$(OODIR)/share/extension/install/postgresql-sdbc-$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g).zip
+		$(PKGDIR)-sdbc-postgresql/$(OOBRANDDIR)/share/extension/install/postgresql-sdbc-$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g).zip
 
 ifeq "$(ENABLE_OPENGL)" "y"
 	rm -rf $(PKGDIR)-ogltrans
@@ -2299,7 +2315,7 @@ endif
 ifeq "$(ENABLE_PDFIMPORT)" "y"
 	rm -rf $(PKGDIR)-pdfimport
 	install -D -m644 $(SOURCE_TREE)/filter/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/pdfimport.oxt \
-		$(PKGDIR)-pdfimport/$(OODIR)/share/extension/install/pdfimport.oxt
+		$(PKGDIR)-pdfimport/$(OOBRANDDIR)/share/extension/install/pdfimport.oxt
 endif
 
 	for i in $(ARCH_DEP_PACKAGES); do \
@@ -2326,22 +2342,22 @@ $(STAMP_DIR)/broffice: $(STAMP_DIR)/install $(STAMP_DIR)/install-arch $(STAMP_DI
 	rm -rf debian/broffice.org
 	mkdir -p debian/broffice.org/usr/bin
 	mkdir -p debian/broffice.org/usr/share/applications
-	mkdir -p debian/broffice.org/usr/lib/openoffice/program/resource
-	mkdir -p debian/broffice.org/usr/lib/openoffice/share/registry/data/org/openoffice
-	cat $(PKGDIR)-common/$(OODIR)/program/bootstraprc \
+	mkdir -p debian/broffice.org/$(OOBRANDDIR)/program/resource
+	mkdir -p debian/broffice.org/$(OOBRANDDIR)/share/registry/data/org/openoffice
+	cat $(PKGDIR)-common/$(OOBRANDDIR)/program/bootstraprc \
 		| sed -e "s/OpenO/BrO/" | sed -e "s/openo/bro/" \
-		> debian/broffice.org/$(OODIR)/program/bootstraprc
-	cat $(PKGDIR)-common/$(OODIR)/program/versionrc \
+		> debian/broffice.org/$(OOBRANDDIR)/program/bootstraprc
+	cat $(PKGDIR)-common/$(OOBRANDIR)/program/versionrc \
 		| sed -e "s/en-US/pt-BR/" | sed -e "s/openo/bro/" \
-		> debian/broffice.org/$(OODIR)/program/versionrc
-	cat $(PKGDIR)-common/$(OODIR)/share/registry/data/org/openoffice/Setup.xcu \
+		> debian/broffice.org/$(OOBRANDDIR)/program/versionrc
+	cat $(PKGDIR)-common/$(OOBRANDDIR)/share/registry/data/org/openoffice/Setup.xcu \
 		| sed -e "s/OpenO/BrO/" \
-		> debian/broffice.org/$(OODIR)/share/registry/data/org/openoffice/Setup.xcu
+		> debian/broffice.org/$(OOBRANDDIR)/share/registry/data/org/openoffice/Setup.xcu
 	for iso in $(LANGPACKISOS); do \
 		if [ "$$iso" = "en-US" ]; then p=common; else p=l10n-`echo $$iso | tr A-Z a-z`; fi; \
-		cat $(PKGDIR)-$$p/$(OODIR)/program/resource/ooo$$iso.res \
+		cat $(PKGDIR)-$$p/$(OOBRANDDIR)/program/resource/ooo$$iso.res \
 		| sed -e "s/OpenO/BrO/" \
-		> debian/broffice.org/$(OODIR)/program/resource/ooo$$iso.res; \
+		> debian/broffice.org/$(OOBRANDDIR)/program/resource/ooo$$iso.res; \
 	done
 	for i in startcenter writer calc draw impress math base; do \
 		cat $(PKGDIR)-$$i/usr/share/applications/ooo-$$i.desktop \
@@ -2357,14 +2373,14 @@ $(STAMP_DIR)/broffice: $(STAMP_DIR)/install $(STAMP_DIR)/install-arch $(STAMP_DI
 	if dpkg-parsechangelog | grep urgency | grep -q "\~.*m[0123456789]\+"; then \
 		 debian/scripts/fix_image_rgb \
 			 $(SOURCE_TREE)/ooo_custom_images/dev_nologo_broffice/introabout/intro.bmp \
-			 debian/broffice.org/$(OODIR)/program/intro.bmp; \
+			 debian/broffice.org/$(OOBRANDDIR)/program/intro.bmp; \
 	else \
 		debian/scripts/fix_image_rgb \
 			$(SOURCE_TREE)/ooo_custom_images/nologo_broffice/introabout/intro.bmp \
-			debian/broffice.org/$(OODIR)/program/intro.bmp; \
+			debian/broffice.org/$(OOBRANDDIR)/program/intro.bmp; \
 	fi
 	install -m644 $(SOURCE_TREE)/ooo_custom_images/broffice/introabout/about.bmp \
-		debian/broffice.org/$(OODIR)/program/about.bmp
+		debian/broffice.org/$(OOBRANDDIR)/program/about.bmp
 	cd debian/broffice.org/usr/bin && ln -s ooffice broffice
 
 	touch $@
@@ -2399,7 +2415,7 @@ endif
 	rm -f $(PKGDIR)-common/$(OODIR)/program/oo_product.bmp
 
 	# Extract and install icons
-	cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/desktop-integration && dpkg --extract openoffice.org-debian-menus_*_all.deb . && cd usr/share/icons && \
+	cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/desktop-integration && dpkg --extract openoffice.org$(OOVER)-debian-menus_*_all.deb . && cd usr/share/icons && \
 	for d in `find -type d`; do \
 	  install -d -m755 $(CURDIR)/$(PKGDIR)-common/usr/share/icons/$$d || exit 1 ;\
 	done &&\
@@ -2460,13 +2476,11 @@ ifeq "$(PACKAGE_SDK)" "y"
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
-	rm -rf $(PKGDIR)-java-common
 	# move common Java stuff to -java-common
+	rm -rf $(PKGDIR)-java-common
 	mkdir -p $(PKGDIR)-java-common/$(OODIR)/program/classes
 	mkdir -p $(PKGDIR)-java-common/$(OODIR)/share/Scripts
 	mkdir -p $(PKGDIR)-java-common/usr/share/java/$(OODIRNAME)
-	mv $(PKGDIR)-common/$(OODIR)/program/JREProperties.class \
-		$(PKGDIR)-java-common/$(OODIR)/program
 	mv $(PKGDIR)-common/$(OODIR)/share/Scripts/java \
 		$(PKGDIR)-java-common/$(OODIR)/share/Scripts
 	mv $(PKGDIR)-common/$(OODIR)/program/classes/* \
@@ -2509,13 +2523,16 @@ endif
 
 	# move uno_packages/cache to /var and create symlink for for
 	# documentation referencing it...
-	rm -rf $(PKGDIR)-common/$(OODIR)/share/uno_packages/cache
+	rm -rf $(PKGDIR)-common/$(OOBRANDDIR)/share/uno_packages/cache
 	mkdir -p $(PKGDIR)-common/var/spool/$(OODIRNAME)/uno_packages/cache
 	ln -s /var/spool/$(OODIRNAME)/uno_packages/cache \
-		$(PKGDIR)-common/$(OODIR)/share/uno_packages/cache
+		$(PKGDIR)-common/$(OOBRANDDIR)/share/uno_packages/cache
 	perl -pi -e \
 	      's,\$$UNO_SHARED_PACKAGES/cache,file:///var/spool/$(OODIRNAME)/uno_packages/cache,g' \
 		$(PKGDIR)-common/$(OODIR)/program/unorc
+	# FIXME: What is this? unorc per default only mentiones
+	# share/uno_packages/cache...
+	rm -rf $(PKGDIR)-common/$(OODIR)/presets/uno_packages
 
 	# install DicOOo; we need to do this manually; the
 	# dictionaries/ module isn't built with --without-myspell-dicts
@@ -2568,26 +2585,19 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
 endif
 	# remove extra license files
-	rm -rf $(PKGDIR)-commmon/$(OODIR)/licenses
-	rm -rf $(PKGDIR)-common/$(OODIR)/share/readme/LICENSE*
-	rm -f $(PKGDIR)-common/$(OODIR)/THIRDPARTYLICENSEREADME.html
-	rm -f $(PKGDIR)-common/$(OODIR)/LICENSE.html
+	rm -rf $(PKGDIR)-commmon/$(OOBRANDDIR)/licenses
+	rm -rf $(PKGDIR)-common/$(OOBRANDDIR)/share/readme/LICENSE*
+	rm -f $(PKGDIR)-common/$(OOBRANDDIR)/THIRDPARTYLICENSEREADME.html
+	rm -f $(PKGDIR)-common/$(OOBRANDIR)/LICENSE.html
 
 	# remove extra readme files
-	rm -rf $(PKGDIR)-common/$(OODIR)/readmes
-	rm -rf $(PKGDIR)-common/$(OODIR)/share/readme/README*
+	rm -rf $(PKGDIR)-common/$(OOBRANDDIR)/readmes
+	rm -rf $(PKGDIR)-common/$(OOBRANDDIR)/share/readme/README*
 
 	# install Ximian desktop icons
 	mkdir -p $(PKGDIR)-common/usr/share/icons/hicolor/48x48/apps
 	cp ooo-build/desktop/48x48/*.png \
 		$(PKGDIR)-common/usr/share/icons/hicolor/48x48/apps
-
-	# add MySQL, MaxDB and PostgreSQL JDBC drivers to OOos CLASSPATH
-	TMP=`mktemp -q`; \
-	sed -e 's|\(UNO_JAVA_JFW_CLASSPATH_URLS=.*\)|\1 file:///usr/share/java/mysql.jar|' \
-	    -e 's|\(UNO_JAVA_JFW_CLASSPATH_URLS=.*\)|\1 file:///usr/share/java/sapdbc.jar|' \
-	    -e 's|\(UNO_JAVA_JFW_CLASSPATH_URLS=.*\)|\1 file:///usr/share/java/postgresql.jar|' < $(PKGDIR)-common/$(OODIR)/program/jvmfwk3rc > $$TMP && \
-	mv $$TMP $(PKGDIR)-common/$(OODIR)/program/jvmfwk3rc
 
 	# move psprint.conf into /etc
 	mkdir -p $(PKGDIR)-common/etc/$(OODIRNAME)
@@ -2599,18 +2609,18 @@ endif
 	# prepare a fake sofficerc in the place where OOo expects it
 	# which does nothing except reference the "normal" one
 	# which we put into /etc
-	mv $(PKGDIR)-common/$(OODIR)/program/sofficerc \
+	mv $(PKGDIR)-common/$(OOBRANDDIR)/program/sofficerc \
 		$(PKGDIR)-common/etc/$(OODIRNAME)/sofficerc
 	( \
 	  echo "# *DO NOT* CHANGE THIS FILE. IT ONLY TAKES THE SETTINGS FROM"; \
 	  echo "# /etc/$(OODIRNAME)/sofficerc. CHANGE THAT FILE IF YOU"; \
 	  echo "# REALLY WANT TO CHANGE SOMETHING."; \
 	  echo "FHS_CONFIG_FILE=file:///etc/$(OODIRNAME)/sofficerc"; \
-	  echo "" >> $(PKGDIR)-common/$(OODIR)/program/sofficerc; \
-	) > $(PKGDIR)-common/$(OODIR)/program/sofficerc
+	  echo "" >> $(PKGDIR)-common/$(OOBRANDDIR)/program/sofficerc; \
+	) > $(PKGDIR)-common/$(OOBRANDDIR)/program/sofficerc
 	cat $(PKGDIR)-common/etc/$(OODIRNAME)/sofficerc \
 		| perl -p -e 's/(.*)=(.*)/$$1=\$${\$$FHS_CONFIG_FILE:Bootstrap:$$1}/' \
-		>> $(PKGDIR)-common/$(OODIR)/program/sofficerc
+		>> $(PKGDIR)-common/$(OOBRANDDIR)/program/sofficerc
 
 	install -m 644 debian/soffice.sh \
 	  $(PKGDIR)-common/etc/$(OODIRNAME)/soffice.sh
@@ -2718,17 +2728,17 @@ endif
 
 ifneq "$(DIST)" "Ubuntu"
 	# ooo-build has a patch with this hardcoded.
-	perl -pi -e "s/Ubuntu helper/helper/" $(PKGDIR)-common/$(OODIR)/program/soffice
-	perl -pi -e "s/Ubuntu config/config/" $(PKGDIR)-common/$(OODIR)/program/soffice
-	perl -pi -e "s/Ubuntu stuff/stuff/" $(PKGDIR)-common/$(OODIR)/program/soffice
+	perl -pi -e "s/Ubuntu helper/helper/" $(PKGDIR)-common/$(OOBRANDDIR)/program/soffice
+	perl -pi -e "s/Ubuntu config/config/" $(PKGDIR)-common/$(OOBRANDDIR)/program/soffice
+	perl -pi -e "s/Ubuntu stuff/stuff/" $(PKGDIR)-common/$(OOBRANDDIR)/program/soffice
 endif
 
 ifeq "$(ENABLE_MEDIAWIKI)" "y"
 	rm -rf $(PKGDIR)-wiki-publisher
 	install -D -m644 $(SOURCE_TREE)/swext/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/wiki-publisher.oxt \
-	$(PKGDIR)-wiki-publisher/$(OODIR)/share/extension/install/wiki-publisher.oxt
+	$(PKGDIR)-wiki-publisher/$(OOBRANDDIR)/share/extension/install/wiki-publisher.oxt
 	# unneeded license file
-	zip -d $(CURDIR)/$(PKGDIR)-wiki-publisher/$(OODIR)/share/extension/install/wiki-publisher.oxt license/THIRDPARTYLICENSEREADME.html
+	zip -d $(CURDIR)/$(PKGDIR)-wiki-publisher/$(OOBRANDDIR)/share/extension/install/wiki-publisher.oxt license/THIRDPARTYLICENSEREADME.html
 endif
 
 	for i in $(ARCH_INDEP_DEP_PACKAGES); do \
@@ -2748,11 +2758,11 @@ endif
 	if dpkg-parsechangelog | grep urgency | grep -q "\~.*m[0123456789]\+"; then \
 		debian/scripts/fix_image_rgb \
 			$(SOURCE_TREE)/ooo_custom_images/dev_nologo/introabout/intro.bmp \
-			$(PKGDIR)-common/$(OODIR)/program/intro.bmp; \
+			$(PKGDIR)-common/$(OOBRANDDIR)/program/intro.bmp; \
 	else \
 		debian/scripts/fix_image_rgb \
 			$(SOURCE_TREE)/ooo_custom_images/nologo/introabout/intro.bmp \
-			$(PKGDIR)-common/$(OODIR)/program/intro.bmp; \
+			$(PKGDIR)-common/$(OOBRANDDIR)/program/intro.bmp; \
 	fi
 
 ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
@@ -2781,7 +2791,7 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 	done
 
 	dh_installdocs -A -Nlibmythes-dev debian/README.Debian \
-		debian/tmp/pkg/openoffice.org-l10n-en-US/$(OODIR)/README
+		debian/tmp/pkg/openoffice.org-common/$(OOBRANDDIR)/README
 	dh_installdocs -plibmythes-dev debian/copyright
 	dh_installman -s
 	# fix manpage symlinks
@@ -2826,7 +2836,6 @@ ifeq "$(ENABLE_MONO)" "y"
 	dh_installcligac -s
 endif
 	dh_compress -s -X.py -X.mk -X.sxd
-	dh_makeshlibs -s -Nure -n -V -Xlibxmlsec
 	dh_makeshlibs -pure -n -V"ure (>= $(shell grep -A 1 "PRODUCTNAME URE" $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | tail -n 1 | awk '{ print $$2 }'))"
 	dh_installdeb -s
 ifneq "$(USE_SYSTEM_XMLSEC)" "y"
@@ -2842,44 +2851,47 @@ endif
 	# /usr/lib/libgcj-bc.so when specifying -l/usr/lib/$(GCJ_JAWT_DIR)
 	# and therefore we must not use it for -gcj. But we *do* need it
 	# for -officebean (libjawt.so is referenced there)
-	LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" \
+	LD_LIBRARY_PATH="/usr/lib/libfakeroot:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program" \
 		dh_shlibdeps -s -Nopenoffice.org$(VER)-officebean \
-			-l$(PKGDIR)-core/$(OODIR)/program \
-			-l$(PKGDIR)-base/$(OODIR)/program \
+			-Lure \
+			-ldebian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program:$(PKGDIR)-base/$(OODIR)/program \
 			$(SHLIBS_OVERRIDE)
 ifeq "$(ENABLE_JAVA)" "y"
-	LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" \
+	LD_LIBRARY_PATH="/usr/lib/libfakeroot:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program" \
 		dh_shlibdeps -popenoffice.org$(VER)-officebean \
-			-l$(PKGDIR)-core/$(OODIR)/program:$(GCJ_JAWT_DIR) \
+			-Lure \
+			-ldebian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program:$(GCJ_JAWT_DIR) \
 			$(SHLIBS_OVERRIDE)
 endif
 	# this is in an extension (.zip), so dh_shlibdeps doesn't get it. We need to do
 	# it manually.
-	LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" \
+	LD_LIBRARY_PATH="/usr/lib/libfakeroot:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program" \
 		dpkg-shlibdeps -O \
+			-Sdebian/ure/$(OOUREDIR)/lib \
 			$(SOURCE_TREE)/connectivity/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/postgresql-sdbc*.so \
 			> debian/openoffice.org$(VER)-sdbc-postgresql.substvars
 ifeq "$(ENABLE_MINIMIZER)" "y"
-	 LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" \
+	 LD_LIBRARY_PATH="/usr/lib/libfakeroot:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program" \
 	 	dpkg-shlibdeps -O \
+			-Sdebian/ure/$(OOUREDIR)/lib \
 			$(SOURCE_TREE)/sdext/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/SunPresentationMinimizer.uno.so \
 			> debian/openoffice.org$(VER)-presentation-minimizer.substvars
 endif
 ifeq "$(ENABLE_PRESENTER_SCREEN)" "y"
-	 LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" \
+	 LD_LIBRARY_PATH="/usr/lib/libfakeroot:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program" \
 	 	dpkg-shlibdeps -O \
+			-Sdebian/ure/$(OOUREDIR)/lib \
 			$(SOURCE_TREE)/sdext/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/PresenterScreen.uno.so \
 			> debian/openoffice.org$(VER)-presenter-screen.substvars
 endif
 ifeq "$(ENABLE_PDFIMPORT)" "y"
-	 LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(PKGDIR)-core/$(OODIR)/program" \
+	 LD_LIBRARY_PATH="/usr/lib/libfakeroot:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program" \
 	 	dpkg-shlibdeps -O \
+			-Sdebian/ure/$(OOUREDIR)/lib \
 			$(SOURCE_TREE)/xpdf/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/xpdfimport \
 			$(SOURCE_TREE)/filter/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/pdfimport.uno.so \
 			> debian/openoffice.org$(VER)-pdfimport.substvars
-
 endif
-
 ifeq "$(ENABLE_MONO)" "y"
 	dh_makeclilibs -s -V
 	dh_clideps -s
@@ -2893,7 +2905,7 @@ endif
 		-Nopenoffice.org$(VER)-presenter-screen \
 		-Nopenoffice.org$(VER)-pdfimport \
 		-Nopenoffice.org$(VER)-sdbc-postgresql -- \
-		-V"ure:Version=$(shell grep -A 1 "PRODUCTNAME URE" $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | tail -n 1 | awk '{ print $$2 }')+OOo`echo $(BINARY_VERSION) | cut -d: -f2` \
+		-V"ure:Version=$(shell grep -A 1 "PRODUCTNAME URE" $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | tail -n 1 | awk '{ print $$2 }')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`" \
 		-V'base-version=$(BASE_VERSION)' \
 		-V'help-l10n-virtual-version=$(HELP_L10N_VIRTUAL_VERSION)' \
 		-V'dev-stl-depends=$(DEV_STL_DEPENDS)' \
@@ -2990,7 +3002,7 @@ ifeq "$(PACKAGE_SDK)" "y"
 	perl -pi -e 's,html/,html /,g' debian/openoffice.org-dev-doc.doc-base.udk-common-ref
 endif
 	dh_installdocs -A  debian/README.Debian \
-		debian/tmp/pkg/openoffice.org-l10n-en-US/$(OODIR)/README
+		debian/tmp/pkg/openoffice.org-common/$(OOBRANDDIR)/README
 ifeq "$(PACKAGE_PCVSLIB)" "y"
 	dh_installexamples -plibpcvslib-perl \
 		$(SOURCE_TREE)/solenv/bin/modules/PCVSLib/samples/*
