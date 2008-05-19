@@ -27,7 +27,7 @@ OODIR:=$(OOBASISDIR)
 
 PKGSOURCE := $(shell dpkg-parsechangelog | awk '/^Source:/ {print $$2;exit 0}')
 SOURCE_VERSION:=$(shell head -1 debian/changelog | cut -d\( -f2 | cut -d\) -f1)
-UPSTREAM_VERSION:=$(shell echo "$(SOURCE_VERSION)"| cut -d- -f1)
+UPSTREAM_VERSION:=$(shell echo "$(SOURCE_VERSION)"| cut -d":" -f2 | cut -d- -f1)
 BASE_VERSION:=$(UPSTREAM_VERSION)
 HELP_L10N_VIRTUAL_VERSION:=$(shell echo $(UPSTREAM_VERSION) | cut -d: -f2 | tr [~] [\\-])
 #HELP_L10N_VIRTUAL_VERSION:=2.4
@@ -632,7 +632,7 @@ ifneq "$(MOZILLA)" ""
 	BUILD_DEPS+= , xulrunner-dev-static [$(OOO_MOZILLA_ARCHS)], libnss3-dev [$(OOO_MOZILLA_ARCHS)]
     else
       ifeq "$(MOZILLA)" "iceape"
-        BUILD_DEPS += , $(MOZILLA)-dev (>= 1.1.9-5) [$(OOO_MOZILLA_ARCHS)]
+        BUILD_DEPS += , $(MOZILLA)-dev (>= 1.1.9-5) [$(OOO_MOZILLA_ARCHS)], libnss3-dev [$(OOO_MOZILLA_ARCHS)]
       else
 	BUILD_DEPS += , $(MOZILLA)-dev [$(OOO_MOZILLA_ARCHS)]
       endif
@@ -1832,7 +1832,7 @@ endif
 			ln -sf `echo $$i | sed -e 's,$(CURDIR)/debian/ure,,'` `basename $$i`; \
 		done
 
-	# add MySQL, MaxDB and PostgreSQL JDBC drivers to OOos CLASSPATH
+	# add MySQL, MaxDB and ssssssostgreSQL JDBC drivers to OOos CLASSPATH
 	sed -i -e 's|\(UNO_JAVA_JFW_CLASSPATH_URLS=.*\)|\1 file:///usr/share/java/mysql.jar|' \
 	    -e 's|\(UNO_JAVA_JFW_CLASSPATH_URLS=.*\)|\1 file:///usr/share/java/sapdbc.jar|' \
 	    -e 's|\(UNO_JAVA_JFW_CLASSPATH_URLS=.*\)|\1 file:///usr/share/java/postgresql.jar|' \
@@ -3057,6 +3057,36 @@ binary: binary-arch binary-indep
 get-ooo-build:
 	svn co $(OOO_BUILD_SVN) ooo-build
 	cd ooo-build && NOCONFIGURE=1 ./autogen.sh
+
+# FIXME: works for milestones only...
+get-orig-source:
+	if test -n "$$TMP"; then TMPD=`mktemp -d -p $$TMP`; else \
+		TMPD=`mktemp -d`; fi && \
+	cd $$TMPD && mkdir -p openoffice.org-$(UPSTREAM_VERSION)/ooo-build/src && \
+	cd openoffice.org-$(UPSTREAM_VERSION)/ooo-build/src && \
+		wget http://download.go-oo.org/$(MWS)/$(TAG)-core.tar.bz2 && \
+		wget http://download.go-oo.org/$(MWS)/$(TAG)-binfilter.tar.bz2 && \
+		wget http://download.go-oo.org/$(MWS)/$(TAG)-lang.tar.bz2 && \
+		wget http://download.go-oo.org/$(MWS)/$(TAG)-system.tar.bz2 && \
+		wget http://download.go-oo.org/$(MWS)/$(TAG)-sdk_oo.tar.bz2 && \
+		tar xfvj $(TAG)-core.tar.bz2 && \
+			rm -rf $(TAG)/external/jars && \
+			rm -rf $(TAG)/xalan && \
+		rm $(TAG)/smoketestoo_native/statjars/README.jfreechart && \
+		rm $(TAG)/smoketestoo_native/statjars/*.jar && \
+		for i in `find $(TAG)/psprint_config/configuration/ppds ! -name "SGEN*" -name "*.PS"`; do \
+			rm $$i; \
+		done && \
+		tar cfvj $(TAG)-core.tar.bz2.dfsg $(TAG) && ln -sf $(TAG)-core.tar.bz2.dfsg $(TAG)-core.tar.bz2 && rm -rf $(TAG) && \
+		tar xfvj $(TAG)-system.tar.bz2 && \
+			for i in da_DK en_GB nl_NL ru_RU; do \
+				rm $(TAG)/dictionaries/$$i/hyph_$${i}.dic; \
+		done && \
+		rm $(TAG)/bitstream_vera_fonts/download/liberation-fonts.zip && \
+		tar cfvj $(TAG)-system.tar.bz2.dfsg $(TAG) && ln -sf $(TAG)-system.tar.bz2.dfsg $(TAG)-system.tar.bz2 && rm -rf $(TAG) && \
+		cd $$TMPD && tar cfvz openoffice.org_$(UPSTREAM_VERSION).orig.tar.gz openoffice.org-$(UPSTREAM_VERSION) && \
+		rm -rf openoffice.org-$(UPSTREAM_VERSION) && \
+		mv  openoffice.org_$(UPSTREAM_VERSION).orig.tar.gz $(CURDIR)/..
 
 # Download the latest sources needed for ooo-build. Note that is
 # might download more than actually needed here....
