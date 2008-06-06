@@ -91,7 +91,7 @@ BUILD_PYUNO=y
 USE_PYCENTRAL=y
 PACKAGE_QA_TOOLS=y
 PACKAGE_TTF_OPENSYMBOL=y
-PACKAGE_NPSOPLUGIN=y
+PACKAGE_NPSOPLUGIN=n
 PACKAGE_PCVSLIB=n
 BUILD_JARS_NATIVE=y
 BUILD_BINFILTERS=y
@@ -1838,7 +1838,7 @@ endif
 	cp -r --preserve=mode debian/tmp/pkg/ure debian/ure || exit 1
 	# move URE Java stuff to /usr/share/java
 	mkdir -p debian/ure/usr/share/java/$(OODIRNAME)
-	mv debian/ure/$(OOUREDIR)/lib//JREProperties.class \
+	mv debian/ure/$(OOUREDIR)/lib/JREProperties.class \
 		debian/ure/usr/share/java/$(OODIRNAME)
 	mv debian/ure/$(OOUREDIR)/share/java/* \
 		debian/ure/usr/share/java/$(OODIRNAME)
@@ -2088,8 +2088,6 @@ ifeq "$(BUILD_PYUNO)" "y"
 	  echo 'PYTHONPATH=$$PYTHONHOME $$PYTHONHOME/site-packages $$PYTHONHOME/lib-dynload $$PYTHONHOME/lib-tk $$ORIGIN' \
 	) > debian/python-uno/$(OODIR)/program/pythonloader.unorc
 	chmod u-w debian/python-uno/$(OODIR)/program/pythonloader.unorc
-	perl -pi -e 's,/bin,/usr/bin,' \
-		 debian/openoffice.org-emailmerge/$(OODIR)/program/mailmerge.py
 
 	mkdir -p debian/python-uno/usr/share/doc/python-uno
 	for i in doc demo; do \
@@ -2256,7 +2254,7 @@ endif
 ifeq "$(ENABLE_JAVA)" "y"
 	# hrmpf, again something like that, we really need to find the root cause for that
 	ln -s libjava_uno.so \
-		$(PKGDIR)-base/$(OODIR)/program/libjava_uno
+		debian/ure/$(OOUREDIR)/lib/libjava_uno
 endif
 
 	# move impressgraphics filter stuff into -impress
@@ -2376,7 +2374,7 @@ $(STAMP_DIR)/broffice: $(STAMP_DIR)/install $(STAMP_DIR)/install-arch $(STAMP_DI
 		| sed -e "s/OpenO/BrO/" \
 		> debian/broffice.org/$(OOBRANDDIR)/program/resource/ooo$$iso.res; \
 	done
-	for i in startcenter writer calc draw impress math base; do \
+	for i in writer calc draw impress math base; do \
 		cat $(PKGDIR)-$$i/usr/share/applications/ooo-$$i.desktop \
 			| sed -e "s/ooff/broff/" | sed -e "s/OpenO/BrO/" \
 			> debian/broffice.org/usr/share/applications/ooo-$$i.desktop; \
@@ -2417,6 +2415,9 @@ ifeq "$(PACKAGE_SDK)" "y"
 	rm -rf $(PKGDIR)-dev-doc $(PKGDIR)-dev-doc.*.debhelper; \
 	cp -r --preserve=mode debian/tmp/pkg/openoffice.org-dev-doc $(PKGDIR)-dev-doc || exit 1
 endif
+
+	perl -pi -e 's,/bin,/usr/bin,' \
+		 debian/openoffice.org-emailmerge/$(OODIR)/program/mailmerge.py
 
 	dh_installdirs -i
 
@@ -2601,8 +2602,8 @@ endif
 	# remove extra license files
 	rm -rf $(PKGDIR)-commmon/$(OOBRANDDIR)/licenses
 	rm -rf $(PKGDIR)-common/$(OOBRANDDIR)/share/readme/LICENSE*
-	rm -f $(PKGDIR)-common/$(OOBRANDDIR)/THIRDPARTYLICENSEREADME.html
-	rm -f $(PKGDIR)-common/$(OOBRANDIR)/LICENSE.html
+	rm -rf $(PKGDIR)-common/$(OOBRANDDIR)/THIRDPARTYLICENSEREADME.html
+	rm -rf $(PKGDIR)-common/$(OOBRANDIR)/LICENSE.html
 
 	# remove extra readme files
 	rm -rf $(PKGDIR)-common/$(OOBRANDDIR)/readmes
@@ -2852,7 +2853,7 @@ endif
 	# /usr/lib/libgcj-bc.so when specifying -l/usr/lib/$(GCJ_JAWT_DIR)
 	# and therefore we must not use it for -gcj. But we *do* need it
 	# for -officebean (libjawt.so is referenced there)
-	LD_LIBRARY_PATH="/usr/lib/libfakeroot:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program" \
+	LD_LIBRARY_PATH="/usr/lib/libfakeroot:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program:$(PKGDIR)-base/$(OODIR)/program" \
 		dh_shlibdeps -s -Nopenoffice.org$(VER)-officebean \
 			-Lure \
 			-ldebian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program:$(PKGDIR)-base/$(OODIR)/program \
