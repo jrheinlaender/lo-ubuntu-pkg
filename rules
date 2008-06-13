@@ -124,7 +124,7 @@ USE_SYSTEM_XMLSEC=n
 BUILD_CAIROCANVAS=y
 USE_SYSTEM_CAIRO=y
 CAIRO_FONTS_PATCH=y
-BUILD_KDE=y
+BUILD_KDE=n
 KDE_VER=3
 BUILD_DBG_PACKAGE=y
 USE_SYSTEM_BSH=y
@@ -167,6 +167,7 @@ USE_EXTERNAL_WRITER2LATEX=y
 ENABLE_MINIMIZER=y
 ENABLE_PRESENTER_SCREEN=y
 ENABLE_PDFIMPORT=y
+BUILD_GTK=n
 ENABLE_GIO=y
 
 # when we have a package we want to have to be installed on older things with some older
@@ -780,6 +781,15 @@ else
 	BUILD_DEPS += , kdepimlibs$(shell echo "$(KDE_VER)+1" | bc)-dev
   endif
 	DBG_DBG_SUGGESTS+= , kdelibs-dbg, qt-x11-free-dbg
+  ifeq "$(KDE_VER)" "4"
+	CONFIGURE_FLAGS += --with-additional-sections="KDE4"
+  endif
+endif
+
+ifeq "$(BUILD_GTK)" "n"
+	CONFIGURE_FLAGS+= --disable-gtk
+	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-gtk -Nopenoffice.org$(VER)-gnome
+	CONFIGURE_FLAGS+= --with-images="industrial crystal hicontrast tango $(HUMAN)"
 endif
 
 ifeq "$(BUILD_BINFILTERS)" "y"
@@ -1622,10 +1632,12 @@ endif
 	cd debian/tmp/pkg; \
 	rm -f openoffice.org-common/$(OODIR)/program/.testtoolrc
 
+ifeq "$(BUILD_GTK)" "y"
 	# Gtk quickstarter for the eggtrtray stuff, so to -gtk (via -gnome)
 	mkdir -p -m755 debian/tmp/pkg/openoffice.org-gnome/$(OOBRANDDIR)/share/xdg
 	mv debian/tmp/pkg/openoffice.org-common/$(OOBRANDDIR)/share/xdg/qstart.desktop \
 		debian/tmp/pkg/openoffice.org-gnome/$(OOBRANDDIR)/share/xdg
+endif
 
 	# move gengal stuff into -dev
 	mkdir -p debian/tmp/pkg/openoffice.org-dev/$(OODIR)/program
@@ -1833,10 +1845,14 @@ $(STAMP_DIR)/install-arch: $(STAMP_DIR)/install $(STAMP_NATIVE_JARS)
 	umask 022
 
 	# Copy files placed by ooo-build/bin/package-ooo	
-	for i in base calc core draw impress math writer gnome kde dev headless; do \
+	for i in base calc core draw impress math writer gnome dev headless; do \
 	  rm -rf $(PKGDIR)-$$i $(PKGDIR)-$$i.*.debhelper ;\
 	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-$$i $(PKGDIR)-$$i || exit 1;\
 	done
+ifeq "$(BUILD_KDE)" "y"
+	  rm -rf $(PKGDIR)-kde $(PKGDIR)-kde.*.debhelper
+	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-kde $(PKGDIR)-kde || exit 1
+endif
 
 ifeq "$(BUILD_BINFILTERS)" "y"
 	  rm -rf $(PKGDIR)-filter-binfilter $(PKGDIR)-filter-binfilter.*.debhelper
@@ -1886,23 +1902,28 @@ endif
 	# move the GNOME stuff which are *not* in gid_Module_Optional_Gnome
 	# (which is moved into -gnome in package-ooo) into -gnome
 	mkdir -p -m755 $(PKGDIR)-gnome/$(OODIR)/program
-	for f in gnome-open-url.bin fps_gnome.uno.so libvclplug_gtk*.so; do \
+	mv $(PKGDIR)-core/$(OODIR)/program/gnome-open-url.bin $(PKGDIR)-gnome/$(OODIR)/program || exit 1
+ifeq "$(BUILD_GTK)" "y"
+	for f in fps_gnome.uno.so libvclplug_gtk*.so; do \
 	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-gnome/$(OODIR)/program || exit 1;\
 	done
 	for f in libeggtray* libqstart_gtk*; do \
 	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-gnome/$(OODIR)/program || exit 1;\
 	done
+endif
 
 	# split out gtk stuff
 	rm -rf $(PKGDIR)-gtk
 	mkdir -p -m755 $(PKGDIR)-gtk/$(OODIR)/program
 	mv $(PKGDIR)-gnome/$(OODIR)/program/* $(PKGDIR)-gtk/$(OODIR)/program/
 	mkdir -p -m755 $(PKGDIR)-gtk/$(OOBRANDDIR)/share
+ifeq "$(BUILD_GTK)" "y"
 	mv $(PKGDIR)-gnome/$(OOBRANDDIR)/share/xdg $(PKGDIR)-gtk/$(OOBRANDDIR)/share
 	mv $(PKGDIR)-gtk/$(OODIR)/program/ucpgvfs1.uno.so \
 		$(PKGDIR)-gnome/$(OODIR)/program/
 	mv $(PKGDIR)-core/$(OODIR)/program/gconfbe* \
 		$(PKGDIR)-gnome/$(OODIR)/program
+endif
 
 	mkdir -p -m755 $(PKGDIR)-evolution/$(OODIR)/program
 	mv $(PKGDIR)-core/$(OODIR)/program/libevoab2.so $(PKGDIR)-evolution/$(OODIR)/program
@@ -2032,6 +2053,7 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 		   > $(PKGDIR)-$$p/usr/share/applications/ooo$(VER)-$$p.desktop || exit 1 ;\
 	done
 
+ifeq "$(BUILD_GTK)" "y"
 	# qstart.desktop is different to the above. Should be handled by
 	# --with-unix-wrapper of ooo-build but that somehow doesn't work as
 	# expected. FIXME.
@@ -2040,6 +2062,7 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 		-e "s,Name=OpenOffice.org $$PRODUCTVERSION,Name=OpenOffice.org $(VER)," \
 		-e "s/  / /" \
 		$(PKGDIR)-gtk/$(OOBRANDDIR)/share/xdg/qstart.desktop
+endif
 	# we don't need the share/xdgs except qstart
 	for f in `find debian -name '*.desktop' | grep xdg | grep -v qstart`; do \
 		rm -f $$f; done
