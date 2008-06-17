@@ -91,7 +91,6 @@ BUILD_PYUNO=y
 USE_PYCENTRAL=y
 PACKAGE_QA_TOOLS=y
 PACKAGE_TTF_OPENSYMBOL=y
-PACKAGE_NPSOPLUGIN=n
 PACKAGE_PCVSLIB=n
 BUILD_JARS_NATIVE=y
 BUILD_BINFILTERS=y
@@ -173,6 +172,9 @@ ENABLE_PDFIMPORT=y
 BUILD_GTK=n
 ENABLE_GIO=y
 ENABLE_RANDR=n
+ifeq "$(BUILD_GTK)" "y"
+  PACKAGE_NPSOPLUGIN=y
+endif
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
@@ -1925,14 +1927,18 @@ endif
 	mv $(PKGDIR)-core/$(OODIR)/program/libevoab2.so $(PKGDIR)-evolution/$(OODIR)/program
 
 ifeq "$(PACKAGE_NPSOPLUGIN)" "y"
+	# libnpsoplugins.so two times with different sizes? Oh my.
+	# Upstream has it this way, too, but..
 	mkdir -p -m755 debian/mozilla-openoffice.org/$(OODIR)/program
+	mkdir -p -m755 debian/mozilla-openoffice.org/$(OOBRANDDIR)/program
 	for f in libnpsoplugin.so nsplugin; do \
 		mv $(PKGDIR)-core/$(OODIR)/program/$$f debian/mozilla-openoffice.org/$(OODIR)/program; \
 	done
+	mv $(PKGDIR)-core/$(OODBRANDDIR)/program/libnpsoplugin.so f debian/mozilla-openoffice.org/$(OOBRANDDIR)/program
 	cd debian/mozilla-openoffice.org && \
 		for b in iceape iceweasel mozilla mozilla-firefox firefox; do \
 			mkdir -p usr/lib/$$b/plugins && \
-				ln -sf /$(OODIR)/program/libnpsoplugin.so \
+				ln -sf /$(OOBRANDDIR)/program/libnpsoplugin.so \
 				   usr/lib/$$b/plugins/libnpsoplugin.so; \
 		done
 else
@@ -2675,6 +2681,11 @@ endif
 	cat $(PKGDIR)-common/etc/$(OODIRNAME)/sofficerc \
 		| perl -p -e 's/(.*)=(.*)/$$1=\$${\$$FHS_CONFIG_FILE:Bootstrap:$$1}/' \
 		>> $(PKGDIR)-common/$(OOBRANDDIR)/program/sofficerc
+	# except for URE_BOOTSTRAP...
+	TMP=`mktemp -q`; \
+		grep -v URE_BOOTSTRAP $(PKGDIR)-common/$(OOBRANDDIR)/program/sofficerc > $$TMP && mv $$TMP $(PKGDIR)-common/$(OOBRANDDIR)/program/sofficerc && \
+		grep URE_BOOTSTRAP $(PKGDIR)-common/etc/$(OODIRNAME)/sofficerc >> $(PKGDIR)-common/$(OOBRANDDIR)/program/sofficerc && \
+		grep -v URE_BOOTSTRAP $(PKGDIR)-common/etc/$(OODIRNAME)/sofficerc > $$TMP && mv $$TMP $(PKGDIR)-common/etc/$(OODIRNAME)/sofficerc
 
 	install -m 644 debian/soffice.sh \
 	  $(PKGDIR)-common/etc/$(OODIRNAME)/soffice.sh
@@ -2972,7 +2983,7 @@ endif
 ifeq "$(ENABLE_REPORTDESIGN)" "y"
 	dh_gencontrol -popenoffice.org$(VER)-report-builder -- \
 		-V'report-builder-jar-depends=$(REPORT_BUILDER_JAR_DEPENDS)' \
-		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep "<version" $(SOURCE_TREE)/reportdesign/util/post.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
+		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep "<version" $(SOURCE_TREE)/reportdesign/util/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
 endif
 ifeq "$(ENABLE_PDFIMPORT)" "y"
 	dh_gencontrol -popenoffice.org$(VER)-pdfimport -- \
