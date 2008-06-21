@@ -170,6 +170,8 @@ ENABLE_MINIMIZER=y
 ENABLE_PRESENTER_SCREEN=y
 ENABLE_PDFIMPORT=y
 BUILD_GTK=y
+# broke in m20
+ENABLE_EVO2=n
 ENABLE_GIO=n
 ENABLE_RANDR=y
 ifeq "$(BUILD_GTK)" "y"
@@ -198,7 +200,11 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
 		--enable-openxml \
 		--with-drink=coffee \
 		--libdir=/usr/lib \
-		--host=$(DEB_HOST_GNU_TYPE) --build=$(DEB_BUILD_GNU_TYPE)
+		--host=$(DEB_HOST_GNU_TYPE) --build=$(DEB_BUILD_GNU_TYPE) \
+		--with-system-dicts \
+		--with-external-dict-dir=/usr/share/myspell/dicts \
+		--with-external-hyph-dir=/usr/share/myspell/dicts \
+		--with-external-thes-dir=/usr/share/myspell/dicts
 
 # distro-configs is too late; it already gets searched in unpack
 # when we don't do that here, too.
@@ -767,7 +773,11 @@ ifeq "$(BUILD_KDE)" "n"
 	CONFIGURE_FLAGS+= --with-images="industrial crystal hicontrast tango $(HUMAN)"
 else
 	BUILD_DEPS += , kdelibs$(shell echo "$(KDE_VER)+1" | bc)-dev $(KDELIBS_MINVER)
+  ifeq "$(KDE_VER)" "4"
+	DBG_DBG_SUGGESTS+= , kdelibs$(shell echo "$(KDE_VER)+1" | bc)-dbg, libqt4-dbg
+  else
 	DBG_DBG_SUGGESTS+= , kdelibs-dbg, qt-x11-free-dbg
+  endif
   ifeq "$(KDE_VER)" "4"
 	CONFIGURE_FLAGS += --with-additional-sections="KDE4"
   endif
@@ -784,6 +794,11 @@ ifeq "$(BUILD_GTK)" "n"
 	CONFIGURE_FLAGS+= --disable-gtk
 	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-gtk -Nopenoffice.org$(VER)-gnome
 	CONFIGURE_FLAGS+= --with-images="industrial crystal hicontrast tango $(HUMAN)"
+endif
+
+ifeq "$(ENABLE_EVO2)" "y"
+	CONFIGURE_FLAGS += --disable-evolution2
+	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-evolution
 endif
 
 ifeq "$(ENABLE_RANDR)" "y"
@@ -1892,7 +1907,9 @@ endif
 
 	rm -rf debian/mozilla-openoffice.org debian/mozilla-openoffice.org.*.debhelper
 	rm -rf $(PKGDIR) $(PKGDIR).*.debhelper
+ifeq "$(ENABLE_EVO2)" "y"
 	rm -rf $(PKGDIR)-evolution $(PKGDIR)-evolution.*.debhelper
+endif
 ifeq "$(BUILD_KDE)" "y"
 	rm -rf $(PKGDIR)-kde.*.debhelper
 endif
@@ -1939,8 +1956,10 @@ else
 endif
 endif
 
+ifeq "$(ENABLE_EVO2)" "y"
 	mkdir -p -m755 $(PKGDIR)-evolution/$(OODIR)/program
 	mv $(PKGDIR)-core/$(OODIR)/program/libevoab2.so $(PKGDIR)-evolution/$(OODIR)/program
+endif
 
 ifeq "$(PACKAGE_NPSOPLUGIN)" "y"
 	# libnpsoplugins.so two times with different sizes? Oh my.
@@ -2627,14 +2646,6 @@ else
 	rm -f $(PKGDIR)-common/$(OODIR)/share/fonts/truetype/opens___.ttf
 endif
 
-	# dictionary symlink
-	rm -rf $(PKGDIR)-common/$(OODIR)/share/dict/ooo
-	ln -s /usr/share/myspell/dicts \
-		$(PKGDIR)-common/$(OODIR)/share/dict/ooo
-	mkdir -p $(PKGDIR)-common/usr/share/myspell/dicts
-	ln -s /etc/openoffice/dictionary.lst \
-		$(PKGDIR)-common/usr/share/myspell/dicts/dictionary.lst
-
 	# convert icons to xpm; we need them for the Debian menu policy...
 	cd $(PKGDIR)-common/usr/share/icons/gnome/32x32/apps && \
 	  for x in *.png; do gm convert $$x `basename $$x .png`.xpm; done
@@ -3144,8 +3155,6 @@ get-orig-source:
 		tar xfvj $(TAG)-core.tar.bz2 && \
 			rm -rf $(TAG)/external/jars && \
 			rm -rf $(TAG)/xalan && \
-		rm $(TAG)/smoketestoo_native/statjars/README.jfreechart && \
-		rm $(TAG)/smoketestoo_native/statjars/*.jar && \
 		for i in `find $(TAG)/psprint_config/configuration/ppds ! -name "SGEN*" -name "*.PS"`; do \
 			rm $$i; \
 		done && \
