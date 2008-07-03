@@ -1902,6 +1902,12 @@ endif
 		for i in $(CURDIR)/debian/ure/usr/share/java/$(OODIRNAME)/*.jar; do \
 			ln -sf `echo $$i | sed -e 's,$(CURDIR)/debian/ure,,'` `basename $$i`; \
 		done
+	# and the public libs to uno-libs3
+	mkdir -p debian/uno-libs3/$(OOUREDIR)/lib
+	for i in debian/ure/$(OOUREDIR)/lib/libuno_*so.3; do \
+		mv $$i debian/uno-libs3/$(OOUREDIR)/lib; \
+		ln -sf /$(OOUREDIR)/lib/`basename $$i` /usr/lib/`basename $$i`; \
+	done
 
 	# add MySQL, MaxDB and ssssssostgreSQL JDBC drivers to OOos CLASSPATH
 	sed -i -e 's|\(UNO_JAVA_JFW_CLASSPATH_URLS=.*\)|\1 file:///usr/share/java/mysql.jar|' \
@@ -2910,8 +2916,9 @@ endif
 	dh_link -s
 	dh_fixperms -s
 ifeq "$(BUILD_DBG_PACKAGE)" "y"
-	dh_strip -s -Nure --dbg-package=openoffice.org$(VER)-dbg
+	dh_strip -s -Nure -Nuno-libs3 --dbg-package=openoffice.org$(VER)-dbg
 	dh_strip -pure --dbg-package=ure-dbg
+	dh_strip -puno-libs3-dbg --dbg-package=uno-libs3-dbg
 	# dh_strip --dbg-package= is not idempotent, force copying of the binaries
 	# again...
 	rm -f $(STAMP_DIR)/install-arch
@@ -2928,7 +2935,7 @@ ifeq "$(ENABLE_MONO)" "y"
 	dh_installcligac -s
 endif
 	dh_compress -s -X.py -X.mk -X.sxd
-	dh_makeshlibs -pure -n -V"ure (>= $(shell grep -A 1 "PRODUCTNAME URE" $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | tail -n 1 | awk '{ print $$2 }')+OOo3.0.0~)"
+	dh_makeshlibs -puno-libs3 -n -V"ure (>= $(shell grep -A 1 "PRODUCTNAME URE" $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | tail -n 1 | awk '{ print $$2 }')+OOo3.0.0~)"
 	dh_installdeb -s
 ifneq "$(USE_SYSTEM_XMLSEC)" "y"
 	cat debian/shlibs.override.xmlsec >> debian/shlibs.local
@@ -2991,7 +2998,7 @@ endif
 # This switch to dh_shlibdeps reduces the 'libXXX not found' warnings but
 # causes ldd crashes sometimes when used with fakeroot:
 #          -l $(PKGDIR)-core/$(OPENOFFICEDIR)/program
-	dh_gencontrol -s $(DEBHELPER_OPTIONS) -Nure -Nure-dbg \
+	dh_gencontrol -s $(DEBHELPER_OPTIONS) -Nure -Nure-dbg -Nuno-libs3 \
 		-Nopenoffice.org$(VER)-report-builder \
 		-Nopenoffice.org$(VER)-presentation-minimizer \
 		-Nopenoffice.org$(VER)-presenter-screen \
@@ -3039,7 +3046,7 @@ ifeq "$(ENABLE_PRESENTER_SCREEN)" "y"
 endif
 	dh_gencontrol -popenoffice.org$(VER)-sdbc-postgresql -- \
 		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g)+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
-	dh_gencontrol -pure -pure-dbg -- \
+	dh_gencontrol -pure -pure-dbg -puno-libs3 -- \
 		-V"ure:Version=$(shell grep -A 1 "PRODUCTNAME URE" $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | tail -n 1 | awk '{ print $$2 }')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`" \
 		-v$(shell grep -A 1 "PRODUCTNAME URE" $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | tail -n 1 | awk '{ print $$2 }')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
 	dh_md5sums -s
