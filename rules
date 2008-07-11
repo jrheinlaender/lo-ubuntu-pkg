@@ -197,7 +197,7 @@ CONFIGURE_FLAGS += --disable-access
 ifeq "$(DIST)" "Debian"
   # we don't need to build all languages and the thesaurus on the buildds;
   # they do binary-only builds anyway
-  ifeq (buildd,$(shell whoami))
+  ifeq (rene,$(shell whoami))
        BUILD_ONLY_EN_US=y
   endif
 endif
@@ -1651,9 +1651,11 @@ ifneq "$(HELPISOS)" ""
 	set -e; \
 	for iso in $(filter-out en-US,$(HELPISOS)); do \
 	  pkgiso=`echo $$iso | tr \[:upper:\] \[:lower:\]`; \
-	  rm -rf $(PKGDIR)-help-$$pkgiso $(PKGDIR)-help-$$pkgiso.*.debhelper; \
-	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-help-$$iso \
-		$(PKGDIR)-help-$$pkgiso; \
+	  if [ -d debian/tmp/pkg/openoffice.org-help-$$iso ]; then \
+	    rm -rf $(PKGDIR)-help-$$pkgiso $(PKGDIR)-help-$$pkgiso.*.debhelper; \
+	    cp -r --preserve=mode debian/tmp/pkg/openoffice.org-help-$$iso \
+		  $(PKGDIR)-help-$$pkgiso; \
+	  fi; \
 	done
     ifeq (hi-IN,$(findstring hi-IN,$(HELPISOS)))
 	for i in $(PKGDIR)-help-hi-in/$(OODIR)/help/hi-IN/*.css; do \
@@ -1678,9 +1680,11 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/install $(STAMP_DIR)/install-indep ooo-buil
 	for iso in $(LANGPACKISOS); do \
 	  if [ "$$iso" = "en-US" ]; then continue; fi ; \
 	  pkgiso=`echo $$iso | tr \[:upper:\] \[:lower:\]`; \
-	  rm -rf $(PKGDIR)-l10n-$$pkgiso $(PKGDIR)-l10n-$$pkgiso.*.debhelper; \
-	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-l10n-$$iso \
-		$(PKGDIR)-l10n-$$pkgiso || exit 1; \
+	  if [ -d  debian/tmp/pkg/openoffice.org-l10n-$$iso ]; then \
+	    rm -rf $(PKGDIR)-l10n-$$pkgiso $(PKGDIR)-l10n-$$pkgiso.*.debhelper; \
+	    cp -r --preserve=mode debian/tmp/pkg/openoffice.org-l10n-$$iso \
+		  $(PKGDIR)-l10n-$$pkgiso || exit 1; \
+	  fi; \
 	done
 
 	# remove empty uno_packages dirs somehow in the langpacks(?)
@@ -2315,9 +2319,11 @@ $(STAMP_DIR)/broffice: $(STAMP_DIR)/install $(STAMP_DIR)/install-arch $(STAMP_DI
 		> debian/broffice.org/$(OODIR)/share/registry/data/org/openoffice/Setup.xcu
 	for iso in $(LANGPACKISOS); do \
 		if [ "$$iso" = "en-US" ]; then p=common; else p=l10n-`echo $$iso | tr A-Z a-z`; fi; \
-		cat $(PKGDIR)-$$p/$(OODIR)/program/resource/ooo$(SRCNUM)$$iso.res \
-		| sed -e "s/OpenO/BrO/" \
-		> debian/broffice.org/$(OODIR)/program/resource/ooo$(SRCNUM)$$iso.res; \
+		if [ -f $(PKGDIR)-$$p/$(OODIR)/program/resource/ooo$(SRCNUM)$$iso.res ]; then \
+			cat $(PKGDIR)-$$p/$(OODIR)/program/resource/ooo$(SRCNUM)$$iso.res \
+			| sed -e "s/OpenO/BrO/" \
+			> debian/broffice.org/$(OODIR)/program/resource/ooo$(SRCNUM)$$iso.res; \
+		fi; \
 	done
 	for i in writer calc draw impress math base; do \
 		cat $(PKGDIR)-$$i/usr/share/applications/ooo-$$i.desktop \
@@ -2756,7 +2762,7 @@ endif
 	touch $@
 
 binary-arch: $(STAMP_DIR)/binary-arch
-$(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/maintscripts $(STAMP_DIR)/binary-indep
+$(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/maintscripts
 	dh_testdir
 	dh_testroot
 
