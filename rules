@@ -61,11 +61,11 @@ export DH_ALWAYS_EXCLUDE=CVS
 # work around tcsh bugs.debian.org/339034: tcsh: Unknown colorls variable `su'
 unexport LS_COLORS
 
-MWS=BEB300
-#MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)" | cut -d~ -f3 | sed -e s/$(shell echo $(MWS) | tr A-Z a-z)//)
-MILESTONE=m3
-#TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
-TAG=$(MWS)_$(MILESTONE)
+MWS=DEV300
+MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)" | cut -d~ -f2 | sed -e s/$(shell echo $(MWS) | tr A-Z a-z)//)
+#MILESTONE=m3
+TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
+#TAG=$(MWS)_$(MILESTONE)
 #OOO_BUILD_BRANCH=ooo-build-3-0
 ifeq "" "$(OOO_BUILD_BRANCH)"
 	OOO_BUILD_SVN=svn://svn.gnome.org/svn/ooo-build/trunk
@@ -97,7 +97,7 @@ BUILD_BINFILTERS=y
 BUILD_ONLY_EN_US=y
 ENABLE_JAVA=y
 JDK=java-gcj-compat
-ENABLE_MONO=n
+ENABLE_MONO=y
 MONO_MINVER= (>= 1.2.3)
 USE_SYSTEM_HUNSPELL=y
 HUNSPELL_MIN_VER= (>= 1.1.5-2)
@@ -131,6 +131,8 @@ KDE_VER=3
 BUILD_DBG_PACKAGE=y
 USE_SYSTEM_BSH=y
 USE_SYSTEM_HSQLDB=y
+# disabled as in contrib. sigh
+USE_SYSTEM_LUCENE=n
 KDELIBS_MINVER= (>= 4:3.4.3-2)
 USE_SYSTEM_LPSOLVE=y
 USE_SHARED_LPSOLVE=y
@@ -138,8 +140,9 @@ LPSOLVE_MIN_VERSION= (>= 5.5.0.10-10)
 USE_DBUS=y
 USE_GSTREAMER=y
 USE_SYSTEM_NEON=y
+USE_SYSTEM_REDLAND=n
 USE_OOO_BUILD_DESKTOPS=n
-PACKAGE_SDK=n
+PACKAGE_SDK=y
 RUN_SMOKETEST=n
 RUN_UNIT_TESTS=n
 USE_LIBCURL4=y
@@ -203,7 +206,8 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
 		--with-system-dicts \
 		--with-external-dict-dir=/usr/share/myspell/dicts \
 		--with-external-hyph-dir=/usr/share/myspell/dicts \
-		--with-external-thes-dir=/usr/share/myspell/dicts
+		--with-external-thes-dir=/usr/share/myspell/dicts \
+		--with-split
 
 # distro-configs is too late; it already gets searched in unpack
 # when we don't do that here, too.
@@ -286,7 +290,7 @@ else
   OOO_OGLTRANS_ARCHS=
 endif
 
-OOO_ARCHS= i386 powerpc sparc mips mipsel armel s390
+OOO_ARCHS= i386 powerpc sparc mips mipsel armel s390 m68k
 ifeq "$(BUILD_AMD64)" "y"
   OOO_ARCHS += amd64
 endif
@@ -488,7 +492,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	#ISOS=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
 	ISOS:=en-US af ar as-IN be-BY bg bn br bs ca cs cy da de dz el \
 	  en-GB en-ZA eo es et eu fa fi fr ga gl gu-IN he hi-IN hr hu it ja \
-	  ka km ko ku lo lt lv mk ml-IN mr-IN nb ne nl nn nr ns or-IN pa-IN \
+	  ka km ko ku lo lt lv mk mn ml-IN mr-IN nb ne nl nn nr ns or-IN pa-IN \
 	  pl pt pt-BR ro ru rw sk sl sr ss st sv \
 	  ta-IN te-IN tg th tn tr ts uk uz ve vi xh zh-CN zh-TW zu
 	#HELPISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all') 
@@ -497,7 +501,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	#LANGPACKISOS:=$(shell ooo-build/bin/openoffice-xlate-lang -i all')
 	LANGPACKISOS:=en-US af ar as-IN be-BY bg bn br bs ca cs cy da de dz el \
 	  en-GB en-ZA eo es et eu fa fi fr ga gl gu-IN he hi-IN hr hu it ja \
-	  ka km ko ku lo lt lv mk ml-IN mr-IN nb ne nl nn nr ns or-IN pa-IN \
+	  ka km ko ku lo lt lv mk mn ml-IN mr-IN nb ne nl nn nr ns or-IN pa-IN \
 	  pl pt pt-BR ro ru rw sk sl sr ss st sv \
 	  ta-IN te-IN tg th tn tr ts uk uz ve vi xh zh-CN zh-TW zu
   endif
@@ -825,6 +829,11 @@ ifneq "$(BUILD_PYUNO)" "y"
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
+  ifeq "$(USE_SYSTEM_LUCENE)" "y"
+	BUILD_DEPS += , liblucene2-java
+	LUCENE_DEPENDS = liblucene2-java
+	CONFIGURE_FLAGS += --with-system-lucene --with-lucene-core-jar=/usr/share/java/lucene-core.jar
+  endif
   ifeq "$(USE_SYSTEM_HSQLDB)" "y"
 	BUILD_DEPS += , libhsqldb-java (>= 1.8.0.9-1) [$(OOO_JAVA_ARCHS)]
 	BASE_HSQLDB_DEPENDS = libhsqldb-java (>= 1.8.0.9-1)
@@ -877,6 +886,11 @@ ifeq "$(USE_SYSTEM_NEON)" "y"
 	BUILD_DEPS += , libneon$(NEONSONR)-dev
 	DBG_DBG_SUGGESTS+= , libneon$(NEONSONR)-dbg
 	CONFIGURE_FLAGS += --with-system-neon
+endif
+
+ifeq "$(USE_SYSTEM_REDLAND)" "y"
+	BUILD_DEPS += , librdf0-dev
+	CONFIGURE_FLAGS += --with-system-redland
 endif
 
 # CairoFonts patchset is applied for sid and this patch needs Gtk 2.10
@@ -1319,13 +1333,6 @@ ifeq "$(PACKAGE_SDK)" "y"
 endif
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.postgresql.in
-ifeq "$(DIST)" "Debian"
-	if echo $(LANGPACKISOS) | grep -q sr; then \
-		sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
-			 >> debian/control < debian/control.etch_lenny_transitional.in; \
-		perl -pi -e 's/\n/, openoffice.org-l10n-sr-cs\n/ if /^Replaces:.*l10n-sr$$/' debian/control; \
-	fi
-endif
 
 	perl -pi -e "s,%OOO_ARCHS%,$(OOO_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_JAVA_ARCHS%,$(OOO_JAVA_ARCHS),g" debian/control
@@ -2199,7 +2206,6 @@ ifeq "$(ENABLE_MONO)" "y"
 	cat debian/tmp/usr/lib/pkgconfig/mono-$(OODIRNAME).pc \
 		| sed -e s,/usr/lib/mono/openoffice,/usr/lib/cli/uno-1.0,g \
 		| sed -e s,/usr/lib/cli/uno-1.0/cli_uno_bridge.dll,/$(OODIR)/program/cli_uno_bridge.dll, \
-		| sed -e s,/usr/lib/cli/uno-1.0/cli_types.dll,/usr/lib/cli/uno-1.1/cli_types.dll, \
 		> debian/cli-uno-bridge/usr/lib/pkgconfig/mono-$(OODIRNAME).pc
 endif
 
@@ -2744,7 +2750,7 @@ ifeq "$(HELPISOS)" ""
 	# Add them now because openoffice.org-help-* packaged in contrib or so
 	# will need them
 	set -e; \
-	for z in images.zip images_industrial.zip images_crystal.zip images_hicontrast.zip images_tango.zip $(IMAGES_HUMAN_ZIP); do \
+	for z in images.zip images_classic.zip images_industrial.zip images_crystal.zip images_hicontrast.zip images_tango.zip $(IMAGES_HUMAN_ZIP); do \
 		echo "adding helpimgs to $$z..."; \
 		rm -rf $$z; mkdir $$z; \
 		cd $$z; \
@@ -2757,9 +2763,10 @@ ifeq "$(HELPISOS)" ""
 	done
 endif
 	set -e; \
-	for s in galaxy industrial crystal hicontrast tango $(HUMAN); do \
+	for s in galaxy andromeda industrial crystal hicontrast tango $(HUMAN); do \
 		z=images_$$s.zip; \
 		case "$$s" in galaxy) z=images.zip; esac; \
+		case "$$s" in andromeda) z=images_classic.zip; esac; \
 		mkdir -p $(PKGDIR)-style-$$s/$(OODIR)/share/config; \
 		mv $(PKGDIR)-common/$(OODIR)/share/config/$$z \
 			$(PKGDIR)-style-$$s/$(OODIR)/share/config/; \
@@ -2886,8 +2893,9 @@ endif
 	chmod 644 $(PKGDIR)-common/$(OODIR)/program/gengalrc
 
 ifeq "$(ENABLE_MONO)" "y"
-	for i in libuno-cli-basetypes1.0-cil libuno-cli-types1.1-cil \
-		libuno-cli-cppuhelper1.0-cil libuno-cli-ure1.0-cil; do \
+	for i in libuno-cli-basetypes1.0-cil libuno-cli-uretypes1.0-cil \
+		libuno-cli-oootypes1.0-cil libuno-cli-cppuhelper1.0-cil \
+		libuno-cli-ure1.0-cil; do \
 		rm -rf debian/$$i && mkdir -p -m755 debian/$$i/usr/lib/cli/uno-`echo $$i | perl -pi -e 's/.*(\d.\d).*/$$1/'`; \
 		mv $(PKGDIR)-common/$(OODIR)/program/`echo $$i | sed -e "s/libuno-//" | sed -e "s/-cil$$//" | sed -e "s/-/_/" | perl -pi -e 's/\d.\d//'`.dll* \
 			debian/$$i/usr/lib/cli/uno-`echo $$i | perl -pi -e 's/.*(\d.\d).*/$$1/'`; \
@@ -3154,7 +3162,8 @@ endif
 	dh_gencontrol -i $(DEBHELPER_OPTIONS) -Nlibpcvslib-perl \
 		-Nopenoffice.org$(VER)-wiki-publisher \
 		-Nlibuno-cli-basetypes1.0-cil \
-		-Nlibuno-cli-types1.1-cil \
+		-Nlibuno-cli-uretypes1.0-cil \
+		-Nlibuno-cli-oootypes1.0-cil \
 		-Nlibuno-cli-cppuhelper1.0-cil \
 		-Nlibuno-cli-ure1.0-cil -- \
 		-V'base-version=$(BASE_VERSION)' \
@@ -3162,6 +3171,7 @@ endif
 		-V'common-bsh-depends=$(COMMON_BSH_DEPENDS)' \
 		-V'java-common-depends=$(JAVA_COMMON_DEPENDS)' \
 		-V'java-common-java-depends=$(JAVA_COMMON_JAVA_DEPENDS)' \
+		-V'lucene-depends=$(LUCENE_DEPENDS)' \
 		-V'Binary-Version=$(BINARY_VERSION)' \
 		-V'ooo-binfilter-dep=$(OOO_BINFILTER_DEP)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
@@ -3171,8 +3181,9 @@ ifeq "$(ENABLE_MONO)" "y"
 	# we need the +OOo anyway when we build milestones..
 	dh_gencontrol -plibuno-cli-basetypes1.0-cil -- \
 		-v$(shell grep CLI_BASETYPES_NEW_VERSION $(SOURCE_TREE)/cli_ure/version/version.txt | cut -d"=" -f2)+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
-	dh_gencontrol -plibuno-cli-types1.1-cil -- \
-		-v$(shell grep CLI_TYPES_NEW_VERSION $(SOURCE_TREE)/cli_ure/version/version.txt | cut -d"=" -f2)+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
+	dh_gencontrol -plibuno-cli-uretypes1.1-cil -- \
+		-v$(shell grep CLI_URETYPES_NEW_VERSION $(SOURCE_TREE)/cli_ure/version/version.txt | cut -d"=" -f2)+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
+	# FIXME. What with oootypes?
 	dh_gencontrol -plibuno-cli-cppuhelper1.0-cil -- \
 		-v$(shell grep CLI_CPPUHELPER_NEW_VERSION $(SOURCE_TREE)/cli_ure/version/version.txt | cut -d"=" -f2)+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
 	dh_gencontrol -plibuno-cli-ure1.0-cil -- \
@@ -3206,25 +3217,39 @@ get-orig-source:
 		TMPD=`mktemp -d`; fi && \
 	cd $$TMPD && mkdir -p openoffice.org-$(UPSTREAM_VERSION)/ooo-build/src && \
 	cd openoffice.org-$(UPSTREAM_VERSION)/ooo-build/src && \
-		wget http://download.go-oo.org/$(MWS)/$(TAG)-core.tar.bz2 && \
-		wget http://download.go-oo.org/$(MWS)/$(TAG)-binfilter.tar.bz2 && \
-		wget http://download.go-oo.org/$(MWS)/$(TAG)-lang.tar.bz2 && \
-		wget http://download.go-oo.org/$(MWS)/$(TAG)-system.tar.bz2 && \
-		wget http://download.go-oo.org/$(MWS)/$(TAG)-sdk_oo.tar.bz2 && \
+		wget http://download.go-oo.org/$(MWS)/$(TAG)-artwork.tar.bz2 && \
+		wget http://download.go-oo.org/$(MWS)/$(TAG)-base.tar.bz2 && \
+		wget http://download.go-oo.org/$(MWS)/$(TAG)-bootstrap.tar.bz2 && \
+		wget http://download.go-oo.org/$(MWS)/$(TAG)-calc.tar.bz2 && \
+		wget http://download.go-oo.org/$(MWS)/$(TAG)-components.tar.bz2 && \
+		wget http://download.go-oo.org/$(MWS)/$(TAG)-filters.tar.bz2 && \
+		wget http://download.go-oo.org/$(MWS)/$(TAG)-impress.tar.bz2 && \
+		wget http://download.go-oo.org/$(MWS)/$(TAG)-l10n.tar.bz2 && \
+		wget http://download.go-oo.org/$(MWS)/$(TAG)-libs_core.tar.bz2 && \
+		wget http://download.go-oo.org/$(MWS)/$(TAG)-libs_extern_sys.tar.bz2 && \
+		wget http://download.go-oo.org/$(MWS)/$(TAG)-libs_extern.tar.bz2 && \
+		wget http://download.go-oo.org/$(MWS)/$(TAG)-libs_gui.tar.bz2 && \
+		wget http://download.go-oo.org/$(MWS)/$(TAG)-postprocess.tar.bz2 && \
+		wget http://download.go-oo.org/$(MWS)/$(TAG)-sdk.tar.bz2 && \
+		wget http://download.go-oo.org/$(MWS)/$(TAG)-testing.tar.bz2 && \
+		wget http://download.go-oo.org/$(MWS)/$(TAG)-ure.tar.bz2 && \
+		wget http://download.go-oo.org/$(MWS)/$(TAG)-writer.tar.bz2 && \
 		wget http://download.go-oo.org/$(MWS)/$(TAG)-swext.tar.bz2 && \
-		tar xfvj $(TAG)-core.tar.bz2 && \
-			rm -rf $(TAG)/external/jars && \
-			rm -rf $(TAG)/xalan && \
-		for i in `find $(TAG)/psprint_config/configuration/ppds ! -name "SGEN*" -name "*.PS"`; do \
+		tar xfvj $(TAG)-libs_extern.tar.bz2 && \
+			rm -rf $(TAG)-libs_extern/external/jars && \
+		tar cfvj $(TAG)-libs_extern.tar.bz2.dfsg $(TAG)-libs_extern && ln -sf $(TAG)-libs_extern.tar.bz2.dfsg $(TAG)-libs_extern.tar.bz2 && rm -rf $(TAG)-libs_extern && \
+		tar xfvj $(TAG)-libs_extern_sys.tar.bz2 && \
+			rm -rf $(TAG)-libs_extern_sys/xalan && \
+			for i in da_DK en_GB nl_NL ru_RU; do \
+				rm $(TAG)-libs_extern_sys/dictionaries/$$i/hyph_$${i}.dic; \
+		done && \
+		rm $(TAG)-libs_extern_sys/bitstream_vera_fonts/download/liberation-fonts.zip && \
+		tar cfvj $(TAG)-libs_extern_sys.tar.bz2.dfsg $(TAG)-libs_extern_sys && ln -sf $(TAG)-libs_extern_sys.tar.bz2.dfsg $(TAG)-libs_extern_sys.tar.bz2 && rm -rf $(TAG)-libs_extern_sys && \
+		tar xfvj $(TAG)-libs_gui.tar.bz2 && \
+		for i in `find $(TAG)-libs_gui/psprint_config/configuration/ppds ! -name "SGEN*" -name "*.PS"`; do \
 			rm $$i; \
 		done && \
-		tar cfvj $(TAG)-core.tar.bz2.dfsg $(TAG) && ln -sf $(TAG)-core.tar.bz2.dfsg $(TAG)-core.tar.bz2 && rm -rf $(TAG) && \
-		tar xfvj $(TAG)-system.tar.bz2 && \
-			for i in da_DK en_GB nl_NL ru_RU; do \
-				rm $(TAG)/dictionaries/$$i/hyph_$${i}.dic; \
-		done && \
-		rm $(TAG)/bitstream_vera_fonts/download/liberation-fonts.zip && \
-		tar cfvj $(TAG)-system.tar.bz2.dfsg $(TAG) && ln -sf $(TAG)-system.tar.bz2.dfsg $(TAG)-system.tar.bz2 && rm -rf $(TAG) && \
+		tar cfvj $(TAG)-libs_gui.tar.bz2.dfsg $(TAG)-libs_gui && ln -sf $(TAG)-libs_gui.tar.bz2.dfsg $(TAG)-libs_gui.tar.bz2 && rm -rf $(TAG)-libs_gui && \
 		cd $$TMPD && tar cfvz openoffice.org_$(UPSTREAM_VERSION).orig.tar.gz openoffice.org-$(UPSTREAM_VERSION) && \
 		rm -rf openoffice.org-$(UPSTREAM_VERSION) && \
 		mv  openoffice.org_$(UPSTREAM_VERSION).orig.tar.gz $(CURDIR)/..
