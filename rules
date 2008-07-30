@@ -97,7 +97,7 @@ BUILD_BINFILTERS=y
 BUILD_ONLY_EN_US=n
 ENABLE_JAVA=y
 JDK=java-gcj-compat
-ENABLE_MONO=n
+ENABLE_MONO=y
 MONO_MINVER= (>= 1.2.3)
 USE_SYSTEM_HUNSPELL=y
 HUNSPELL_MIN_VER= (>= 1.1.5-2)
@@ -1651,16 +1651,24 @@ endif
 		mv openoffice.org-common/$(OODIR)/program/*.so \
 			openoffice.org-dev/$(OODIR)/program
 
-	# somehow, these go into -common. Move them to -core here to be able
-	# to install them later in install-arch
 ifeq "$(ENABLE_MONO)" "y"
 	cd debian/tmp/pkg; \
-	mv openoffice.org-common/$(OODIR)/program/cli_uno_bridge.dll*  \
-		openoffice.org-core/$(OODIR)/program
-	if [ -d openoffice.org-common/$(OODIR)/program/assembly ]; then \
-		rm -rf openoffice.org-common/$(OODIR)/program/assembly; \
-	fi
+	mkdir -p openoffice.org-core/$(OOBRANDDIR)/ure/lib; \
+	mv openoffice.org-common/$(OOBRANDDIR)/ure/lib/cli_uno_bridge.dll*  \
+		openoffice.org-core/$(OOBRANDDIR)/ure/lib
+	for i in `dh_listpackages | grep libuno-cli`; do \
+		if echo "$$i" | grep -q oootypes; then p=openoffice.org-common; d=$(OODIR)/program; \
+		else p=ure; d=$(OOBRANDDIR)/ure/lib; fi; \
+		rm -rf debian/tmp/pkg/$$i && mkdir -p -m755 debian/tmp/pkg/$$i/usr/lib/cli/uno-`echo $$i | perl -pi -e 's/.*(\d.\d).*/$$1/'`; \
+		mv debian/tmp/pkg/$$p/$$d/`echo $$i | sed -e "s/libuno-//" | sed -e "s/-cil$$//" | sed -e "s/-/_/" | perl -pi -e 's/\d.\d//'`.dll \
+			debian/tmp/pkg/$$i/usr/lib/cli/uno-`echo $$i | perl -pi -e 's/.*(\d.\d).*/$$1/'`; \
+		mv debian/tmp/pkg/$$p/$$d/`echo $$i | sed -e "s/libuno-//" | sed -e "s/-cil$$//" | sed -e "s/-/_/" | perl -pi -e 's/\d.\d//'`.config \
+			debian/tmp/pkg/$$i/usr/lib/cli/uno-`echo $$i | perl -pi -e 's/.*(\d.\d).*/$$1/'`; \
+		mv debian/tmp/pkg/$$p/$$d/policy.*.`echo $$i | sed -e "s/libuno-//" | sed -e "s/-cil$$//" | sed -e "s/-/_/" | perl -pi -e 's/\d.\d//'`.dll \
+			debian/tmp/pkg/$$i/usr/lib/cli/uno-`echo $$i | perl -pi -e 's/.*(\d.\d).*/$$1/'`; \
+	done
 endif
+
 ifeq "$(PACKAGE_QA_TOOLS)" "y"
 	cd debian/tmp/pkg; \
 	mv openoffice.org-common/$(OODIR)/program/testtoolrc \
@@ -2210,17 +2218,17 @@ endif
 
 ifeq "$(ENABLE_MONO)" "y"
 	# Mono bindings
-	mkdir -p -m755 debian/cli-uno-bridge/$(OODIR)/program
-	mv $(PKGDIR)-core/$(OODIR)/program/cli_uno_bridge.dll \
-		debian/cli-uno-bridge/$(OODIR)/program
-	mv $(PKGDIR)-core/$(OODIR)/program/cli_uno_bridge.dll.config \
-		debian/cli-uno-bridge/$(OODIR)/program
-	mv $(PKGDIR)-core/$(OODIR)/program/libcli* \
-		debian/cli-uno-bridge/$(OODIR)/program
+	mkdir -p -m755 debian/cli-uno-bridge/$(OOUREDIR)/lib
+	mv $(PKGDIR)-core/$(OOBRANDDIR)/ure/lib/cli_uno_bridge.dll \
+		debian/cli-uno-bridge/$(OOUREDIR)/lib
+	mv debian/tmp/$(OODIR)/program/cli_uno_bridge.dll.config \
+		debian/cli-uno-bridge/$(OOUREDIR)/lib
+	mv debian/ure/$(OOUREDIR)/lib/libcli* \
+		debian/cli-uno-bridge/$(OOUREDIR)/lib
 	mkdir -p debian/cli-uno-bridge/usr/lib/pkgconfig
 	cat debian/tmp/usr/lib/pkgconfig/mono-$(OODIRNAME).pc \
 		| sed -e s,/usr/lib/mono/openoffice,/usr/lib/cli/uno-1.0,g \
-		| sed -e s,/usr/lib/cli/uno-1.0/cli_uno_bridge.dll,/$(OODIR)/program/cli_uno_bridge.dll, \
+		| sed -e s,/usr/lib/cli/uno-1.0/cli_uno_bridge.dll,/$(OOUREDIR)/lib/cli_uno_bridge.dll, \
 		> debian/cli-uno-bridge/usr/lib/pkgconfig/mono-$(OODIRNAME).pc
 endif
 
@@ -2877,6 +2885,14 @@ ifeq "$(ENABLE_MEDIAWIKI)" "y"
 	zip -d $(CURDIR)/$(PKGDIR)-wiki-publisher/$(OOBRANDDIR)/share/extension/install/wiki-publisher.oxt license/THIRDPARTYLICENSEREADME.html
 endif
 
+ifeq "$(ENABLE_MONO)" "y"
+	for i in `dh_listpackages -i | grep libuno-cli`; do \
+		rm -rf debian/$$i; \
+		cp -ra debian/tmp/pkg/$$i \
+			debian/$$i; \
+	done
+endif
+
 	for i in $(ARCH_INDEP_PACKAGES); do \
 		install -D -m644 debian/presubj \
 			debian/$$i/usr/share/bug/$$i/presubj; \
@@ -2906,16 +2922,6 @@ endif
 
 	# fix permission
 	chmod 644 $(PKGDIR)-common/$(OODIR)/program/gengalrc
-
-ifeq "$(ENABLE_MONO)" "y"
-	for i in libuno-cli-basetypes1.0-cil libuno-cli-uretypes1.0-cil \
-		libuno-cli-oootypes1.0-cil libuno-cli-cppuhelper1.0-cil \
-		libuno-cli-ure1.0-cil; do \
-		rm -rf debian/$$i && mkdir -p -m755 debian/$$i/usr/lib/cli/uno-`echo $$i | perl -pi -e 's/.*(\d.\d).*/$$1/'`; \
-		mv $(PKGDIR)-common/$(OODIR)/program/`echo $$i | sed -e "s/libuno-//" | sed -e "s/-cil$$//" | sed -e "s/-/_/" | perl -pi -e 's/\d.\d//'`.dll* \
-			debian/$$i/usr/lib/cli/uno-`echo $$i | perl -pi -e 's/.*(\d.\d).*/$$1/'`; \
-	done
-endif
 
 	touch $@
 
