@@ -559,9 +559,7 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
 	GCJ_VERSION = $(shell basename `readlink $(JAVA_HOME)/bin/gcj` | sed -e s/gcj-//)
 	GCJ_DBTOOL = gcj-dbtool-$(GCJ_VERSION)
-	SYSTEM_XALAN=y
-	SYSTEM_XERCES=y
-	SYSTEM_XML_APIS=y
+	SYSTEM_SAXON=y
 ifneq "$(ETCH_BACKPORT)" "y"
 	GCJ_JAWT_DEPENDS= $(shell dpkg -S /usr/lib/`readlink /usr/lib/libgcj_bc.so.1` | cut -d: -f1 | sed -e s/$$/-awt/)
 else
@@ -587,27 +585,10 @@ endif
 export JAVA_HOME
 	CONFIGURE_FLAGS += --with-jdk-home=$(JAVA_HOME)
 	JAVA_COMMON_DEPENDS= , openoffice.org$(VER)-java-common (>> 2.2.0-4)
-  ifeq "$(SYSTEM_XERCES)" "y"
-	CONFIGURE_FLAGS += --with-system-xerces
-	BUILD_DEPS += , libxerces2-java [$(OOO_JAVA_ARCHS)]
-	JAVA_COMMON_JAVA_DEPENDS+= , libxerces2-java
-    ifneq "$(ETCH_BACKPORT)" "y"
-	JAVA_GCJ_DEPENDS += , libxerces2-java-gcj
-    endif
-  endif
-  ifeq "$(SYSTEM_XALAN)" "y"
-	CONFIGURE_FLAGS += --with-system-xalan
-	BUILD_DEPS += , libxalan2-java (>= 2.6.0-1) [$(OOO_JAVA_ARCHS)]
-	JAVA_COMMON_JAVA_DEPENDS+= , libxalan2-java (>= 2.6.0-1)
-	# force using system xml-apis.jar
-	SYSTEM_XML_APIS=y
-    ifneq "$(ETCH_BACKPORT)" "y"
-	JAVA_GCJ_DEPENDS += , libxalan2-java-gcj
-    endif
-  endif
-  ifeq "$(SYSTEM_XML_APIS)" "y"
-	CONFIGURE_FLAGS += --with-system-xml-apis
-	# xml-apis.jar is already a link in xalan, see above
+  ifeq "$(SYSTEM_SAXON)" "y"
+	CONFIGURE_FLAGS += --with-system-saxon --with-saxon-jar=/usr/share/java/saxonb.jar
+	BUILD_DEPS += , libsaxonb-java [$(OOO_JAVA_ARCHS)]
+	JAVA_COMMON_JAVA_DEPENDS+= , libsaxonb-java
   endif
   ifeq "$(DIST)" "Debian"
 	BUILD_DEPS += , mingw32 [$(OOO_JAVA_ARCHS)]
@@ -2698,17 +2679,9 @@ endif
 
 ifeq "$(ENABLE_JAVA)" "y"
 	# symlink jars we use externally
-  ifeq "$(SYSTEM_XALAN)" "y"
-	ln -sf /usr/share/java/xalan2.jar \
-		$(PKGDIR)-java-common/$(OODIR)/program/classes/xalan.jar
-  endif
-  ifeq "$(SYSTEM_XML_APIS)" "y"
-	ln -sf /usr/share/java/xml-apis.jar \
-		$(PKGDIR)-java-common/$(OODIR)/program/classes/xml-apis.jar
-  endif
-  ifeq "$(SYSTEM_XERCES)" "y"
-	ln -sf /usr/share/java/xercesImpl.jar \
-		$(PKGDIR)-java-common/$(OODIR)/program/classes/xercesImpl.jar
+  ifeq "$(SYSTEM_SAXON)" "y"
+	ln -sf /usr/share/java/saxonb.jar \
+		$(PKGDIR)-java-common/$(OODIR)/program/classes/saxon9.jar
   endif
   ifeq "$(USE_SYSTEM_BSH)" "y"
 	ln -sf /usr/share/java/bsh.jar \
@@ -3260,7 +3233,6 @@ get-orig-source:
 		wget http://download.go-oo.org/$(MWS)/$(TAG)-writer.tar.bz2 && \
 		wget http://download.go-oo.org/$(MWS)/$(TAG)-swext.tar.bz2 && \
 		tar xfvj $(TAG)-libs_extern_sys.tar.bz2 && \
-		rm -rf $(TAG)-libs_extern_sys/xalan && \
 		for i in da_DK en_GB nl_NL ru_RU; do \
 			rm $(TAG)-libs_extern_sys/dictionaries/$$i/hyph_$${i}.dic; \
 		done && \
