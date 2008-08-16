@@ -181,6 +181,8 @@ ENABLE_RANDR=y
 ifeq "$(BUILD_GTK)" "y"
   PACKAGE_NPSOPLUGIN=y
 endif
+# y means Koheis solver
+USE_SCSOLVER=n
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
@@ -210,7 +212,6 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
 		--with-external-hyph-dir=/usr/share/myspell/dicts \
 		--with-external-thes-dir=/usr/share/myspell/dicts \
 		--with-split \
-		--disable-scsolver \
 		--with-additional-sections="$(ADDITIONAL_SECTIONS)"
 
 # distro-configs is too late; it already gets searched in unpack
@@ -791,6 +792,12 @@ else
   endif
 endif
 
+ifeq "$(USE_SCSOLVER)" "y"
+	ADDITIONAL_SECTIONS += CalcSolver
+else
+	CONFIGURE_OPTIONS += --disable-scsolver
+endif
+
 ifeq "$(BUILD_GTK)" "n"
 	CONFIGURE_FLAGS+= --disable-gtk
 	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-gtk -Nopenoffice.org$(VER)-gnome
@@ -1348,6 +1355,10 @@ endif
 
 	perl -pi -e 's/Package: openoffice.org$(VER)-help-en-us/Package: openoffice.org$(VER)-help-en-us\nReplaces: openoffice.org$(VER)-common (<< 1:3.0.0~dev300m28)/' debian/control
 
+ifeq "$(USE_SCSOLVER)" "y"
+	perl -pi -e 's/spreadsheet component for OpenOffice.org.$$/spreadsheet component for OpenOffice.org.\n It also contains the scsolver calc solver, replacing Suns solver./' debian/control
+endif
+
 	python debian/scripts/joinctrl.py < debian/control > debian/control.tmp
 	mv debian/control.tmp debian/control
 
@@ -1739,6 +1750,11 @@ $(STAMP_DIR)/maintscripts: debian/shell-lib.sh $(wildcard debian/*.preinst.in) $
 	    fi; \
 	  done; \
 	done
+
+ifneq "$(USE_SCSOLVER)" "y"
+	rm -f debian/openoffice.org-calc.postinst
+	rm -f debian/openoffice.org-calc.prerm
+endif
 
 	touch $@
 
@@ -2433,6 +2449,11 @@ ifeq "$(ENABLE_PDFIMPORT)" "y"
 		$(PKGDIR)-pdfimport/$(OOBRANDDIR)/share/extension/install/pdfimport.oxt
 endif
 
+ifeq "$(USE_SCSOLVER)" "y"
+	install -D -m644 $(SOURCE_TREE)/scsolver/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/scsolver.uno.oxt \
+		$(PKGDIR)-calc/$(OOBRANDDIR)/share/extension/install/scsolver.uno.oxt
+endif
+
 	for i in $(ARCH_DEP_PACKAGES); do \
 		install -D -m644 debian/presubj \
 			debian/$$i/usr/share/bug/$$i/presubj; \
@@ -2448,6 +2469,10 @@ endif
 				debian/$$i/usr/share/bug/$$i/script; \
 		fi ;\
 	done
+ifneq "$(USE_SCSOLVER)" "y"
+	rm -f debian/openoffice.org-calc.script
+	rm -f debian/openoffice.org-calc/usr/share/bug/openoffice.org-calc/script
+endif
 
 	touch $@
 
@@ -2925,6 +2950,10 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 		done; \
 	done
 	dh_installchangelogs -s -Nlibmythes-dev ooo-build/ChangeLog
+ifeq "$(USE_SCSOLVER)" "y"
+	install -m644 $(SOURCE_TREE)/scsolver/ChangeLog \
+		$(PKGDIR)-calc/usr/share/doc/openoffice.org-calc/ChangeLog.scsolver
+endif
 ifneq "$(USE_EXTERNAL_MYTHES)" "y"
 	dh_installchangelogs -plibmythes-dev
 endif
