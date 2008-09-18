@@ -63,7 +63,7 @@ unexport LS_COLORS
 
 MWS=OOO300
 #MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)" | cut -d~ -f2 | sed -e s/$(shell echo $(MWS) | tr A-Z a-z)//)
-MILESTONE=m5
+MILESTONE=m6
 TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
 #TAG=$(MWS)_$(MILESTONE)
 OOO_BUILD_BRANCH=ooo-build-3-0
@@ -2429,17 +2429,22 @@ endif
 		rm -rf $(PKGDIR)-$$i/$(OODIR)/program/resource; \
 	done
 
-	# move rpt stuff into -report-builder
+ifneq "$(ENABLE_REPORTDESIGN)" "y"
+	# unneeded. a no-Java arch, so the report-builder can't work anyway.
+	# (and we need to remove it here anyway as it otherwise would end up
+	# in -base)
+	rm -f $(PKGDIR)-base/$(OODIR)/program/librpt*
+else
+	# move rpt stuff into -report-builder-bin
+	rm -rf $(PKGDIR)-report-builder
 	rm -rf $(PKGDIR)-report-builder-bin
 	mkdir -p $(PKGDIR)-report-builder-bin/$(OODIR)/program
 	mv $(PKGDIR)-base/$(OODIR)/program/librpt* \
 		$(PKGDIR)-report-builder-bin/$(OODIR)/program
-ifeq "$(ENABLE_REPORTDESIGN)" "y"
-	rm -rf $(PKGDIR)-report-builder
   ifeq "$(ENABLE_JAVA)" "y"
-	# install this; we need to register this ourselved later in
-	# the maintainer scripts. This is intended upstream (**rpt* stuff
-	# in 2.3 and the actual report builde as an extension, without which
+	# install this; we need to register this ourselves later in
+	# the maintainer scripts. This is intended upstream (*rpt* stuff
+	# in OOo and the actual report builder as an extension, without which
 	# the *rpt* stuff is a no-op.
 	install -D -m644 $(SOURCE_TREE)/reportbuilder/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/sun-report-builder.oxt \
 		$(PKGDIR)-report-builder/$(OOBRANDDIR)/share/extension/install/sun-report-builder.oxt
