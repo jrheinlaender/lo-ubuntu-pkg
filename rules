@@ -2518,6 +2518,7 @@ $(STAMP_DIR)/broffice: $(STAMP_DIR)/install $(STAMP_DIR)/install-arch $(STAMP_DI
 	mkdir -p debian/broffice.org$(VER)/usr/bin
 	mkdir -p debian/broffice.org$(VER)/usr/share/applications
 	mkdir -p debian/broffice.org$(VER)/usr/share/application-registry
+	mkdir -p debian/broffice.org$(VER)/usr/share/mimelnk/application
 	mkdir -p debian/broffice.org$(VER)/$(OOBRANDDIR)/program/resource
 	mkdir -p debian/broffice.org$(VER)/$(OOBRANDDIR)/share/registry/modules/org/openoffice/Setup
 	cat $(PKGDIR)-common/$(OOBRANDDIR)/program/bootstraprc \
@@ -2542,6 +2543,9 @@ $(STAMP_DIR)/broffice: $(STAMP_DIR)/install $(STAMP_DIR)/install-arch $(STAMP_DI
 			| sed -e "s/ooff/broff/" | sed -e "s/OpenO/BrO/" \
 			> debian/broffice.org$(VER)/usr/share/applications/ooo-$$i.desktop; \
 	done
+	cat $(PKGDIR)-common//usr/share/mimelnk/application/vnd.openofficeorg.extension.desktop \
+		| sed -e "s/ooff/broff/" | sed -e "s/OpenO/BrO/" \
+		> debian/broffice.org//usr/share/mimelnk/application/vnd.openofficeorg.extension.desktop
 	cat $(PKGDIR)-common/usr/share/applications/ooo-startcenter.desktop \
 		| sed -e "s/ooff/broff/" | sed -e "s/OpenO/BrO/" \
 		 > debian/broffice.org$(VER)/usr/share/applications/ooo-startcenter.desktop
@@ -2951,6 +2955,21 @@ ifeq "$(DIST)" "Debian"
 			$(SOURCE_TREE)/ooo_custom_images/nologo/introabout/intro.bmp \
 			$(PKGDIR)-common/$(OOBRANDDIR)/program/intro.bmp; \
 	fi
+endif
+
+ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
+	# menu files from sysui
+	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/openoffice.org >/dev/null; pwd`" ;\
+	mkdir -p -m755 $(PKGDIR)-common/usr/share/mimelnk/application ;\
+	sed -e 's,Name=$${PRODUCTNAME} $${PRODUCTVERSION},Name=OpenOffice.org $(VER),' \
+	    -e 's/  / /' \
+	    < $$dirname/extension.desktop \
+	    > $(PKGDIR)-common/usr/share/mimelnk/application/vnd.openofficeorg.extension.desktop || exit 1
+	for i in 16x16 22x22 24x24 32x32 48x48; do \
+		install -D -m644 $(CURDIR)/ooo-build/desktop/mimetypes/$$i/application-vnd.openofficeorg.extension.png \
+			$(PKGDIR)-common/usr/share/icons/gnome/mimetypes/$$i/application-vnd.openofficeorg.extension.png; \
+	done
+	perl -pi -e 's/Icon=openoffice.org$(VER)-extension/Icon=application-vnd.openofficeorg.extension.png/' $(PKGDIR)-common/usr/share/mimelnk/application/vnd.openofficeorg.extension.desktop
 endif
 
 	# fix permission
