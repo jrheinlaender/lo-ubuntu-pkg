@@ -106,7 +106,7 @@ ifeq "$(ARCH)" "ia64"
   JDK=java-gcj-compat
 endif
 ENABLE_MONO=y
-MONO_MINVER= (>= 1.2.3)
+MONO_MINVER= (>= 2.0.1)
 USE_SYSTEM_HUNSPELL=y
 HUNSPELL_MIN_VER= (>= 1.1.5-2)
 SYSTEM_ALTLINUXHYPH=y
@@ -248,6 +248,7 @@ endif
 # Debian Lenny
 ifeq "$(LENNY_BACKPORT)" "y"
   USE_SYSTEM_LUCENE=n
+  MONO_MINVER= (>= 1.2.3)
 endif
 
 #############
@@ -649,9 +650,13 @@ ifeq "$(USE_SYSTEM_DMAKE)" "y"
 endif
 
 ifneq "$(OOO_MONO_ARCHS)" ""
+  ifneq "$(LENNY_BACKPORT)" "y"
+	BUILD_DEPS += , mono-devel $(MONO_MINVER) [$(OOO_MONO_ARCHS)], libmono-dev $(MONO_MINVER) [$(OOO_MONO_ARCHS)], mono-utils $(MONO_MINVER) [$(OOO_MONO_ARCHS)], cli-common-dev (>= 0.5.7) [$(OOO_MONO_ARCHS)]
+  else
 	# mono-gmcs for gmcs itself and mkbundle2
 	# mono-mcs for mcs itself and al
 	BUILD_DEPS += , mono-mcs $(MONO_MINVER) [$(OOO_MONO_ARCHS)], mono-gmcs $(MONO_MINVER) [$(OOO_MONO_ARCHS)], libmono-dev $(MONO_MINVER) [$(OOO_MONO_ARCHS)], mono-utils $(MONO_MINVER) [$(OOO_MONO_ARCHS)], cli-common-dev (>= 0.5.7) [$(OOO_MONO_ARCHS)], mono-1.0-devel [$(OOO_MONO_ARCHS)], mono-2.0-devel [$(OOO_MONO_ARCHS)]
+  endif
 	BUILD_DEPS += , mono-jit (>= 1.9.1+dfsg-2) [amd64]
 endif
 ifeq "$(ENABLE_MONO)" "y"
@@ -659,6 +664,9 @@ ifeq "$(ENABLE_MONO)" "y"
 	MONO_SHARED_DIR = $(CURDIR)
 	export MONO_SHARED_DIR
 	CONFIGURE_FLAGS+= --enable-mono
+  ifneq "$(LENNY_BACKPORT)" "y"
+	CONFIGURE_FLAGS += MCS=/usr/bin/csc GMCS=/usr/bin/csc MKBUNDLE2=/usr/bin/mkbundle
+  endif
 	DBG_DBG_SUGGESTS += , mono-jit-dbg [$(OOO_MONO_ARCHS)], libmono0-dbg [$(OOO_MONO_ARCHS)], mono-dbg [$(OOO_MONO_ARCHS)]
 else
 	CONFIGURE_FLAGS+= --disable-mono
