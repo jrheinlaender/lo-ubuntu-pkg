@@ -14,7 +14,7 @@
 ###################################################################################
 
 #VER:=3
-OOVER:=3.0
+OOVER:=3.1
 SHELL:=/bin/bash
 PKGDIR:=debian/openoffice.org$(VER)
 OODIRNAME=openoffice$(VER)
@@ -29,8 +29,8 @@ PKGSOURCE := $(shell dpkg-parsechangelog | awk '/^Source:/ {print $$2;exit 0}')
 SOURCE_VERSION:=$(shell head -1 debian/changelog | cut -d\( -f2 | cut -d\) -f1)
 UPSTREAM_VERSION:=$(shell echo "$(SOURCE_VERSION)"| cut -d: -f2 | cut -d- -f1)
 BASE_VERSION:=$(shell echo $(SOURCE_VERSION) | cut -d: -f1):$(UPSTREAM_VERSION)
-#HELP_L10N_VIRTUAL_VERSION:=$(shell echo $(UPSTREAM_VERSION) | cut -d: -f2 | tr [~] [\\-])
-HELP_L10N_VIRTUAL_VERSION:=3.0
+HELP_L10N_VIRTUAL_VERSION:=$(shell echo $(UPSTREAM_VERSION) | cut -d: -f2 | tr [~] [\\-])
+#HELP_L10N_VIRTUAL_VERSION:=3.0
 
 BINARY_VERSION=$(SOURCE_VERSION)
 #BINARY_VERSION=1:2.4.0-$(shell dpkg-parsechangelog  | grep urgency \
@@ -61,12 +61,12 @@ export DH_ALWAYS_EXCLUDE=CVS:.svn:.bzr
 # work around tcsh bugs.debian.org/339034: tcsh: Unknown colorls variable `su'
 unexport LS_COLORS
 
-MWS=OOO300
+MWS=DEV300
 MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)" | cut -d~ -f2 | sed -e s/$(shell echo $(MWS) | tr A-Z a-z)//)
 #MILESTONE=m9
 TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
 #TAG=$(MWS)_$(MILESTONE)
-OOO_BUILD_BRANCH=ooo-build-3-0-1
+#OOO_BUILD_BRANCH=ooo-build-3-1
 ifeq "" "$(OOO_BUILD_BRANCH)"
 	OOO_BUILD_SVN=svn://svn.gnome.org/svn/ooo-build/trunk
 else
@@ -130,6 +130,7 @@ USE_SYSTEM_SABLOT=n
 USE_LIBXSLT=y
 USE_EXTERNAL_MYTHES=n
 USE_SYSTEM_ICU=y
+ICU_MINVER= (>= 4.0.0)
 USE_SYSTEM_LIBWPG=y
 USE_SYSTEM_LIBWPS=y
 USE_SYSTEM_XMLSEC=n
@@ -253,6 +254,7 @@ endif
 # Debian Lenny
 ifeq "$(LENNY_BACKPORT)" "y"
   USE_SYSTEM_LUCENE=n
+  ICU_MINVER=
   MONO_MINVER= (>= 1.2.3)
   MONO2=n
 endif
@@ -748,8 +750,7 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
 endif
 
 ifeq "$(USE_SYSTEM_ICU)" "y"
-	# 34 and 36 provide this and 38 changed the real name.
-	BUILD_DEPS += , libicu-dev
+	BUILD_DEPS += , libicu-dev $(ICU_MINVER)
 	CONFIGURE_FLAGS += --with-system-icu
 endif
 
