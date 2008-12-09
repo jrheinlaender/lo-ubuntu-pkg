@@ -100,7 +100,6 @@ else
   endif
 endif
 PACKAGE_TTF_OPENSYMBOL=y
-PACKAGE_PCVSLIB=n
 BUILD_JARS_NATIVE=y
 BUILD_BINFILTERS=y
 BUILD_ONLY_EN_US=n
@@ -472,11 +471,6 @@ ifeq "$(ENABLE_JAVA)" "y"
 	WRITER_W2L_DEP = openoffice.org-writer2latex
     endif
   endif
-endif
-
-ifeq "$(PACKAGE_PCVSLIB)" "y"
-	# for the tests
-	BUILD_DEPS += , cvs
 endif
 
 ifeq "$(RUN_SMOKETEST)" "y"
@@ -1301,10 +1295,6 @@ ifeq "$(PACKAGE_QA_TOOLS)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.qa.in
 endif
-ifeq "$(PACKAGE_PCVSLIB)" "y"
-	cat debian/control.pcvslib.in \
-		>> debian/control
-endif
 ifneq "$(OOO_NPSOPLUGIN_ARCHS)" ""
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.mozilla.in
@@ -1553,11 +1543,6 @@ endif
 		perl -pi -e 's,LD_LIBRARY_PATH=\"(.*)\",LD_LIBRARY_PATH=\"/usr/lib/libfakeroot:\1\",' $(SOURCE_TREE)/*.sh; \
 	fi
 
-ifeq "$(PACKAGE_PCVSLIB)" "y"
-	cd $(SOURCE_TREE)/solenv/bin/modules/PCVSLib; \
-		perl Makefile.PL && $(MAKE)
-endif
-
 	# DPKG is only set on with-EPM build what we don't do and the menu stuff
 	# is only built wenn DPKG is set.. Same with PKGFORMAT.
 	cd $(SOURCE_TREE)/sysui; \
@@ -1579,10 +1564,6 @@ endif
 test: $(STAMP_DIR)/test
 $(STAMP_DIR)/test: $(STAMP_DIR)/build
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
-ifeq "$(PACKAGE_PCVSLIB)" "y"
-	-cd $(SOURCE_TREE)/solenv/bin/modules/PCVSLib; \
-		$(MAKE) test
-endif
 ifeq "$(RUN_UNIT_TESTS)" "y"
 	# build/run unit tests
 	-cd $(SOURCE_TREE)/instsetoo_native; \
@@ -1623,11 +1604,6 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/build $(STAMP_DIR)/test
 
 	rm -rf $(CURDIR)/debian/tmp
 	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(BUILD_LD_LIBRARY_PATH)" DESTDIR=$(CURDIR)/debian/tmp $(MAKE) install
-
-ifeq "$(PACKAGE_PCVSLIB)" "y"
-	cd $(SOURCE_TREE)/solenv/bin/modules/PCVSLib; \
-		$(MAKE) install DESTDIR=$(CURDIR)/debian/libpcvslib-perl SITEPREFIX=/usr
-endif
 
 	# these have to go to -core, otherwise we get problems with the new
 	# dpkg-shibdeps...
@@ -3239,10 +3215,6 @@ ifeq "$(PACKAGE_SDK)" "y"
 endif
 	dh_installdocs -i -A debian/README.Debian \
 		debian/tmp/pkg/openoffice.org-common/$(OOBRANDDIR)/README
-ifeq "$(PACKAGE_PCVSLIB)" "y"
-	dh_installexamples -plibpcvslib-perl \
-		$(SOURCE_TREE)/solenv/bin/modules/PCVSLib/samples/*
-endif
 	dh_installman -i
 	for i in `find $(PKGDIR)-common -type l -name "o*.1"`; do \
 		mv $$i $$i.gz; \
@@ -3269,7 +3241,7 @@ ifeq "$(ENABLE_MONO)" "y"
 	dh_makeclilibs -i
 	dh_clideps -i
 endif
-	dh_gencontrol -i $(DEBHELPER_OPTIONS) -Nlibpcvslib-perl \
+	dh_gencontrol -i $(DEBHELPER_OPTIONS) \
 		-Nopenoffice.org$(VER)-report-builder \
 		-Nopenoffice.org$(VER)-wiki-publisher \
 		-Nlibuno-cli-basetypes1.0-cil \
@@ -3312,10 +3284,6 @@ ifeq "$(ENABLE_REPORTDESIGN)" "y"
 		-V'base-version=$(BASE_VERSION)' \
 		-V'report-builder-jar-depends=$(REPORT_BUILDER_JAR_DEPENDS)' \
 		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep "<version" $(SOURCE_TREE)/reportbuilder/util/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
-endif
-ifeq "$(PACKAGE_PCVSLIB)" "y"
-	dh_gencontrol -plibpcvslib-perl -- \
-		-v0.02+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
 endif
 	dh_md5sums -i
 	dh_builddeb -i $(DEBHELPER_OPTIONS) $(BUILDDEB_OPTIONS)
