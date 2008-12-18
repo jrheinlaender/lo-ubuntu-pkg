@@ -14,8 +14,9 @@ Changing the build behaviour with DEB_BUILD_OPTIONS
 ---------------------------------------------------
 These options are supported:
 
-  debug     - enable debug build.  See the buildprj target for instructions
-              about building individual modules with debug.
+  debug     - build with FULL debug symbols. Default is just to build
+	      with SMALL ones since the deb otherwise gets too big
+	      ((>400M, ca. 1GB I-S))
 
   ccache    - enable the use of ccache during the build.  This is highly
 	      recommended if you plan on building the package more than once,
@@ -26,18 +27,18 @@ These options are supported:
 	      $DEB_BUILD_OPTIONS under pbuilder (this has no effect on speed,
 	      though because the cache does not persist in pbuilder)
 
-  num-cups=<n>
+  parallel=<n>
             - enable n projects to be built in parallel (-P flag to build.pl).
               The log output can get a little confusing, and some projects
 	      may fail still. You need to remove ooo-build/config.status if you
 	      change this value after interrupting a build.
 	      
-  from=<prj>
-            - Resume build from the specified project.  Useful if a build is 
-	      interrupted.
-
   lang=<code>
   	    - Build only the specified language
+
+  nocheck
+	    - disable run of tests when enabled in rules
+
 
 The targets that are built during the package build
 ---------------------------------------------------
@@ -63,33 +64,11 @@ helppkgs           - Installs the help packages
 
 maintscripts       - Generates  the maintainer scripts
 
-- clean targets -
-
-In addition to the normal 'clean', there are some partial clean operations for
-saving space without having to completely rebuild the packages:
-
-clean-debdir       - Clean up the package directories (about 830M).  Rebuilds
-                     start at 'setup'.
-
-clean-instsetoo    - Clean up the installation sets and package directories
-                     (about 2.5 Gb!).  Rebuilds start at 'insetsetoo'.
-
-clean-objectdirs   - Clean compilation results, but leave solver (cleans about
-		     600Mb in addition to instsetoo).  Rebuilds start at
-		     'dmake, but you can still develop and build individual
-                     projects.  This is the equivalent of downloading a
-                     preinstalled solver tree.
-
-- other targets -
-
 get-ooo-build      - get ooo-build
 download           - downloads needed files from ooo.ximian.com, normally
                      not needed, already done
-cvsupdate          - as the name says ;-)
-
-environment        - show build environment
-
-makebinariestar    - make tarball of binaries in the output tree
+get-orig-source	   - gets original source (only works for milestones right now)
+vcsupdate          - as the name says ;-)
 
 Build system file layout
 ========================
@@ -101,7 +80,10 @@ ooo-build/:
   patches (patches/); also the installation scripts for installing into
   debian/tmp/pkg (-> ooinstall, package-ooo).
 
-  For adding patches; please do so in ooo-build.
+  For adding patches; please do so in ooo-build. To get a source tree
+  unpacked and patched run:
+	debian/rules configure
+	cd ooo-build && make patch.apply
 
   See README and www/* for documentation.
 

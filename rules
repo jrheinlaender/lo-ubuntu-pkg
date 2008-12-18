@@ -1,40 +1,30 @@
 #!/usr/bin/make -f
-###################################################################################
+################################################################################
 # OpenOffice.org source package rules file
 #
 # Please see debian/README for detailed documentation about the build system, and
 # how to build OpenOffice.org.
-###################################################################################
+################################################################################
 # Authors:
 # Chris Halls <halls@debian.org>
 # Rene Engelhard <rene@debian.org>
-# Copyright 2002-2006 Software in the Public Interest, Inc.
+# Copyright 2002-2008 Software in the Public Interest, Inc.
 # Licensed under the GNU General Public License, version 2.  See the file
 # /usr/share/common-licenses/GPL or <http://www.gnu.org/copyleft/gpl.txt>.
-###################################################################################
-
-#VER:=3
-OOVER:=3.0
-SHELL:=/bin/bash
-PKGDIR:=debian/openoffice.org$(VER)
-OODIRNAME=openoffice$(VER)
-OOBRANDDIR:=usr/lib/$(OODIRNAME)
-OOBASISDIR:=$(OOBRANDDIR)/basis$(OOVER)
-OOSDKDIR:=$(OOBRANDDIR)/sdk
-OOUREDIR:=usr/lib/ure
-# compatability
-OODIR:=$(OOBASISDIR)
+################################################################################
 
 PKGSOURCE := $(shell dpkg-parsechangelog | awk '/^Source:/ {print $$2;exit 0}')
 SOURCE_VERSION:=$(shell head -1 debian/changelog | cut -d\( -f2 | cut -d\) -f1)
 UPSTREAM_VERSION:=$(shell echo "$(SOURCE_VERSION)"| cut -d: -f2 | cut -d- -f1)
 BASE_VERSION:=$(shell echo $(SOURCE_VERSION) | cut -d: -f1):$(UPSTREAM_VERSION)
-#HELP_L10N_VIRTUAL_VERSION:=$(shell echo $(UPSTREAM_VERSION) | cut -d: -f2 | tr [~] [\\-])
-HELP_L10N_VIRTUAL_VERSION:=3.0
-
 BINARY_VERSION=$(SOURCE_VERSION)
 #BINARY_VERSION=1:2.4.0-$(shell dpkg-parsechangelog  | grep urgency \
 	| awk '{print $$2}' | sed -e s/"("// -e s/")"// | cut -d"-" -f2)
+#HELP_L10N_VIRTUAL_VERSION:=$(shell echo $(UPSTREAM_VERSION) | cut -d: -f2 | tr [~] [\\-])
+HELP_L10N_VIRTUAL_VERSION:=3.0
+#VER:=3
+OOVER:=3.0
+
 PACKAGES := $(shell dh_listpackages)
 ARCH_INDEP_PACKAGES := $(shell dh_listpackages -i)
 ARCH_DEP_PACKAGES := $(shell dh_listpackages -s)
@@ -47,6 +37,16 @@ DIST := $(shell lsb_release -is)
 DISTREL := sid
 DEB_HOST_GNU_TYPE   ?= $(shell dpkg-architecture -qDEB_HOST_GNU_TYPE)
 DEB_BUILD_GNU_TYPE  ?= $(shell dpkg-architecture -qDEB_BUILD_GNU_TYPE)
+SHELL:=/bin/bash
+
+PKGDIR:=debian/openoffice.org$(VER)
+OODIRNAME=openoffice$(VER)
+OOBRANDDIR:=usr/lib/$(OODIRNAME)
+OOBASISDIR:=$(OOBRANDDIR)/basis$(OOVER)
+OOSDKDIR:=$(OOBRANDDIR)/sdk
+OOUREDIR:=usr/lib/ure
+# compatability
+OODIR:=$(OOBASISDIR)
 
 # Figure out who's building this package.
 OOO_VENDOR:=Debian
@@ -192,6 +192,7 @@ ENABLE_PRESENTER_CONSOLE=y
 ENABLE_PDFIMPORT=y
 BUILD_GTK=y
 ENABLE_EVO2=y
+# broken!
 ENABLE_GIO=n
 ENABLE_RANDR=y
 ifeq "$(BUILD_GTK)" "y"
@@ -425,16 +426,26 @@ endif
 	BUILD_DEPS += , libdb$(DBVER)-dev
 
 ifneq "$(BUILD_DBG_PACKAGE)" "y"
+	# build with small symbols anyway
 	SMALL_SYMBOLS = y
 else
-	# -g gives a far too big deb (>400M, ca. 1GB I-S)
+  # -g gives a far too big deb (>400M, ca. 1GB I-S)
+  ifeq (debug,$(findstring debug,$(DEB_BUILD_OPTIONS)))
+	# ooo-build defaults to --enable-symbols (without SMALL)
+	SMALL_SYMBOLS = n
+  else
 	SMALL_SYMBOLS = y
+  endif
 	DBG_DBG_SUGGESTS+= , libc6.1-dbg [alpha ia64], libc0.1-dbg [kfreebsd-i386 kfreebsd-amd64], libc0.3-dbg [hurd-i386], libc6-dbg [!ia64 !alpha !kfreebsd-i386 !kfreebsd-amd64 !hurd-i386], ure-dbg, libatk1.0-dbg, libglib2.0-0-dbg, libgnomevfs2-0-dbg, libstdc++6-$(shell g++ --version | head -n 1 | cut -d' ' -f3 | cut -d'.' -f1,2)-dbg, libx11-6-dbg, libxext6-dbg, libxaw7-dbg, libxml2-dbg, libgtk2.0-0-dbg, libxau6-dbg, libice6-dbg, libsm6-dbg, libxinerama1-dbg, libfontconfig1-dbg
   ifeq "$(USE_LIBCURL4)" "y"
 	DBG_DBG_SUGGESTS+= , libcurl3-dbg
   else
 	DBG_DBG_SUGGESTS+= , libcurl4-dbg
   endif
+endif
+# Small symbols?
+ifeq "$(SMALL_SYMBOLS)" "y"
+	CONFIGURE_FLAGS += --enable-symbols=SMALL
 endif
 
 ifeq "$(BUILD_PYUNO)" "y"
@@ -924,16 +935,6 @@ endif
 ifeq (ccache,$(findstring ccache,$(DEB_BUILD_OPTIONS)))
 	CONFIGURE_FLAGS += --with-gcc-speedup=ccache
 endif
-
-# Small symbols?
-ifeq "$(SMALL_SYMBOLS)" "y"
-	CONFIGURE_FLAGS += --enable-symbols=SMALL
-endif
-
-# Restart build from a particular project?
-# DEB_BUILD_OPTIONS=from=<projectname>
-BUILD_FROM=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^\(.*,\)\?from=\([a-zA-Z0-9]\+\).*$$/\2/p')
-export BUILD_FROM
 
 # Build n projects in parallel?
 # DEB_BUILD_OPTIONS=parallel=<n>
@@ -2568,20 +2569,28 @@ $(STAMP_DIR)/broffice: $(STAMP_DIR)/install $(STAMP_DIR)/install-arch $(STAMP_DI
 			> debian/broffice.org$(VER)/$(OOBRANDDIR)/program/resource/ooo$$iso.res; \
 		fi; \
 	done
-	for i in writer calc draw impress math base; do \
+	for i in writer calc draw impress math base startcenter; do \
 		cat $(PKGDIR)-$$i/usr/share/applications/ooo-$$i.desktop \
 			| sed -e "s/ooff/broff/" | sed -e "s/OpenO/BrO/" \
 			> debian/broffice.org$(VER)/usr/share/applications/ooo-$$i.desktop; \
 	done
-	cat $(PKGDIR)-common//usr/share/mimelnk/application/vnd.openofficeorg.extension.desktop \
-		| sed -e "s/ooff/broff/" | sed -e "s/OpenO/BrO/" \
-		> debian/broffice.org//usr/share/mimelnk/application/vnd.openofficeorg.extension.desktop
-	cat $(PKGDIR)-common/usr/share/applications/ooo-startcenter.desktop \
-		| sed -e "s/ooff/broff/" | sed -e "s/OpenO/BrO/" \
-		 > debian/broffice.org$(VER)/usr/share/applications/ooo-startcenter.desktop
-	cat $(PKGDIR)-common/usr/share/application-registry/openoffice.applications \
-		| sed -e "s/ooff/broff/" | sed -e "s/OpenO/BrO/" \
-		 > debian/broffice.org$(VER)/usr/share/application-registry/openoffice.applications
+	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/broffice.org >/dev/null; pwd`" ;\
+	mkdir -p -m755 debian/broffice.org/usr/share/mimelnk/application ;\
+	sed -e 's,Comment=Extension,Comment=BrOffice.org $(VER) Extension,' \
+	    -e 's,Icon=brofficeorg[0123456789]-extension,Icon=application-vnd.openofficeorg.extension.png,' \
+	    -e 's/  / /' \
+	    < $$dirname/extension.desktop \
+	    > debian/broffice.org/usr/share/mimelnk/application/vnd.openofficeorg.extension.desktop || exit 1
+	mkdir -p debian/broffice.org/usr/share/application-registry && \
+	cat $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/broffice.org/openoffice.applications \
+		| sed -e s/OFFICENAME/broffice/g \
+		| sed -e s/\%PRODUCTNAME/BrOffice.org/g \
+		> debian/broffice.org/usr/share/application-registry/openoffice.applications
+	rm -f debian/broffice.org/usr/share/mime-info/openoffice.keys; \
+	mkdir -p debian/broffice.org/usr/share/mime-info/
+	for i in $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/broffice.org/*.keys; do \
+		cat $$i >> debian/broffice.org/usr/share/mime-info/openoffice.keys; \
+	done
 	if dpkg-parsechangelog | grep urgency | grep -q "\~.*m[0123456789]\+"; then \
 		 debian/scripts/fix_image_rgb \
 			 $(SOURCE_TREE)/ooo_custom_images/dev_nologo_broffice/introabout/intro.bmp \
@@ -2595,6 +2604,11 @@ $(STAMP_DIR)/broffice: $(STAMP_DIR)/install $(STAMP_DIR)/install-arch $(STAMP_DI
 		debian/broffice.org$(VER)/$(OOBRANDDIR)/program/about.bmp
 	cd debian/broffice.org$(VER)/usr/bin && ln -s ooffice broffice
 
+	# this is referenced in .keys/.applications
+	for i in `find $(PKGDIR)-common/usr/share/icons -name "openofficeorg*png"`; do
+		ln -s `basename $$i` `echo $$i | sed -e s,openoffice.org-common,broffice.org,`; \
+	done
+ 
 	touch $@
 
 # Install files generated by setup into arch-independent package directories
@@ -2641,7 +2655,7 @@ endif
 	# install .applications, .keys, .mime and openoffice.org.xml for
 	# shared-mime-info
 	mkdir -p $(PKGDIR)-common/usr/share/application-registry && \
-	cat $(SOURCE_TREE)/sysui/desktop/mimetypes/openoffice.applications \
+	cat $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/openoffice.org/openoffice.applications \
 		| sed -e s/OFFICENAME/ooffice/g \
 		| sed -e s/\%PRODUCTNAME/OpenOffice.org/g \
 		> $(PKGDIR)-common/usr/share/application-registry/openoffice.applications
@@ -2796,7 +2810,7 @@ endif
 	rm -rf $(PKGDIR)-common/$(OOBRANDDIR)/readmes
 	rm -f $(PKGDIR)-common/$(OOBRANDDIR)/share/readme/README*
 
-	# install Ximian desktop icons
+	# install ooo-build desktop icons
 	for r in 16x16 22x22 24x24 32x32 48x48; do \
 		mkdir -p $(PKGDIR)-common/usr/share/icons/hicolor/$$r/apps; \
 		cp ooo-build/desktop/$$r/*.png \
@@ -2993,14 +3007,15 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/openoffice.org >/dev/null; pwd`" ;\
 	mkdir -p -m755 $(PKGDIR)-common/usr/share/mimelnk/application ;\
 	sed -e 's,Comment=Extension,Comment=OpenOffice.org $(VER) Extension,' \
+	    -e 's,Icon=openofficeorg[0123456789]-extension,Icon=application-vnd.openofficeorg.extension.png,' \
 	    -e 's/  / /' \
 	    < $$dirname/extension.desktop \
 	    > $(PKGDIR)-common/usr/share/mimelnk/application/vnd.openofficeorg.extension.desktop || exit 1
+	# install ooo-build mimetype icon
 	for i in 16x16 22x22 24x24 32x32 48x48; do \
 		install -D -m644 $(CURDIR)/ooo-build/desktop/mimetypes/$$i/application-vnd.openofficeorg.extension.png \
 			$(PKGDIR)-common/usr/share/icons/hicolor/$$i/mimetypes/application-vnd.openofficeorg.extension.png; \
 	done
-	perl -pi -e "s/Icon=openofficeorg.*-extension/Icon=application-vnd.openofficeorg.extension.png/" $(PKGDIR)-common/usr/share/mimelnk/application/vnd.openofficeorg.extension.desktop
 endif
 
 	# fix permission
