@@ -2146,20 +2146,15 @@ endif
 ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	# menu files from sysui
 	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare >/dev/null; pwd`" ;\
-	for p in writer calc impress draw math base startcenter; do \
-		if [ "$$p" = "startcenter" ]; then d=common; else d=$$p; fi; \
-		mkdir -p -m755 $(PKGDIR)-$$d/usr/share/applications ;\
+	for p in writer calc impress draw math base; do \
+		mkdir -p -m755 $(PKGDIR)-$$p/usr/share/applications ;\
 		sed -e 's,Exec=$${UNIXPRODUCTNAME}$${PRODUCTVERSION} \(.*\) %U,Exec=ooffice$(VER) \1 %U,' \
 		    -e 's,Icon=$${WITHOUTDOTUNIXPRODUCTNAME}[0123456789]\+,Icon=ooo,' \
 		    -e 's,Name=$${PRODUCTNAME} $${PRODUCTVERSION},Name=OpenOffice.org $(VER),' \
 		    -e 's/  / /' \
 		   < $$dirname/$$p.desktop \
-		   > $(PKGDIR)-$$d/usr/share/applications/ooo$(VER)-$$p.desktop || exit 1 ;\
+		   > $(PKGDIR)-$$p/usr/share/applications/ooo$(VER)-$$p.desktop || exit 1 ;\
 	done
-	# use ooo-gulls; above snippet does ooo-startcenter, which doesn't exist
-	perl -pi -e 's/ooo-startcenter\.png/ooo-gulls\.png/' $(PKGDIR)-common//usr/share/applications/ooo$(VER)-startcenter.desktop
-	# remove Sun reference 
-	perl -pi -e 's/ Supported by Sun Microsystems.//' $(PKGDIR)-common//usr/share/applications/ooo$(VER)-startcenter.desktop
 
 ifeq "$(BUILD_GTK)" "y"
 	# qstart.desktop is different to the above. Should be handled by
@@ -2604,6 +2599,22 @@ endif
 	  install -m644 $$f $(CURDIR)/$(PKGDIR)-common/usr/share/icons/$$f || exit 1 ;\
 	done && cd ../../.. && rm -rf usr etc
 
+ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
+	# menu files from sysui
+	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare >/dev/null; pwd`" ;\
+	mkdir -p -m755 $(PKGDIR)-common/usr/share/applications ;\
+	sed -e 's,Exec=$${UNIXPRODUCTNAME}$${PRODUCTVERSION} \(.*\) %U,Exec=ooffice$(VER) \1 %U,' \
+	    -e 's,Icon=$${WITHOUTDOTUNIXPRODUCTNAME}[0123456789]\+-startcenter,Icon=ooo-gulls,' \
+	    -e 's,Name=$${PRODUCTNAME} $${PRODUCTVERSION},Name=OpenOffice.org $(VER),' \
+	    -e 's/  / /' \
+	   < $$dirname/startcenter.desktop \
+	   > $(PKGDIR)-common/usr/share/applications/ooo$(VER)-startcenter.desktop || exit 1
+	# remove Sun reference 
+	perl -pi -e 's/ Supported by Sun Microsystems.//' $(PKGDIR)-common//usr/share/applications/ooo$(VER)-startcenter.desktop
+	# invalid, according to lintian. make it shut up.
+	perl -pi -e 's/Application;//; s/X-Red-Hat-Base;//; s/X-SuSE-Core-Office;//; s/X-MandrivaLinux-.*;//;' $(PKGDIR)-common/usr/share/applications/ooo$(VER)-startcenter.desktop
+endif
+
 	# install .applications, .keys, .mime and openoffice.org.xml for
 	# shared-mime-info
 	mkdir -p $(PKGDIR)-common/usr/share/application-registry && \
@@ -2967,6 +2978,7 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 			$(PKGDIR)-common/usr/share/icons/hicolor/$$i/mimetypes/application-vnd.openofficeorg.extension.png; \
 	done
 	perl -pi -e "s/Icon=openofficeorg.*-extension/Icon=application-vnd.openofficeorg.extension.png/" $(PKGDIR)-common/usr/share/mimelnk/application/vnd.openofficeorg.extension.desktop
+	# add proper MimeType
 	perl -pi -e 's,MimeType=,MimeType=application/vnd.openofficeorg.extension,' $(PKGDIR)-common/usr/share/applications/ooo-startcenter.desktop
 endif
 
