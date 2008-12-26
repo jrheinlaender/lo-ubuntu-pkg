@@ -164,7 +164,6 @@ RUN_SMOKETEST=n
 RUN_API_TESTS=n
 RUN_UNIT_TESTS=n
 USE_LIBCURL4=y
-USE_SYSTEM_LIBSVG=y
 USE_SYSTEM_DMAKE=y
 USE_LIBSUITESPARSE=y
 USE_BZIP_COMPRESS=n
@@ -453,6 +452,9 @@ ifeq "$(BUILD_PYUNO)" "y"
   endif
 	BUILD_DEPS += , python-dev (>= 2.4)
 	DBG_DBG_SUGGESTS+= , python-dbg
+  ifeq "$(PYMAJOR).$(PYMINOR)" "2.6"
+	ADDITIONAL_SECTIONS += Python26
+  endif
 else
 	BUILD_DEPS += , python
 endif
@@ -2888,12 +2890,12 @@ ifeq "$(PACKAGE_SDK)" "y"
 		ln -s /$(OODIR)/sdk/index.html index.html
 endif
 
-ifneq "$(DIST)" "Ubuntu"
-	# ooo-build has a patch with this hardcoded.
-	perl -pi -e "s/Ubuntu helper/helper/" $(PKGDIR)-common/$(OOBRANDDIR)/program/soffice
-	perl -pi -e "s/Ubuntu config/config/" $(PKGDIR)-common/$(OOBRANDDIR)/program/soffice
-	perl -pi -e "s/Ubuntu stuff/stuff/" $(PKGDIR)-common/$(OOBRANDDIR)/program/soffice
-endif
+#ifneq "$(DIST)" "Ubuntu"
+#	# ooo-build has a patch with this hardcoded.
+#	perl -pi -e "s/Ubuntu helper/helper/" $(PKGDIR)-common/$(OOBRANDDIR)/program/soffice
+#	perl -pi -e "s/Ubuntu config/config/" $(PKGDIR)-common/$(OOBRANDDIR)/program/soffice
+#	perl -pi -e "s/Ubuntu stuff/stuff/" $(PKGDIR)-common/$(OOBRANDDIR)/program/soffice
+#endif
 
 ifeq "$(ENABLE_MEDIAWIKI)" "y"
 	rm -rf $(PKGDIR)-wiki-publisher
@@ -3055,6 +3057,14 @@ endif
 			-Sdebian/ure/$(OOUREDIR)/lib \
 			$(SOURCE_TREE)/connectivity/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/postgresql-sdbc*.so \
 			> debian/openoffice.org$(VER)-sdbc-postgresql.substvars
+ifeq "$(USE_SCSOLVER)" "y"
+	LD_LIBRARY_PATH="/usr/lib/libfakeroot:debian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program" \
+		dpkg-shlibdeps -O -p scsolver-shlibs \
+			-Sdebian/uno-libs3/$(OOUREDIR)/lib \
+			-Sdebian/ure/$(OOUREDIR)/lib \
+			$(SOURCE_TREE)/scsolver/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/scsolver.uno.so \
+			>> debian/openoffice.org$(VER)-calc.substvars
+endif
 ifeq "$(ENABLE_MINIMIZER)" "y"
 	 LD_LIBRARY_PATH="/usr/lib/libfakeroot:debian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program" \
 	 	dpkg-shlibdeps -O \
@@ -3259,6 +3269,7 @@ ifeq "$(ENABLE_REPORTDESIGN)" "y"
 	dh_gencontrol -popenoffice.org$(VER)-report-builder -- \
 		-V'base-version=$(BASE_VERSION)' \
 		-V'report-builder-jar-depends=$(REPORT_BUILDER_JAR_DEPENDS)' \
+		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep "<version" $(SOURCE_TREE)/reportbuilder/util/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
 endif
 	dh_md5sums -i
