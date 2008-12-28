@@ -102,7 +102,12 @@ else
   endif
 endif
 PACKAGE_TTF_OPENSYMBOL=y
-BUILD_JARS_NATIVE=y
+PACKAGE_PCVSLIB=n
+ifneq "$(ARCH)" "powerpc"
+  ifneq "$(ARCH)" "ppc64"
+    BUILD_JARS_NATIVE=y
+ endif
+endif
 BUILD_BINFILTERS=y
 BUILD_ONLY_EN_US=n
 ENABLE_JAVA=y
@@ -264,13 +269,9 @@ endif
 LIBSUFFIX := $(shell grep LIBSUFFIX debian/scripts/vars.$(ARCH) | cut -d"=" -f2)
 PLATFORMID := $(shell grep PLATFORMID debian/scripts/vars.$(ARCH) | cut -d"=" -f2)
 
-ifneq "$(ETCH_BACKPORT)" "y"
-	OOO_STLPORT_ARCHS= i386
-  ifeq "$(ARCH)" "i386"
+OOO_STLPORT_ARCHS= i386
+ifeq "$(ARCH)" "i386"
 	USE_STLPORT=y
-  endif
-else
-	OOO_STLPORT_ARCHS=$(OOO_ARCHS)
 endif
 
 ifeq "$(ENABLE_OPENGL)" "y"
@@ -313,6 +314,10 @@ endif
 ifeq "$(BUILD_PPC64)" "y"
   OOO_JAVA_ARCHS+= ppc64
 endif
+
+# gcj does not work on ppc, so no need to build -gcj for it
+OOO_GCJ_ARCHS := $(filter-out ppc64,$(filter-out powerpc,$(OOO_JAVA_ARCHS)))
+
 ifeq (,$(findstring $(ARCH),$(OOO_JAVA_ARCHS)))
 	ENABLE_JAVA=n
 	ENABLE_REPORTDESIGN=n
@@ -361,10 +366,8 @@ ifeq "$(ARCH)-linux-gnu" "sparc-linux-gnu"
 	# use 32-bit compiler
 	CC_PREFIX=sparc-linux-gnu-
 endif
-ifneq "$(ETCH_BACKPORT)" "y"
-  ifeq (s390,$(findstring s390,$(OOO_ARCHS)))
+ifeq (s390,$(findstring s390,$(OOO_ARCHS)))
 	BUILD_DEPS += , g++ (>> 4.3.0) [s390], gcc (>> 4.3.0) [s390]
-  endif
 endif
 
 OOO_MOZILLA_ARCHS=i386 powerpc sparc mips mipsel s390 armel
@@ -460,10 +463,12 @@ ifeq "$(BUILD_PYUNO)" "y"
   ifeq "$(USE_PYCENTRAL)" "y"
 	BUILD_DEPS += , python-central (>= 0.5)
   endif
-	BUILD_DEPS += , python-dev (>= 2.4)
 	DBG_DBG_SUGGESTS+= , python-dbg
   ifeq "$(PYMAJOR).$(PYMINOR)" "2.6"
 	ADDITIONAL_SECTIONS += Python26
+	BUILD_DEPS += , python-dev (>= 2.6)
+  else
+	BUILD_DEPS += , python-dev (>= 2.4)
   endif
 else
 	BUILD_DEPS += , python
@@ -566,13 +571,7 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
   ifeq "$(BUILD_JARS_NATIVE)" "y"
 	CONFIGURE_FLAGS += --enable-gcjaot
-    ifneq "$(ETCH_BACKPORT)" "y"
-	BUILD_DEPS += , gij [$(OOO_JAVA_ARCHS)], java-gcj-compat-dev (>= 1.0.76-7) [$(OOO_JAVA_ARCHS)], libgcj-bc [$(OOO_JAVA_ARCHS)]
-    else
-	BUILD_DEPS += , gij [$(OOO_JAVA_ARCHS)], java-gcj-compat-dev (>= 1.0.65-4) [$(OOO_JAVA_ARCHS)], libgcj-bc [$(OOO_JAVA_ARCHS)]
-    endif
-  else
-	BUILD_DEPS += , gij [$(OOO_JAVA_ARCHS)], java-gcj-compat-dev (>= 1.0.56) [$(OOO_JAVA_ARCHS)], libgcj-bc [$(OOO_JAVA_ARCHS)]
+	BUILD_DEPS += , gij [$(OOO_GCJ_ARCHS)], java-gcj-compat-dev (>= 1.0.76-7) [$(OOO_GCJ_ARCHS)], libgcj-bc [$(OOO_GCJ_ARCHS)]
   endif
   ifeq "$(ENABLE_MEDIAWIKI)" "y"
 	BUILD_DEPS += , ant (>= 1.7.0) [$(OOO_JAVA_ARCHS)], ant-optional (>= 1.7.0) [$(OOO_JAVA_ARCHS)]
@@ -581,12 +580,7 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
 	GCJ_VERSION = $(shell basename `readlink $(JAVA_HOME)/bin/gcj` | sed -e s/gcj-//)
 	SYSTEM_SAXON=y
-ifneq "$(ETCH_BACKPORT)" "y"
 	GCJ_JAWT_DEPENDS= $(shell dpkg -S /usr/lib/`readlink /usr/lib/libgcj_bc.so.1` | cut -d: -f1 | sed -e s/$$/-awt/)
-else
-	# workaround for etch; etch only has libgcj7-awt
-	GCJ_JAWT_DEPENDS= $(shell dpkg -S /usr/lib/`readlink /usr/lib/libgcj_bc.so.1` | cut -d: -f1 | sed -e s/$$/-awt/ | sed -e s/-0//)
-endif
 	DBG_DBG_SUGGESTS+= , $(shell echo $(GCJ_AWT_DEPENDS) | sed -e s/awt/dbg/)
 	JAVA_RUNTIME_DEPENDS = default-jre | java-gcj-compat
 #  ifneq (,$(GCJ_JAWT_DEPENDS))
@@ -861,17 +855,13 @@ ifeq "$(ENABLE_JAVA)" "y"
 	BUILD_DEPS += , libhsqldb-java (>= 1.8.0.9-1) [$(OOO_JAVA_ARCHS)]
 	BASE_HSQLDB_DEPENDS = libhsqldb-java (>= 1.8.0.9-1)
 	CONFIGURE_FLAGS+= --with-system-hsqldb
-    ifneq "$(ETCH_BACKPORT)" "y"
 	JAVA_GCJ_DEPENDS += , libhsqldb-java-gcj
-    endif
   endif
   ifeq "$(USE_SYSTEM_BSH)" "y"
 	BUILD_DEPS += , bsh (>= 2.0b4-1) [$(OOO_JAVA_ARCHS)]
 	COMMON_BSH_DEPENDS = bsh (>= 2.0b4-1)
 	CONFIGURE_FLAGS+= --with-system-beanshell
-    ifneq "$(ETCH_BACKPORT)" "y"
 	JAVA_GCJ_DEPENDS += , bsh-gcj
-    endif
   endif
 endif
 
@@ -1350,6 +1340,7 @@ endif
 
 	perl -pi -e "s,%OOO_ARCHS%,$(OOO_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_JAVA_ARCHS%,$(OOO_JAVA_ARCHS),g" debian/control
+	perl -pi -e "s,%OOO_GCJ_ARCHS%,$(OOO_GCJ_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_MONO_ARCHS%,$(OOO_MONO_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_NPSOPLUGIN_ARCHS%,$(OOO_NPSOPLUGIN_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_OGLTRANS_ARCHS%,$(OOO_OGLTRANS_ARCHS),g" debian/control
@@ -1359,10 +1350,6 @@ endif
 
 ifeq (he,$(findstring he,$(LANGPACKISOS)))
 	perl -pi -e 's/openoffice.org-help-he$$/openoffice.org-help-he, openoffice.org-ctl-he/' debian/control
-endif
-
-ifeq "$(ETCH_BACKPORT)" "y"
-	perl -pi -e 's/Package: openoffice.org$(VER)-core/Package: openoffice.org$(VER)-core\nRecommends: nfs-common/' debian/control
 endif
 
 	perl -pi -e 's/Package: openoffice.org$(VER)-help-en-us/Package: openoffice.org$(VER)-help-en-us\nReplaces: openoffice.org$(VER)-common (<< 1:3.0.0~dev300m28)/' debian/control
@@ -1877,7 +1864,6 @@ $(STAMP_NATIVE_JARS): $(STAMP_DIR)/install
 	: # remove problematic ones
 	rm -f debian/tmp/native-jars/ridl.jar
 	: # compile the others
-ifneq "$(ETCH_BACKPORT)" "y"
 	# the Debian i386 buildd, although having much ram still OOMs without
 	# this (at unoil.jar).
 	# Also the native jar build is MUCH faster with this. But it
@@ -1894,10 +1880,6 @@ ifneq "$(ETCH_BACKPORT)" "y"
 	PYTHONPATH="debian/scripts:$(shell echo $(PYTHON_SITE) | sed -e s,debian/python-uno,,)" \
 	AOT_MAKEFLAGS=-j$(NUM_CPUS) aot-compile -L /usr/lib/gcj/openoffice \
 	    debian/tmp/native-jars debian/tmp/native-jars/gcj
-  else
-	AOT_MAKEFLAGS=-j$(NUM_CPUS) aot-compile -L /usr/lib/gcj/openoffice \
-	    debian/tmp/native-jars debian/tmp/native-jars/gcj
-endif
 	gcj-dbtool -n debian/tmp/native-jars/tmp.db 64
 	find debian/tmp/native-jars/gcj -name '*.db' -print0 \
 	    | xargs -r -0 \
@@ -2114,6 +2096,7 @@ ifeq "$(PACKAGE_QA_TOOLS)" "y"
 	for f in testtool.bin libcommuni* libsimplecm*; do \
 		mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-qa-tools/$(OODIR)/program; \
 	done
+	install -D -m644 $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/libsalalloc_malloc.so.3 $(PKGDIR)-qa-tools/$(OOUREDIR)/lib/libsalalloc_malloc.so.3
 
   ifeq "$(ENABLE_JAVA)" "y"
 	mkdir -p -m755 $(PKGDIR)-qa-tools/$(OODIR)/program/classes
@@ -3040,9 +3023,7 @@ else
 	dh_strip -s
 endif
 	dh_desktop -s
-ifneq "$(ETCH_BACKPORT)" "y"
 	dh_icons -s
-endif
 ifeq "$(ENABLE_MONO)" "y"
 	dh_installcligac -s
 endif
@@ -3143,11 +3124,9 @@ endif
 		-V'gstreamer-plugins-suggests=$(GSTREAMER_PLUGINS_SUGGESTS)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-v$(BINARY_VERSION)
-ifneq "$(ETCH_BACKPORT)" "y"
-  ifeq "$(ENABLE_JAVA)" "y"
+ifeq "$(ENABLE_JAVA)" "y"
 	perl -pi -e "s/java-gcj-compat/java-gcj-compat (>= 1.0.77-4)/" \
 		debian/openoffice.org$(VER)-officebean/DEBIAN/control
-  endif
 endif
 ifeq "$(ENABLE_PDFIMPORT)" "y"
 	dh_gencontrol -popenoffice.org$(VER)-pdfimport -- \
@@ -3237,9 +3216,7 @@ endif
 	dh_link -i
 	dh_fixperms -i
 	dh_desktop -i
-ifneq "$(ETCH_BACKPORT)" "y"
 	dh_icons -i
-endif
 	dh_installxmlcatalogs -i
 ifeq "$(ENABLE_MONO)" "y"
 	dh_installcligac -i
