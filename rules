@@ -1614,12 +1614,6 @@ ifeq "$(PACKAGE_PCVSLIB)" "y"
 		$(MAKE) install DESTDIR=$(CURDIR)/debian/libpcvslib-perl SITEPREFIX=/usr
 endif
 
-	# these have to go to -core, otherwise we get problems with the new
-	# dpkg-shibdeps...
-	for i in `find debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/*.so.*`; do \
-		mv $$i `echo $$i | sed -e s/common/core/`; \
-	done
-
 ifeq "$(HELPISOS)" ""
 	for i in common calc math draw writer impress base; do \
 		rm -rf debian/tmp/pkg/openoffice.org-$$i/$(OODIR)/help; \
@@ -1669,6 +1663,11 @@ ifeq "$(ENABLE_JAVA)" "y"
 endif
 
 ifneq "$(USE_SYSTEM_XMLSEC)" "y"
+	# these have to go to -core, otherwise we get problems with the new
+	# dpkg-shibdeps...
+	for i in `find debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/*.so.*`; do \
+		mv $$i `echo $$i | sed -e s/common/core/`; \
+	done
 	# move .so to -dev. The libuno_sal* libs don't have symlinks in
 	# the package here right now (see i#97041).
 	# Thus this only applies to the libxmlsec*.so things right now
@@ -2156,13 +2155,15 @@ else
 endif
 
 ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
+	# menu files from sysui
+	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare >/dev/null; pwd`" ;\
 	for p in writer calc impress draw math base; do \
 		mkdir -p -m755 $(PKGDIR)-$$p/usr/share/applications ;\
-		sed -e 's,Exec=openoffice.org$(VER) \(.*\) %U,Exec=ooffice$(VER) \1 %U,' \
-		    -e 's,Icon=openofficeorg[0123456789]\+,Icon=ooo,' \
-		    -e 's,Name=OpenOffice.org $(OOVER),Name=OpenOffice.org $(VER),' \
+		sed -e 's,Exec=$${UNIXPRODUCTNAME}$${PRODUCTVERSION} \(.*\) %U,Exec=ooffice$(VER) \1 %U,' \
+		    -e 's,Icon=$${WITHOUTDOTUNIXPRODUCTNAME}[0123456789]\+,Icon=ooo,' \
+		    -e 's,Name=$${PRODUCTNAME} $${PRODUCTVERSION},Name=OpenOffice.org $(VER),' \
 		    -e 's/  / /' \
-		   < $(PKGDIR)-$$p/$(OOBRANDDIR)/share/xdg/$$p.desktop \
+		   < $$dirname/$$p.desktop \
 		   > $(PKGDIR)-$$p/usr/share/applications/ooo$(VER)-$$p.desktop || exit 1 ;\
 	done
 
@@ -2176,7 +2177,7 @@ ifeq "$(BUILD_GTK)" "y"
 		-e "s/  / /" \
 		$(PKGDIR)-gtk/$(OOBRANDDIR)/share/xdg/qstart.desktop
 endif
-	# we don't need the share/xdgs (anymore) except qstart
+	# we don't need the share/xdgs except qstart
 	for f in `find debian -name '*.desktop' | grep xdg | grep -v qstart`; do \
 		rm -f $$f; done
 	for f in `find debian -name '*.desktop'`; do \
