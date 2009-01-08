@@ -977,7 +977,7 @@ BUILD_LD_LIBRARY_PATH := $(BUILD_LD_LIBRARY_PATH):$(GCJ_JAWT_DIR)
 stampdir_targets=files.backup icons.scale patch.apply build.prepare.artwork 
 stampdir_targets+=build.prepare configure
 stampdir_targets+=setupins setup install install-arch install-indep
-stampdir_targets+=langpacks helppacks binary-common binary-arch binary-indep
+stampdir_targets+=langpacks binary-common binary-arch binary-indep
 ifdef FORCE
  DUMMY:=$(shell rm -f $(patsubst %,$(STAMP_DIR)/%,$(filter $(stampdir_targets),$(MAKECMDGOALS))))
 endif
@@ -1593,123 +1593,177 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/build $(STAMP_DIR)/test
 	dh_testdir
 	dh_testroot
 
-	rm -rf $(CURDIR)/debian/tmp
-	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(BUILD_LD_LIBRARY_PATH)" DESTDIR=$(CURDIR)/debian/tmp $(MAKE) install
+	if [ -x /usr/bin/dh_prep ]; then dh_prep; else dh_clean -k; fi
+	rm -f debian/*.install debian/*.links debian/*.dirs
 
-ifeq "$(HELPISOS)" ""
-	for i in common calc math draw writer impress base; do \
-		rm -rf debian/tmp/pkg/openoffice.org-$$i/$(OODIR)/help; \
+	# remove those for safety in case the languages might change on
+	# testbuilds. then the /*/ in dh_installdocs in binary-* won't work
+	# anymore (different dirs)
+	rm -rf $(SOURCE_TREE)/instsetoo_native/util/OpenOffice
+
+	# install OpenOffice.org.
+	cd ooo-build; PATH=$(BUILD_PATH) \
+		LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(BUILD_LD_LIBRARY_PATH)" \
+		 DESTDIR=$(CURDIR)/debian/tmp $(MAKE) install
+
+	# prepare install/dir files for dh
+	for i in `cd $(CURDIR)/debian/tmp/pkg; ls -1 | xargs`; do \
+		echo "$${i}/usr/* usr" > debian/$$i.install; \
+		if [ "$$i" = "openoffice.org-common" ]; then \
+			echo "$${i}/etc/* etc" >> debian/$$i.install; \
+		fi; \
+		(cd debian/tmp/pkg/$$i; find . -type d | sed -e "s,\./,,") \
+			> debian/$$i.dirs; \
 	done
-else
-	# save space by removing non-packaged localized help; we don't need
-	# them anyway
-	cd debian/tmp/pkg && \
-		for iso in $(filter-out en-US,$(LANGPACKISOS)); do \
-			if ! `echo $(HELPISOS) | grep -q $$iso`; then \
-				rm -rf openoffice.org-help-$$iso; \
+
+	# the english resources should be in -common
+	cat debian/openoffice.org-l10n-en-US.dirs >> debian/openoffice.org-common.dirs
+	cat debian/openoffice.org-l10n-en-US.install >> debian/openoffice.org-common.install
+	rm -f debian/openoffice.org-l10n-en-US.dirs debian/openoffice.org-l10n-en-US.install
+
+	# fixup case (-l10n-pt-BR -> l10n-pt-br etc.)
+	for iso in $(ISOS); do \
+		pkgiso=`echo $$iso | tr A-Z a-z`; \
+		if [ "$$iso" != "$$pkgiso" ]; then \
+			if [ "$$iso" != "en-US" ]; then \
+				mv debian/openoffice.org-l10n-$$iso.dirs \
+					debian/openoffice.org-l10n-$$pkgiso.dirs; \
+				mv debian/openoffice.org-l10n-$$iso.install \
+					debian/openoffice.org-l10n-$$pkgiso.install; \
 			fi; \
-		done
+			mv debian/openoffice.org-help-$$iso.dirs \
+				debian/openoffice.org-help-$$pkgiso.dirs; \
+			mv debian/openoffice.org-help-$$iso.install \
+				debian/openoffice.org-help-$$pkgiso.install; \
+		fi; \
+	done
+
+	# fix up still sneaking in ./. They break dh_install (it installs
+	# but wrongly complains about it as not-installed files)
+	perl -pi -e 's,\./,,' debian/openoffice.org$(VER)-common.install
+	perl -pi -e 's,\./,,' debian/ure.install
+
+ifneq "$(HELPISOS)" ""
+	# remove non-packaged localized help. This a) saves space 
+	# and b) we need this for the following dh_install as there will be
+	# no .install files created and dh_install will warn/fail due
+	# to non-installed files.
+	for iso in $(filter-out en-US,$(LANGPACKISOS)); do \
+		if ! `echo $(HELPISOS) | grep -q $$iso`; then \
+			pkgiso=`echo $$iso | tr A-Z a-z`; \
+			rm -rf debian/tmp/pkg/openoffice.org-help-$$pkgiso; \
+			rm -f debian/openoffice.org-help.$$pkgiso.dirs; \
+			rm -f debian/openoffice.org-help.$$pkgiso.install; \
+		fi; \
+	done
 endif
 
-	# move resources which have been installed outside of common there
-	cd debian/tmp/pkg; \
-		cp -r openoffice.org-l10n-en-US/* \
-			openoffice.org-common && \
-		rm -rf openoffice.org-l10n-en-US
+ifeq "$(PACKAGE_QA_TOOLS)" "n"
+	rm -rf debian/tmp/pkg/openoffice.org-qa-tools
+	rm -f openoffice.org$(VER)-qa-tools.dirs
+	rm -f openoffice.org$(VER)-qa-tools.install
+endif
+
+	dh_installdirs -A
+	dh_install -A --sourcedir=debian/tmp/pkg --fail-missing
+
+	rm -rf debian/tmp/pkg
 
 ifeq "$(ENABLE_JAVA)" "y"
 	# move officebean.jar into -officebean (They will be moved out of -core
 	# in the install-arch target). Do the /usr/share/java move here already
-	cd debian/tmp/pkg; \
-		mkdir -p openoffice.org-core/usr/share/java/$(OODIRNAME); \
-		mv openoffice.org-common/$(OODIR)/program/classes/officebean.jar \
-			openoffice.org-core/usr/share/java/$(OODIRNAME)
+	mkdir -p $(PKGDIR)-core/usr/share/java/$(OODIRNAME); \
+	mv $(PKGDIR)-common/$(OODIR)/program/classes/officebean.jar \
+		$(PKGDIR)-core/usr/share/java/$(OODIRNAME)
 
 	# move sdbc_hsqldb.jar into -base (do the move
 	# to /usr/share/java here directly, we do it for the "rest"
 	# later
-	cd debian/tmp/pkg; \
-		mkdir -p openoffice.org-base/usr/share/java/$(OODIRNAME); \
-		mkdir -p openoffice.org-base/$(OODIR)/program/classes; \
-		mv openoffice.org-common/$(OODIR)/program/classes/sdbc_hsqldb.jar \
-			openoffice.org-base/usr/share/java/$(OODIRNAME); \
-		ln -s /usr/share/java/$(OODIRNAME)/sdbc_hsqldb.jar \
-			openoffice.org-base/$(OODIR)/program/classes/sdbc_hsqldb.jar
+	mkdir -p $(PKGDIR)-base/usr/share/java/$(OODIRNAME); \
+	mkdir -p $(PKGDIR)-base/$(OODIR)/program/classes; \
+	mv $(PKGDIR)-common/$(OODIR)/program/classes/sdbc_hsqldb.jar \
+		$(PKGDIR)-base/usr/share/java/$(OODIRNAME); \
+	ln -s /usr/share/java/$(OODIRNAME)/sdbc_hsqldb.jar \
+		$(PKGDIR)-base/$(OODIR)/program/classes/sdbc_hsqldb.jar
+
+  ifneq "$(USE_SYSTEM_HSQLDB)" "y"
 	# we need this in -base. Otherwise we get unwanted package differences
 	# in the unstable version and backports which might use internal hsqldb
-  ifneq "$(USE_SYSTEM_HSQLDB)" "y"
-	mkdir -p debian/tmp/pkg/openoffice.org-base/$(OODIR)/program/classes
-	mv debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/classes/hsqldb.jar \
-		debian/tmp/pkg/openoffice.org-base/$(OODIR)/program/classes
+	mkdir -p $(PKGDIR)-base/$(OODIR)/program/classes
+	mv $(PKGDIR)-common/$(OODIR)/program/classes/hsqldb.jar \
+		$(PKGDIR)-base/$(OODIR)/program/classes
   endif
 endif
 
 ifeq "$(ENABLE_MONO)" "y"
-	cd debian/tmp/pkg; \
-	mkdir -p openoffice.org-core/$(OOBRANDDIR)/ure/lib; \
-	mv openoffice.org-common/$(OOBRANDDIR)/ure/lib/cli_uno_bridge.dll*  \
-		openoffice.org-core/$(OOBRANDDIR)/ure/lib
+	mkdir -p $(PKGDIR)-core/$(OOBRANDDIR)/ure/lib; \
+	mv $(PKGDIR)-common/$(OOBRANDDIR)/ure/lib/cli_uno_bridge.dll*  \
+		$(PKGDIR)-core/$(OOBRANDDIR)/ure/lib
 	for i in `dh_listpackages | grep libuno-cli`; do \
 		if echo "$$i" | grep -q oootypes; then p=openoffice.org-common; d=$(OODIR)/program; \
 		else p=ure; d=$(OOBRANDDIR)/ure/lib; fi; \
-		rm -rf debian/tmp/pkg/$$i && mkdir -p -m755 debian/tmp/pkg/$$i/usr/lib/cli/uno-`echo $$i | perl -pi -e 's/.*(\d.\d).*/$$1/'`; \
-		mv debian/tmp/pkg/$$p/$$d/`echo $$i | sed -e "s/libuno-//" | sed -e "s/-cil$$//" | sed -e "s/-/_/" | perl -pi -e 's/\d.\d//'`.dll \
-			debian/tmp/pkg/$$i/usr/lib/cli/uno-`echo $$i | perl -pi -e 's/.*(\d.\d).*/$$1/'`; \
-		mv debian/tmp/pkg/$$p/$$d/`echo $$i | sed -e "s/libuno-//" | sed -e "s/-cil$$//" | sed -e "s/-/_/" | perl -pi -e 's/\d.\d//'`.config \
-			debian/tmp/pkg/$$i/usr/lib/cli/uno-`echo $$i | perl -pi -e 's/.*(\d.\d).*/$$1/'`/`echo $$i | sed -e "s/libuno-//" | sed -e "s/-cil$$//" | sed -e "s/-/_/" | perl -pi -e 's/\d.\d//'`.dll.config; \
+		rm -rf debian/$$i && mkdir -p -m755 debian/$$i/usr/lib/cli/uno-`echo $$i | perl -pi -e 's/.*(\d.\d).*/$$1/'`; \
+		mv debian/$$p/$$d/`echo $$i | sed -e "s/libuno-//" | sed -e "s/-cil$$//" | sed -e "s/-/_/" | perl -pi -e 's/\d.\d//'`.dll \
+			debian/$$i/usr/lib/cli/uno-`echo $$i | perl -pi -e 's/.*(\d.\d).*/$$1/'`; \
+		mv debian/$$p/$$d/`echo $$i | sed -e "s/libuno-//" | sed -e "s/-cil$$//" | sed -e "s/-/_/" | perl -pi -e 's/\d.\d//'`.config \
+			debian/$$i/usr/lib/cli/uno-`echo $$i | perl -pi -e 's/.*(\d.\d).*/$$1/'`/`echo $$i | sed -e "s/libuno-//" | sed -e "s/-cil$$//" | sed -e "s/-/_/" | perl -pi -e 's/\d.\d//'`.dll.config; \
 	ln -s `echo $$i | sed -e "s/libuno-//" | sed -e "s/-cil$$//" | sed -e "s/-/_/" | perl -pi -e 's/\d.\d//'`.dll.config \
-			debian/tmp/pkg/$$i/usr/lib/cli/uno-`echo $$i | perl -pi -e 's/.*(\d.\d).*/$$1/'`/`echo $$i | sed -e "s/libuno-//" | sed -e "s/-cil$$//" | sed -e "s/-/_/" | perl -pi -e 's/\d.\d//'`.config; \
-		mv debian/tmp/pkg/$$p/$$d/policy.*.`echo $$i | sed -e "s/libuno-//" | sed -e "s/-cil$$//" | sed -e "s/-/_/" | perl -pi -e 's/\d.\d//'`.dll \
-			debian/tmp/pkg/$$i/usr/lib/cli/uno-`echo $$i | perl -pi -e 's/.*(\d.\d).*/$$1/'`; \
+			debian/$$i/usr/lib/cli/uno-`echo $$i | perl -pi -e 's/.*(\d.\d).*/$$1/'`/`echo $$i | sed -e "s/libuno-//" | sed -e "s/-cil$$//" | sed -e "s/-/_/" | perl -pi -e 's/\d.\d//'`.config; \
+		mv debian/$$p/$$d/policy.*.`echo $$i | sed -e "s/libuno-//" | sed -e "s/-cil$$//" | sed -e "s/-/_/" | perl -pi -e 's/\d.\d//'`.dll \
+			debian/$$i/usr/lib/cli/uno-`echo $$i | perl -pi -e 's/.*(\d.\d).*/$$1/'`; \
 	done
 endif
 
 	# remove eventually sneaked in .testtoolrc
-	cd debian/tmp/pkg; \
-	rm -f openoffice.org-common/$(OODIR)/program/.testtoolrc
+	rm -f $(PKGDIR)-common/$(OODIR)/program/.testtoolrc
 
 ifeq "$(BUILD_GTK)" "y"
 	# Gtk quickstarter for the eggtrtray stuff, so to -gtk (via -gnome)
-	mkdir -p -m755 debian/tmp/pkg/openoffice.org-gnome/$(OOBRANDDIR)/share/xdg
-	mv debian/tmp/pkg/openoffice.org-common/$(OOBRANDDIR)/share/xdg/qstart.desktop \
-		debian/tmp/pkg/openoffice.org-gnome/$(OOBRANDDIR)/share/xdg
+	mkdir -p -m755 $(PKGDIR)-gnome/$(OOBRANDDIR)/share/xdg
+	mv $(PKGDIR)-common/$(OOBRANDDIR)/share/xdg/qstart.desktop \
+		$(PKGDIR)-gnome/$(OOBRANDDIR)/share/xdg
 endif
 
+ifeq "$(PACKAGE_SDK)" "y"
 	# move gengal stuff into -dev
-	mkdir -p debian/tmp/pkg/openoffice.org-dev/$(OODIR)/program
-	mv debian/tmp/pkg/openoffice.org-core/$(OODIR)/program/gengal* \
-		debian/tmp/pkg/openoffice.org-dev/$(OODIR)/program
-	mv debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/gengal  \
-		debian/tmp/pkg/openoffice.org-dev/$(OODIR)/program
+	mkdir -p $(PKGDIR)-dev/$(OODIR)/program
+	mv $(PKGDIR)-core/$(OODIR)/program/gengal* \
+		$(PKGDIR)-dev/$(OODIR)/program
+	mv $(PKGDIR)-common/$(OODIR)/program/gengal  \
+		$(PKGDIR)-dev/$(OODIR)/program
+else
+	rm -f $(PKGDIR)-core/$(OODIR)/program/gengal*
+	rm -f $(PKGDIR)-common/$(OODIR)/program/gengal
+endif
 
 ifeq "$(PACKAGE_SDK)" "y"
 	# move SDK documentation into own package
-	rm -rf debian/tmp/pkg/openoffice.org-dev-doc
-	mkdir -p debian/tmp/pkg/openoffice.org-dev-doc/usr/share/doc/openoffice.org-dev-doc
-	mv debian/tmp/pkg/openoffice.org-dev/usr/share/doc/openoffice.org \
-		debian/tmp/pkg/openoffice.org-dev-doc/usr/share/doc/openoffice.org-dev && \
-	mv debian/tmp/pkg/openoffice.org-dev-doc/usr/share/doc/openoffice.org-dev/sdk/docs \
-		debian/tmp/pkg/openoffice.org-dev-doc/usr/share/doc/openoffice.org-dev
-	mkdir -p debian/tmp/pkg/openoffice.org-dev-doc/$(OODIR)/sdk
-	mv debian/tmp/pkg/openoffice.org-dev-doc/usr/share/doc/openoffice.org-dev/sdk/index.html \
-		debian/tmp/pkg/openoffice.org-dev-doc/$(OODIR)/sdk
-	rm -f debian/tmp/pkg/openoffice.org-dev/$(OODIR)/sdk/index.html
-	rm -rf debian/tmp/pkg/openoffice.org-dev/usr/share/doc/openoffice.org \
-		debian/tmp/pkg/openoffice.org-dev-doc/usr/share/doc/openoffice.org-dev/sdk
-	mv debian/tmp/pkg/openoffice.org-dev/$(OODIR)/sdk/examples \
-		debian/tmp/pkg/openoffice.org-dev-doc/$(OODIR)/sdk
+	rm -rf $(PKGDIR)-dev-doc
+	mkdir -p $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev-doc
+	mv $(PKGDIR)-dev/usr/share/doc/openoffice.org \
+		$(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev && \
+	mv $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev/sdk/docs \
+		$(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev
+	mkdir -p $(PKGDIR)-dev-doc/$(OODIR)/sdk
+	mv $(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev/sdk/index.html \
+		$(PKGDIR)-dev-doc/$(OODIR)/sdk
+	rm -f $(PKGDIR)-dev/$(OODIR)/sdk/index.html
+	rm -rf $(PKGDIR)-dev/usr/share/doc/openoffice.org \
+		$(PKGDIR)-dev-doc/usr/share/doc/openoffice.org-dev/sdk
+	mv $(PKGDIR)-dev/$(OODIR)/sdk/examples \
+		$(PKGDIR)-dev-doc/$(OODIR)/sdk
 endif
 
 	# fixup ure-link symlink. The move is done in install-arch
 	# but the link is in -common so we need to do it here.
-	cd debian/tmp/pkg/openoffice.org-common/$(OOBASISDIR) && \
+	cd $(PKGDIR)-common/$(OOBASISDIR) && \
 		rm ure-link && ln -sf /$(OOUREDIR) ure-link
 
 ifeq "$(ENABLE_GIO)" "y"
 	# the config for gio should be  there where gio itself is, shouldn't it?
-	mkdir -p debian/tmp/pkg/openoffice.org-gnome//$(OOBASISDIR)/share/registry/modules/org/openoffice/ucb/Configuration
-	mv debian/tmp/pkg/openoffice.org-common/$(OOBASISDIR)/share/registry/modules/org/openoffice/ucb/Configuration/Configuration-gio.xcu \
-		debian/tmp/pkg/openoffice.org-gnome//$(OOBASISDIR)/share/registry/modules/org/openoffice/ucb/Configuration
+	mkdir -p $(PKGDIR)-gnome/$(OOBASISDIR)/share/registry/modules/org/openoffice/ucb/Configuration
+	mv $(PKGDIR)-common/$(OOBASISDIR)/share/registry/modules/org/openoffice/ucb/Configuration/Configuration-gio.xcu \
+		$(PKGDIR)-gnome/$(OOBASISDIR)/share/registry/modules/org/openoffice/ucb/Configuration
 endif
 
 	find debian/tmp ! -perm -200 | xargs -r chmod u+w
@@ -1751,48 +1805,8 @@ endif
 	touch $@
 
 # Install files generated by setup into package directories
-helppacks: $(STAMP_DIR)/helppacks
-$(STAMP_DIR)/helppacks: $(STAMP_DIR)/install ooo-build/bin/openoffice-xlate-lang
-
-ifneq "$(HELPISOS)" ""
-	# we assume here that when we want to build/package help here we want
-	# to do that with en-US anyway...
-	rm -rf $(PKGDIR)-help-en-us $(PKGDIR)-help-en-us.*.debhelper; \
-	cp -r --preserve=mode debian/tmp/pkg/openoffice.org-help-en-US $(PKGDIR)-help-en-us || exit 1
-  ifneq "$(HELPISOS)" "en-US"
-	set -e; \
-	for iso in $(filter-out en-US,$(HELPISOS)); do \
-	  pkgiso=`echo $$iso | tr \[:upper:\] \[:lower:\]`; \
-	  if [ -d debian/tmp/pkg/openoffice.org-help-$$iso ]; then \
-	    rm -rf $(PKGDIR)-help-$$pkgiso $(PKGDIR)-help-$$pkgiso.*.debhelper; \
-	    cp -r --preserve=mode debian/tmp/pkg/openoffice.org-help-$$iso \
-		  $(PKGDIR)-help-$$pkgiso; \
-	  fi; \
-	done
-  endif
-endif
-
-	touch $@
-
-# Install files generated by setup into package directories
 langpacks: $(STAMP_DIR)/langpacks
 $(STAMP_DIR)/langpacks: $(STAMP_DIR)/install $(STAMP_DIR)/install-indep ooo-build/bin/openoffice-xlate-lang
-
-	for ext in `echo $(LANGPACKISOS) |tr A-Z a-z` ; do \
-	  rm -rf $(PKGDIR)-l10n-$$ext;\
-	  rm -rf $(PKGDIR)-l10n-$$ext.*.debhelper;\
-	done
-
-	# ... and install the rest of the langpacks
-	for iso in $(LANGPACKISOS); do \
-	  if [ "$$iso" = "en-US" ]; then continue; fi ; \
-	  pkgiso=`echo $$iso | tr \[:upper:\] \[:lower:\]`; \
-	  if [ -d  debian/tmp/pkg/openoffice.org-l10n-$$iso ]; then \
-	    rm -rf $(PKGDIR)-l10n-$$pkgiso $(PKGDIR)-l10n-$$pkgiso.*.debhelper; \
-	    cp -r --preserve=mode debian/tmp/pkg/openoffice.org-l10n-$$iso \
-		  $(PKGDIR)-l10n-$$pkgiso || exit 1; \
-	  fi; \
-	done
 
 	# remove empty uno_packages dirs somehow in the langpacks(?)
 	for iso in `echo $(LANGPACKISOS) | tr A-Z a-z`; do \
@@ -1835,13 +1849,13 @@ $(STAMP_NATIVE_JARS): $(STAMP_DIR)/install
 	rm -rf debian/tmp/native-jars
 	mkdir -p debian/tmp/native-jars/gcj
 	cp -a \
-	    debian/tmp/pkg/openoffice.org-common/$(OODIR)/program/classes/*.jar \
+	    $(PKGDIR)-common/$(OODIR)/program/classes/*.jar \
 		debian/tmp/native-jars/
 	cp -a \
-	    debian/tmp/pkg/openoffice.org-core/usr/share/java/$(OODIRNAME)/*.jar \
+	    $(PKGDIR)-core/usr/share/java/$(OODIRNAME)/*.jar \
 	        debian/tmp/native-jars/
 	cp -a \
-	    debian/tmp/pkg/openoffice.org-base/usr/share/java/$(OODIRNAME)/*.jar \
+	    $(PKGDIR)-base/usr/share/java/$(OODIRNAME)/*.jar \
 	        debian/tmp/native-jars/
 	: # remove problematic ones
 	rm -f debian/tmp/native-jars/ridl.jar
@@ -1876,23 +1890,6 @@ $(STAMP_DIR)/install-arch: $(STAMP_DIR)/install $(STAMP_NATIVE_JARS)
 	dh_testroot
 	umask 022
 
-	# Copy files placed by ooo-build/bin/package-ooo
-	for i in base calc core draw impress math writer gnome dev; do \
-	  rm -rf $(PKGDIR)-$$i $(PKGDIR)-$$i.*.debhelper ;\
-	  cp -r --preserve=mode debian/tmp/pkg/openoffice.org-$$i $(PKGDIR)-$$i || exit 1;\
-	done
-ifeq "$(BUILD_KDE)" "y"
-	rm -rf $(PKGDIR)-kde $(PKGDIR)-kde.*.debhelper
-	cp -r --preserve=mode debian/tmp/pkg/openoffice.org-kde $(PKGDIR)-kde || exit 1
-endif
-
-ifeq "$(BUILD_BINFILTERS)" "y"
-	rm -rf $(PKGDIR)-filter-binfilter $(PKGDIR)-filter-binfilter.*.debhelper
-	cp -r --preserve=mode debian/tmp/pkg/openoffice.org-filter-binfilter $(PKGDIR)-filter-binfilter || exit 1
-endif
-
-	rm -rf debian/ure debian/ure.*.debhelper ;\
-	cp -r --preserve=mode debian/tmp/pkg/ure debian/ure || exit 1
 	# move the URE to /usr/lib/ure
 	mv debian/ure/$(OOBRANDDIR)/ure debian/ure/usr/lib
 	rmdir debian/ure/$(OOBRANDDIR)
@@ -1920,14 +1917,6 @@ endif
 	    -e 's|\(UNO_JAVA_JFW_CLASSPATH_URLS=.*\)|\1 file:///usr/share/java/sapdbc.jar|' \
 	    -e 's|\(UNO_JAVA_JFW_CLASSPATH_URLS=.*\)|\1 file:///usr/share/java/postgresql.jar|' \
 	    debian/ure/$(OOUREDIR)/lib/jvmfwk3rc
-
-	rm -rf debian/mozilla-openoffice.org$(VER) debian/mozilla-openoffice.org$(VER).*.debhelper
-	rm -rf $(PKGDIR) $(PKGDIR).*.debhelper
-ifeq "$(ENABLE_EVO2)" "y"
-	rm -rf $(PKGDIR)-evolution $(PKGDIR)-evolution.*.debhelper
-endif
-
-	dh_installdirs -a
 
 ifeq "$(BUILD_KDE)" "y"
 	mkdir -p -m755 $(PKGDIR)-kde/$(OODIR)/program
@@ -2047,6 +2036,7 @@ endif
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(USE_SYSTEM_HSQLDB)" "y"
 	# link to system hsqldb
+	mkdir -p $(PKGDIR)-base/$(OODIR)/program/classes
 	ln -sf /usr/share/java/hsqldb.jar \
 	        $(PKGDIR)-base/$(OODIR)/program/classes/hsqldb.jar
   endif
@@ -2068,16 +2058,11 @@ endif
 	               $(PKGDIR)-core/usr/share/applications
 
 ifeq "$(PACKAGE_QA_TOOLS)" "y"
-	rm -rf $(PKGDIR)-qa-tools
 	mkdir -p -m755 $(PKGDIR)-qa-tools/usr/bin
 	install -m755 $(SOURCE_TREE)/ootestapi$(VER) $(PKGDIR)-qa-tools/usr/bin
 	install -m755 $(SOURCE_TREE)/ootesttool$(VER) $(PKGDIR)-qa-tools/usr/bin
 	install -m755 $(SOURCE_TREE)/oosmoketest$(VER) $(PKGDIR)-qa-tools/usr/bin
 
-	rm -rf $(PKGDIR)-qa-tools $(PKGDIR)-qa-tools.*.debhelper
-	cp -r --preserve=mode debian/tmp/pkg/openoffice.org-qa-tools \
-		debian/openoffice.org-qa-tools
-	
 	install -D -m644 $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/libsalalloc_malloc.so.3 $(PKGDIR)-qa-tools/$(OOUREDIR)/lib/libsalalloc_malloc.so.3
 
   ifeq "$(ENABLE_JAVA)" "y"
@@ -2100,8 +2085,7 @@ ifeq "$(PACKAGE_QA_TOOLS)" "y"
 
 	# fix permission
 	chmod 644 $(PKGDIR)-qa-tools/$(OODIR)/program/hid.lst
-else
-	rm -f debian/tmp/pkg/openoffice.org-qa-tools
+	chmod 644 $(PKGDIR)-qa-tools/$(OODIR)/program/testtoolrc
 endif
 
 ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
@@ -2171,9 +2155,6 @@ endif
 
 ifeq "$(BUILD_PYUNO)" "y"
 	# PyUNO packaging
-	rm -rf debian/python-uno debian/python-uno.*.debhelper
-	cp -r --preserve=mode debian/tmp/pkg/python-uno debian/python-uno
-
 	install -d $(PYTHON_SITE)
 	mv debian/python-uno/$(OODIR)/program/uno.py $(PYTHON_SITE)
 	mv debian/python-uno/$(OODIR)/program/unohelper.py $(PYTHON_SITE)
@@ -2533,20 +2514,8 @@ $(STAMP_DIR)/install-indep: $(STAMP_DIR)/install
 	dh_testdir
 	dh_testroot
 
-	# Copy files placed by ooo-build/bin/package-ooo/install
-	for i in common emailmerge; do \
-		rm -rf $(PKGDIR)-$$i $(PKGDIR)-$$i.*.debhelper; \
-		cp -r --preserve=mode debian/tmp/pkg/openoffice.org-$$i $(PKGDIR)-$$i || exit 1; \
-	done
-ifeq "$(PACKAGE_SDK)" "y"
-	rm -rf $(PKGDIR)-dev-doc $(PKGDIR)-dev-doc.*.debhelper; \
-	cp -r --preserve=mode debian/tmp/pkg/openoffice.org-dev-doc $(PKGDIR)-dev-doc || exit 1
-endif
-
 	perl -pi -e 's,/bin,/usr/bin,' \
 		 debian/openoffice.org$(VER)-emailmerge/$(OODIR)/program/mailmerge.py
-
-	dh_installdirs -i
 
 ifneq "$(USE_GSTREAMER)" "y"
 	# sound doesn't work anyway, remove the .wav files to save space
@@ -2899,14 +2868,6 @@ ifeq "$(ENABLE_MEDIAWIKI)" "y"
 	zip -d $(CURDIR)/$(PKGDIR)-wiki-publisher/$(OOBRANDDIR)/share/extension/install/wiki-publisher.oxt license/THIRDPARTYLICENSEREADME.html
 endif
 
-ifeq "$(ENABLE_MONO)" "y"
-	for i in `dh_listpackages -i | grep libuno-cli`; do \
-		rm -rf debian/$$i; \
-		cp -ra debian/tmp/pkg/$$i \
-			debian/$$i; \
-	done
-endif
-
 	for i in $(ARCH_INDEP_PACKAGES); do \
 		install -D -m644 debian/presubj \
 			debian/$$i/usr/share/bug/$$i/presubj; \
@@ -2971,7 +2932,7 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 	done
 
 	dh_installdocs -s -A -Nlibmythes-dev debian/README.Debian \
-		debian/tmp/pkg/openoffice.org-common/$(OOBRANDDIR)/README
+		$(SOURCE_TREE)/instsetoo_native/util/OpenOffice/replace_file/*/00/README
 	dh_installdocs -plibmythes-dev debian/copyright
 	dh_installman -s
 	# fix manpage symlinks
@@ -3140,7 +3101,7 @@ endif
 	touch $@
 
 binary-indep: $(GSI_EXPORT_STAMP) $(STAMP_DIR)/binary-indep
-$(STAMP_DIR)/binary-indep: $(STAMP_DIR)/install-indep debian/control $(STAMP_DIR)/maintscripts $(STAMP_DIR)/langpacks $(STAMP_DIR)/helppacks $(STAMP_DIR)/broffice
+$(STAMP_DIR)/binary-indep: $(STAMP_DIR)/install-indep debian/control $(STAMP_DIR)/maintscripts $(STAMP_DIR)/langpacks $(STAMP_DIR)/broffice
 ifneq ($(ARCH),$(findstring $(ARCH),$(OOO_JAVA_ARCHS)))
 	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 	echo "For uploads with binary-all packages, please use arches where Java is enabled!!!!!"
@@ -3191,7 +3152,7 @@ ifeq "$(PACKAGE_SDK)" "y"
 	perl -pi -e 's,html/,html /,g' debian/openoffice.org-dev-doc.doc-base.udk-common-ref
 endif
 	dh_installdocs -i -A debian/README.Debian \
-		debian/tmp/pkg/openoffice.org-common/$(OOBRANDDIR)/README
+		$(SOURCE_TREE)/instsetoo_native/util/OpenOffice/replace_file/*/00/README
 	dh_installman -i
 	for i in `find $(PKGDIR)-common -type l -name "o*.1"`; do \
 		mv $$i $$i.gz; \
