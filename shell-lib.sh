@@ -81,10 +81,5 @@ add_extension() {
   echo " done."
 }
 
-trap "message;\
-      message \"Received signal.  Aborting script $0.\";\
-      message;\
-      exit 1" 1 2 3 15
-
 VER=
 
