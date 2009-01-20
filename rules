@@ -268,6 +268,10 @@ endif
 LIBSUFFIX := $(shell grep LIBSUFFIX debian/scripts/vars.$(ARCH) | cut -d"=" -f2)
 PLATFORMID := $(shell grep PLATFORMID debian/scripts/vars.$(ARCH) | cut -d"=" -f2)
 
+# ./configure defaults to STLport on i386 and we should keep it for
+# ABI-compatability (at least until graphite01 and/or mysqlnative get in
+# at which time we need to use gccs STL if we want to use system-graphite /
+# system-mysqlcppconn)
 OOO_STLPORT_ARCHS= i386
 ifeq "$(ARCH)" "i386"
 	USE_STLPORT=y
@@ -716,6 +720,7 @@ endif
 ifneq "$(USE_STLPORT)" "y"
 	CONFIGURE_FLAGS += --without-stlport
 else
+        CONFIGURE_FLAGS += --with-stlport
   ifeq "$(USE_SYSTEM_STLPORT)" "y"
 	CONFIGURE_FLAGS+= --with-stlport=$(CURDIR)/stlport
   endif
@@ -2526,7 +2531,7 @@ endif
 	rm -f $(PKGDIR)-common/$(OODIR)/program/oo_product.bmp
 
 	# Extract and install icons
-	cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/desktop-integration && dpkg --extract openoffice.org3.0-debian-menus_*_all.deb . && cd usr/share/icons && \
+	cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/desktop-integration && dpkg --extract openoffice.org$(OOVER)-debian-menus_*_all.deb . && cd usr/share/icons && \
 	for d in `find -type d`; do \
 	  install -d -m755 $(CURDIR)/$(PKGDIR)-common/usr/share/icons/$$d || exit 1 ;\
 	done &&\
@@ -2979,8 +2984,8 @@ ifeq "$(ENABLE_MONO)" "y"
 	dh_installcligac -s
 endif
 	dh_compress -s -X.py -X.mk -X.sxd
-	dh_makeshlibs -puno-libs3 -V"ure (>= $(shell grep -A 1 "PRODUCTNAME URE" $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | tail -n 1 | awk '{ print $$2 }')+OOo3.0.0~)"
-	dh_makeshlibs -n -pure -V"ure (>= $(shell grep -A 1 "PRODUCTNAME URE" $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | tail -n 1 | awk '{ print $$2 }')+OOo3.0.0~)"
+	dh_makeshlibs -puno-libs3 -V"ure (>= $(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst |  awk '{ print $$2 }'))"
+	dh_makeshlibs -n -pure -V"ure (>= $(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst  awk '{ print $$2 }'))"
 	dh_installdeb -s
 ifeq "$(USE_SYSTEM_ICU)" "n"
 	cat debian/shlibs.override.icu >> debian/shlibs.local
