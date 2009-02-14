@@ -63,7 +63,7 @@ export DH_ALWAYS_EXCLUDE=CVS:.svn:.bzr
 # work around tcsh bugs.debian.org/339034: tcsh: Unknown colorls variable `su'
 unexport LS_COLORS
 
-MWS=DEV300
+MWS=OOO310
 MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)" | cut -d~ -f2 | sed -e s/$(shell echo $(MWS) | tr A-Z a-z)//)
 #MILESTONE=m9
 TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
@@ -461,6 +461,10 @@ endif
 # Small symbols?
 ifeq "$(SMALL_SYMBOLS)" "y"
 	CONFIGURE_FLAGS += --enable-symbols=SMALL
+endif
+
+ifeq (noopt,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
+	ARCH_FLAGS += -O0
 endif
 
 ifeq "$(BUILD_PYUNO)" "y"
@@ -1535,7 +1539,7 @@ ifeq "$(BUILD_KDE)" "n"
 	fi
 endif
 
-	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 VERBOSE=true $(MAKE)
+	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 VERBOSE=true ARCH_FLAGS=$(ARCH_FLAGS) $(MAKE)
 
 	if [ -d ooo-build/build/current -a ! -d $(SOURCE_TREE) ]; then \
 		ln -sf current $(SOURCE_TREE); \
@@ -2250,15 +2254,6 @@ ifeq "$(PACKAGE_SDK)" "y"
         # remove symlink, it should be in -dev-doc
 	cd $(PKGDIR)-dev/$(OOSDKDIR) && \
 		rm docs
-
-	# create .so symlinks upstream doesn't create (see i#97041).
-	# we do it here so that we don't need to patch the SDKs
-	# "deployment dir". The -L for the URE dir is added anyway.
-	mkdir -p $(PKGDIR)-dev/$(OOUREDIR)/lib
-	cd $(PKGDIR)-dev/$(OOUREDIR)/lib && \
-		for i in cppu cppuhelpergcc3 sal salhelpergcc3; do \
-			ln -s /$(OOUREDIR)/lib/libuno_$${i}.so.3 libuno_$${i}.so; \
-		done
 
 	# install gsicheck into -dev
 	install -m755 $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD/$$OUTPATH$$PROEXT)/bin/gsicheck \
