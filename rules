@@ -162,7 +162,7 @@ USE_SYSTEM_LUCENE=y
 KDELIBS_MINVER= (>= 4:3.4.3-2)
 USE_SYSTEM_LPSOLVE=y
 USE_SHARED_LPSOLVE=y
-LPSOLVE_MIN_VERSION= (>= 5.5.0.10-10)
+LPSOLVE_MIN_VERSION= (>= 5.5.0.13-4)
 USE_DBUS=y
 USE_GSTREAMER=y
 USE_SYSTEM_NEON=y
@@ -179,6 +179,7 @@ RUN_UNIT_TESTS=n
 USE_LIBCURL4=y
 USE_SYSTEM_DMAKE=y
 USE_LIBSUITESPARSE=y
+SUITESPARSE_MIN_VERSION= (>= 1:3.2.0-2)
 USE_BZIP_COMPRESS=n
 PRUNE_OOOBUILD=y
 PARALLEL_BUILD=n
@@ -269,6 +270,8 @@ ifeq "$(LENNY_BACKPORT)" "y"
   MONO_MINVER= (>= 1.2.3)
   MONO2=n
   BOOST_VERSION=1.34
+  LPSOLVE_MIN_VERSION= (>= 5.5.0.10-10)
+  SUITESPARSE_MIN_VERSION= (>= 3.1.0)
 endif
 
 #############
@@ -897,7 +900,7 @@ ifeq "$(USE_SYSTEM_LPSOLVE)" "y"
 	CONFIGURE_FLAGS += --with-system-lpsolve
   ifeq "$(USE_LIBSUITESPARSE)" "y"
 	DBG_DBG_SUGGESTS+= , libsuitesparse-dbg
-	BUILD_DEPS += , libsuitesparse-dev (>> 3.1.0)
+	BUILD_DEPS += , libsuitesparse-dev $(SUITESPARSE_MIN_VERSION)
   else
 	DBG_DBG_SUGGESTS+= , libufsparse-dbg
 	BUILD_DEPS += , libufsparse-dev
@@ -2426,7 +2429,7 @@ ifeq "$(ENABLE_PDFIMPORT)" "y"
 endif
 
 ifeq "$(USE_SCSOLVER)" "y"
-	install -D -m644 $(SOURCE_TREE)/scsolver/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/scsolver.uno.oxt \
+	install -D -m644 $(SOURCE_TREE)/scsolver/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/libscsolver.uno.oxt \
 		$(PKGDIR)-calc/$(OOBRANDDIR)/share/extension/install/scsolver.uno.oxt
 	# we don't need it anymore - the menu entry is replaced with Koheis
 	rm -f $(PKGDIR)-calc/$(OODIR)/program/libsolver*.so
@@ -3019,7 +3022,7 @@ endif
 	# /usr/lib/libgcj-bc.so when specifying -l$(GCJ_JAWT_DIR)
 	# and therefore we must not use it for -gcj. But we *do* need it
 	# for -officebean (libjawt.so is referenced there)
-	LD_LIBRARY_PATH="/usr/lib/libfakeroot:debian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program:$(PKGDIR)-base-core/$(OODIR)/program" \
+	LD_LIBRARY_PATH="/usr/lib/libfakeroot:debian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program:$(PKGDIR)-base-core/$(OODIR)/program::$(PKGDIR)-writer/$(OODIR)/program" \
 		dh_shlibdeps -s -Nopenoffice.org$(VER)-officebean \
 			-Lure -Luno-libs3 \
 			-ldebian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program:$(PKGDIR)-base/$(OODIR)/program \
@@ -3310,6 +3313,12 @@ get-orig-source:
 		tar cfvj $(TAG)-testing.tar.bz2.dfsg $(TAG)-testing && \
 		ln -sf $(TAG)-testing.tar.bz2.dfsg $(TAG)-testing.tar.bz2 && \
 		rm -rf $(TAG)-testing && \
+		tar xfvj $(TAG)-extensions.tar.bz2 && \
+			zip -d $(TAG)-extensions/jfreereport/download/liblayout.zip \
+				liblayout/resource/rfc1345.txt && \
+		tar cfvj $(TAG)-extensions.tar.bz2.dfsg $(TAG)-extensions && \
+		ln -sf $(TAG)-extensions.tar.bz2.dfsg $(TAG)-extensions.tar.bz2 && \
+		rm -rf $(TAG)-extensions && \
 		cd $$TMPD && tar cfvz openoffice.org_$(UPSTREAM_VERSION).orig.tar.gz openoffice.org-$(UPSTREAM_VERSION) && \
 		rm -rf openoffice.org-$(UPSTREAM_VERSION) && \
 		mv  openoffice.org_$(UPSTREAM_VERSION).orig.tar.gz $(CURDIR)/.. && \
