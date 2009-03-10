@@ -8,7 +8,7 @@
 # Authors:
 # Chris Halls <halls@debian.org>
 # Rene Engelhard <rene@debian.org>
-# Copyright 2002-2008 Software in the Public Interest, Inc.
+# Copyright 2002-2009 Software in the Public Interest, Inc.
 # Licensed under the GNU General Public License, version 2.  See the file
 # /usr/share/common-licenses/GPL or <http://www.gnu.org/copyleft/gpl.txt>.
 ################################################################################
@@ -89,6 +89,12 @@ PATCHSET=$(DIST)
 BUILD_DEPS=
 BUILD_PYUNO=y
 USE_PYCENTRAL=y
+PYTHON_VERSION=current
+ifeq "$(PYTHON_VERSION)" "current"
+  PYTHON=python
+else
+  PYTHON=python$(PYTHON_VERSION)
+endif
 # causes out-of-memory
 ifeq "$(JDK)" "openjdk-cacao" 
   PACKAGE_QA_TOOLS=n
@@ -491,11 +497,19 @@ ifeq "$(BUILD_PYUNO)" "y"
 	BUILD_DEPS += , python-central (>= 0.5)
   endif
 	DBG_DBG_SUGGESTS+= , python-dbg
-  ifeq "$(PYMAJOR).$(PYMINOR)" "2.6"
+  ifeq "$(PYTHON_VERSION)" "current"
+    ifeq "$(PYMAJOR).$(PYMINOR)" "2.6"
 	ADDITIONAL_SECTIONS += Python26
 	BUILD_DEPS += , python-dev (>= 2.6)
-  else
+    else
 	BUILD_DEPS += , python-dev (>= 2.4)
+    endif
+  else
+    ifeq "$(PYTHON_VERSION)" "2.6"
+ 	ADDITIONAL_SECTIONS += Python26
+    endif
+	BUILD_DEPS += , python$(PYTHON_VERSION)-dev
+	CONFIGURE_FLAGS += PYTHON=$(PYTHON)
   endif
 else
 	BUILD_DEPS += , python
@@ -983,10 +997,10 @@ endif
 #	CONFIGURE_FLAGS += --with-max-jobs=$(NUM_CPUS)
 
 # Build python depends from current python version
-PYMAJOR:=$(shell python -c "import sys; print sys.version_info[0]")
-PYMINOR:=$(shell python -c "import sys; print sys.version_info[1]")
-PYMINORPLUS1:=$(shell python -c "import sys; print sys.version_info[1]+1")
-PYTHON_SITE:=debian/python-uno/usr/lib/python$(PYMAJOR).$(PYMINOR)/site-packages
+PYMAJOR:=$(shell $(PYTHON) -c "import sys; print sys.version_info[0]")
+PYMINOR:=$(shell $(PYTHON) -c "import sys; print sys.version_info[1]")
+PYMINORPLUS1:=$(shell $(PYTHON) -c "import sys; print sys.version_info[1]+1")
+PYTHON_SITE:=debian/python-uno/$(shell $(PYTHON) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
 
 CURDIR ?= $(shell pwd)
 
@@ -1227,6 +1241,7 @@ debian/control: $(wildcard debian/control*in) $(shell readlink debian/scripts/op
 	    -e "s#%$(DIST)=\([^%]*\)%#, \1#g#" \
 	    -e "s#%[A-Za-z]*=[^%]*%##g#" \
 	    -e "s#%BUILD_DEPS%#$(strip $(BUILD_DEPS))#g" \
+	    -e "s#@PYTHON_VERSION@#$(PYTHON_VERSION)#g" \
 	    < debian/control.in > debian/control
 
 	for LNUM in $(filter-out en-US,$(LANGPACKISOS)) ; do \
