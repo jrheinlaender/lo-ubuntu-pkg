@@ -156,6 +156,11 @@ KDE_VER=3
 BUILD_DBG_PACKAGE=y
 USE_SYSTEM_BSH=y
 USE_SYSTEM_HSQLDB=y
+# disabled because system-saxon breaks all kinds exports using XSLT transforms
+# (e.g. M$ Word/Excel 2003 XML, Mediawiki, XHTML, UOF, ...)
+# It does *NOT* fail with _plain_ saxon 9.0.0.8 built with OOos build.xml
+# for UOF, but still for e.g. M$.
+USE_SYSTEM_SAXON=n
 USE_SYSTEM_LUCENE=y
 KDELIBS_MINVER= (>= 4:3.4.3-2)
 USE_SYSTEM_LPSOLVE=y
@@ -592,7 +597,6 @@ ifeq "$(ENABLE_JAVA)" "y"
 	BUILD_DEPS += , ant (>= 1.6.5) [$(OOO_JAVA_ARCHS)]
   endif
 	GCJ_VERSION = $(shell basename `readlink $(JAVA_HOME)/bin/gcj` | sed -e s/gcj-//)
-	SYSTEM_SAXON=y
 	GCJ_JAWT_DEPENDS= $(shell dpkg -S /usr/lib/`readlink /usr/lib/libgcj_bc.so.1` | cut -d: -f1 | sed -e s/$$/-awt/)
 	DBG_DBG_SUGGESTS+= , $(shell echo $(GCJ_AWT_DEPENDS) | sed -e s/awt/dbg/)
 	JAVA_RUNTIME_DEPENDS = default-jre | java-gcj-compat
@@ -612,7 +616,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 export JAVA_HOME
 	CONFIGURE_FLAGS += --with-jdk-home=$(JAVA_HOME)
 	JAVA_COMMON_DEPENDS= , openoffice.org$(VER)-java-common (>> 2.2.0-4)
-  ifeq "$(SYSTEM_SAXON)" "y"
+  ifeq "$(USE_SYSTEM_SAXON)" "y"
 	CONFIGURE_FLAGS += --with-system-saxon --with-saxon-jar=/usr/share/java/saxonb.jar
 	BUILD_DEPS += , libsaxonb-java [$(OOO_JAVA_ARCHS)]
 	JAVA_COMMON_JAVA_DEPENDS+= , libsaxonb-java
@@ -2812,7 +2816,7 @@ endif
 
 ifeq "$(ENABLE_JAVA)" "y"
 	# symlink jars we use externally
-  ifeq "$(SYSTEM_SAXON)" "y"
+  ifeq "$(USE_SYSTEM_SAXON)" "y"
 	ln -sf /usr/share/java/saxonb.jar \
 		$(PKGDIR)-java-common/$(OODIR)/program/classes/saxon9.jar
   endif
