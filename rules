@@ -89,16 +89,6 @@ PATCHSET=$(DIST)
 BUILD_DEPS=
 BUILD_PYUNO=y
 USE_PYCENTRAL=y
-# causes out-of-memory
-ifeq "$(JDK)" "openjdk-cacao" 
-  PACKAGE_QA_TOOLS=n
-else
-  ifneq "$(ARCH)" "ia64"
-    PACKAGE_QA_TOOLS=y
-  else
-    PACKAGE_QA_TOOLS=n
-  endif
-endif
 PACKAGE_TTF_OPENSYMBOL=y
 PACKAGE_PCVSLIB=n
 ifneq "$(ARCH)" "powerpc"
@@ -372,8 +362,6 @@ ifneq (,$(findstring arm,$(ARCH)))
 endif
 OOO_BINFILTER_ARCHS=$(filter-out arm,$(filter-out armel,$(OOO_ARCHS)))
 
-OOO_QA_ARCHS=$(filter-out ia64,$(OOO_ARCHS))
-
 ifeq "$(ARCH)-linux-gnu" "sparc-linux-gnu"
 	# use 32-bit compiler
 	CC_PREFIX=sparc-linux-gnu-
@@ -495,10 +483,7 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
 endif
 
-ifneq "$(PACKAGE_QA_TOOLS)" "y"
-	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-qa-tools -Nopenoffice.org$(VER)-qa-api-tests
 	CONFIGURE_FLAGS += --disable-qadevooo
-endif
 
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(PACKAGE_WRITER2LATEX)" "n"
@@ -1307,10 +1292,6 @@ ifneq "$(OOO_MONO_ARCHS)" ""
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.mono.in
 endif
-ifeq "$(PACKAGE_QA_TOOLS)" "y"
-	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
-		>> debian/control < debian/control.qa.in
-endif
 ifeq "$(PACKAGE_PCVSLIB)" "y"
 	cat debian/control.pcvslib.in \
 		>> debian/control
@@ -1367,7 +1348,6 @@ endif
 	perl -pi -e "s,%OOO_NPSOPLUGIN_ARCHS%,$(OOO_NPSOPLUGIN_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_OGLTRANS_ARCHS%,$(OOO_OGLTRANS_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_BINFILTER_ARCHS%,$(OOO_BINFILTER_ARCHS),g" debian/control
-	perl -pi -e "s,%OOO_QA_ARCHS%,$(OOO_QA_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_BUILD_SVN%,$(OOO_BUILD_SVN)," debian/control
 
 ifeq (he,$(findstring he,$(LANGPACKISOS)))
@@ -1731,14 +1711,8 @@ ifeq "$(ENABLE_MONO)" "y"
 	done
 endif
 
-ifeq "$(PACKAGE_QA_TOOLS)" "y"
-	cd debian/tmp/pkg; \
-	mv openoffice.org-common/$(OODIR)/program/testtoolrc \
-		openoffice.org-core/$(OODIR)/program
-else
 	cd debian/tmp/pkg; \
 	rm -f openoffice.org-common/$(OODIR)/program/testtoolrc
-endif
 	# remove eventually sneaked in .testtoolrc
 	cd debian/tmp/pkg; \
 	rm -f openoffice.org-common/$(OODIR)/program/.testtoolrc
@@ -2148,46 +2122,10 @@ endif
 	mkdir -p -m755 $(PKGDIR)-base/usr/share/applications \
 	               $(PKGDIR)-core/usr/share/applications
 
-ifeq "$(PACKAGE_QA_TOOLS)" "y"
-	rm -rf $(PKGDIR)-qa-tools
-	mkdir -p -m755 $(PKGDIR)-qa-tools/usr/bin
-	install -m755 $(SOURCE_TREE)/ootestapi$(VER) $(PKGDIR)-qa-tools/usr/bin
-	install -m755 $(SOURCE_TREE)/ootesttool$(VER) $(PKGDIR)-qa-tools/usr/bin
-	install -m755 $(SOURCE_TREE)/oosmoketest$(VER) $(PKGDIR)-qa-tools/usr/bin
-
-	mkdir -p -m755 $(PKGDIR)-qa-tools/$(OODIR)/program
-	for f in testtool.bin libcommuni* libsimplecm*; do \
-		mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-qa-tools/$(OODIR)/program; \
-	done
-	install -D -m644 $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/libsalalloc_malloc.so.3 $(PKGDIR)-qa-tools/$(OOUREDIR)/lib/libsalalloc_malloc.so.3
-
-  ifeq "$(ENABLE_JAVA)" "y"
-	mkdir -p -m755 $(PKGDIR)-qa-tools/$(OODIR)/program/classes
-	mkdir -p -m755 $(PKGDIR)-qa-tools/usr/share/java/$(OODIRNAME)
-	cp $(SOURCE_TREE)/qadevOOo/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/class/OOoRunnerLight.jar \
-		$(PKGDIR)-qa-tools/usr/share/java/$(OODIRNAME)
-	ln -sf /usr/share/java/$(OODIRNAME)/OOoRunnerLight.jar \
-		$(PKGDIR)-qa-tools/$(OODIR)/program/classes/OOoRunnerLight.jar
-  endif
-
-	mkdir -p -m755 $(PKGDIR)-qa-tools/$(OODIR)/smoketest
-	install -m755 $(SOURCE_TREE)/smoketestoo_native/smoketest.pl \
-		$(SOURCE_TREE)/smoketestoo_native/testlog.pl \
-		$(PKGDIR)-qa-tools/$(OODIR)/smoketest
-
-	mkdir -p -m755 $(PKGDIR)-qa-tools/$(OODIR)/presets/basic/Standard
-	install -m644 $(SOURCE_TREE)/smoketestoo_native/data/scripts/*.x* \
-		$(PKGDIR)-qa-tools/$(OODIR)/presets/basic/Standard
-
-	mv $(PKGDIR)-core/$(OODIR)/program/testtoolrc \
-		$(PKGDIR)-qa-tools/$(OODIR)/program && \
-	chmod 644 $(PKGDIR)-qa-tools/$(OODIR)/program/testtoolrc
-else
 	rm -f $(PKGDIR)-core/$(OODIR)/program/testtool.bin
 	rm -f $(PKGDIR)-core/$(OODIR)/program/libcommuni*
 	rm -f $(PKGDIR)-core/$(OODIR)/program/libsimplecm*
 	rm -f $(PKGDIR)-common/$(OODIR)/program/testtoolrc
-endif
 
 ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	# menu files from sysui
@@ -2911,56 +2849,6 @@ endif
 	mv $(PKGDIR)-common/$(OODIR)/share/dtd/officedocument \
 		$(PKGDIR)-dtd-officedocument1.0/$(OODIR)/share/dtd
 	cp debian/catalog.xml $(PKGDIR)-dtd-officedocument1.0/$(OODIR)/share/dtd/officedocument/1_0
-
-ifeq "$(PACKAGE_QA_TOOLS)" "y"
-  ifeq "$(ENABLE_JAVA)" "y"
-	mkdir -p -m755 $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/tests/java
-	for d in objdsc testdocs; do \
-		cp -r $(SOURCE_TREE)/qadevOOo/$$d $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/$$d; \
-	done
-  endif
-
-	mkdir -p -m755 $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/tests
-	cp -r $(SOURCE_TREE)/qadevOOo/tests/basic $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/tests
-  ifeq "$(ENABLE_JAVA)" "y"
-	for d in mod ifc; do \
-		cp -r $(SOURCE_TREE)/qadevOOo/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/class/$$d $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/tests/java; \
-	done
-  endif
-
-	find $(PKGDIR)-qa-api-tests -type d -name "CVS" | xargs rm -rf
-	find $(PKGDIR)-qa-api-tests -type f | xargs chmod 0644
-
-  ifeq "$(ENABLE_JAVA)" "y"
-	echo "TestBase=java_fat" > $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/java.props
-  endif
-	echo "TestBase=java_complex" > $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/complex.props
-	echo "TestBase=basic_fat" > $(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/basic.props
-
-	echo "BASICBRIDGE=/$(OODIR)/qadevOOo/testdocs/BasicBridge.sxw" >> \
-		$(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/basic.props
-	echo "BASICRESPTH=/$(OODIR)/qadevOOo/tests/basic" >> \
-		$(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/basic.props
-
-  ifeq "$(ENABLE_JAVA)" "y"
-	echo "DescriptionPath=/$(OODIR)/qadevOOo/objdsc" >> \
-		$(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/java.props; \
-	echo "TestDocumentPath=/$(OODIR)/qadevOOo/testdocs" >> \
-		$(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/java.props; \
-	echo "AppExecutionCommand=/$(OODIR)/program/soffice" \
-		"-norestore -nocrashreport -accept=socket,host=localhost,port=8100;urp;" >> \
-		$(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/java.props
-  endif
-	for i in complex basic; do \
-		echo "DescriptionPath=/$(OODIR)/qadevOOo/objdsc" >> \
-			$(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/$$i.props; \
-		echo "TestDocumentPath=/$(OODIR)/qadevOOo/testdocs" >> \
-			$(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/$$i.props; \
-		echo "AppExecutionCommand=/$(OODIR)/program/soffice" \
-			"-norestore -nocrashreport -accept=socket,host=localhost,port=8100;urp;" >> \
-			$(PKGDIR)-qa-api-tests/$(OODIR)/qadevOOo/$$i.props; \
-	done
-endif
 
 	# add "openoffice" symlink
 	cd $(PKGDIR)-common/usr/bin && ln -s ooffice openoffice
