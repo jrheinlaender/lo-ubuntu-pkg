@@ -55,7 +55,7 @@ export OOO_VENDOR
 
 # debhelper
 export DH_OPTIONS
-export DH_ALWAYS_EXCLUDE=CVS:.svn:.bzr
+export DH_ALWAYS_EXCLUDE=CVS:.svn:.bzr:.git
 #export DH_VERBOSE=1
 
 # work around tcsh bugs.debian.org/339034: tcsh: Unknown colorls variable `su'
@@ -67,11 +67,6 @@ MILESTONE=m15
 #TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
 TAG=$(MWS)_$(MILESTONE)
 OOO_BUILD_BRANCH=ooo-build-3-0-1
-ifeq "" "$(OOO_BUILD_BRANCH)"
-	OOO_BUILD_SVN=svn://svn.gnome.org/svn/ooo-build/trunk
-else
-	OOO_BUILD_SVN=svn://svn.gnome.org/svn/ooo-build/branches/$(OOO_BUILD_BRANCH)
-endif
 SOURCE_TREE=ooo-build/build/$(TAG)
 STAMP_DIR=debian/stampdir
 
@@ -2966,7 +2961,7 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 			fi; \
 		done; \
 	done
-	dh_installchangelogs -s -Nlibmythes-dev ooo-build/ChangeLog
+	dh_installchangelogs -s -Nlibmythes-dev
 ifeq "$(USE_SCSOLVER)" "y"
 	install -m644 $(SOURCE_TREE)/scsolver/ChangeLog \
 		$(PKGDIR)-calc/usr/share/doc/openoffice.org-calc/ChangeLog.scsolver
@@ -3192,7 +3187,7 @@ endif
 			ln -sf openoffice.1.gz $$i.gz; \
 		fi; \
 	done
-	dh_installchangelogs -i ooo-build/ChangeLog
+	dh_installchangelogs -i
 	dh_installmime -i
 	dh_lintian -i
 	dh_link -i
@@ -3267,7 +3262,13 @@ binary: binary-arch binary-indep
 
 # Get ooo-build
 get-ooo-build:
-	svn co $(OOO_BUILD_SVN) ooo-build
+	git clone git://anongit.freedesktop.org/git/ooo-build/ooo-build
+ifneq "$(OOO_BUILD_BRANCH)" ""
+	cd ooo-build && \
+		git checkout -b $(OOO_BUILD_BRANCH) origin/$(OOO_BUILD_BRANCH) && \
+		git checkout $(OOO_BUILD_BRANCH) && \
+		git branch -D master
+endif
 	cd ooo-build && NOCONFIGURE=1 ./autogen.sh
 
 # FIXME: works for milestones *AND* for a --with-split build only...
@@ -3325,7 +3326,7 @@ download: ooo-build/config.status
 # Update debian and ooo-build directories from version control
 vcsupdate:
 	cd debian && bzr update
-	cd ooo-build && svn up
+	cd ooo-build && git pull -r
 
 .PHONY: control
 .PHONY: clean-debdir clean-instsetoo clean-objectdirs clean default configure
