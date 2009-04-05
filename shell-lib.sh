@@ -60,6 +60,7 @@ remove_extension() {
   if /usr/lib/openoffice/program/unopkg list --shared $1 >/dev/null; then
     echo -n "Removing extension $1..."
     INSTDIR=`mktemp -d`
+    export PYTHONPATH="/@OOBASISDIR@/program"
     /usr/lib/openoffice/program/unopkg remove --shared $1 \
       "-env:UserInstallation=file://$INSTDIR" \
       '-env:UNO_JAVA_JFW_INSTALL_DATA=$OOO_BASE_DIR/share/config/javasettingsunopkginstall.xml' \
@@ -73,6 +74,7 @@ remove_extension() {
 add_extension() {
   echo -n "Adding extension $1..."
   INSTDIR=`mktemp -d`
+  export PYTHONPATH="/@OOBASISDIR@/program"
   /usr/lib/openoffice/program/unopkg add --shared $1 \
     "-env:UserInstallation=file:///$INSTDIR" \
     '-env:UNO_JAVA_JFW_INSTALL_DATA=$OOO_BASE_DIR/share/config/javasettingsunopkginstall.xml' \
