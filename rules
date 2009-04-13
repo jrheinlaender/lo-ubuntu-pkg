@@ -143,7 +143,7 @@ USE_SYSTEM_XMLSEC=n
 BUILD_CAIROCANVAS=y
 USE_SYSTEM_CAIRO=y
 CAIRO_FONTS_PATCH=y
-BUILD_KDE=y
+BUILD_KDE=n
 ifeq "$(BUILD_KDE)" "y"
   ENABLE_KDEAB=y
 endif
@@ -840,7 +840,6 @@ endif
 
 ifeq "$(BUILD_KDE)" "n"
 	CONFIGURE_FLAGS+= --disable-kde
-	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-kde -Nopenoffice.org$(VER)-kab
 	CONFIGURE_FLAGS+= --with-images="industrial crystal hicontrast tango $(HUMAN)"
 else
 	BUILD_DEPS += , kdelibs$(shell echo "$(KDE_VER)+1" | bc)-dev $(KDELIBS_MINVER)
@@ -1385,6 +1384,11 @@ ifeq "$(PACKAGE_SDK)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.sdk.in
 endif
+ifeq "$(BUILD_KDE)" "y"
+	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
+		>> debian/control < debian/control.kde.in
+	  perl -pi -e 's/ openoffice.org$(VER)-gnome,/ openoffice.org-gnome | openoffice.org$(VER)-kde,/' debian/control
+endif
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.postgresql.in
 
@@ -1429,6 +1433,10 @@ endif
 	# make -l10n-fi suggest openoffice.org-spellcheck-fi to
 	# match myspell-fi and openoffice.org-soikko/-voikko
 	perl -pi -e 's/myspell-dictionary-fi/myspell-dictionary-fi | openoffice.org-spellcheck-fi/' debian/control
+
+ifeq "$(BUILD_KDE)" "y"
+	perl -pi -e 's/GConf backend$$/GConf backend\n  * openoffice.org$(VER)-kde: KDE UI Plugin and KDE File Picker support/' debian/control
+endif
 
 .DELETE_ON_ERROR: debian/control
 
