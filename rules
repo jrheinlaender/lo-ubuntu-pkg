@@ -158,9 +158,10 @@ USE_DBUS=y
 USE_GSTREAMER=y
 USE_SYSTEM_NEON=y
 NEONSONR=27
-# will break with odfmetadata2 inclusion if librdf doesn't include some
-# of OOos patches (as to 1.0.7), see issue 90956. Enabling this now here
-# because otherwise we would build redland/raptor/rasqual uselessly
+# can't be enabled when odfmetdatadata2 included because librdf doesn't
+# include some of OOos patches (as to 1.0.7), see issue 90956.
+# Enabling this now here because otherwise we would build
+# redland/raptor/rasqual uselessly
 USE_SYSTEM_REDLAND=y
 USE_OOO_BUILD_DESKTOPS=n
 PACKAGE_SDK=y
@@ -413,9 +414,9 @@ ifeq "$(ENABLE_PDFIMPORT)" "y"
 endif
 
 ifeq "$(USE_LIBCURL4)" "y"
-	BUILD_DEPS += , libcurl4-openssl-dev
+	BUILD_DEPS += , libcurl4-gnutls-dev
 else
-	BUILD_DEPS += , libcurl3-openssl-dev
+	BUILD_DEPS += , libcurl3-gnutls-dev
 endif
 
 ifeq "$(SYSTEM_OPENSSL)" "y"
@@ -438,7 +439,7 @@ else
   else
 	SMALL_SYMBOLS = y
   endif
-	DBG_DBG_SUGGESTS+= , libc6.1-dbg [alpha ia64], libc0.1-dbg [kfreebsd-i386 kfreebsd-amd64], libc0.3-dbg [hurd-i386], libc6-dbg [!ia64 !alpha !kfreebsd-i386 !kfreebsd-amd64 !hurd-i386], ure-dbg, libatk1.0-dbg, libglib2.0-0-dbg, libgnomevfs2-0-dbg, libstdc++6-$(shell g++ --version | head -n 1 | cut -d' ' -f3 | cut -d'.' -f1,2)-dbg, libx11-6-dbg, libxext6-dbg, libxaw7-dbg, libxml2-dbg, libgtk2.0-0-dbg, libxau6-dbg, libice6-dbg, libsm6-dbg, libxinerama1-dbg, libfontconfig1-dbg
+	DBG_DBG_SUGGESTS+= , libc6.1-dbg [alpha ia64], libc0.1-dbg [kfreebsd-i386 kfreebsd-amd64], libc0.3-dbg [hurd-i386], libc6-dbg [!ia64 !alpha !kfreebsd-i386 !kfreebsd-amd64 !hurd-i386], libatk1.0-dbg, libglib2.0-0-dbg, libgnomevfs2-0-dbg, libstdc++6-$(shell g++ --version | head -n 1 | cut -d' ' -f3 | cut -d'.' -f1,2)-dbg, libx11-6-dbg, libxext6-dbg, libxaw7-dbg, libxml2-dbg, libgtk2.0-0-dbg, libxau6-dbg, libice6-dbg, libsm6-dbg, libxinerama1-dbg, libfontconfig1-dbg
   ifeq "$(USE_LIBCURL4)" "y"
 	DBG_DBG_SUGGESTS+= , libcurl3-dbg
   else
@@ -506,9 +507,9 @@ endif
 
 ifneq "$(BUILD_ONLY_EN_US)" "y"
   ifeq (lang=,$(findstring lang=,$(DEB_BUILD_OPTIONS)))
-	ISOS=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*lang=\([^,]*\),.*/\1/p')
-	HELPISOS=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*lang=\([^,]*\),.*/\1/p')
-	LANGPACKISOS=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^.*lang=\([^,]*\),.*/\1/p')
+	ISOS=$(shell echo "$(DEB_BUILD_OPTIONS) " | sed -n 's/^.*lang=\([^\s]*\)\s.*/\1/p' | awk '{ print $$1 }' | sed -e 's/,/ /')
+	HELPISOS=$(shell echo "$(DEB_BUILD_OPTIONS) " | sed -n 's/^.*lang=\([^\s]*\)\s.*/\1/p' | awk '{ print $$1 }' | sed -e 's/,/ /')
+	LANGPACKISOS=$(shell echo "$(DEB_BUILD_OPTIONS) " | sed -n 's/^.*lang=\([^\s]*\)\s.*/\1/p' | awk '{ print $$1 }' | sed -e 's/,/ /')
   else
 	# Note that the first one here *has to be* en-US. the first one gets
 	# gid_Module_Root as filelist later and the rest gid_Module_Root.$iso
@@ -790,7 +791,6 @@ endif
 
 ifeq "$(BUILD_KDE)" "n"
 	CONFIGURE_FLAGS+= --disable-kde
-	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-kde -Nopenoffice.org$(VER)-kab
 	CONFIGURE_FLAGS+= --with-images="industrial crystal hicontrast tango $(HUMAN)"
 else
 	BUILD_DEPS += , kdelibs$(shell echo "$(KDE_VER)+1" | bc)-dev $(KDELIBS_MINVER)
@@ -1336,6 +1336,11 @@ ifeq "$(PACKAGE_SDK)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.sdk.in
 endif
+ifeq "$(BUILD_KDE)" "y"
+	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
+		>> debian/control < debian/control.kde.in
+	  perl -pi -e 's/ openoffice.org$(VER)-gnome,/ openoffice.org-gnome | openoffice.org$(VER)-kde,/' debian/control
+endif
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.postgresql.in
 
@@ -1382,6 +1387,10 @@ endif
 	# make -l10n-fi suggest openoffice.org-spellcheck-fi to
 	# match myspell-fi and openoffice.org-soikko/-voikko
 	perl -pi -e 's/myspell-dictionary-fi/myspell-dictionary-fi | openoffice.org-spellcheck-fi/' debian/control
+
+ifeq "$(BUILD_KDE)" "y"
+	perl -pi -e 's/GConf backend$$/GConf backend\n  * openoffice.org$(VER)-kde: KDE UI Plugin and KDE File Picker support/' debian/control
+endif
 
 .DELETE_ON_ERROR: debian/control
 
@@ -1898,6 +1907,9 @@ ifeq "$(PACKAGE_WRITER2LATEX)" "y"
 endif
 	: # remove problematic ones
 	rm -f debian/tmp/native-jars/ridl.jar
+ifneq "$(USE_SYSTEM_SAXON)" "y"
+	rm -f debian/tmp/native-jars/saxon9.jar
+endif
 	: # compile the others
 	# the Debian i386 buildd, although having much ram still OOMs without
 	# this (at unoil.jar).
@@ -2726,6 +2738,14 @@ endif
 	# FIXME: What is this? unorc per default only mentiones
 	# share/uno_packages/cache...
 	rm -rf $(PKGDIR)-common/$(OODIR)/presets/uno_packages
+
+	# move javaseetingsunopkginstall.xml to /var/lib
+	mkdir -p $(PKGDIR)-common/var/lib/$(OODIRNAME)
+	mv $(PKGDIR)-common/$(OODIR)/share/config/javasettingsunopkginstall.xml \
+		$(PKGDIR)-common/var/lib/$(OODIRNAME)/javasettingsunopkginstall.xml
+	# hopefully this compat symlink will serve packages not yet updated...
+	ln -s /var/lib/$(OODIRNAME)/javasettingsunopkginstall.xml \
+		$(PKGDIR)-common/$(OODIR)/share/config/javasettingsunopkginstall.xml
 
 	# install DicOOo; we need to do this manually; the
 	# dictionaries/ module isn't built with --without-myspell-dicts
