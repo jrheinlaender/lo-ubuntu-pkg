@@ -1967,6 +1967,28 @@ ifeq "$(BUILD_KDE)" "y"
 	done
 	mv $(PKGDIR)-core/$(OOBRANDDIR)/program/kdefilepicker \
 		$(PKGDIR)-kde/$(OOBRANDDIR)/program
+
+	# install files for KDEs "create new" ...
+	mkdir -p $(PKGDIR)-kde/usr/share/templates/.source
+	for i in $(SOURCE_TREE)/extras/source/shellnew/*; do \
+		cp $$i $(PKGDIR)-kde/usr/share/templates/.source/`basename $$i`; \
+	done
+	cat debian/soffice-template.desktop.in \
+		| sed -e "s/@APP@/Writer/" \
+		| sed -e "s/@EXT@/odt/" \
+		> $(PKGDIR)-kde/usr/share/templates/soffice.odt.desktop
+	cat debian/soffice-template.desktop.in \
+		| sed -e "s/@APP@/Calc/" \
+		| sed -e "s/@EXT@/ods/" \
+		> $(PKGDIR)-kde/usr/share/templates/soffice.ods.desktop
+	cat debian/soffice-template.desktop.in \
+		| sed -e "s/@APP@/Impress/" \
+		| sed -e "s/@EXT@/odp/" \
+		> $(PKGDIR)-kde/usr/share/templates/soffice.odp.desktop
+	cat debian/soffice-template.desktop.in \
+		| sed -e "s/@APP@/Draw/" \
+		| sed -e "s/@EXT@/odg/" \
+		> $(PKGDIR)-kde/usr/share/templates/soffice.odg.desktop
 endif
 ifeq "$(ENABLE_KDEAB)" "y"
 	rm -rf $(PKGDIR)-kab
@@ -2126,7 +2148,7 @@ endif
 	# we don't need the share/xdgs except qstart
 	for f in `find debian -name '*.desktop' | grep xdg | grep -v qstart`; do \
 		rm -f $$f; done
-	for f in `find debian -name '*.desktop'`; do \
+	for f in `find debian -name '*.desktop' ! -name "*soffice.od*`; do \
 		sed -i -e '/^Comment\[de\]/s/- *\([a-zA-Z0-9]*\) *macht.*glich.*$$/mit \1/' $$f; \
 		if ! grep -q X-KDE-Protocols $$f; then \
 			echo 'X-KDE-Protocols=file,http,smb,ftp,webdav' >> $$f; \
@@ -2437,6 +2459,7 @@ $(STAMP_DIR)/broffice: $(STAMP_DIR)/install $(STAMP_DIR)/install-arch $(STAMP_DI
 	mkdir -p debian/broffice.org$(VER)/$(OOBRANDDIR)/program/resource
 	mkdir -p debian/broffice.org$(VER)/$(OOBRANDDIR)/share/registry/modules/org/openoffice/Setup
 	mkdir -p debian/broffice.org$(VER)/$(OOBRANDDIR)/share/registry/modules/org/openoffice/Office/UI
+	mkdir -p debian/broffice.org$(VER)/usr/share/templates
 	cat $(PKGDIR)-common/$(OOBRANDDIR)/program/bootstraprc \
 		| sed -e "s/OpenO/BrO/" | sed -e "s/openo/bro/" \
 		> debian/broffice.org$(VER)/$(OOBRANDDIR)/program/bootstraprc
@@ -2449,6 +2472,11 @@ $(STAMP_DIR)/broffice: $(STAMP_DIR)/install $(STAMP_DIR)/install-arch $(STAMP_DI
 	cat $(PKGDIR)-common/$(OOBRANDDIR)/share/registry/modules/org/openoffice/Office/UI/UI-brand.xcu \
 		| sed -e "s/OpenO/BrO/" \
 		> debian/broffice.org$(VER)/$(OOBRANDDIR)/share/registry/modules/org/openoffice/Office/UI/UI-brand.xcu
+	for i in odt ods odp odg; do \
+		cat $(PKGDIR)-kde/usr/share/templates/soffice.$${i}.desktop \
+			| sed -e "s/OpenO/BrO/" \
+			> debian/broffice.org$(VER)/usr/share/templates/soffice.$${i}.desktop; \
+	done
 	for iso in $(LANGPACKISOS); do \
 		if [ "$$iso" = "en-US" ]; then p=common; else p=l10n-`echo $$iso | tr A-Z a-z`; fi; \
 		if [ -f $(PKGDIR)-$$p/$(OOBRANDDIR)/program/resource/ooo$$iso.res ]; then \
