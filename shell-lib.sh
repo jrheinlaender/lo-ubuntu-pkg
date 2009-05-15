@@ -63,7 +63,7 @@ remove_extension() {
     export PYTHONPATH="/@OOBASISDIR@/program"
     /usr/lib/openoffice/program/unopkg remove --shared $1 \
       "-env:UserInstallation=file://$INSTDIR" \
-      '-env:UNO_JAVA_JFW_INSTALL_DATA=file:///var/lib/openoffice/javasettingsunopkginstall.xml' \
+      '-env:UNO_JAVA_JFW_INSTALL_DATA=file:///var/lib/openoffice/share/config(javasettingsunopkginstall.xml' \
       "-env:JFW_PLUGIN_DO_NOT_CHECK_ACCESSIBILITY=1"
     if [ -n $INSTDIR ]; then rm -rf $INSTDIR; fi
     echo " done."
@@ -77,7 +77,7 @@ add_extension() {
   export PYTHONPATH="/@OOBASISDIR@/program"
   /usr/lib/openoffice/program/unopkg add --shared $1 \
     "-env:UserInstallation=file:///$INSTDIR" \
-    '-env:UNO_JAVA_JFW_INSTALL_DATA=file:///var/lib/openoffice/javasettingsunopkginstall.xml' \
+    '-env:UNO_JAVA_JFW_INSTALL_DATA=file:///var/lib/openoffice/share/config/javasettingsunopkginstall.xml' \
     "-env:JFW_PLUGIN_DO_NOT_CHECK_ACCESSIBILITY=1"
   if [ -n $INSTDIR ]; then rm -rf $INSTDIR; fi
   echo " done."
