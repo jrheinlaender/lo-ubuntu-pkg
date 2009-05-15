@@ -83,5 +83,18 @@ add_extension() {
   echo " done."
 }
 
+revoke_from_services_rdb() {
+  rdb="`echo /@OOBASISDIR@/program | sed -e s/usr/var/`/services.rdb"
+  lib="`basename $1`"
+  if /usr/lib/ure/bin/regview $rdb | grep -q $lib; then
+    /usr/lib/ure/bin/regcomp -revoke -r $rdb -br $rdb -c file://$1
+  fi
+}
+
+register_to_services_rdb() {
+  rdb="`echo /@OOBASISDIR@/program | sed -e s/usr/var/`/services.rdb"
+  /usr/lib/ure/bin/regcomp -register -r $rdb -br $rdb -c file://$1
+}
+
 VER=
 
