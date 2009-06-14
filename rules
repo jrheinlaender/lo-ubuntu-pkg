@@ -144,11 +144,18 @@ USE_SYSTEM_XMLSEC=n
 BUILD_CAIROCANVAS=y
 USE_SYSTEM_CAIRO=y
 CAIRO_FONTS_PATCH=y
-BUILD_KDE=n
+BUILD_KDE=y
+KDE_VER=4
 ifeq "$(BUILD_KDE)" "y"
-  ENABLE_KDEAB=y
+  ifeq "$(KDE_VER)" "3"
+    ENABLE_KDEAB=y
+  else
+    ENABLE_KDEAB=n
+  endif
 endif
-KDE_VER=3
+ifeq "$(KDE_VER)" "3"
+  KDELIBS_MINVER= (>= 4:3.4.3-2)
+endif
 BUILD_DBG_PACKAGE=y
 USE_SYSTEM_BSH=y
 USE_SYSTEM_HSQLDB=y
@@ -159,7 +166,6 @@ HSQLDB_MINVER= (>> 1.8.0.10)
 # for UOF, but still for e.g. M$.
 USE_SYSTEM_SAXON=n
 USE_SYSTEM_LUCENE=y
-KDELIBS_MINVER= (>= 4:3.4.3-2)
 USE_SYSTEM_LPSOLVE=y
 USE_SHARED_LPSOLVE=y
 LPSOLVE_MIN_VERSION= (>= 5.5.0.13-5+b1)
@@ -287,6 +293,7 @@ ifeq "$(LENNY_BACKPORT)" "y"
 ifeq "$(BUILD_KDE)" "y"
   ENABLE_KDEAB=y
 endif
+  KDE_VER=3
   CURL_SECTYPE=openssl
   HSQLDB_MINVER= (>> 1.8.0.9)
 ifeq "$(ARCH)" "ia64"
@@ -853,19 +860,23 @@ endif
 
 ifeq "$(BUILD_KDE)" "n"
 	CONFIGURE_FLAGS+= --disable-kde
+	CONFIGURE_FLAGS-= --disable-kde4
 	CONFIGURE_FLAGS+= --with-images="industrial crystal hicontrast tango $(HUMAN)"
 else
+  ifeq "$(KDE_VER)" "4"
+	CONFIGURE_FLAGS += --disable-kde
+  else
+	CONFIGURE_FLAGS += --disable-kde4
+  endif
 	BUILD_DEPS += , kdelibs$(shell echo "$(KDE_VER)+1" | bc)-dev $(KDELIBS_MINVER)
   ifeq "$(KDE_VER)" "4"
 	DBG_DBG_SUGGESTS+= , kdelibs$(shell echo "$(KDE_VER)+1" | bc)-dbg, libqt4-dbg
   else
 	DBG_DBG_SUGGESTS+= , kdelibs-dbg, qt-x11-free-dbg
   endif
-  ifeq "$(KDE_VER)" "4"
-	ADDITIONAL_SECTIONS += KDE4
-  endif
   ifeq "$(ENABLE_KDEAB)" "y"
     ifeq "$(KDE_VER)" "4"
+	ADDITIONAL_SECTIONS += KDE4Experimental
 	BUILD_DEPS += , kdepimlibs$(shell echo "$(KDE_VER)+1" | bc)-dev
     endif
   else
@@ -1984,11 +1995,13 @@ endif
 ifeq "$(BUILD_KDE)" "y"
 	mkdir -p -m755 $(PKGDIR)-kde/$(OODIR)/program
 	mkdir -p -m755 $(PKGDIR)-kde/$(OOBRANDDIR)/program
-	for f in fps_kde.uno.so libvclplug_kde*.so; do \
+	for f in fps_kde*.uno.so libvclplug_kde*.so; do \
 	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-kde/$(OODIR)/program || exit 1 ;\
 	done
+  ifeq "$(KDE_VER)" "3"
 	mv $(PKGDIR)-core/$(OOBRANDDIR)/program/kdefilepicker \
 		$(PKGDIR)-kde/$(OOBRANDDIR)/program
+  endif
 
 	# install files for KDEs "create new" ...
 	mkdir -p $(PKGDIR)-kde/usr/share/templates/.source
