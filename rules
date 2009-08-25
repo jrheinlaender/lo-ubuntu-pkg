@@ -65,8 +65,8 @@ unexport LS_COLORS
 MWS=OOO310
 #MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)" | cut -d~ -f2 | sed -e s/$(shell echo $(MWS) | tr A-Z a-z)//)
 MILESTONE=m19
-#TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
-TAG=$(MWS)_$(MILESTONE)
+TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
+#TAG=$(MWS)_$(MILESTONE)
 OOO_BUILD_BRANCH=ooo-build-3-1-1
 SOURCE_TREE=ooo-build/build/$(TAG)
 STAMP_DIR=debian/stampdir
@@ -237,6 +237,11 @@ ALLOC=system
 INTERNAL_STDLIBS=n
 DEFAULT_IMAGE=galaxy
 IMAGES:=$(DEFAULT_IMAGE) industrial crystal hicontrast tango oxygen classic
+ENABLE_MYSQLNATIVE=n
+USE_SYSTEM_MYSQLCLIENT=y
+ifneq "$(USE_STLPORT)" "y"
+  USE_SYSTEM_MYSQLCPPCONN=y
+endif
 
 # Default flags to pass to configure of ooo-build
 CONFIGURE_FLAGS= --disable-post-install-scripts \
@@ -914,6 +919,18 @@ else
   endif
 endif
 
+ifeq "$(ENABLE_MYSQLNATIVE)" "y"
+	CONFIGURE_FLAGS += --enable-mysql-connector
+  ifeq "$(USE_SYSTEM_MYSQLCLIENT)" "y"
+	CONFIGURE_FLAGS += --with-system-mysql
+	BUILD_DEPS += , libmysqlclient-dev
+  endif
+  ifeq "$(USE_SYSTEM_MSQLCPPCONN)" "y"
+	CONFIGURE_FLAGS += --with-system-mysql-cppconn
+	BUILD_DEPS += , libmysqlcppconn-dev (>= 1.0.6~) [$(filter-out $(OOO_STLPORT_ARCHS),$(OOO_ARCHS)))]
+  endif
+endif
+
 ifeq "$(BUILD_GTK)" "n"
 	CONFIGURE_FLAGS+= --disable-gtk
 	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-gtk -Nopenoffice.org$(VER)-gnome
@@ -1449,6 +1466,10 @@ ifeq "$(BUILD_KDE)" "y"
 endif
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.postgresql.in
+ifeq "$(ENABLE_MYSQLNATIVE)" "y"
+	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
+		>> debian/control < debian/control.mysql.in
+endif
 
 	perl -pi -e "s,%OOO_ARCHS%,$(OOO_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_JAVA_ARCHS%,$(OOO_JAVA_ARCHS),g" debian/control
@@ -2523,6 +2544,12 @@ endif
 	install -D -m644 $(SOURCE_TREE)/connectivity/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/postgresql-sdbc-$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g).zip \
 		$(PKGDIR)-sdbc-postgresql/$(OOBRANDDIR)/share/extension/install/postgresql-sdbc-$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g).zip
 
+ifeq "$(ENABLE_MYSQLNATIVE)" "y"
+	rm -rf $(PKGDIR)-mysql-connector
+	install -D -m644 $(SOURCE_TREE)/mysqlc/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/mysql-connector-ooo-$(shell . $(SOURCE_TREE)/mysqlc/version.mk 2>/dev/null; echo $${MYSQLC_VERSION_MAJOR}.$${MYSQLC_VERSION_MINOR}.$${MYSQLC_VERSION_MICRO}-$(shell echo $(PLATFORMID) | sed -e s/_/-/)).oxt \
+		$(PKGDIR)-mysql-connector/$(OOBRANDDIR)/share/extension/install/mysql-connector-ooo-$(shell . $(SOURCE_TREE)/mysqlc/version.mk; echo $${MYSQLC_VERSION_MAJOR}.$${MYSQLC_VERSION_MINOR}.$${MYSQLC_VERSION_MICRO}-$(shell echo $(PLATFORMID) | sed -e s/_/-/)).oxt
+endif
+
 ifeq "$(ENABLE_OPENGL)" "y"
 	rm -rf $(PKGDIR)-ogltrans
 	mkdir -p $(PKGDIR)-ogltrans/$(OODIR)/program
@@ -3127,6 +3154,15 @@ endif
 			-Sdebian/ure/$(OOUREDIR)/lib \
 			$(SOURCE_TREE)/connectivity/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/postgresql-sdbc*.so \
 			> debian/openoffice.org$(VER)-sdbc-postgresql.substvars
+ifeq "$(ENABLE_MYSQLNATIVE)" "y"
+	LD_LIBRARY_PATH="/usr/lib/libfakeroot:debian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program" \
+		dpkg-shlibdeps -O \
+			-Sdebian/uno-libs3/$(OOUREDIR)/lib \
+			-Sdebian/ure/$(OOUREDIR)/lib \
+			$(SOURCE_TREE)/mysqlc/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/mysqlc.uno.so \
+			$(SOURCE_TREE)/mysqlcppconn/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/libmysqlcppconn.so \
+			> debian/openoffice.org$(VER)-mysql-connector.substvars
+endif
 ifeq "$(ENABLE_MINIMIZER)" "y"
 	 LD_LIBRARY_PATH="/usr/lib/libfakeroot:debian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program" \
 	 	dpkg-shlibdeps -O \
@@ -3163,7 +3199,8 @@ endif
 		-Nopenoffice.org$(VER)-presentation-minimizer \
 		-Nopenoffice.org$(VER)-presenter-console \
 		-Nopenoffice.org$(VER)-pdfimport \
-		-Nopenoffice.org$(VER)-sdbc-postgresql -- \
+		-Nopenoffice.org$(VER)-sdbc-postgresql \
+		-Nopenoffice.org$(VER)-mysql-connector -- \
 		-V"ure:Version=$(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`" \
 		-V'base-version=$(BASE_VERSION)' \
 		-V'help-l10n-virtual-version=$(HELP_L10N_VIRTUAL_VERSION)' \
@@ -3201,6 +3238,10 @@ ifeq "$(ENABLE_PRESENTER_CONSOLE)" "y"
 endif
 	dh_gencontrol -popenoffice.org$(VER)-sdbc-postgresql -- \
 		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g)+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
+ifeq "$(ENABLE_MYSQLNATIVE)" "y"
+	dh_gencontrol -popenoffice.org$(VER)-mysql-connector -- \
+		-v$(shell grep "<version" $(SOURCE_TREE)/mysqlc/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/description.xml | perl -pi -e 's,<version value=\"(.*)\" />,\1,; s/^\s+//; s/\s+$$//')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
+endif
 	dh_gencontrol -pure -pure-dbg -puno-libs3 -puno-libs3-dbg -- \
 		-V"ure:Version=$(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`" \
 		-v$(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
