@@ -3397,8 +3397,52 @@ ifneq "$(OOO_BUILD_BRANCH)" ""
 endif
 	cd ooo-build && NOCONFIGURE=1 ./autogen.sh
 
-# FIXME: works for milestones *AND* for a --with-split build only...
 get-orig-source:
+ifneq "$(WITH_SPLIT)" "y"
+	if test -n "$$TMP"; then \
+		TMPD=`mktemp -d -p $$TMP`; \
+	else \
+		TMPD=`mktemp -d`; \
+	fi && \
+	cd $$TMPD && \
+	mkdir -p openoffice.org-$(UPSTREAM_VERSION)/ooo-build/src && \
+	cd openoffice.org-$(UPSTREAM_VERSION)/ooo-build/src && \
+		wget http://download.services.openoffice.org/files/stable/$(UPSTREAM_VERSION)/OOo_$(UPSTREAM_VERSION)_src_binfilter.tar.bz2 && \
+		wget http://download.services.openoffice.org/files/stable/$(UPSTREAM_VERSION)/OOo_$(UPSTREAM_VERSION)_src_core.tar.bz2 && \
+		wget http://download.services.openoffice.org/files/stable/$(UPSTREAM_VERSION)/OOo_$(UPSTREAM_VERSION)_src_extensions.tar.bz2 && \
+		wget http://download.services.openoffice.org/files/stable/$(UPSTREAM_VERSION)/OOo_$(UPSTREAM_VERSION)_src_l10n.tar.bz2 && \
+		wget http://download.services.openoffice.org/files/stable/$(UPSTREAM_VERSION)/OOo_$(UPSTREAM_VERSION)_src_system.tar.bz2 && \
+		tar xfvj OOo_$(UPSTREAM_VERSION)_src_core.tar.bz2 && \
+		for i in da_DK en_GB nl_NL ru_RU; do \
+			rm $(TAG)/dictionaries/$$i/hyph_$${i}.dic; \
+		done && \
+		tar cfvj OOo_$(UPSTREAM_VERSION)_src_core.tar.bz2.dfsg $(TAG) && \
+		rm -rf $(TAG) && \
+		ln -sf OOo_$(UPSTREAM_VERSION)_src_core.tar.bz2.dfsg OOo_$(UPSTREAM_VERSION)_src_core.tar.bz2 && \
+		tar xfvj OOo_$(UPSTREAM_VERSION)_src_system.tar.bz2 && \
+		for i in da_DK en_GB nl_NL ru_RU; do \
+			rm $(TAG)/dictionaries/$$i/hyph_$${i}.dic; \
+		done && \
+		cd $(TAG)/libxml2/download/ && \
+		tar xfvz libxml2-2.6.31.tar.gz && \
+		rm -rf libxml2-2.6.31/result libxml2-2.6.31/test && \
+		tar cfvz libxml2-2.6.31.tar.gz libxml2-2.6.31/ && \
+		rm -rf libxml2-2.6.31/ && \
+		cd ../../.. && \
+		tar cfvj OOo_$(UPSTREAM_VERSION)_src_system.tar.bz2.dfsg $(TAG) && \
+		rm -rf $(TAG) && \
+		ln -sf OOo_$(UPSTREAM_VERSION)_src_system.tar.bz2.dfsg OOo_$(UPSTREAM_VERSION)_src_system.tar.bz2 && \
+		tar xfvj OOo_$(UPSTREAM_VERSION)_src_extensions.tar.bz2 && \
+			zip -d $(TAG)/jfreereport/download/liblayout.zip \
+				liblayout/resource/rfc1345.txt && \
+		tar cfvj OOo_$(UPSTREAM_VERSION)_src_extensions.tar.bz2.dfsg $(TAG) && \
+		rm -rf $(TAG) && \
+		ln -sf OOo_$(UPSTREAM_VERSION)_src_extensions.tar.bz2.dfsg OOo_$(UPSTREAM_VERSION)_src_extensions.tar.bz2 && \
+		cd $$TMPD && tar cfvz openoffice.org_$(UPSTREAM_VERSION).orig.tar.gz openoffice.org-$(UPSTREAM_VERSION) && \
+		rm -rf openoffice.org-$(UPSTREAM_VERSION) && \
+		mv  openoffice.org_$(UPSTREAM_VERSION).orig.tar.gz $(CURDIR)/.. && \
+		rmdir $$TMPD
+else
 	if test -n "$$TMP"; then \
 		TMPD=`mktemp -d -p $$TMP`; \
 	else \
@@ -3456,6 +3500,7 @@ get-orig-source:
 		rm -rf openoffice.org-$(UPSTREAM_VERSION) && \
 		mv  openoffice.org_$(UPSTREAM_VERSION).orig.tar.gz $(CURDIR)/.. && \
 		rmdir $$TMPD
+endif
 
 # Download the latest sources needed for ooo-build. Note that is
 # might download more than actually needed here....
