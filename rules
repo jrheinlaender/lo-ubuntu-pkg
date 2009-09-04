@@ -108,6 +108,9 @@ endif
 ifneq (,$(findstring mips,$(ARCH)))
   JDK=gcj-jdk
 endif
+ifneq (,$(findstring kfreebsd,$(ARCH)))
+  JDK=gcj-jdk
+endif
 ENABLE_MONO=y
 MONO2=y
 ifeq "$(MONO2)" "y"
@@ -129,6 +132,9 @@ USE_SYSTEM_BOOST=y
 BOOST_VERSION=default
 ifeq "$(BOOST_VERSION)" "1.37"
   BOOST_MINVER= (>= 1.37.0-4)
+endif
+ifeq "$(BOOST_VERSION)" "1.39"
+  BOOST_MINVER= (>= 1.39.0-2)
 endif
 USE_SYSTEM_VIGRA=y
 USE_EXTERNAL_CXXLIBS=y
@@ -238,6 +244,9 @@ ALLOC=system
 INTERNAL_STDLIBS=n
 DEFAULT_IMAGE=galaxy
 IMAGES:=$(DEFAULT_IMAGE) industrial crystal hicontrast tango oxygen classic
+ENABLE_MYSQLNATIVE=n
+USE_SYSTEM_MYSQLCLIENT=y
+USE_SYSTEM_MYSQLCPPCONN=y
 
 # Default flags to pass to configure of ooo-build
 CONFIGURE_FLAGS= --disable-post-install-scripts \
@@ -313,6 +322,9 @@ ifeq "$(ARCH)" "ia64"
   JDK=java-gcj-compat-dev
 endif
 ifneq (,$(findstring mips,$(ARCH)))
+  JDK=java-gcj-compat-dev
+endif
+ifneq (,$(findstring kfreebsd,$(ARCH)))
   JDK=java-gcj-compat-dev
 endif
 endif
@@ -669,7 +681,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 	JAVA_RUNTIME_DEPENDS += | java5-runtime
 	# Suns Java "packages"
   	JAVA_RUNTIME_DEPENDS += | jre
-	GCJ_JAWT_DIR=$(shell dirname `dpkg -L $(GCJ_JAWT_DEPENDS) | grep libjawt.so`)
+	GCJ_JAWT_DIR=$(shell dirname `dpkg -L $(GCJ_JAWT_DEPENDS) | grep libjawt.so | head -n 1`)
 export JAVA_HOME
 	CONFIGURE_FLAGS += --with-jdk-home=$(JAVA_HOME)
 	JAVA_COMMON_DEPENDS= , openoffice.org$(VER)-java-common (>> 2.2.0-4)
@@ -679,7 +691,15 @@ export JAVA_HOME
 	JAVA_COMMON_JAVA_DEPENDS+= , libsaxonb-java
   endif
   ifeq "$(DIST)" "Debian"
+    ifeq "$(shell gcc --version | head -n 1 | awk '{print $$4}' | cut -d. -f1,2)" "4.4"
+	BUILD_DEPS += , gcc-mingw32 [$(OOO_JAVA_ARCHS)]
+    else
+      ifeq "$(GCC_VERSION)" "4.4"
+        BUILD_DEPS += , gcc-mingw32 [$(OOO_JAVA_ARCHS)]
+      else
 	BUILD_DEPS += , mingw32 [$(OOO_JAVA_ARCHS)]
+      endif
+    endif
 	CONFIGURE_FLAGS += --with-mingwin=i586-mingw32msvc-g++
   endif
   ifeq "$(ENABLE_MEDIAWIKI)" "y"
@@ -905,6 +925,18 @@ else
   endif
 endif
 
+ifeq "$(ENABLE_MYSQLNATIVE)" "y"
+	CONFIGURE_FLAGS += --enable-mysql-connector
+  ifeq "$(USE_SYSTEM_MYSQLCLIENT)" "y"
+	CONFIGURE_FLAGS += --with-system-mysql
+	BUILD_DEPS += , libmysqlclient-dev
+  endif
+  ifeq "$(USE_SYSTEM_MSQLCPPCONN)" "y"
+	CONFIGURE_FLAGS += --with-system-mysql-cppconn
+	BUILD_DEPS += , libmysqlcppconn-dev (>= 1.0.6~r768) [$(filter-out $(OOO_STLPORT_ARCHS),$(OOO_ARCHS)))], libmysqlcppconn-stlport-dev [$(OOO_STLPORT_ARCHS)]
+  endif
+endif
+
 ifeq "$(BUILD_GTK)" "n"
 	CONFIGURE_FLAGS+= --disable-gtk
 	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-gtk -Nopenoffice.org$(VER)-gnome
@@ -1033,7 +1065,7 @@ endif
 
 # Build n projects in parallel?
 # DEB_BUILD_OPTIONS=parallel=<n>
-NUM_CPUS=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^\(.*,\)\?parallel=\([0-9]\+\).*$$/\2/p')
+NUM_CPUS=$(shell echo "$(DEB_BUILD_OPTIONS)," | sed -n 's/^\(.*\s\)\?parallel=\([0-9]\+\).*/\2/p')
 AVAIL_CPUS := $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
 ifeq "$(NUM_CPUS)" ""
 	NUM_CPUS := 1
@@ -1285,6 +1317,7 @@ endif
 		rm -f debian/openoffice.org-$$i.lintian-overrides; \
 	done
 	rm -f debian/*.install debian/*.dirs
+	rm -f download.list
 
 	$(MAKE) -f debian/rules control
 
@@ -1440,6 +1473,10 @@ ifeq "$(BUILD_KDE)" "y"
 endif
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.postgresql.in
+ifeq "$(ENABLE_MYSQLNATIVE)" "y"
+	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
+		>> debian/control < debian/control.mysql.in
+endif
 
 	perl -pi -e "s,%OOO_ARCHS%,$(OOO_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_JAVA_ARCHS%,$(OOO_JAVA_ARCHS),g" debian/control
@@ -1482,6 +1519,8 @@ endif
 	# make -l10n-fi suggest openoffice.org-spellcheck-fi to
 	# match myspell-fi and openoffice.org-soikko/-voikko
 	perl -pi -e 's/myspell-dictionary-fi/myspell-dictionary-fi | openoffice.org-spellcheck-fi/' debian/control
+	# similar for tr (openoffice.org-zemberek)
+	perl -pi -e 's/myspell-dictionary-tr/myspell-dictionary-tr | openoffice.org-spellcheck-tr/' debian/control
 
 ifeq "$(BUILD_KDE)" "y"
 	perl -pi -e 's/GConf backend$$/GConf backend\n  * openoffice.org$(VER)-kde: KDE UI Plugin and KDE File Picker support/' debian/control
@@ -2512,6 +2551,12 @@ endif
 	install -D -m644 $(SOURCE_TREE)/connectivity/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/postgresql-sdbc-$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g).zip \
 		$(PKGDIR)-sdbc-postgresql/$(OOBRANDDIR)/share/extension/install/postgresql-sdbc-$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g).zip
 
+ifeq "$(ENABLE_MYSQLNATIVE)" "y"
+	rm -rf $(PKGDIR)-mysql-connector
+	install -D -m644 $(SOURCE_TREE)/mysqlc/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/bin/mysql-connector-ooo-$(shell . $(SOURCE_TREE)/mysqlc/version.mk 2>/dev/null; echo $${MYSQLC_VERSION_MAJOR}.$${MYSQLC_VERSION_MINOR}.$${MYSQLC_VERSION_MICRO}-$(shell echo $(PLATFORMID) | sed -e s/_/-/)).oxt \
+		$(PKGDIR)-mysql-connector/$(OOBRANDDIR)/share/extension/install/mysql-connector-ooo-$(shell . $(SOURCE_TREE)/mysqlc/version.mk; echo $${MYSQLC_VERSION_MAJOR}.$${MYSQLC_VERSION_MINOR}.$${MYSQLC_VERSION_MICRO}-$(shell echo $(PLATFORMID) | sed -e s/_/-/)).oxt
+endif
+
 ifeq "$(ENABLE_OPENGL)" "y"
 	rm -rf $(PKGDIR)-ogltrans
 	mkdir -p $(PKGDIR)-ogltrans/$(OODIR)/program
@@ -3116,6 +3161,15 @@ endif
 			-Sdebian/ure/$(OOUREDIR)/lib \
 			$(SOURCE_TREE)/connectivity/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/postgresql-sdbc*.so \
 			> debian/openoffice.org$(VER)-sdbc-postgresql.substvars
+ifeq "$(ENABLE_MYSQLNATIVE)" "y"
+	LD_LIBRARY_PATH="/usr/lib/libfakeroot:debian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program" \
+		dpkg-shlibdeps -O \
+			-Sdebian/uno-libs3/$(OOUREDIR)/lib \
+			-Sdebian/ure/$(OOUREDIR)/lib \
+			$(SOURCE_TREE)/mysqlc/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/mysqlc.uno.so \
+			$(SOURCE_TREE)/mysqlcppconn/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/libmysqlcppconn.so \
+			> debian/openoffice.org$(VER)-mysql-connector.substvars
+endif
 ifeq "$(ENABLE_MINIMIZER)" "y"
 	 LD_LIBRARY_PATH="/usr/lib/libfakeroot:debian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program" \
 	 	dpkg-shlibdeps -O \
@@ -3152,7 +3206,8 @@ endif
 		-Nopenoffice.org$(VER)-presentation-minimizer \
 		-Nopenoffice.org$(VER)-presenter-console \
 		-Nopenoffice.org$(VER)-pdfimport \
-		-Nopenoffice.org$(VER)-sdbc-postgresql -- \
+		-Nopenoffice.org$(VER)-sdbc-postgresql \
+		-Nopenoffice.org$(VER)-mysql-connector -- \
 		-V"ure:Version=$(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`" \
 		-V'base-version=$(BASE_VERSION)' \
 		-V'help-l10n-virtual-version=$(HELP_L10N_VIRTUAL_VERSION)' \
@@ -3190,6 +3245,10 @@ ifeq "$(ENABLE_PRESENTER_CONSOLE)" "y"
 endif
 	dh_gencontrol -popenoffice.org$(VER)-sdbc-postgresql -- \
 		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g)+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
+ifeq "$(ENABLE_MYSQLNATIVE)" "y"
+	dh_gencontrol -popenoffice.org$(VER)-mysql-connector -- \
+		-v$(shell grep "<version" $(SOURCE_TREE)/mysqlc/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/description.xml | perl -pi -e 's,<version value=\"(.*)\" />,\1,; s/^\s+//; s/\s+$$//')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
+endif
 	dh_gencontrol -pure -pure-dbg -puno-libs3 -puno-libs3-dbg -- \
 		-V"ure:Version=$(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`" \
 		-v$(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
@@ -3333,6 +3392,7 @@ binary: binary-arch binary-indep
 
 # Get ooo-build
 get-ooo-build:
+	rm -rf ooo-build
 	git clone git://anongit.freedesktop.org/git/ooo-build/ooo-build
 ifneq "$(OOO_BUILD_BRANCH)" ""
 	cd ooo-build && \
@@ -3342,8 +3402,52 @@ ifneq "$(OOO_BUILD_BRANCH)" ""
 endif
 	cd ooo-build && NOCONFIGURE=1 ./autogen.sh
 
-# FIXME: works for milestones *AND* for a --with-split build only...
 get-orig-source:
+ifneq "$(WITH_SPLIT)" "y"
+	if test -n "$$TMP"; then \
+		TMPD=`mktemp -d -p $$TMP`; \
+	else \
+		TMPD=`mktemp -d`; \
+	fi && \
+	cd $$TMPD && \
+	mkdir -p openoffice.org-$(UPSTREAM_VERSION)/ooo-build/src && \
+	cd openoffice.org-$(UPSTREAM_VERSION)/ooo-build/src && \
+		wget http://download.services.openoffice.org/files/stable/$(UPSTREAM_VERSION)/OOo_$(UPSTREAM_VERSION)_src_binfilter.tar.bz2 && \
+		wget http://download.services.openoffice.org/files/stable/$(UPSTREAM_VERSION)/OOo_$(UPSTREAM_VERSION)_src_core.tar.bz2 && \
+		wget http://download.services.openoffice.org/files/stable/$(UPSTREAM_VERSION)/OOo_$(UPSTREAM_VERSION)_src_extensions.tar.bz2 && \
+		wget http://download.services.openoffice.org/files/stable/$(UPSTREAM_VERSION)/OOo_$(UPSTREAM_VERSION)_src_l10n.tar.bz2 && \
+		wget http://download.services.openoffice.org/files/stable/$(UPSTREAM_VERSION)/OOo_$(UPSTREAM_VERSION)_src_system.tar.bz2 && \
+		tar xfvj OOo_$(UPSTREAM_VERSION)_src_core.tar.bz2 && \
+		for i in `find $(TAG)/psprint_config/configuration/ppds ! -name "SGEN*" -name "*.PS"`; do \
+			rm $$i; \
+		done && \
+		tar cfvj OOo_$(UPSTREAM_VERSION)_src_core.tar.bz2.dfsg $(TAG) && \
+		rm -rf $(TAG) && \
+		ln -sf OOo_$(UPSTREAM_VERSION)_src_core.tar.bz2.dfsg OOo_$(UPSTREAM_VERSION)_src_core.tar.bz2 && \
+		tar xfvj OOo_$(UPSTREAM_VERSION)_src_system.tar.bz2 && \
+		for i in da_DK en_GB nl_NL ru_RU; do \
+			rm $(TAG)/dictionaries/$$i/hyph_$${i}.dic; \
+		done && \
+		cd $(TAG)/libxml2/download/ && \
+		tar xfvz libxml2-2.6.31.tar.gz && \
+		rm -rf libxml2-2.6.31/result libxml2-2.6.31/test && \
+		tar cfvz libxml2-2.6.31.tar.gz libxml2-2.6.31/ && \
+		rm -rf libxml2-2.6.31/ && \
+		cd ../../.. && \
+		tar cfvj OOo_$(UPSTREAM_VERSION)_src_system.tar.bz2.dfsg $(TAG) && \
+		rm -rf $(TAG) && \
+		ln -sf OOo_$(UPSTREAM_VERSION)_src_system.tar.bz2.dfsg OOo_$(UPSTREAM_VERSION)_src_system.tar.bz2 && \
+		tar xfvj OOo_$(UPSTREAM_VERSION)_src_extensions.tar.bz2 && \
+			zip -d $(TAG)/jfreereport/download/liblayout.zip \
+				liblayout/resource/rfc1345.txt && \
+		tar cfvj OOo_$(UPSTREAM_VERSION)_src_extensions.tar.bz2.dfsg $(TAG) && \
+		rm -rf $(TAG) && \
+		ln -sf OOo_$(UPSTREAM_VERSION)_src_extensions.tar.bz2.dfsg OOo_$(UPSTREAM_VERSION)_src_extensions.tar.bz2 && \
+		cd $$TMPD && tar cfvz openoffice.org_$(UPSTREAM_VERSION).orig.tar.gz openoffice.org-$(UPSTREAM_VERSION) && \
+		rm -rf openoffice.org-$(UPSTREAM_VERSION) && \
+		mv  openoffice.org_$(UPSTREAM_VERSION).orig.tar.gz $(CURDIR)/.. && \
+		rmdir $$TMPD
+else
 	if test -n "$$TMP"; then \
 		TMPD=`mktemp -d -p $$TMP`; \
 	else \
@@ -3380,6 +3484,7 @@ get-orig-source:
 		rm -rf libxml2-2.6.31/result libxml2-2.6.31/test && \
 		tar cfvz libxml2-2.6.31.tar.gz libxml2-2.6.31/ && \
 		rm -rf libxml2-2.6.31/ && \
+		cd ../../.. && \
 		tar cfvj $(TAG)-libs-extern-sys.tar.bz2.dfsg $(TAG)-libs-extern-sys && \
 		ln -sf $(TAG)-libs-extern-sys.tar.bz2.dfsg $(TAG)-libs-extern-sys.tar.bz2 && \
 		rm -rf $(TAG)-libs-extern-sys && \
@@ -3400,6 +3505,7 @@ get-orig-source:
 		rm -rf openoffice.org-$(UPSTREAM_VERSION) && \
 		mv  openoffice.org_$(UPSTREAM_VERSION).orig.tar.gz $(CURDIR)/.. && \
 		rmdir $$TMPD
+endif
 
 # Download the latest sources needed for ooo-build. Note that is
 # might download more than actually needed here....
