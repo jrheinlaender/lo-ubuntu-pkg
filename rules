@@ -201,6 +201,8 @@ USE_BZIP_COMPRESS=n
 PRUNE_OOOBUILD=y
 PARALLEL_BUILD=n
 MOZILLA=iceape
+ENABLE_LDAP=y
+USE_OPENLDAP=y
 ENABLE_OPENGL=y
 SYSTEM_OPENSSL=y
 NEW_DPKG_SHLIBDEPS=y
@@ -1097,6 +1099,17 @@ endif
 BUILD_PATH := $(CURDIR)/debian/usr/bin:$(BUILD_PATH)
 BUILD_LD_LIBRARY_PATH := $(BUILD_LD_LIBRARY_PATH):$(GCJ_JAWT_DIR)
 
+ifeq "$(ENABLE_LDAP)" "y"
+  ifeq "$(USE_OPENLDAP)" "y"
+    BUILD_DEPS += , libldap2-dev
+    LDAP_LIB := $(shell echo libldap-`grep LDAP_VENDOR_VERSION_M /usr/include/ldap_features.h | cut -d: -f2 | awk '{ print $$3 }' | xargs | sed -e "s/ /\./"`-`grep LDAP_VENDOR_VERSION_MAJOR /usr/include/ldap_features.h | cut -d: -f2 | awk '{ print $$3 }'`)
+   else
+     CONFIGURE_FLAGS += --without-openldap
+   endif
+else
+  CONFIGURE_FLAGS += --disable-ldap
+endif
+
 # Because of the stampdir magic, when you actually want to run a rule
 # over, you would have to remove the stamp manually.  Now, just do
 # 'debian/rules <target> <target> ... FORCE=1', and the stamp files
@@ -1392,6 +1405,7 @@ debian/control: $(wildcard debian/control*in) ooo-build/bin/openoffice-xlate-lan
 	        -e "s|@FONT_SUGGESTS@|$$FONT_SUGGESTS|g" \
 	        -e "s:@LOCALES_DEPENDS@:$$LOCALES_DEPENDS:g" \
 			-e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
+		-e "s|@LDAP_LIB@|$(LDAP_LIB)|g" \
 	        >> debian/control < debian/control.lang.in; \
 	done
 
@@ -1523,6 +1537,10 @@ endif
 
 ifeq "$(BUILD_KDE)" "y"
 	perl -pi -e 's/GConf backend$$/GConf backend\n  * openoffice.org$(VER)-kde: KDE UI Plugin and KDE File Picker support/' debian/control
+endif
+
+ifeq "$(ENABLE_LDAP)" "y"
+	perl -pi -e 's/paperconf$$/paperconf\n  * $(LDAP_LIB): LDAP client library; needed for OOo getting its profiles\n    from LDAP/' debian/control
 endif
 
 .DELETE_ON_ERROR: debian/control
@@ -3220,6 +3238,7 @@ endif
 		-V'lpsolve-dep=$(LPSOLVE_DEP)' \
 		-V'gstreamer-plugins-suggests=$(GSTREAMER_PLUGINS_SUGGESTS)' \
 		-V'libebook-dep=$(shell debian/scripts/get_libebook_dep.sh)' \
+		-V'libldap-suggests=$(LDAP_LIB)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-v$(BINARY_VERSION)
 ifeq "$(ENABLE_JAVA)" "y"
