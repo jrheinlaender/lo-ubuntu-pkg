@@ -9,6 +9,10 @@ if ! expr "$DEFCOLUMNS" : "[[:digit:]]\+$" > /dev/null 2>&1; then
   DEFCOLUMNS=80
 fi
 
+if [ -e /usr/share/debconf/confmodule ]; then
+	. /usr/share/debconf/confmodule
+fi
+
 message() {
 	echo "$*" | fmt -t -w ${COLUMNS:-$DEFCOLUMNS} >&2
 }
@@ -52,40 +56,59 @@ rm_conffile() {
     fi
 }
 
+check_for_running_ooo() {
+	if [ -e /usr/lib/openoffice/program/bootstraprc ]; then
+		LOCKFILE=`grep UserInstallation /usr/lib/openoffice/program/bootstraprc | cut -d= -f2 | sed -e 's,SYSUSERCONFIG,HOME,'`
+		if [ -x /usr/bin/pgrep ]; then
+		  PID=`/usr/bin/pgrep soffice.bin | head -n 1`
+		fi
+		if [ -n "$PID" ] || [ -e "$LOCKFILE" ]; then
+			db_input high openoffice.org/running
+			db_go
+			# try again in case OOo got closed before hitting OK
+			if [ -x /usr/bin/pgrep ]; then
+			  PID=`/usr/bin/pgrep soffice.bin | head -n 1`
+ 			fi
+			if [ -n "$PID" ] || [ -e "$LOCKFILE" ]; then
+			  exit $RET
+			fi
+		fi
+	fi
+}
+
 flush_unopkg_cache() {
 	/usr/lib/openoffice/program/unopkg list --shared > /dev/null 2>&1
 }
 
 remove_extension() {
+  check_for_running_ooo
   if /usr/lib/openoffice/program/unopkg list --shared $1 >/dev/null; then
-    echo -n "Removing extension $1..."
     INSTDIR=`mktemp -d`
     export PYTHONPATH="/@OOBASISDIR@/program"
     basis=`readlink /usr/lib/openoffice/basis-link`
-    /usr/lib/openoffice/program/unopkg remove --shared $1 \
+    /usr/lib/openoffice/program/unopkg remove -v --shared $1 \
       "-env:UserInstallation=file://$INSTDIR" \
       "-env:UNO_JAVA_JFW_INSTALL_DATA=file:///var/lib/openoffice/$basis/share/config/javasettingsunopkginstall.xml" \
       "-env:JFW_PLUGIN_DO_NOT_CHECK_ACCESSIBILITY=1"
     if [ -n $INSTDIR ]; then rm -rf $INSTDIR; fi
-    echo " done."
     flush_unopkg_cache
   fi
 }
 
 add_extension() {
-  echo -n "Adding extension $1..."
+  check_for_running_ooo
   INSTDIR=`mktemp -d`
   export PYTHONPATH="/@OOBASISDIR@/program"
   basis=`readlink /usr/lib/openoffice/basis-link`
-  /usr/lib/openoffice/program/unopkg add --shared $1 \
+  /usr/lib/openoffice/program/unopkg add -v --shared $1 \
     "-env:UserInstallation=file:///$INSTDIR" \
     "-env:UNO_JAVA_JFW_INSTALL_DATA=file:///var/lib/openoffice/$basis/share/config/javasettingsunopkginstall.xml" \
     "-env:JFW_PLUGIN_DO_NOT_CHECK_ACCESSIBILITY=1"
   if [ -n $INSTDIR ]; then rm -rf $INSTDIR; fi
-  echo " done."
 }
 
 revoke_from_services_rdb() {
+  check_for_running_ooo
   rdb="`echo /@OOBASISDIR@/program | sed -e s/usr/var/`/services.rdb"
   lib="`basename $1`"
   if [ -e "$rdb" ] && /usr/lib/ure/bin/regview $rdb | grep -q $lib; then
@@ -94,6 +117,7 @@ revoke_from_services_rdb() {
 }
 
 register_to_services_rdb() {
+  check_for_running_ooo
   rdb="`echo /@OOBASISDIR@/program | sed -e s/usr/var/`/services.rdb"
   /usr/lib/ure/bin/regcomp -register -r $rdb -br $rdb -c file://$1
 }
