@@ -86,7 +86,7 @@ remove_extension() {
     INSTDIR=`mktemp -d`
     export PYTHONPATH="/@OOBASISDIR@/program"
     basis=`readlink /usr/lib/openoffice/basis-link`
-    /usr/lib/openoffice/program/unopkg remove --shared $1 \
+    /usr/lib/openoffice/program/unopkg remove -v --shared $1 \
       "-env:UserInstallation=file://$INSTDIR" \
       "-env:UNO_JAVA_JFW_INSTALL_DATA=file:///var/lib/openoffice/$basis/share/config/javasettingsunopkginstall.xml" \
       "-env:JFW_PLUGIN_DO_NOT_CHECK_ACCESSIBILITY=1"
@@ -100,7 +100,7 @@ add_extension() {
   INSTDIR=`mktemp -d`
   export PYTHONPATH="/@OOBASISDIR@/program"
   basis=`readlink /usr/lib/openoffice/basis-link`
-  /usr/lib/openoffice/program/unopkg add --shared $1 \
+  /usr/lib/openoffice/program/unopkg add -v --shared $1 \
     "-env:UserInstallation=file:///$INSTDIR" \
     "-env:UNO_JAVA_JFW_INSTALL_DATA=file:///var/lib/openoffice/$basis/share/config/javasettingsunopkginstall.xml" \
     "-env:JFW_PLUGIN_DO_NOT_CHECK_ACCESSIBILITY=1"
