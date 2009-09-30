@@ -70,7 +70,7 @@ check_for_running_ooo() {
 			  PID=`/usr/bin/pgrep soffice.bin | head -n 1`
  			fi
 			if [ -n "$PID" ] || [ -e "$LOCKFILE" ]; then
-			  exit $RET
+			  exit 1
 			fi
 		fi
 	fi
