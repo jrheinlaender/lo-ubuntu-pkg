@@ -245,6 +245,9 @@ IMAGES:=$(DEFAULT_IMAGE) industrial crystal hicontrast tango oxygen classic
 ENABLE_MYSQLNATIVE=y
 USE_SYSTEM_MYSQLCLIENT=y
 USE_SYSTEM_MYSQLCPPCONN=y
+DICT_DIR=/usr/share/hunspell
+HYPH_DIR=/usr/share/hyphen
+THES_DIR=/usr/share/mythes
 
 # Default flags to pass to configure of ooo-build
 CONFIGURE_FLAGS= --disable-post-install-scripts \
@@ -262,9 +265,6 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
 		--libdir=/usr/lib \
 		--host=$(DEB_HOST_GNU_TYPE) --build=$(DEB_BUILD_GNU_TYPE) \
 		--with-system-dicts \
-		--with-external-dict-dir=/usr/share/myspell/dicts \
-		--with-external-hyph-dir=/usr/share/myspell/dicts \
-		--with-external-thes-dir=/usr/share/myspell/dicts \
 		--with-additional-sections="$(ADDITIONAL_SECTIONS)"
 
 ifneq "$(BUILD_ONLY_EN_US)" "y"
@@ -323,6 +323,9 @@ endif
 ifneq (,$(findstring kfreebsd,$(ARCH)))
   JDK=java-gcj-compat-dev
 endif
+  DICT_DIR=/usr/share/myspell/dicts
+  HYPH_DIR=/usr/share/myspell/dicts
+  THES_DIR=/usr/share/myspell/dicts
 endif
 
 #############
@@ -610,9 +613,9 @@ endif
 
 ifneq "$(BUILD_ONLY_EN_US)" "y"
   ifeq (lang=,$(findstring lang=,$(DEB_BUILD_OPTIONS)))
-	ISOS=$(shell echo "$(DEB_BUILD_OPTIONS) " | sed -n 's/^.*lang=\([^\s]*\)\s.*/\1/p' | awk '{ print $$1 }' | sed -e 's/,/ /g')
-	HELPISOS=$(shell echo "$(DEB_BUILD_OPTIONS) " | sed -n 's/^.*lang=\([^\s]*\)\s.*/\1/p' | awk '{ print $$1 }' | sed -e 's/,/ /g')
-	LANGPACKISOS=$(shell echo "$(DEB_BUILD_OPTIONS) " | sed -n 's/^.*lang=\([^\s]*\)\s.*/\1/p' | awk '{ print $$1 }' | sed -e 's/,/ /g')
+	ISOS=$(shell echo "$(DEB_BUILD_OPTIONS) " | sed -n 's/^.*lang=\([^\s].*\)\s.*/\1/p' | awk '{ print $$1 }' | sed -e 's/,/ /g')
+	HELPISOS=$(shell echo "$(DEB_BUILD_OPTIONS) " | sed -n 's/^.*lang=\([^\s].*\)\s.*/\1/p' | awk '{ print $$1 }' | sed -e 's/,/ /g')
+	LANGPACKISOS=$(shell echo "$(DEB_BUILD_OPTIONS) " | sed -n 's/^.*lang=\([^\s].*\)\s.*/\1/p' | awk '{ print $$1 }' | sed -e 's/,/ /g')
   else
 	# Note that the first one here *has to be* en-US. the first one gets
 	# gid_Module_Root as filelist later and the rest gid_Module_Root.$iso
@@ -814,6 +817,7 @@ ifeq "$(USE_SYSTEM_HUNSPELL)" "y"
 	BUILD_DEPS += , libhunspell-dev $(HUNSPELL_MIN_VER)
 	CONFIGURE_FLAGS+= --with-system-hunspell
 endif
+	CONFIGURE_FLAGS += --with-external-dict-dir=$(DICT_DIR)
 
 ifeq "$(SYSTEM_ALTLINUXHYPH)" "y"
   ifeq "$(USE_LIBHYPHEN)" "y"
@@ -823,6 +827,7 @@ ifeq "$(SYSTEM_ALTLINUXHYPH)" "y"
   endif
 	CONFIGURE_FLAGS += --with-system-altlinuxhyph
 endif
+	CONFIGURE_FLAGS += --with-external-hyph-dir=$(HYPH_DIR)
 
 ifeq "$(USE_AGG)" "y"
 	CONFIGURE_FLAGS+= --with-agg
@@ -889,6 +894,7 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
 	CONFIGURE_FLAGS += --with-system-libwpg
   endif
 endif
+	CONFIGURE_FLAGS += --with-external-thes-dir=$(THES_DIR)
 
 ifeq "$(USE_SYSTEM_ICU)" "y"
 	BUILD_DEPS += , libicu-dev $(ICU_MINVER)
@@ -1551,6 +1557,10 @@ endif
 
 ifeq "$(BUILD_KDE)" "y"
 	perl -pi -e 's/GConf backend$$/GConf backend\n  * openoffice.org$(VER)-kde: KDE UI Plugin and KDE File Picker support/' debian/control
+endif
+
+ifneq "$(DICT_DIR)" "/usr/share/hunspell"
+	perl -pi -e 's/^Breaks:.*myspell*\n//' debian/control
 endif
 
 .DELETE_ON_ERROR: debian/control
