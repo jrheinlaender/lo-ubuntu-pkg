@@ -2005,7 +2005,7 @@ endif
 #
 # Generate maintainer scripts
 maintscripts: $(STAMP_DIR)/maintscripts
-$(STAMP_DIR)/maintscripts: debian/shell-lib.sh $(wildcard debian/*.preinst.in) $(wildcard debian/*.postinst.in) $(wildcard debian/*.prerm.in) $(wildcard debian/*.postrm.in) debian/scripts/vars.$(ARCH) debian/control
+$(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*.sh) $(wildcard debian/*.preinst.in) $(wildcard debian/*.postinst.in) $(wildcard debian/*.prerm.in) $(wildcard debian/*.postrm.in) debian/scripts/vars.$(ARCH) debian/control
 	dh_testdir
 
 	rm -f debian/*.{pre,post}{inst,rm}
@@ -2019,7 +2019,17 @@ $(STAMP_DIR)/maintscripts: debian/shell-lib.sh $(wildcard debian/*.preinst.in) $
 	      grep LIBSUFFIX debian/scripts/vars.$(ARCH) >> $$MAINTSCRIPT; \
 	      grep PLATFORMID debian/scripts/vars.$(ARCH) >> $$MAINTSCRIPT; \
 	      echo "" >> $$MAINTSCRIPT; \
-	      cat debian/shell-lib.sh >> $$MAINTSCRIPT; \
+	      if grep -q conffile $$MAINTSCRIPT.in; then \
+		 cat debian/shell-lib-conffiles.sh >> $$MAINTSCRIPT; \
+	      elif egrep -q "(add|remove)_extension" $$MAINTSCRIPT.in; then \
+		 echo ". /usr/share/debconf/confmodule" >> $$MAINTSCRIPT; \
+		 echo "" >> $$MAINTSCRIPT; \
+		 cat debian/shell-lib-extensions.sh >> $$MAINTSCRIPT; \
+	      elif grep -q services_rdb $$MAINTSCRIPT.in; then \
+		 echo ". /usr/share/debconf/confmodule" >> $$MAINTSCRIPT; \
+		 echo "" >> $$MAINTSCRIPT; \
+		 cat debian/shell-lib-components.sh >> $$MAINTSCRIPT; \
+	      fi; \
 	      sed -n '/^#INCLUDE_SHELL_LIB#$$/,$$p' < $$MAINTSCRIPT.in | sed -e '/^#INCLUDE_SHELL_LIB#$$/d' >> $$MAINTSCRIPT; \
 	      perl -pi -e "s/\@LANGPACKISOS\@/$(LANGPACKISOS)/" $$MAINTSCRIPT; \
 	      perl -pi -e "s,\@OODIR\@,$(OODIR),g" $$MAINTSCRIPT; \
