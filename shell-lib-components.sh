@@ -14,17 +14,34 @@ check_for_running_ooo() {
 	fi
 }
 
+handle_soffice_listeners() {
+	services="docvert-converter"
+	for s in $services; do
+		if [ -x /etc/init.d/$s ]; then
+			if [ -x /usr/sbin/invoke-rc.d ]; then
+				invoke-rc.d $s $1
+			else
+				/etc/init.d/$s $1
+			fi
+		fi
+	done
+}
+
 revoke_from_services_rdb() {
+  handle_soffice_listeners stop
   check_for_running_ooo
   rdb="`echo /@OOBASISDIR@/program | sed -e s/usr/var/`/services.rdb"
   lib="`basename $1`"
   if [ -e "$rdb" ] && /usr/lib/ure/bin/regview $rdb | grep -q $lib; then
     /usr/lib/ure/bin/regcomp -revoke -r $rdb -br $rdb -c file://$1
   fi
+  handle_soffice_listeners start
 }
 
 register_to_services_rdb() {
+  handle_soffice_listeners stop
   check_for_running_ooo
   rdb="`echo /@OOBASISDIR@/program | sed -e s/usr/var/`/services.rdb"
   /usr/lib/ure/bin/regcomp -register -r $rdb -br $rdb -c file://$1
+  handle_soffice_listeners start
 }
