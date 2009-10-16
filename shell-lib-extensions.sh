@@ -14,11 +14,25 @@ check_for_running_ooo() {
 	fi
 }
 
+handle_soffice_listeners() {
+	services="docvert-converter"
+	for s in $services; do
+		if [ -x /etc/init.d/$s ]; then
+			if [ -x /usr/sbin/invoke-rc.d ]; then
+				invoke-rc.d $s $1
+			else
+				/etc/init.d/$s $1
+			fi
+		fi
+	done
+}
+
 flush_unopkg_cache() {
 	/usr/lib/openoffice/program/unopkg list --shared > /dev/null 2>&1
 }
 
 remove_extension() {
+  handle_soffice_listeners stop
   check_for_running_ooo
   if /usr/lib/openoffice/program/unopkg list --shared $1 >/dev/null; then
     INSTDIR=`mktemp -d`
@@ -31,9 +45,11 @@ remove_extension() {
     if [ -n $INSTDIR ]; then rm -rf $INSTDIR; fi
     flush_unopkg_cache
   fi
+  handle_soffice_listeners start
 }
 
 add_extension() {
+  handle_soffice_listeners stop
   check_for_running_ooo
   INSTDIR=`mktemp -d`
   export PYTHONPATH="/@OOBASISDIR@/program"
@@ -43,4 +59,5 @@ add_extension() {
     "-env:UNO_JAVA_JFW_INSTALL_DATA=file:///var/lib/openoffice/$basis/share/config/javasettingsunopkginstall.xml" \
     "-env:JFW_PLUGIN_DO_NOT_CHECK_ACCESSIBILITY=1"
   if [ -n $INSTDIR ]; then rm -rf $INSTDIR; fi
+  handle_soffice_listeners start
 }
