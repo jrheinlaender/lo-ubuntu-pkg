@@ -25,6 +25,8 @@ handle_soffice_listeners() {
 			fi
 		fi
 	done
+	# wait for proper shutdown/kill
+	sleep 1
 }
 
 revoke_from_services_rdb() {
