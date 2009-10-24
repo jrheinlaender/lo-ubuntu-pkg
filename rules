@@ -1903,6 +1903,13 @@ endif
 
 	rm -rf debian/tmp/pkg
 
+	# move help to /usr/share
+	for iso in $(HELPISOS); do \
+		pkgiso=`echo $$iso | tr A-Z a-z`; \
+		mv $(PKGDIR)-help-$$pkgiso/usr/lib \
+			$(PKGDIR)-help-$$pkgiso/usr/share; \
+	done
+
 ifeq "$(ENABLE_JAVA)" "y"
 	# move officebean.jar into -officebean (They will be moved out of -core
 	# in the install-arch target). Do the /usr/share/java move here already
@@ -2072,7 +2079,7 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/install $(STAMP_DIR)/install-indep ooo-buil
 
 	# remove empty help directories
 	for iso in `echo $(LANGPACKISOS) | tr A-Z a-z`; do \
-		rm -rf $(PKGDIR)-l10n-$$iso/$(OODIR)/help; \
+		rm -rf $(PKGDIR)-l10n-$$iso/$(shell echo $(OODIR) | sed -e s/lib/share/)/help; \
 	done
 
 	# replace duplicate files in the langpacks with symlinks
@@ -2838,13 +2845,13 @@ endif
 ifeq "$(HELPISOS)" ""
 	# when we don't build helpcontent2 here we are missing helpxsl.zip so
 	# this file doesn't get installed either. Do it manually..
-	mkdir -p -m755 $(PKGDIR)-common/$(OODIR)/help && \
+	mkdir -p -m755 $(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/help && \
 	cp $(SOURCE_TREE)/helpcontent2/source/auxiliary/main_transform.xsl \
-		$(PKGDIR)-common/$(OODIR)/help
+		$(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/help
 	cp $(SOURCE_TREE)/helpcontent2/source/auxiliary/idxcaption.xsl \
-		$(PKGDIR)-common/$(OODIR)/help
+		$(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/help
 	cp $(SOURCE_TREE)/helpcontent2/source/auxiliary/idxcontent.xsl \
-		$(PKGDIR)-common/$(OODIR)/help
+		$(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/help
 endif
 
 ifeq "$(PACKAGE_SDK)" "y"
@@ -3147,6 +3154,16 @@ endif
 	# install extension shell lib for use by extensions not from here
 	install -D -m755 debian/shell-lib-extensions.sh \
 		$(PKGDIR)-common/usr/share/$(OODIRNAME)/shell-lib-extensions.sh
+
+	# those are needed in /usr/share, too
+	mkdir -p $(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)
+	mv $(PKGDIR)-common/$(OODIR)/help \
+		$(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)
+	# help is in /usr/share
+	sed -i 's,$$(instpath)/help,/$(shell echo $(OODIR) | sed -e s/lib/share/)/help,' \
+		$(PKGDIR)-common/$(OOBASISDIR)/share/registry/schema/org/openoffice/Office/Common.xcs
+	sed -i 's,$$(instpath)/help,/$(shell echo $(OODIR) | sed -e s/lib/share/)/help,' \
+		$(PKGDIR)-common/$(OOBASISDIR)/share/registry/data/org/openoffice/Office/Paths.xcu
 
 	touch $@
 
