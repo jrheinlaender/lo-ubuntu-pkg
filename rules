@@ -3054,9 +3054,9 @@ endif
 		z=images_$$i.zip; p=$$i; \
 		case "$$i" in $(DEFAULT_IMAGE)) z=images.zip; esac; \
 		case "$$i" in classic) p=andromeda; esac; \
-		mkdir -p $(PKGDIR)-style-$$p/$(OODIR)/share/config; \
+		mkdir -p $(PKGDIR)-style-$$p/$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config; \
 		mv $(PKGDIR)-common/$(OODIR)/share/config/$$z \
-			$(PKGDIR)-style-$$p/$(OODIR)/share/config/; \
+			$(PKGDIR)-style-$$p/$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config/; \
 	done
 
 	rm -rf $(PKGDIR)-dtd-officedocument1.0
@@ -3166,6 +3166,15 @@ endif
 		$(PKGDIR)-common/$(OOBASISDIR)/share/registry/schema/org/openoffice/Office/Common.xcs
 	sed -i 's,$$(instpath)/help,/$(shell echo $(OODIR) | sed -e s/lib/share/)/help,' \
 		$(PKGDIR)-common/$(OOBASISDIR)/share/registry/data/org/openoffice/Office/Paths.xcu
+
+	# compat dirs, the split icons thing need it
+	mkdir -p $(PKGDIR)-common/$(shell echo $(OOBRANDDIR) | sed -e s/lib/share/)/program
+	mkdir -p $(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/program
+	# three-layer symlinks also for /usr/share
+	ln -s basis$(OOVER) \
+		$(PKGDIR)-common/$(shell echo $(OOBRANDDIR) | sed -e s/lib/share/)/basis-link
+	ln -s /usr/lib/ure \
+		$(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/ure-link
 
 	touch $@
 
@@ -3498,6 +3507,7 @@ endif
 ifeq "$(ENABLE_MEDIAWIKI)" "y"
 	dh_gencontrol -popenoffice.org$(VER)-wiki-publisher -- \
 		-V'mediawiki-jar-depends=$(MEDIAWIKI_JAR_DEPENDS)' \
+		-V'lucene-depends=$(LUCENE_DEPENDS)' \
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-v$(shell grep "<version" $(SOURCE_TREE)/swext/mediawiki/src/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
 endif
