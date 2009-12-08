@@ -83,7 +83,6 @@ BUILD_IA64=y
 BUILD_PPC64=y
 BUILD_S390X=y
 BUILD_SPARC=y
-BUILD_HPPA=y
 PATCHSET=$(DIST)
 BUILD_DEPS=
 BUILD_PYUNO=y
@@ -395,9 +394,6 @@ endif
 ifeq "$(BUILD_SPARC)" "y"
   OOO_ARCHS += sparc
 endif
-ifeq "$(BUILD_HPPA)" "y"
-  OOO_ARCHS += hppa
-endif
 # Java...
 OOO_JAVA_ARCHS = i386 powerpc mips mipsel s390 armel
 ifeq "$(BUILD_AMD64)" "y"
@@ -418,6 +414,8 @@ endif
 
 # gcj does not work on ppc, so no need to build -gcj for it
 OOO_GCJ_ARCHS := $(filter-out ppc64,$(filter-out powerpc,$(OOO_JAVA_ARCHS)))
+
+OOO_GCJ_JDK_ARCHS := ia64 mips mipsel kfreebsd-i386 kfreebsd-amd64 hppa
 
 ifeq (,$(findstring $(ARCH),$(OOO_JAVA_ARCHS)))
 	ENABLE_JAVA=n
@@ -490,9 +488,6 @@ ifeq "$(BUILD_S390X)" "y"
 endif
 ifeq "$(BUILD_SPARC)" "y"
        OOO_MOZILLA_ARCHS += sparc
-endif
-ifeq "$(BUILD_HPPA)" "y"
-	OOO_MOZILLA_ARCHS += hppa
 endif
 
 ifeq "$(USE_BZIP_COMPRESS)" "y"
@@ -681,13 +676,8 @@ ifeq "$(ENABLE_JAVA)" "y"
 	BUILD_DEPS += , gcj-jdk [$(OOO_JAVA_ARCHS)]
   endif
   ifeq "$(JDK)" "openjdk"
-	BUILD_DEPS += , openjdk-6-jdk
+	BUILD_DEPS += , openjdk-6-jdk [$(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_ARCHS))]
 	JAVA_HOME=/usr/lib/jvm/java-6-openjdk
-	CONFIGURE_FLAGS += --with-java-target-version=1.5
-  endif
-  ifeq "$(JDK)" "openjdk-cacao"
-	BUILD_DEPS += , cacao-oj6-jdk
-	JAVA_HOME=/usr/lib/jvm/java-6-cacao
 	CONFIGURE_FLAGS += --with-java-target-version=1.5
   endif
   ifeq "$(BUILD_JARS_NATIVE)" "y"
@@ -713,9 +703,6 @@ ifeq "$(ENABLE_JAVA)" "y"
   ifneq (,$(filter $(ARCH), amd64 i386 sparc powerpc alpha mips mipsel m68k s390))
 	JAVA_RUNTIME_DEPENDS += | openjdk-6-jre
   endif
-#  ifneq (,$(filter $(ARCH), alpha powerpc amd64 i386 mips mipsel))
-#  	JAVA_RUNTIME_DEPENDS += | cacao-oj6-jre
-#  endif
   ifneq (,$(filter $(ARCH), amd64 i386))
 	JAVA_RUNTIME_DEPENDS += | sun-java5-jre | sun-java6-jre
   endif
