@@ -3253,6 +3253,13 @@ ifeq "$(ENABLE_MYSQLNATIVE)" "y"
 			$(SOURCE_TREE)/mysqlc/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/mysqlc.uno.so \
 			$(SOURCE_TREE)/mysqlcppconn/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/libmysqlcppconn.so \
 			> debian/openoffice.org$(VER)-mysql-connector.substvars
+  ifeq "$(USE_SYSTEM_MYSQLCPPCONN)" "n"
+	# add mysqlclient dependency; it apparently is only dlopen()ed in
+	# the internal case.. (And in the external case we have a dep on
+	# libmysqlcppconn4 which deps on libmysqlclient16 already)
+	perl -pi -e 's/(shlibs:Depends=.*$$)/$$1, $(shell cat /var/lib/dpkg/info/libmysqlclient16.shlibs | grep _r | cut -d" " -f3,4,5)/' \
+		debian/openoffice.org$(VER)-mysql-connector.substvars
+  endif
 endif
 ifeq "$(ENABLE_MINIMIZER)" "y"
 	 LD_LIBRARY_PATH="/usr/lib/libfakeroot:debian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program" \
