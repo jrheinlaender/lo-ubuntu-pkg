@@ -1,6 +1,6 @@
 check_for_running_ooo() {
 	if [ -e /usr/lib/openoffice/program/bootstraprc ]; then
-		LOCKFILE=`grep UserInstallation /usr/lib/openoffice/program/bootstraprc | cut -d= -f2 | sed -e 's,SYSUSERCONFIG,HOME,'`
+		LOCKFILE="`grep UserInstallation /usr/lib/openoffice/program/bootstraprc | cut -d= -f2 | sed -e 's,SYSUSERCONFIG,HOME,'`/.lock"
 		PID=`pgrep soffice.bin | head -n 1`
 		if [ -n "$PID" ] || [ -e "$LOCKFILE" ]; then
 			db_input high openoffice.org/running
