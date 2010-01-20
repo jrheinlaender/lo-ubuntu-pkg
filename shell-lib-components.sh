@@ -3,12 +3,26 @@ check_for_running_ooo() {
 		LOCKFILE="`grep UserInstallation /usr/lib/openoffice/program/bootstraprc | cut -d= -f2 | sed -e 's,SYSUSERCONFIG,HOME,'`/.lock"
 		PID=`pgrep soffice.bin | head -n 1`
 		if [ -n "$PID" ] || [ -e "$LOCKFILE" ]; then
-			db_input high openoffice.org/running
-			db_go
-			# try again in case OOo got closed before hitting OK
-			PID=`pgrep soffice.bin | head -n 1`
-			if [ -n "$PID" ] || [ -e "$LOCKFILE" ]; then
-			  exit 1
+			if [ "$DEBIAN_FRONTEND" = "noninteractive" ]; then
+				echo "OpenOffice.org running!" >&2
+			 	echo "" >&2
+				echo -n "OpenOffice.org is running right now with pid " >&2
+				echo -n "$PID." >&2
+				echo -n " This can cause problems\n" >&2
+				echo "with (de-)registration of components and extensions" >&2
+				echo "Thus this package will fail to install" >&2
+				echo "You should close all running instances of OpenOffice.org (including" >&2
+				echo "any currently running Quickstarter) before proceeding with the package" >&2
+				echo "upgrade." >&2
+				exit 1
+			else
+			  	db_input high openoffice.org/running
+			  	db_go
+				# try again in case OOo got closed before hitting OK
+				PID=`pgrep soffice.bin | head -n 1`
+				if [ -n "$PID" ] || [ -e "$LOCKFILE" ]; then
+			  		exit 1
+				fi
 			fi
 		fi
 	fi

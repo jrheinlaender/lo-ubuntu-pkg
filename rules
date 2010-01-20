@@ -344,17 +344,17 @@ LIBSUFFIX := $(shell grep LIBSUFFIX debian/scripts/vars.$(ARCH) | cut -d"=" -f2)
 PLATFORMID := $(shell grep PLATFORMID debian/scripts/vars.$(ARCH) | cut -d"=" -f2)
 
 # ./configure defaults to STLport on i386 and we should keep it for
-# ABI-compatability (at least until graphite01 and/or mysqlnative get in
-# at which time we need to use gccs STL if we want to use system-graphite /
-# system-mysqlcppconn)
+# ABI-compatability
 OOO_STLPORT_ARCHS= i386
 ifeq "$(ARCH)" "i386"
 	USE_STLPORT=y
 endif
-#ifeq ($(ARCH),$(findstring $(ARCH),$(OOO_STLPORT_ARCHS)))
+# graphite and mysqlconnector built against libstc++s STL but OOo wants them
+# with STLport. Not possible without patch.
+ifeq ($(ARCH),$(findstring $(ARCH),$(OOO_STLPORT_ARCHS)))
 #	USE_SYSTEM_GRAPHITE=n
-#	USE_SYSTEM_MYSQLCPPCONN=n
-#endif
+	USE_SYSTEM_MYSQLCPPCONN=n
+endif
 
 ifeq "$(ENABLE_OPENGL)" "y"
 # doesn't make that much sense on arm(el) and mips(el), does it? :)
@@ -1797,12 +1797,8 @@ ifeq "$(BUILD_KDE)" "n"
 	fi
 endif
 
-ifeq "$(ARCH)" "ia64"
-  ifeq (buildd,$(shell whoami))
+ifeq (buildd,$(shell whoami))
 	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 ARCH_FLAGS=$(ARCH_FLAGS) TMP=/tmp $(MAKE)
-  else
-	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 VERBOSE=true ARCH_FLAGS=$(ARCH_FLAGS) TMP=/tmp $(MAKE)
-  endif
 else
 	cd ooo-build ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 VERBOSE=true ARCH_FLAGS=$(ARCH_FLAGS) TMP=/tmp $(MAKE)
 endif
@@ -3446,7 +3442,7 @@ endif
 	dh_gencontrol -pure -pure-dbg -puno-libs3 -puno-libs3-dbg -- \
 		-V"ure:Version=$(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`" \
 		-v$(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
-	dh_md5sums -s
+	dh_md5sums -s -X$(shell echo $(OOBASISDIR) | sed -e s/usr/var/)/program/services.rdb
 	dh_builddeb -s $(DEBHELPER_OPTIONS) $(BUILDDEB_OPTIONS)
 
 	touch $@
