@@ -8,7 +8,7 @@ check_for_running_ooo() {
 			 	echo "" >&2
 				echo -n "OpenOffice.org is running right now with pid " >&2
 				echo -n "$PID." >&2
-				echo -n " This can cause problems\n" >&2
+				echo " This can cause problems" >&2
 				echo "with (de-)registration of components and extensions" >&2
 				echo "Thus this package will fail to install" >&2
 				echo "You should close all running instances of OpenOffice.org (including" >&2
