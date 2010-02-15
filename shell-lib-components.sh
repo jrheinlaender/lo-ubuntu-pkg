@@ -16,8 +16,8 @@ check_for_running_ooo() {
 				echo "upgrade." >&2
 				exit 1
 			else
-			  	db_input high shared/openofficeorg-running
-			  	db_go
+			  	db_input high shared/openofficeorg-running || true
+			  	db_go || true
 				# try again in case OOo got closed before hitting OK
 				PID=`pgrep soffice.bin | head -n 1`
 				if [ -n "$PID" ] || [ -e "$LOCKFILE" ]; then
