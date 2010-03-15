@@ -58,6 +58,9 @@ export OOO_VENDOR
 export DH_OPTIONS
 export DH_ALWAYS_EXCLUDE=CVS:.svn:.bzr:.git
 #export DH_VERBOSE=1
+# quilt
+export QUILT_PATCHES=debian/patches
+export QUILT_OPTIONS=-p1
 
 # work around tcsh bugs.debian.org/339034: tcsh: Unknown colorls variable `su'
 unexport LS_COLORS
@@ -544,13 +547,21 @@ ifeq "$(USE_BZIP_COMPRESS)" "y"
 endif
 
 ifeq "$(DEBSRC_VERSION)" "3.0"
+  ifeq "$(LENNY_BACKPORT)" "y"
+	BUILD_DEPS += , dpkg-dev (>= 1.14.27)
+  else
 	BUILD_DEPS += , dpkg-dev (>= 1.15.1)
+  endif
 else
   ifeq "$(NEW_DPKG_SHLIBDEPS)" "y"
 	# new dpkg-dev whcih works - in contrast to 1.4.9 and .10 -
 	# without --ignore-missing-info
 	BUILD_DEPS += , dpkg-dev (>= 1.14.11)
   endif
+endif
+
+ifeq "$(DEBSRC_VERSION)" "1.0"
+	BUILD_DEPS += , quilt
 endif
 
 ifneq "$(OOO_OGLTRANS_ARCHS)" ""
@@ -1254,7 +1265,15 @@ clean-objectdirs: clean-instsetoo
 	dh_testdir
 	find $(SOURCE_TREE) -maxdepth 2 -name $(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT) -type d -exec rm -rf {} \;
 
+ifeq "$(DEBSRC_VERSION)" "1.0"
+include /usr/share/quilt/quilt.make
+endif
+
+ifeq "$(DEBSRC_VERSION)" "1.0"
+clean: unpatch
+else
 clean:
+endif
 	dh_testroot
 	dh_testdir
 
@@ -1420,6 +1439,22 @@ ifeq "$(DEBSRC_VERSION)" "1.0"
 	   touch -r $$f $$f.uu ; \
 	   rm -f $$f ; \
 	  fi ; \
+	 done
+	set -e; \
+	for i in `cat debian/source/components | grep -v ^$(OOO_BUILD_TREE)` ; do \
+	cd $$i && \
+	 for f in \
+	   *.bz2 \
+	   *.gz \
+	   *.zip \
+	   ; do \
+	  if [ -s $$f ]; then \
+	   uuencode $$f $$f > $$f.uu.tmp && \
+	   ../debian/scripts/move-if-change $$f.uu.tmp $$f.uu; \
+	   touch -r $$f $$f.uu ; \
+	   rm -f $$f ; \
+	  fi ; done; \
+	 cd ..; \
 	 done
 endif
 
@@ -1708,8 +1743,13 @@ endif
 .DELETE_ON_ERROR: debian/control
 
 build: build-arch build-indep
+ifeq "$(DEBSRC_VERSION)" "1.0"
+build-arch: $(QUILT_STAMPFN) $(STAMP_DIR)/build
+build-indep: $(QUILT_STAMPFN) $(STAMP_DIR)/build
+else
 build-arch: $(STAMP_DIR)/build
 build-indep: $(STAMP_DIR)/build
+endif
 
 # All 'important' targets have 2 lines.  The one that is run by
 # dpkg-buildpackage or the user, and the one that does the actual work.  This
