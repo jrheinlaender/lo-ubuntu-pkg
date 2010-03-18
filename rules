@@ -76,7 +76,6 @@ OOO_BUILD_TAG=OOO_BUILD_$(shell echo $(OOO_BUILD_VERSION) | sed -e 's/\./_/g')
 OOO_BUILD_TREE=ooo-build-$(shell echo $(OOO_BUILD_VERSION) | sed -e 's/\./-/g')
 SOURCE_TREE=$(OOO_BUILD_TREE)/build/$(TAG)
 STAMP_DIR=debian/stampdir
-# unused yet but will get important for OOo 3.3
 TARFILE_LOCATION=$(CURDIR)/ext-sources
 export TARFILE_LOCATION
 
@@ -291,7 +290,8 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
 		--enable-hids \
 		--with-system-dicts \
 		--with-additional-sections="$(ADDITIONAL_SECTIONS)" \
-		--without-git
+		--without-git \
+		--disable-fetch-external
 
 ifneq "$(WITH_SPLIT)" "y"
 	CONFIGURE_FLAGS += --without-split
@@ -3718,6 +3718,15 @@ get-ooo-build:
 	mv ooo-build-$(OOO_BUILD_VERSION) $(OOO_BUILD_TREE) && \
 	rm ooo-build-$(OOO_BUILD_VERSION).tar.gz
 
+# Get upstream external sources
+get-ext-sources:
+	rm -rf $(TARFIILE_LOCATION)
+	mkdir -p $(TARFILE_LOCATION)
+	wget http://hg.services.openoffice.org/$(MWS)/raw-file/$(MWS)_$(MILESTONE)/fetch_tarballs.sh && chmod 755 ./fetch_tarballs.sh \
+	wget http://hg.services.openoffice.org/$(MWS)/raw-file/$(MWS)_$(MILESTONE)/ooo.lst && \
+	./fetch_tarballs.sh ooo.lst && \
+	rm -f fetch_tarballs.sh ooo.lst
+
 get-orig-source:
 ifneq "$(WITH_SPLIT)" "y"
 	if test -n "$$TMP"; then \
@@ -3798,6 +3807,19 @@ else
 		cd $$TMPD && tar cfvz openoffice.org_$(UPSTREAM_VERSION).orig.tar.gz openoffice.org-$(UPSTREAM_VERSION) && \
 		rm -rf openoffice.org-$(UPSTREAM_VERSION) && \
 		mv  openoffice.org_$(UPSTREAM_VERSION).orig.tar.gz $(CURDIR)/.. && \
+		rmdir $$TMPD
+endif
+ifeq "$(DEBSRC_VERSION)" "3.0"
+	if test -n "$$TMP"; then \
+		TMPD=`mktemp -d -p $$TMP`; \
+	else \
+		TMPD=`mktemp -d`; \
+	fi && \
+	cd $$TMPD && \
+		export TARFILE_LOCATION=`basename $(TARFILE_LOCATION)`; \
+		$(CURDIR)/debian/rules get-ext-sources && \
+		tar cfvz openoffice.org_$(UPSTREAM_VERSION).orig-$$TARFILE_LOCATION.tar.gz $$TARFILE_LOCATION && \
+		mv openoffice.org_$(UPSTREAM_VERSION).orig-$$TARFILE_LOCATION.tar.gz $(CURDIR)/.. && \
 		rmdir $$TMPD
 endif
 ifeq "$(DEBSRC_VERSION)" "3.0"
