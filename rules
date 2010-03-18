@@ -209,8 +209,7 @@ USE_SYSTEM_REDLAND=n
 USE_OOO_BUILD_DESKTOPS=n
 PACKAGE_SDK=y
 RUN_SMOKETEST=n
-RUN_API_TESTS=n
-RUN_UNIT_TESTS=n
+RUN_SUBSEQUENT_TESTS=n
 USE_LIBCURL4=y
 CURL_SECTYPE=openssl
 USE_SYSTEM_DMAKE=y
@@ -254,6 +253,8 @@ ENABLE_GRAPHITE=y
 USE_SYSTEM_GRAPHITE=y
 ALLOC=system
 DEBSRC_VERSION=3.0
+USE_SYSTEM_CPPUNIT=y
+ENABLE_JUNIT4=y
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
@@ -375,6 +376,7 @@ endif
 ifeq ($(ARCH),$(findstring $(ARCH),$(OOO_STLPORT_ARCHS)))
 #	USE_SYSTEM_GRAPHITE=n
 #	USE_SYSTEM_MYSQLCPPCONN=n
+	USE_SYSTEM_CPPUNIT=n
 endif
 
 ifeq "$(ENABLE_OPENGL)" "y"
@@ -673,13 +675,13 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
 endif
 
-	CONFIGURE_FLAGS += --disable-qadevooo
-
-ifeq "$(RUN_SMOKETEST)" "y"
-	BUILD_DEPS += , xvfb, xbase-clients, xfonts-base
-endif
-ifeq "$(RUN_API_TESTS)" "y"
+ifeq "$(RUN_SUBSEQUENT_TESTS)" "y"
 	BUILD_DEPS += , tcsh
+  ifeq "$(ENABLE_JUNIT4)" "y"
+	BUILD_DEPS += junit4
+  else
+	CONFIGURE_FLAGS += --disable-junit4
+  endif
 endif
 
 ifneq "$(BUILD_ONLY_EN_US)" "y"
@@ -1678,6 +1680,7 @@ endif
 	perl -pi -e "s,%OOO_NPSOPLUGIN_ARCHS%,$(OOO_NPSOPLUGIN_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_OGLTRANS_ARCHS%,$(OOO_OGLTRANS_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_BINFILTER_ARCHS%,$(OOO_BINFILTER_ARCHS),g" debian/control
+	perl -pi -e "s,%OOO_STLPORT_ARCHS%,$(OOO_STLPORT_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_GCJ_JDK_ARCHS%,$(OOO_GCJ_JDK_ARCHS),g" debian/control
 
 ifeq (he,$(findstring he,$(LANGPACKISOS)))
@@ -1942,31 +1945,26 @@ endif
 test: $(STAMP_DIR)/test
 $(STAMP_DIR)/test: $(STAMP_DIR)/build
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
-ifeq "$(RUN_UNIT_TESTS)" "y"
-	# build/run unit tests
-	-cd $(SOURCE_TREE)/instsetoo_native; \
-		. $(CURDIR)/$(SOURCE_TREE)/*.sh; \
-		PATH=$(BUILD_PATH) DPKG="dpkg" PKGFORMAT="deb" NO_PKG_MANGLE=go-away \
-		../solenv/bin/build.pl --ignore --all check
-endif
 ifeq "$(RUN_SMOKETEST)" "y"
 	# smoketest
 	cd $(SOURCE_TREE)/smoketestoo_native && \
 		. $(CURDIR)/$(SOURCE_TREE)/*.sh; \
 		export PATH=$(BUILD_PATH); \
-		if [ -n "$$DISPLAY" ]; then \
-			../solenv/bin/build.pl; \
-		else \
-			xvfb-run -a ../solenv/bin/build.pl; \
-		fi
+		../solenv/bin/build.pl
 endif
-ifeq "$(ENABLE_JAVA)" "y"
-  ifeq "$(RUN_API_TESTS)" "y"
-	# API tests
+ifeq "$(RUN_SUBSEQUENT_TESTS)" "y"
+	# build/run unit tests
+	-cd $(SOURCE_TREE)/instsetoo_native; \
+		. $(CURDIR)/$(SOURCE_TREE)/*.sh; \
+		PATH=$(BUILD_PATH) DPKG="dpkg" PKGFORMAT="deb" NO_PKG_MANGLE=go-away OOO_SUBSEQUENT_TESTS=x\
+		../solenv/bin/build.pl --all
+  ifeq "$(ENABLE_JAVA)" "y"
+    ifeq "$(ENABLE_JUNIT4)" "y"
 	cd $(SOURCE_TREE) && \
 		export PATH=$(BUILD_PATH); \
 		. $(CURDIR)/$(SOURCE_TREE)/*.sh; \
-		solenv/bin/cwscheckapi -o -a
+		solenv/bin/subsequenttests
+    endif
   endif
 endif
 endif
