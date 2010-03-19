@@ -205,16 +205,14 @@ USE_GSTREAMER=y
 USE_SYSTEM_NEON=y
 NEON_SECTYPE=gnutls
 NEONSONR=27
-# can't be enabled when odfmetdatadata2 included because librdf doesn't
-# include some of OOos patches (as to 1.0.7), see issue 90956.
-USE_SYSTEM_REDLAND=n
+USE_SYSTEM_REDLAND=y
 USE_OOO_BUILD_DESKTOPS=n
 PACKAGE_SDK=y
 RUN_SMOKETEST=n
 RUN_API_TESTS=n
 RUN_UNIT_TESTS=n
 USE_LIBCURL4=y
-CURL_SECTYPE=openssl
+CURL_SECTYPE=gnutls
 USE_SYSTEM_DMAKE=y
 USE_LIBSUITESPARSE=y
 SUITESPARSE_MIN_VERSION= (>= 1:3.4.0)
@@ -348,6 +346,7 @@ endif
   MOZILLA=iceape
   ENABLE_MYSQLNATIVE=n
   DEBSRC_VERSION=1.0
+  USE_SYSTEM_REDLAND=n
 endif
 
 # the archive only accepts bzip2 compressed members on 3.0 (quilt)
@@ -1166,8 +1165,9 @@ ifeq "$(USE_SYSTEM_NEON)" "y"
 endif
 
 ifeq "$(USE_SYSTEM_REDLAND)" "y"
-	BUILD_DEPS += , librdf0-dev
+	BUILD_DEPS += , librdf0-dev (>= 1.0.8)
 	CONFIGURE_FLAGS += --with-system-redland
+	SHLIBS_OVERRIDE += -Xunordf
 endif
 
 # CairoFonts patchset is applied for sid and this patch needs Gtk 2.10
@@ -3462,6 +3462,13 @@ endif
 			-Lure -Luno-libs3 \
 			-ldebian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program:$(PKGDIR)-base/$(OODIR)/program \
 			$(SHLIBS_OVERRIDE)
+ifeq "$(USE_SYSTEM_REDLAND)" "y"
+	# dpkg-shlibdeps "in practice" always will look for this in
+        # /usr/lib/openoffice/basisX.Y/program due to the RPATH and the
+	# dh_shlibdeps would fail. It's excluded, and we now need to do it
+	# manually. Saves us a build-conflict which quickly can get outdated
+	perl -pi -e 's/(shlibs.*$$)/$$1, $(shell cat /var/lib/dpkg/info/$(shell dpkg -S /usr/lib/`objdump -p $(PKGDIR)-core/$(OOBASISDIR)/program/libunordf*.so | grep NEEDED | grep librdf | awk '{ print $$2 }'` | cut -d: -f1).shlibs | awk '{ print $$3,$$4,$$5 }')/' $(PKGDIR)-core.substvars
+endif
 	# don't make uno-libs3 depend on ure...
 	perl -pi -e 's/, ure \(.*\)$$//' debian/uno-libs3.substvars
 ifeq "$(ENABLE_JAVA)" "y"
