@@ -1690,6 +1690,15 @@ ifeq "$(ENABLE_MYSQLNATIVE)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.mysql.in
 endif
+ifeq "$(DIST)" "Debian"
+	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
+		>> debian/control < debian/control.lenny_squeeze_transitional.in
+	for o in as-IN gu-IN ml-IN mr-IN or-IN ta-IN te-IN; do \
+		n=`echo $$o | cut -d- -f1`; \
+		os=`echo $$o | tr A-Z a-z`; \
+		perl -pi -e 's/\n/, openoffice.org-l10n-$${os}\n/ if /^Replaces:.*l10n-$${n}$$/' debian/control; \
+	done
+endif
 
 	perl -pi -e "s,%OOO_ARCHS%,$(OOO_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_JAVA_ARCHS%,$(OOO_JAVA_ARCHS),g" debian/control
@@ -1753,15 +1762,6 @@ ifneq "$(DICT_DIR)" "/usr/share/hunspell"
 	perl -pi -e 's/^Breaks:.*myspell.*\n//' debian/control
 endif
 
-	# add conflicts/replaces/provides for xx-IN -> xx move
-	for o in as-IN gu-IN ml-IN mr-IN or-IN ta-IN te-IN; do \
-		n=`echo $$o | cut -d- -f1`; \
-		os=`echo $$o | tr A-Z a-z`; \
-		perl -pi -e "s/(Provides:.*openoffice.org2-l10n-$$n$$)/\1, openoffice.org-l10n-$$os/" debian/control; \
-		perl -pi -e "s/(Conflicts:.*openoffice.org2-l10n-$$n$$)/\1, openoffice.org-l10n-$$os/" debian/control; \
-		perl -pi -e "s/(Replaces:.*openoffice.org2-l10n-$$n$$)/\1, openoffice.org-l10n-$$os/" debian/control; \
-	done
- 
 .DELETE_ON_ERROR: debian/control
 
 build: build-arch build-indep
