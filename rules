@@ -399,9 +399,11 @@ endif
 OOO_ARCHS= i386 m68k mips mipsel powerpc s390
 ifeq "$(BUILD_ALPHA)" "y"
   OOO_ARCHS += alpha
+  OOO_64BIT_ARCHS += alpha
 endif
 ifeq "$(BUILD_AMD64)" "y"
   OOO_ARCHS += amd64
+  OOO_64BIT_ARCHS += amd64
 endif
 ifeq "$(BUILD_ARMEL)" "y"
   OOO_ARCHS += armel
@@ -411,12 +413,15 @@ ifeq "$(BUILD_HPPA)" "y"
 endif
 ifeq "$(BUILD_IA64)" "y"
   OOO_ARCHS += ia64
+  OOO_64BIT_ARCHS += ia64
 endif
 ifeq "$(BUILD_PPC64)" "y"
   OOO_ARCHS += ppc64
+  OOO_64BIT_ARCHS += ppc64
 endif
 ifeq "$(BUILD_S390X)" "y"
   OOO_ARCHS += s390x
+  OOO_64BIT_ARCHS += s390x
 endif
 ifeq "$(BUILD_SPARC)" "y"
   OOO_ARCHS += sparc
@@ -455,6 +460,8 @@ OOO_GCJ_ARCHS := $(filter-out ppc64,$(filter-out powerpc,$(OOO_JAVA_ARCHS)))
 OOO_GCJ_JDK_ARCHS := hppa ia64 kfreebsd-i386 kfreebsd-amd64 mips mipsel
 OOO_OPENJDK_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
 
+OOO_ARCH_DEP_EXTENSIONS_ARCHS := $(filter-out armel,$(OOO_ARCHS))
+
 ifeq (,$(findstring $(ARCH),$(OOO_JAVA_ARCHS)))
 	ENABLE_JAVA=n
 	ENABLE_REPORTDESIGN=n
@@ -489,16 +496,20 @@ OOO_MONO_ARCHS=
 endif
 
 ifeq "$(PACKAGE_NPSOPLUGIN)" "y"
-OOO_NPSOPLUGIN_ARCHS = $(OOO_MOZILLA_ARCHS)
+OOO_NPSOPLUGIN_ARCHS = $(OOO_ARCHS)
 else
 OOO_NPSOPLUGIN_ARCHS=
 endif
 
-# builds long...
+# builds long and is for legacy filters. probably not needed on {arm,mips}{,el}
 ifneq (,$(findstring arm,$(ARCH)))
 	BUILD_BINFILTERS=n
 endif
+ifneq (,$(findstring mips,$(ARCH)))
+	BUILD_BINFILTERS=n
+endif
 OOO_BINFILTER_ARCHS=$(filter-out arm,$(filter-out armel,$(OOO_ARCHS)))
+OOO_BINFILTER_ARCHS=$(filter-out mips,$(filter-out mipsel,$(OOO_ARCHS)))
 
 ifeq "$(ARCH)-linux-gnu" "sparc-linux-gnu"
 	# use 32-bit compiler
@@ -516,6 +527,9 @@ ifeq "$(shell gcc --version | head -n 1 | awk '{print $$4}' | cut -d. -f1,2)" "4
   endif
 endif
 
+# Note that this does *NOT* only affect the mozilla plugin but also
+# stuff like the xmlsecurity (which uses nss). For the plugin only,
+# change the OOO_NPSOPLUGIN_ARCHS
 OOO_MOZILLA_ARCHS=i386 mips mipsel powerpc s390
 ifeq "$(BUILD_ALPHA)" "y"
 	OOO_MOZILLA_ARCHS += alpha
@@ -1048,7 +1062,7 @@ ifeq "$(ENABLE_MYSQLNATIVE)" "y"
   endif
   ifeq "$(USE_SYSTEM_MYSQLCPPCONN)" "y"
 	CONFIGURE_FLAGS += --with-system-mysql-cppconn
-	BUILD_DEPS += , libmysqlcppconn-dev $(MYSQLCPPCONN_MINVER) [$(OOO_ARCHS))]
+	BUILD_DEPS += , libmysqlcppconn-dev $(MYSQLCPPCONN_MINVER) [$(OOO_ARCHS)]
     ifeq "$(USE_STLPORT)" "y"
 	ADDITIONAL_SECTIONS += SystemMySQLWithSTLport
     endif
@@ -1676,6 +1690,15 @@ ifeq "$(ENABLE_MYSQLNATIVE)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.mysql.in
 endif
+ifeq "$(DIST)" "Debian"
+	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
+		>> debian/control < debian/control.lenny_squeeze_transitional.in
+	for o in as-IN gu-IN ml-IN mr-IN or-IN ta-IN te-IN; do \
+		n=`echo $$o | cut -d- -f1`; \
+		os=`echo $$o | tr A-Z a-z`; \
+		perl -pi -e 's/\n/, openoffice.org-l10n-$${os}\n/ if /^Replaces:.*l10n-$${n}$$/' debian/control; \
+	done
+endif
 
 	perl -pi -e "s,%OOO_ARCHS%,$(OOO_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_JAVA_ARCHS%,$(OOO_JAVA_ARCHS),g" debian/control
@@ -1685,6 +1708,7 @@ endif
 	perl -pi -e "s,%OOO_OGLTRANS_ARCHS%,$(OOO_OGLTRANS_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_BINFILTER_ARCHS%,$(OOO_BINFILTER_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_GCJ_JDK_ARCHS%,$(OOO_GCJ_JDK_ARCHS),g" debian/control
+	perl -pi -e "s,%OOO_ARCH_DEP_EXTENSIONS_ARCHS%,$(OOO_ARCH_DEP_EXTENSIONS_ARCHS),g" debian/control
 
 ifeq (he,$(findstring he,$(LANGPACKISOS)))
 	perl -pi -e 's/openoffice.org-help-he$$/openoffice.org-help-he, openoffice.org-ctl-he/' debian/control
@@ -1738,15 +1762,6 @@ ifneq "$(DICT_DIR)" "/usr/share/hunspell"
 	perl -pi -e 's/^Breaks:.*myspell.*\n//' debian/control
 endif
 
-	# add conflicts/replaces/provides for xx-IN -> xx move
-	for o in as-IN gu-IN ml-IN mr-IN or-IN ta-IN te-IN; do \
-		n=`echo $$o | cut -d- -f1`; \
-		os=`echo $$o | tr A-Z a-z`; \
-		perl -pi -e "s/(Provides:.*openoffice.org2-l10n-$$n$$)/\1, openoffice.org-l10n-$$os/" debian/control; \
-		perl -pi -e "s/(Conflicts:.*openoffice.org2-l10n-$$n$$)/\1, openoffice.org-l10n-$$os/" debian/control; \
-		perl -pi -e "s/(Replaces:.*openoffice.org2-l10n-$$n$$)/\1, openoffice.org-l10n-$$os/" debian/control; \
-	done
- 
 .DELETE_ON_ERROR: debian/control
 
 build: build-arch build-indep
@@ -2455,11 +2470,9 @@ ifeq "$(PACKAGE_NPSOPLUGIN)" "y"
 	done
 	mv $(PKGDIR)-core/$(OOBRANDDIR)/program/libnpsoplugin.so debian/mozilla-openoffice.org$(VER)/$(OOBRANDDIR)/program
 	cd debian/mozilla-openoffice.org$(VER) && \
-		for b in iceape iceweasel mozilla mozilla-firefox firefox; do \
-			mkdir -p usr/lib/$$b/plugins && \
-				ln -sf /$(OOBRANDDIR)/program/libnpsoplugin.so \
-				   usr/lib/$$b/plugins/libnpsoplugin.so; \
-		done
+		mkdir -p usr/lib/mozilla/plugins && \
+			ln -sf /$(OOBRANDDIR)/program/libnpsoplugin.so \
+			   usr/lib/mozilla/plugins/libnpsoplugin.so
 else
 	rm -f $(PKGDIR)-core/$(OODIR)/program/libnpsoplugin.so
 	rm -f $(PKGDIR)-core/$(OODIR)/program/nsplugin
@@ -3431,9 +3444,15 @@ endif
 	mv $$TMP debian/uno-libs3/DEBIAN/symbols && \
 	chmod 644 debian/uno-libs3/DEBIAN/symbols
 	dh_installdeb -s
-	cp debian/shlibs.local.in debian/shlibs.local
 ifeq "$(USE_SYSTEM_ICU)" "n"
 	cat debian/shlibs.override.icu >> debian/shlibs.local
+endif
+ifeq "$(BUILD_KDE)" "y"
+  ifeq "$(KDE_VER)" "4"
+	if dpkg --compare-versions `dpkg -l kdelibs5-dev | grep ^ii | awk '{ print $$3 }'` le 4:4.4; then \
+		cat debian/shlibs.override.kde >> debian/shlibs.local; \
+	fi
+  endif
 endif
 ifeq "$(INTERNAL_STDLIBS)" "y"
 	cat debian/shlibs.override.stdlibs >> debian/shlibs.local
