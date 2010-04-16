@@ -508,8 +508,12 @@ endif
 ifneq (,$(findstring mips,$(ARCH)))
 	BUILD_BINFILTERS=n
 endif
-OOO_BINFILTER_ARCHS=$(filter-out arm,$(filter-out armel,$(OOO_ARCHS)))
-OOO_BINFILTER_ARCHS=$(filter-out mips,$(filter-out mipsel,$(OOO_ARCHS)))
+ifneq (,$(findstring m68k,$(ARCH)))
+	BUILD_BINFILTERS=n
+endif
+OOO_BINFILTER_ARCHS:=$(filter-out arm,$(filter-out armel,$(OOO_ARCHS)))
+OOO_BINFILTER_ARCHS:=$(filter-out mips,$(filter-out mipsel,$(OOO_BINFILTER_ARCHS)))
+OOO_BINFILTER_ARCHS:=$(filter-out m68k,$(OOO_BINFILTER_ARCHS))
 
 ifeq "$(ARCH)-linux-gnu" "sparc-linux-gnu"
 	# use 32-bit compiler
@@ -1690,15 +1694,13 @@ ifeq "$(ENABLE_MYSQLNATIVE)" "y"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.mysql.in
 endif
-ifeq "$(DIST)" "Debian"
 	sed -e "s|openoffice.orgVER|openoffice.org$(VER)|g" \
 		>> debian/control < debian/control.lenny_squeeze_transitional.in
 	for o in as-IN gu-IN ml-IN mr-IN or-IN ta-IN te-IN; do \
 		n=`echo $$o | cut -d- -f1`; \
 		os=`echo $$o | tr A-Z a-z`; \
-		perl -pi -e 's/\n/, openoffice.org-l10n-$${os}\n/ if /^Replaces:.*l10n-$${n}$$/' debian/control; \
+		perl -pi -e "s/(Replaces:.*openoffice.org2-l10n-$${n}$$)/\1, openoffice.org-l10n-$${os}/" debian/control; \
 	done
-endif
 
 	perl -pi -e "s,%OOO_ARCHS%,$(OOO_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_JAVA_ARCHS%,$(OOO_JAVA_ARCHS),g" debian/control
@@ -3576,6 +3578,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 	perl -pi -e "s/java-gcj-compat/java-gcj-compat (>= 1.0.77-4)/" \
 		debian/openoffice.org$(VER)-officebean/DEBIAN/control
 endif
+ifneq (,$(findstring $(ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
 ifeq "$(ENABLE_PDFIMPORT)" "y"
 	dh_gencontrol -popenoffice.org$(VER)-pdfimport -- \
 		-v$(shell grep "<version" $(SOURCE_TREE)/sdext/source/pdfimport/config/description.xml | perl -pi -e 's,<version.*value=\"(.*)\" />,\1,; s/^\s+//')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
@@ -3593,6 +3596,7 @@ endif
 ifeq "$(ENABLE_MYSQLNATIVE)" "y"
 	dh_gencontrol -popenoffice.org$(VER)-mysql-connector -- \
 		-v$(shell grep "<version" $(SOURCE_TREE)/mysqlc/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/description.xml | perl -pi -e 's,<version value=\"(.*)\" />,\1,; s/^\s+//; s/\s+$$//')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
+endif
 endif
 	dh_gencontrol -pure -pure-dbg -puno-libs3 -puno-libs3-dbg -- \
 		-V"ure:Version=$(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`" \
