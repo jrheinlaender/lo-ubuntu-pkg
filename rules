@@ -1587,8 +1587,6 @@ endif
 # Based on script by Martin Quinson <Martin.Quinson@tuxfamily.org>
 control: debian/control
 debian/control: $(wildcard debian/control*in) $(OOO_BUILD_TREE)/bin/openoffice-xlate-lang  debian/rules
-	dpkg-checkbuilddeps
-
 	chmod 755 $(OOO_BUILD_TREE)/bin/openoffice-xlate-lang
 	sed -e "s#openoffice.orgVER#openoffice.org$(VER)#g" \
 	    -e "s#broffice.orgVER#broffice.org$(VER)#g" \
@@ -2137,6 +2135,9 @@ endif
 		fi; \
 	done
 
+	# add registered-components dir
+	mkdir -p $(PKGDIR)-core/$(OOBASISDIR)/registered-components
+
 ifeq "$(ENABLE_JAVA)" "y"
 	# move officebean.jar into -officebean (They will be moved out of -core
 	# in the install-arch target). Do the /usr/share/java move here already
@@ -2245,6 +2246,14 @@ $(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*.sh) $(wildcard debian/*.
 	dh_testdir
 
 	rm -f debian/*.{pre,post}{inst,rm}
+
+	# generate .link files from *.in	
+	for PKG in $(PACKAGES); do \
+	  LINKS=debian/$$PKG.links ; \
+	  if [ -e $$LINKS.in ]; then \
+	    sed -e "s/\@LIBSUFFIX\@/$(LIBSUFFIX)/g" $$LINKS.in > $$LINKS ; \
+	  fi; \
+	done
 
 	# generate maintainer scripts from *.in
 	for PKG in $(PACKAGES); do \
