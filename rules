@@ -250,6 +250,7 @@ ENABLE_GRAPHITE=y
 USE_SYSTEM_GRAPHITE=y
 ALLOC=system
 DEBSRC_VERSION=3.0
+USE_SYSTEM_TEXTCAT_DATA=y
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
@@ -343,6 +344,7 @@ endif
   ENABLE_MYSQLNATIVE=n
   DEBSRC_VERSION=1.0
   USE_SYSTEM_REDLAND=n
+  USE_SYSTEM_TEXTCAT_DATA=n
 endif
 
 # the archive only accepts bzip2 compressed members on 3.0 (quilt)
@@ -656,6 +658,11 @@ ifeq "$(ENABLE_GRAPHITE)" "y"
   endif
 else
 	CONFIGURE_FLAGS += --disable-graphite
+endif
+
+ifeq "$(USE_SYSTEM_TEXTCAT_DATA)" "y"
+	BUILD_DEPS += , libtextcat-data-utf8
+	TEXTCAT_DATA_RECOMMENDS := libtextcat-data-utf8
 endif
 
 ifeq "$(USE_LIBCURL4)" "y"
@@ -3430,6 +3437,14 @@ endif
 	ln -s /usr/lib/ure \
 		$(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/ure-link
 
+ifeq "$(USE_SYSTEM_TEXTCAT_DATA)" "y"
+	# remove duplicated textcat data and replace with symlinks
+	cd $(PKGDIR)-common/$(OOBASISDIR)/share && \
+	for i in `fdupes -n -f -1 fingerprint/ /usr/share/libtextcat/LM`; do \
+		ln -sf $$i fingerprint/`basename $$i`; \
+	done
+endif
+
 	touch $@
 
 binary-arch: $(STAMP_DIR)/binary-arch
@@ -3784,6 +3799,7 @@ endif
 		-V'java-common-java-depends=$(JAVA_COMMON_JAVA_DEPENDS)' \
 		-V'lucene-depends=$(LUCENE_DEPENDS)' \
 		-V'lucene-conflicts=$(LUCENE_CONFLICTS)' \
+		-V'textcat-data-recommends=$(TEXTCAT_DATA_RECOMMENDS)' \
 		-V'Binary-Version=$(BINARY_VERSION)' \
 		-V'ooo-binfilter-dep=$(OOO_BINFILTER_DEP)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
