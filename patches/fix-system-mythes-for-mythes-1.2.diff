@@ -1,0 +1,124 @@
+--- openoffice.org-3.2.1/ooo-build-3-2-0-99-3/patches/dev300/apply-old	2010-04-26 23:44:46.000000000 +0200
++++ openoffice.org-3.2.1/ooo-build-3-2-0-99-3/patches/dev300/apply	2010-04-26 23:45:05.000000000 +0200
+@@ -1648,6 +1648,8 @@
+ # use getopt() and readdir_r() from system glibc
+ #FIXME src680: system-libc.diff, i#69033, rengelha
+ 
++fix-system-mythes-for-mythes-1.2.diff
++
+ [ TangoIcons ]
+ # default to large icons in the toolbar
+ gui-toolbox-large-icons.diff, jholesov
+@@ -2343,15 +2343,11 @@ events-intptr.diff, i#59411, jholesov
+ svx-i18n-ordinal-autocorr.diff, i#20348, cbosdo
+ 
+ [ DebianEtchOnly ]
+-static-libs-use-_pic.diff, rengelha
+ hunspell-lib-use-_pic.diff, rengelha
+ libhnj-lib-use-_pic.diff, rengelha
+ # use -llpsolve55_pic
+ system-lpsolve-use-_pic.diff, rengelha
+ 
+-[ DebianSidOnly ]
+-static-libs-use-_pic.diff, rengelha
+-
+ [ UbuntuOnly ]
+ SectionOwner => ccheney
+ 
+@@ -2361,7 +2357,6 @@ ubuntu-lpi-help-translate.diff, i#64895, mklose
+ #ubuntu-lpi-bugs.diff, i#64895, mklose
+ ubuntu-sparc-hack.diff, mklose
+ human-icons-add.diff, mklose
+-static-libs-use-_pic.diff, rengelha
+ ubuntu-no-stack-protector.diff, doko
+ #gccXXXXX.solenv.javaregistration.diff
+ ubuntu-mstopdf.diff, ccheney
+@@ -3398,7 +3393,6 @@ sd-ppt-fix-document-summary-reading.diff, n#546758, rodo
+ # fixes crasher in xml parser
+ unoxml-fix-empty-xmlns.diff, rodo
+ configure-fix-lpsolve-depends.diff, janneke
+-configure-fix-use-c++-for-mythes.diff, janneke
+ build-fix-xulrunner-npapi-inc.diff, janneke
+ toolkit-proper-erase-fix.diff, i#106575, thorsten
+ 
+diff --git a/patches/dev300/system-lpsolve-rpath.diff b/patches/dev300/system-lpsolve-rpath.diff
+index d1099de..56d80dd 100644
+--- openoffice.org-3.2.1/ooo-build-3-2-0-99-3/patches/dev300/system-lpsolve-rpath.diff
++++ openoffice.org-3.2.1/ooo-build-3-2-0-99-3/patches/dev300/system-lpsolve-rpath.diff
+@@ -1,8 +1,8 @@
+ --- solenv/inc/libs.mk-old	2008-04-29 12:50:10.000000000 +0200
+ +++ solenv/inc/libs.mk	2008-04-29 12:51:27.000000000 +0200
+ @@ -340,7 +340,13 @@
++ MYTHESLIB=-lmythes
+  .ENDIF
+- MYTHESLIB*=-lmythes
+  PYUNOLIB=-lpyuno
+ +.IF "$(SYSTEM_LPSOLVE)" == "YES"
+ +# FIXME. Even with -L/usr/lib/lp_solve -llpsolve55 the liblpsolve55.a from
+--- /dev/null	2010-04-22 23:53:48.512914234 +0200
++++ openoffice.org-3.2.1/ooo-build-3-2-0-99-3/patches/dev300/fix-system-mythes-for-mythes-1.2.diff	2010-04-26 23:42:56.000000000 +0200
+@@ -0,0 +1,64 @@
++diff --git a/configure.in b/configure.in
++--- configure.in
+++++ configure.in
++@@ -5090,15 +5090,29 @@
++ if test -n "$with_system_mythes" && test "$with_system_mythes" != "no"; then
++     AC_MSG_RESULT([external])
++     SYSTEM_MYTHES=YES
++-    AC_CHECK_HEADER(mythes.hxx, [],
++-       [ AC_MSG_ERROR(mythes.hxx headers not found.)], [])
++-    AC_CHECK_LIB(mythes, main, [],
++-        [ AC_MSG_ERROR(mythes library not found.)], [])
+++    AC_LANG_PUSH([C++])
+++    PKG_CHECK_MODULES(MYTHES, mythes, MYTHES_PKGCONFIG=yes, MYTHES_PKGCONFIG=no)
+++    if test "$MYTHES_PKGCONFIG" = "no"; then
+++        AC_CHECK_HEADER(mythes.hxx, [],
+++            [ AC_MSG_ERROR(mythes.hxx headers not found.)], [])
+++        AC_CHECK_LIB(mythes-1.2, main, [],
+++            [ MYTHES_FOUND=no], [])
+++ 	if test "$MYTHES_FOUND" = "no"; then
+++            AC_CHECK_LIB(mythes, main, [],
+++                [ MYTHES_FOUND=no], [])
+++	fi
+++	if test "$MYTHES_FOUND" = "no"; then
+++		AC_MSG_ERROR([mythes library not found!.])
+++	fi
+++    fi
+++    AC_LANG_POP([C++])
++ else
++     AC_MSG_RESULT([internal])
++     SYSTEM_MYTHES=NO
++ fi
++ AC_SUBST(SYSTEM_MYTHES)
+++AC_SUBST(MYTHES_CFLAGS)
+++AC_SUBST(MYTHES_LIBS)
++ 
++ dnl ===================================================================
++ dnl Checking for lpsolve
++diff --git a/set_soenv.in b/set_soenv.in
++--- set_soenv.in
+++++ set_soenv.in
++@@ -1878,6 +1878,8 @@
++ ToFile( "SYSTEM_HYPH",       "@SYSTEM_HYPH@",      "e" );
++ ToFile( "HYPHEN_LIB",        "@HYPHEN_LIB@",       "e" );
++ ToFile( "SYSTEM_MYTHES",     "@SYSTEM_MYTHES@",    "e" );
+++ToFile( "MYTHES_CFLAGS",     "@MYTHES_CFLAGS@",    "e" );
+++ToFile( "MYTHES_LIBS",       "@MYTHES_LIBS@",      "e" );
++ ToFile( "PAM",               "@PAM@",              "e" );
++ ToFile( "NEW_SHADOW_API",    "@NEW_SHADOW_API@",   "e" );
++ ToFile( "PAM_LINK",          "@PAM_LINK@",         "e" );
++diff --git a/solenv/inc/libs.mk b/solenv/inc/libs.mk
++--- solenv/inc/libs.mk
+++++ solenv/inc/libs.mk
++@@ -342,7 +342,11 @@
++ .ELSE
++ HUNSPELLLIB=-lhunspell-1.2
++ .ENDIF
+++.IF "$(SYSTEM_MYTHES)" == "YES"
+++MYTHESLIB=$(MYTHES_LIBS)
+++.ELSE
++ MYTHESLIB=-lmythes
+++.ENDIF
++ PYUNOLIB=-lpyuno
++ LPSOLVELIB=-llpsolve55
++ SOFFICELIB=-lsofficeapp
