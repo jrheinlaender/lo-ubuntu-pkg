@@ -43,7 +43,30 @@ handle_soffice_listeners() {
 	sleep 1
 }
 
+revoke_all_components_from_services_rdb() {
+    for lib in /@OOBASISDIR@/registered-components/*.so; do
+	if [ -e "$lib" ]; then
+	    revoke_from_services_rdb "$(readlink -f "$lib")"
+	fi
+    done
+}
+
+register_all_components_to_services_rdb() {
+    for lib in /@OOBASISDIR@/registered-components/*.so; do
+	if [ -e "$lib" ]; then
+	    register_to_services_rdb "$(readlink -f "$lib")"
+	fi
+    done
+}
+
 revoke_from_services_rdb() {
+  if [ "$THIS_PACKAGE" != "openoffice.org-core" ]; then
+      status=$(dpkg-query -W -f='${status}' openoffice.org-core|cut -d ' ' -f3)
+      if [ "$status" != "installed" ]; then
+	  echo "skipping revoke because of unconfigured openoffice.org-core"
+	  return
+      fi
+  fi
   handle_soffice_listeners stop
   check_for_running_ooo
   rdb="`echo /@OOBASISDIR@/program | sed -e s/usr/var/`/services.rdb"
@@ -55,6 +78,13 @@ revoke_from_services_rdb() {
 }
 
 register_to_services_rdb() {
+  if [ "$THIS_PACKAGE" != "openoffice.org-core" ]; then
+      status=$(dpkg-query -W -f='${status}' openoffice.org-core|cut -d ' ' -f3)
+      if [ "$status" != "installed" ]; then
+	  echo "skipping register because of unconfigured openoffice.org-core"
+	  return
+      fi
+  fi
   handle_soffice_listeners stop
   check_for_running_ooo
   rdb="`echo /@OOBASISDIR@/program | sed -e s/usr/var/`/services.rdb"

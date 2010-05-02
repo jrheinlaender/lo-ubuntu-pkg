@@ -95,6 +95,7 @@ BUILD_SPARC=y
 BUILD_ARMEL=y
 BUILD_HPPA=y
 BUILD_ALPHA=y
+BUILD_KFREEBSD=y
 PATCHSET=$(DIST)
 BUILD_DEPS=
 BUILD_PYUNO=y
@@ -227,6 +228,7 @@ else
   ENABLE_REPORTDESIGN=n
   ENABLE_MEDIAWIKI=n
 endif
+ENABLE_SDBC_POSTGRESQL=y
 ENABLE_MINIMIZER=y
 ENABLE_PRESENTER_CONSOLE=y
 ENABLE_PDFIMPORT=y
@@ -248,6 +250,7 @@ ENABLE_GRAPHITE=y
 USE_SYSTEM_GRAPHITE=y
 ALLOC=system
 DEBSRC_VERSION=3.0
+USE_SYSTEM_TEXTCAT_DATA=y
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
@@ -341,6 +344,7 @@ endif
   ENABLE_MYSQLNATIVE=n
   DEBSRC_VERSION=1.0
   USE_SYSTEM_REDLAND=n
+  USE_SYSTEM_TEXTCAT_DATA=n
 endif
 
 # the archive only accepts bzip2 compressed members on 3.0 (quilt)
@@ -374,8 +378,14 @@ endif
 ifeq "$(ENABLE_OPENGL)" "y"
 # doesn't make that much sense on arm(el) and mips(el), does it? :)
 OOO_OGLTRANS_ARCHS= i386 powerpc s390
+ifeq "$(BUILD_KFREEBSD)" "y"
+   OOO_OGLTRANS_ARCHS+= kfreebsd-i386
+endif
 ifeq "$(BUILD_AMD64)" "y"
   OOO_OGLTRANS_ARCHS+= amd64
+  ifeq "$(BUILD_KFREEBSD)" "y"
+     OOO_OGLTRANS_ARCHS+= kfreebsd-amd64
+  endif
 endif
 ifeq "$(BUILD_IA64)" "y"
   OOO_OGLTRANS_ARCHS+= ia64
@@ -397,6 +407,9 @@ else
 endif
 
 OOO_ARCHS= i386 m68k mips mipsel powerpc s390
+ifeq "$(BUILD_KFREEBSD)" "y"
+   OOO_ARCHS += kfreebsd-i386
+endif
 ifeq "$(BUILD_ALPHA)" "y"
   OOO_ARCHS += alpha
   OOO_64BIT_ARCHS += alpha
@@ -404,6 +417,10 @@ endif
 ifeq "$(BUILD_AMD64)" "y"
   OOO_ARCHS += amd64
   OOO_64BIT_ARCHS += amd64
+  ifeq "$(BUILD_KFREEBSD)" "y"
+    OOO_ARCHS += kfreebsd-amd64
+    OOO_64BIT_ARCHS += kfreebsd-amd64
+  endif
 endif
 ifeq "$(BUILD_ARMEL)" "y"
   OOO_ARCHS += armel
@@ -429,11 +446,17 @@ endif
 
 # Java...
 OOO_JAVA_ARCHS = i386 mips mipsel powerpc s390
+ifeq "$(BUILD_KFREEBSD)" "y"
+   OOO_JAVA_ARCHS+= kfreebsd-i386
+endif
 ifeq "$(BUILD_ALPHA)" "y"
   OOO_JAVA_ARCHS+= alpha
 endif
 ifeq "$(BUILD_AMD64)" "y"
   OOO_JAVA_ARCHS+= amd64
+  ifeq "$(BUILD_KFREEBSD)" "y"
+    OOO_JAVA_ARCHS+= kfreebsd-amd64
+  endif
 endif
 ifeq "$(BUILD_ARMEL)" "y"
   OOO_JAVA_ARCHS+= armel
@@ -462,6 +485,14 @@ OOO_OPENJDK_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
 
 OOO_ARCH_DEP_EXTENSIONS_ARCHS := $(filter-out armel,$(OOO_ARCHS))
 
+ifeq (,$(findstring $(ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
+	ENABLE_MINIMIZER=n
+	ENABLE_PDFIMPORT=n
+	ENABLE_PRESENTER_CONSOLE=n
+	ENABLE_SDBC_POSTGRESQL=n
+	ENABLE_MYSQLNATIVE=n
+endif
+
 ifeq (,$(findstring $(ARCH),$(OOO_JAVA_ARCHS)))
 	ENABLE_JAVA=n
 	ENABLE_REPORTDESIGN=n
@@ -479,8 +510,14 @@ ifeq "$(ENABLE_MONO)" "y"
 # mono
 # ppc fails (#412967), arm(el), too
 OOO_MONO_ARCHS = i386
+ifeq "$(BUILD_KFREEBSD)" "y"
+   OOO_MONO_ARCHS+= kfreebsd-i386
+endif
 ifeq "$(BUILD_AMD64)" "y"
   OOO_MONO_ARCHS += amd64
+  ifeq "$(BUILD_KFREEBSD)" "y"
+    OOO_MONO_ARCHS+= kfreebsd-amd64
+  endif
 endif
 ifeq "$(BUILD_IA64)" "y"
   OOO_MONO_ARCHS += ia64
@@ -535,11 +572,17 @@ endif
 # stuff like the xmlsecurity (which uses nss). For the plugin only,
 # change the OOO_NPSOPLUGIN_ARCHS
 OOO_MOZILLA_ARCHS=i386 mips mipsel powerpc s390
+ifeq "$(BUILD_KFREEBSD)" "y"
+   OOO_MONO_ARCHS += kfreebsd-i386
+endif
 ifeq "$(BUILD_ALPHA)" "y"
 	OOO_MOZILLA_ARCHS += alpha
 endif
 ifeq "$(BUILD_AMD64)" "y"
 	OOO_MOZILLA_ARCHS += amd64
+  ifeq "$(BUILD_KFREEBSD)" "y"
+   	OOO_MOZILLA_ARCHS += kfreebsd-amd64
+  endif
 endif
 ifeq "$(BUILD_ARMEL)" "y"
        OOO_MOZILLA_ARCHS += armel
@@ -615,6 +658,11 @@ ifeq "$(ENABLE_GRAPHITE)" "y"
   endif
 else
 	CONFIGURE_FLAGS += --disable-graphite
+endif
+
+ifeq "$(USE_SYSTEM_TEXTCAT_DATA)" "y"
+	BUILD_DEPS_INDEP += , libtextcat-data-utf8
+	TEXTCAT_DATA_RECOMMENDS := libtextcat-data-utf8
 endif
 
 ifeq "$(USE_LIBCURL4)" "y"
@@ -1485,7 +1533,7 @@ endif
 
 	# Files created in debian directory
 	rm -f debian/*.postinst debian/*.postrm debian/*.preinst debian/*.prerm
-	if [ -d "$(STAMP_DIR)" ]; then rm -rf "$(STAMP_DIR)"; fi
+	find debian -name "*.links" ! -name "openoffice.org-common*.links" -exec rm {} \;
 	rm -f debian/shlibs.override.stdlibs
 	rm -f debian/*.bug-script
 	rm -f debian/scripts/aotcompile.py*
@@ -1551,6 +1599,7 @@ debian/control: $(wildcard debian/control*in) $(OOO_BUILD_TREE)/bin/openoffice-x
 	    -e "s#%$(DIST)=\([^%]*\)%#, \1#g#" \
 	    -e "s#%[A-Za-z]*=[^%]*%##g#" \
 	    -e "s#%BUILD_DEPS%#$(strip $(BUILD_DEPS))#g" \
+	    -e "s#%BUILD_DEPS_INDEP%#$(strip $(BUILD_DEPS_INDEP))#g" \
 	    < debian/control.in > debian/control
 
 	for LNUM in $(filter-out en-US,$(LANGPACKISOS)) ; do \
@@ -1897,6 +1946,11 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	  perl -pi -e 's/\s\(.*på engelsk\)//' $(OOO_BUILD_TREE)/src/GSI_da.sdf; \
 	fi
     endif
+    ifeq (es,$(findstring es,$(LANGPACKISOS)))
+	if [ -f $(OOO_BUILD_TREE)/src/GSI_es.sdf ]; then \
+	  perl -pi -e 's/(.*SC_OPCODE_SUBSTITUTE.*)REEMPLAZAR(.*)/\1SUSTITUIR\2/' $(OOO_BUILD_TREE)/src/GSI_es.sdf; \
+	fi
+    endif
   endif
 endif
 
@@ -2079,6 +2133,9 @@ endif
 		fi; \
 	done
 
+	# add registered-components dir
+	mkdir -p $(PKGDIR)-core/$(OOBASISDIR)/registered-components
+
 ifeq "$(ENABLE_JAVA)" "y"
 	# move officebean.jar into -officebean (They will be moved out of -core
 	# in the install-arch target). Do the /usr/share/java move here already
@@ -2238,14 +2295,14 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/install $(STAMP_DIR)/install-indep $(OOO_BU
 
 	# remove extra license files
 	for iso in `echo $(LANGPACKISOS) | tr A-Z a-z`; do \
-		rm -rf $(PKGDIR)-l10n-$$iso/$(OODIR)/licenses; \
-		rm -f $(PKGDIR)-l10n-$$iso/$(OODIR)/share/readme/LICENSE*; \
+		rm -rf $(PKGDIR)-l10n-$$iso/$(OOBRANDDIR)/licenses; \
+		rm -f $(PKGDIR)-l10n-$$iso/$(OOBRANDDIR)/share/readme/LICENSE*; \
 	done
 
 	# remove extra readme files
 	for iso in `echo $(LANGPACKISOS) | tr A-Z a-z`; do \
-		rm -rf $(PKGDIR)-l10n-$$iso/$(OODIR)/readmes; \
-		rm -f $(PKGDIR)-l10n-$$iso/$(OODIR)/share/readme/README*; \
+		rm -rf $(PKGDIR)-l10n-$$iso/$(OOBRANDDIR)/readmes; \
+		rm -f $(PKGDIR)-l10n-$$iso/$(OOBRANDDIR)/share/readme/README*; \
 	done
 
 	# remove empty help directories
@@ -2814,9 +2871,11 @@ ifeq "$(ENABLE_PRESENTER_CONSOLE)" "y"
 		 $(PKGDIR)-presenter-console/$(OOBRANDDIR)/share/extension/install/presenter-screen.oxt
 endif
 
+ifeq "$(ENABLE_SDBC_POSTGRESQL)" "y"
 	rm -rf $(PKGDIR)-sdbc-postgresql
 	install -D -m644 $(SOURCE_TREE)/connectivity/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/postgresql-sdbc-$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g).zip \
 		$(PKGDIR)-sdbc-postgresql/$(OOBRANDDIR)/share/extension/install/postgresql-sdbc-$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g).zip
+endif
 
 ifeq "$(ENABLE_MYSQLNATIVE)" "y"
 	rm -rf $(PKGDIR)-mysql-connector
@@ -2845,6 +2904,16 @@ endif
 				> debian/$$i.bug-script; \
 		fi ;\
 	done
+	# generate .links files from *.in	
+	for PKG in $(ARCH_DEP_PACKAGES); do \
+	  LINKS=debian/$$PKG.links ; \
+	  if [ -e $$LINKS.in ]; then \
+	    sed -e "s/\@LIBSUFFIX\@/$(LIBSUFFIX)/g" \
+		-e "s#\@OOBASISDIR\@#$(OOBASISDIR)#g" \
+		< $$LINKS.in > $$LINKS ; \
+	  fi; \
+	done
+
 
 	touch $@
 
@@ -3335,6 +3404,14 @@ endif
 	ln -s /usr/lib/ure \
 		$(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/ure-link
 
+ifeq "$(USE_SYSTEM_TEXTCAT_DATA)" "y"
+	# remove duplicated textcat data and replace with symlinks
+	cd $(PKGDIR)-common/$(OOBASISDIR)/share && \
+	for i in `fdupes -n -f -1 fingerprint/ /usr/share/libtextcat/LM`; do \
+		ln -sf $$i fingerprint/`basename $$i`; \
+	done
+endif
+
 	touch $@
 
 binary-arch: $(STAMP_DIR)/binary-arch
@@ -3350,7 +3427,7 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 	dh_installdocs -s -A debian/README.Debian \
 		$(SOURCE_TREE)/instsetoo_native/util/OpenOffice/replace_file/*/00/README \
 		$(OOO_BUILD_TREE)/NEWS
-	for p in pdfimport presenter-console mysql-connector filter-binfilter \
+	for p in core pdfimport presenter-console mysql-connector filter-binfilter \
 		evolution kab sdbc-postgresql presentation-minimizer; do \
 		cat debian/openoffice.org-common.templates.in > debian/openoffice.org-$$p.templates; \
 	done
@@ -3415,6 +3492,9 @@ endif
 	mv $$TMP debian/uno-libs3/DEBIAN/symbols && \
 	chmod 644 debian/uno-libs3/DEBIAN/symbols
 	dh_installdeb -s
+ifeq "$(BUILD_KFREEBSD)" "y"
+	cat debian/shlibs.override.libc >> debian/shlibs.local
+endif
 ifeq "$(USE_SYSTEM_ICU)" "n"
 	cat debian/shlibs.override.icu >> debian/shlibs.local
 endif
@@ -3456,12 +3536,14 @@ ifeq "$(ENABLE_JAVA)" "y"
 endif
 	# this is in an extension (.zip), so dh_shlibdeps doesn't get it. We need to do
 	# it manually.
+ifeq "$(ENABLE_SDBC_POSTGRESQL)" "y"
 	LD_LIBRARY_PATH="/usr/lib/libfakeroot:debian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program" \
 		dpkg-shlibdeps -O \
 			-Sdebian/uno-libs3/$(OOUREDIR)/lib \
 			-Sdebian/ure/$(OOUREDIR)/lib \
 			$(SOURCE_TREE)/connectivity/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/postgresql-sdbc*.so \
 			> debian/openoffice.org$(VER)-sdbc-postgresql.substvars
+endif
 ifeq "$(ENABLE_MYSQLNATIVE)" "y"
 	LD_LIBRARY_PATH="/usr/lib/libfakeroot:debian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program" \
 		dpkg-shlibdeps -O \
@@ -3558,8 +3640,10 @@ ifeq "$(ENABLE_PRESENTER_CONSOLE)" "y"
 	dh_gencontrol -popenoffice.org$(VER)-presenter-console -- \
 		-v$(shell grep "<version" $(SOURCE_TREE)/sdext/source/presenter/description.xml | perl -pi -e 's,<version value=\"(.*)\" />,\1,; s/^\s+//')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
 endif
+ifeq "$(ENABLE_SDBC_POSTGRESQL)" "y"
 	dh_gencontrol -popenoffice.org$(VER)-sdbc-postgresql -- \
 		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g | sed -e s/a$$//)+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
+endif
 ifeq "$(ENABLE_MYSQLNATIVE)" "y"
 	dh_gencontrol -popenoffice.org$(VER)-mysql-connector -- \
 		-v$(shell grep "<version" $(SOURCE_TREE)/mysqlc/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/description.xml | perl -pi -e 's,<version value=\"(.*)\" />,\1,; s/^\s+//; s/\s+$$//')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
@@ -3656,7 +3740,7 @@ endif
 ifeq "$(ENABLE_MONO)" "y"
 	dh_installcligac -i
 endif
-	dh_compress -X.py -X.mk -X.sxd
+	dh_compress -i -X.py -X.mk -X.sxd
 	dh_installdeb -i
 ifeq "$(ENABLE_MONO)" "y"
 	dh_makeclilibs -i
@@ -3676,8 +3760,10 @@ endif
 		-V'common-bsh-depends=$(COMMON_BSH_DEPENDS)' \
 		-V'java-common-depends=$(JAVA_COMMON_DEPENDS)' \
 		-V'java-common-java-depends=$(JAVA_COMMON_JAVA_DEPENDS)' \
+		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-V'lucene-depends=$(LUCENE_DEPENDS)' \
 		-V'lucene-conflicts=$(LUCENE_CONFLICTS)' \
+		-V'textcat-data-recommends=$(TEXTCAT_DATA_RECOMMENDS)' \
 		-V'Binary-Version=$(BINARY_VERSION)' \
 		-V'ooo-binfilter-dep=$(OOO_BINFILTER_DEP)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
