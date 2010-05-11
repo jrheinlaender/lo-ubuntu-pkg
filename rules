@@ -153,7 +153,7 @@ USE_EXTERNAL_CXXLIBS=y
 LIBWPD8_MINVER= (>= 0.8.3-3)
 USE_SYSTEM_SABLOT=n
 USE_LIBXSLT=y
-USE_EXTERNAL_MYTHES=n
+USE_EXTERNAL_MYTHES=y
 USE_SYSTEM_ICU=y
 ICU_MINVER= (>= 4.0)
 USE_SYSTEM_LIBWPG=y
@@ -1032,9 +1032,8 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
 	CONFIGURE_FLAGS += --with-system-sablot
   endif
   ifeq "$(USE_EXTERNAL_MYTHES)" "y"
-	BUILD_DEPS += , libmythes-dev (>= 1:1.0-3)
+	BUILD_DEPS += , libmythes-dev (>= 2:1.2)
 	CONFIGURE_FLAGS += --with-system-mythes
-	DEBHELPER_OPTIONS+= -Nlibmythes-dev
   endif
   ifeq "$(USE_SYSTEM_LIBWPS)" "y"
 	BUILD_DEPS += , libwps-dev
@@ -2006,15 +2005,6 @@ endif
 		PATH=$(BUILD_PATH) DPKG="dpkg" PKGFORMAT="deb" NO_PKG_MANGLE=go-away \
 		../solenv/bin/build.pl && ../solenv/bin/deliver.pl
 
-ifneq "$(USE_EXTERNAL_MYTHES)" "y"
-	# build non-PIC version of libmythes
-	cd $(SOURCE_TREE)/lingucomponent/source/thesaurus/mythes && \
-		$(CXX) -O2 -Wall -ansi -pedantic -I. -I../../../inc/pch \
-			-c mythes.cxx && \
-		ar rc libmythes_nopic.a mythes.o && ranlib libmythes_nopic.a && \
-		mv libmythes_nopic.a $(CURDIR)/$(SOURCE_TREE)
-endif
-
 	touch $@
 
 test: $(STAMP_DIR)/test
@@ -2812,24 +2802,6 @@ endif
 	cp $(OOO_BUILD_TREE)/doc/data-from-remote-mysql-server.txt \
 		$(PKGDIR)-base/usr/share/doc/openoffice.org$(VER)-base
 
-ifneq "$(USE_EXTERNAL_MYTHES)" "y"
-	# install libmythes and th_gen_idx.pl (on archs where we build OOo)
-	rm -rf debian/libmythes-dev
-	mkdir -p debian/libmythes-dev/usr/lib
-	mkdir -p debian/libmythes-dev/usr/include
-	mkdir -p debian/libmythes-dev/usr/share/mythes
-	install -m644 \
-		$(SOURCE_TREE)/lingucomponent/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/libmythes.a \
-		debian/libmythes-dev/usr/lib/libmythes_pic.a
-	install -m644 \
-		$(SOURCE_TREE)/libmythes_nopic.a \
-		debian/libmythes-dev/usr/lib/libmythes.a
-	install -m644 $(SOURCE_TREE)/lingucomponent/source/thesaurus/mythes/mythes.hxx \
-		debian/libmythes-dev/usr/include
-	install -m755 $(SOURCE_TREE)/dictionaries/util/th_gen_idx.pl \
-		debian/libmythes-dev/usr/share/mythes/th_gen_idx.pl
-endif
-
 ifeq "$(PACKAGE_SDK)" "y"
   ifeq "$(ENABLE_JAVA)" "y"
 	# install the UNO Java sources for e.g. eclipse
@@ -3452,10 +3424,9 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 	  rm -rf debian/$$pkg/DEBIAN;\
 	done
 
-	dh_installdocs -s -A -Nlibmythes-dev debian/README.Debian \
+	dh_installdocs -s -A debian/README.Debian \
 		$(SOURCE_TREE)/instsetoo_native/util/OpenOffice/replace_file/*/00/README \
 		$(OOO_BUILD_TREE)/NEWS
-	dh_installdocs -plibmythes-dev debian/copyright
 	for p in core pdfimport presenter-console mysql-connector filter-binfilter \
 		evolution kab sdbc-postgresql presentation-minimizer; do \
 		cat debian/openoffice.org-common.templates.in > debian/openoffice.org-$$p.templates; \
@@ -3473,13 +3444,10 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 		done; \
 	done
 	if [ -s $(OOO_BUILD_TREE)/ChangeLog ]; then \
-		dh_installchangelogs -s -k -Nlibmythes-dev $(OOO_BUILD_TREE)/ChangeLog; \
+		dh_installchangelogs -s -k $(OOO_BUILD_TREE)/ChangeLog; \
 	else \
-		dh_installchangelogs -s -k -Nlibmythes-dev; \
+		dh_installchangelogs -s -k; \
 	fi
-ifneq "$(USE_EXTERNAL_MYTHES)" "y"
-	dh_installchangelogs -plibmythes-dev
-endif
 	dh_installmime -s
 	dh_installmenu -s
 ifeq "$(BUILD_JARS_NATIVE)" "y"
