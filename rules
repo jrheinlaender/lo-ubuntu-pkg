@@ -204,7 +204,7 @@ NEONSONR=27
 USE_SYSTEM_REDLAND=y
 USE_OOO_BUILD_DESKTOPS=n
 PACKAGE_SDK=y
-RUN_SMOKETEST=n
+RUN_SMOKETEST=y
 RUN_API_TESTS=n
 RUN_UNIT_TESTS=n
 USE_LIBCURL4=y
@@ -740,9 +740,6 @@ endif
 
 	CONFIGURE_FLAGS += --disable-qadevooo
 
-ifeq "$(RUN_SMOKETEST)" "y"
-	BUILD_DEPS += , xvfb, xbase-clients, xfonts-base
-endif
 ifeq "$(RUN_API_TESTS)" "y"
 	BUILD_DEPS += , tcsh
 endif
@@ -2012,11 +2009,13 @@ endif
 		PATH=$(BUILD_PATH) DPKG="dpkg" PKGFORMAT="deb" NO_PKG_MANGLE=go-away \
 		../solenv/bin/build.pl && ../solenv/bin/deliver.pl
 
+ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
+	$(CURDIR)/debian/rules test
+endif
+
 	touch $@
 
-test: $(STAMP_DIR)/test
-$(STAMP_DIR)/test: $(STAMP_DIR)/build
-ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
+test: 
 ifeq "$(RUN_UNIT_TESTS)" "y"
 	# build/run unit tests
 	-cd $(SOURCE_TREE)/instsetoo_native; \
@@ -2029,11 +2028,8 @@ ifeq "$(RUN_SMOKETEST)" "y"
 	cd $(SOURCE_TREE)/smoketestoo_native && \
 		. $(CURDIR)/$(SOURCE_TREE)/*.sh; \
 		export PATH=$(BUILD_PATH); \
-		if [ -n "$$DISPLAY" ]; then \
-			../solenv/bin/build.pl; \
-		else \
-			xvfb-run -a ../solenv/bin/build.pl; \
-		fi
+		export TMPDIR=`mktemp -q -d`; \
+		SAL_USE_VCLPLUGIN="svp" ../solenv/bin/build.pl
 endif
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(RUN_API_TESTS)" "y"
@@ -2044,12 +2040,9 @@ ifeq "$(ENABLE_JAVA)" "y"
 		solenv/bin/cwscheckapi -o -a
   endif
 endif
-endif
-
-	touch $@
 
 install: $(STAMP_DIR)/install
-$(STAMP_DIR)/install: $(STAMP_DIR)/build $(STAMP_DIR)/test
+$(STAMP_DIR)/install: $(STAMP_DIR)/build
 	dh_testdir
 	dh_testroot
 
