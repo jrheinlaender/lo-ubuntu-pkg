@@ -65,18 +65,17 @@ export QUILT_OPTIONS="-p1 -F0"
 # work around tcsh bugs.debian.org/339034: tcsh: Unknown colorls variable `su'
 unexport LS_COLORS
 
-MWS=OOO320
-#MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)" | cut -d~ -f2 | sed -e s/$(shell echo $(MWS) | tr A-Z a-z)//)
-MILESTONE=m18
+MWS=DEV300
+MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)" | cut -d~ -f2 | sed -e s/$(shell echo $(MWS) | tr A-Z a-z)//)
+#MILESTONE=m18
 TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
 #TAG=$(MWS)_$(MILESTONE)
-#OOO_BUILD_BRANCH=ooo-build-3-2-1
-OOO_BUILD_VERSION=3.2.1.2
+#OOO_BUILD_BRANCH=ooo-build-3-3
+OOO_BUILD_VERSION=3.2.99.1
 OOO_BUILD_TAG=OOO_BUILD_$(shell echo $(OOO_BUILD_VERSION) | sed -e 's/\./_/g')
 OOO_BUILD_TREE=ooo-build-$(shell echo $(OOO_BUILD_VERSION) | sed -e 's/\./-/g')
 SOURCE_TREE=$(OOO_BUILD_TREE)/build/$(TAG)
 STAMP_DIR=debian/stampdir
-# unused yet but will get important for OOo 3.3
 TARFILE_LOCATION=$(CURDIR)/ext-sources
 export TARFILE_LOCATION
 
@@ -205,8 +204,7 @@ USE_SYSTEM_REDLAND=y
 USE_OOO_BUILD_DESKTOPS=n
 PACKAGE_SDK=y
 RUN_SMOKETEST=y
-RUN_API_TESTS=n
-RUN_UNIT_TESTS=n
+RUN_SUBSEQUENT_TESTS=n
 USE_LIBCURL4=y
 CURL_SECTYPE=gnutls
 USE_SYSTEM_DMAKE=y
@@ -252,6 +250,8 @@ USE_SYSTEM_GRAPHITE=y
 ALLOC=system
 DEBSRC_VERSION=3.0
 USE_SYSTEM_TEXTCAT_DATA=y
+USE_SYSTEM_CPPUNIT=y
+ENABLE_JUNIT4=y
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with openoffice.org2), we need to set this. Don't touch
@@ -286,7 +286,8 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
 		--enable-hids \
 		--with-system-dicts \
 		--with-additional-sections="$(ADDITIONAL_SECTIONS)" \
-		--without-git
+		--without-git \
+		--disable-fetch-external
 
 ifneq "$(WITH_SPLIT)" "y"
 	CONFIGURE_FLAGS += --without-split
@@ -375,6 +376,7 @@ endif
 ifeq ($(ARCH),$(findstring $(ARCH),$(OOO_STLPORT_ARCHS)))
 #	USE_SYSTEM_GRAPHITE=n
 #	USE_SYSTEM_MYSQLCPPCONN=n
+	USE_SYSTEM_CPPUNIT=n
 endif
 
 ifeq "$(ENABLE_OPENGL)" "y"
@@ -738,10 +740,13 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
 endif
 
-	CONFIGURE_FLAGS += --disable-qadevooo
-
-ifeq "$(RUN_API_TESTS)" "y"
+ifeq "$(RUN_SUBSEQUENT_TESTS)" "y"
 	BUILD_DEPS += , tcsh
+  ifeq "$(ENABLE_JUNIT4)" "y"
+	BUILD_DEPS += junit4
+  else
+	CONFIGURE_FLAGS += --disable-junit4
+  endif
 endif
 
 ifneq "$(BUILD_ONLY_EN_US)" "y"
@@ -1761,6 +1766,7 @@ endif
 	perl -pi -e "s,%OOO_NPSOPLUGIN_ARCHS%,$(OOO_NPSOPLUGIN_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_OGLTRANS_ARCHS%,$(OOO_OGLTRANS_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_BINFILTER_ARCHS%,$(OOO_BINFILTER_ARCHS),g" debian/control
+	perl -pi -e "s,%OOO_STLPORT_ARCHS%,$(OOO_STLPORT_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_GCJ_JDK_ARCHS%,$(OOO_GCJ_JDK_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_ARCH_DEP_EXTENSIONS_ARCHS%,$(OOO_ARCH_DEP_EXTENSIONS_ARCHS),g" debian/control
 
@@ -2016,13 +2022,6 @@ endif
 	touch $@
 
 test: 
-ifeq "$(RUN_UNIT_TESTS)" "y"
-	# build/run unit tests
-	-cd $(SOURCE_TREE)/instsetoo_native; \
-		. $(CURDIR)/$(SOURCE_TREE)/*.sh; \
-		PATH=$(BUILD_PATH) DPKG="dpkg" PKGFORMAT="deb" NO_PKG_MANGLE=go-away \
-		../solenv/bin/build.pl --ignore --all check
-endif
 ifeq "$(RUN_SMOKETEST)" "y"
 	# smoketest
 	cd $(SOURCE_TREE)/smoketestoo_native && \
@@ -2031,14 +2030,11 @@ ifeq "$(RUN_SMOKETEST)" "y"
 		export TMPDIR=`mktemp -q -d`; \
 		SAL_USE_VCLPLUGIN="svp" ../solenv/bin/build.pl
 endif
-ifeq "$(ENABLE_JAVA)" "y"
-  ifeq "$(RUN_API_TESTS)" "y"
-	# API tests
+ifeq "$(RUN_SUBSEQUENT_TESTS)" "y"
 	cd $(SOURCE_TREE) && \
 		export PATH=$(BUILD_PATH); \
 		. $(CURDIR)/$(SOURCE_TREE)/*.sh; \
-		solenv/bin/cwscheckapi -o -a
-  endif
+		solenv/bin/subsequenttests
 endif
 
 install: $(STAMP_DIR)/install
@@ -3806,6 +3802,15 @@ get-ooo-build:
 	mv ooo-build-$(OOO_BUILD_VERSION) $(OOO_BUILD_TREE) && \
 	rm ooo-build-$(OOO_BUILD_VERSION).tar.gz
 
+# Get upstream external sources
+get-ext-sources:
+	rm -rf $(TARFIILE_LOCATION)
+	mkdir -p $(TARFILE_LOCATION)
+	wget http://hg.services.openoffice.org/$(MWS)/raw-file/$(MWS)_$(MILESTONE)/fetch_tarballs.sh && chmod 755 ./fetch_tarballs.sh \
+	wget http://hg.services.openoffice.org/$(MWS)/raw-file/$(MWS)_$(MILESTONE)/ooo.lst && \
+	./fetch_tarballs.sh ooo.lst && \
+	rm -f fetch_tarballs.sh ooo.lst
+
 get-orig-source:
 ifneq "$(WITH_SPLIT)" "y"
 	if test -n "$$TMP"; then \
@@ -3893,6 +3898,19 @@ else
 		cd $$TMPD && tar cfvz openoffice.org_$(UPSTREAM_VERSION).orig.tar.gz openoffice.org-$(UPSTREAM_VERSION) && \
 		rm -rf openoffice.org-$(UPSTREAM_VERSION) && \
 		mv  openoffice.org_$(UPSTREAM_VERSION).orig.tar.gz $(CURDIR)/.. && \
+		rmdir $$TMPD
+endif
+ifeq "$(DEBSRC_VERSION)" "3.0"
+	if test -n "$$TMP"; then \
+		TMPD=`mktemp -d -p $$TMP`; \
+	else \
+		TMPD=`mktemp -d`; \
+	fi && \
+	cd $$TMPD && \
+		export TARFILE_LOCATION=`basename $(TARFILE_LOCATION)`; \
+		$(CURDIR)/debian/rules get-ext-sources && \
+		tar cfvz openoffice.org_$(UPSTREAM_VERSION).orig-$$TARFILE_LOCATION.tar.gz $$TARFILE_LOCATION && \
+		mv openoffice.org_$(UPSTREAM_VERSION).orig-$$TARFILE_LOCATION.tar.gz $(CURDIR)/.. && \
 		rmdir $$TMPD
 endif
 ifeq "$(DEBSRC_VERSION)" "3.0"
