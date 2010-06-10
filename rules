@@ -541,12 +541,6 @@ else
 OOO_NPSOPLUGIN_ARCHS=
 endif
 
-# error: Database: Database Insert record into Database -> error
-# but also already in older versions, so...
-ifeq "$(ARCH)" "armel"
-	RUN_SMOKETEST=n
-endif
-
 # builds long and is for legacy filters. probably not needed on {arm,mips}{,el}
 ifneq (,$(findstring arm,$(ARCH)))
 	BUILD_BINFILTERS=n
@@ -2038,12 +2032,20 @@ ifeq "$(RUN_UNIT_TESTS)" "y"
 endif
 ifeq "$(RUN_SMOKETEST)" "y"
 	# smoketest
+ifeq "$(ARCH)" "armel"
+	cd $(SOURCE_TREE)/smoketestoo_native && \
+		patch -p1 < $(CURDIR)/debian/smoketest/patches/smoketest-disable-db-insert-delete-seek-tests.diff
+endif
 	cd $(SOURCE_TREE)/smoketestoo_native && \
 		. $(CURDIR)/$(SOURCE_TREE)/*.sh; \
 		export PATH=$(BUILD_PATH); \
 		export TMPDIR=`mktemp -q -d`; \
 		export JAVA_HOME=$(TEST_JAVA_HOME); \
 		SAL_USE_VCLPLUGIN="svp" ../solenv/bin/build.pl
+ifeq "$(ARCH)" "armel"
+	cd $(SOURCE_TREE)/smoketestoo_native && \
+		patch -p1 -R < $(CURDIR)/debian/smoketest/patches/smoketest-disable-db-insert-delete-seek-tests.diff
+endif
 endif
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(RUN_API_TESTS)" "y"
