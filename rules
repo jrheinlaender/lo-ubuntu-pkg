@@ -488,6 +488,23 @@ OOO_OPENJDK_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
 
 OOO_ARCH_DEP_EXTENSIONS_ARCHS := $(OOO_ARCHS)
 
+OOO_BASE_ARCHS := $(filter-out armel,$(OOO_ARCHS))
+OOO_NO_BASE_ARCHS := !armel
+OOO_REPORTDESIGN_ARCHS := $(filter-out armel,$(OOO_JAVA_ARCHS))
+
+ifneq (,$(findstring $(ARCH),$(OOO_NO_BASE_ARCHS)))
+	PACKAGE_BASE=n
+	ENABLE_SDBC_POSTGRESQL=n
+	ENABLE_MYSQLNATIVE=n
+	ENABLE_EVO2=n
+	ENABLE_KDEAB=n
+	ENABLE_REPORTDESIGN=n
+	DEBHELPER_OPTIONS += -Nopenoffice.org$(VER)-base openoffice.org$(VER)-base-core
+	DEBHELPER_OPTIONS += -Nopenoffice.org$(VER)-evolution -Nopenoffice.org$(VER)-kab
+	DEBHELPER_OPTIONS += -Nopenoffice.org$(VER)-sdbc-postgresql -Nopenoffice.org$(VER)-mysql-connector
+	DEBHELPER_OPTIONS += -Nopenoffice.org$(VER)-report-builder-bin -Nopenoffice.org$(VER)-report-builder
+endif
+
 ifeq (,$(findstring $(ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
 	ENABLE_MINIMIZER=n
 	ENABLE_PDFIMPORT=n
@@ -890,7 +907,7 @@ export JAVA_HOME
   ifeq "$(ENABLE_REPORTDESIGN)" "y"
 	# report-builder
     ifeq "$(USE_SYSTEM_JFREEREPORT)" "y"
-	REPORT_BUILDER_BUILD_DEPS += , libbase-java-openoffice.org [$(OOO_JAVA_ARCHS)], libsac-java [$(OOO_JAVA_ARCHS)], libxml-java-openoffice.org [$(OOO_JAVA_ARCHS)], libflute-java-openoffice.org [$(OOO_JAVA_ARCHS)], libpentaho-reporting-flow-engine-java-openoffice.org [$(OOO_JAVA_ARCHS)], liblayout-java-openoffice.org [$(OOO_JAVA_ARCHS)], libloader-java-openoffice.org [$(OOO_JAVA_ARCHS)], libformula-java-openoffice.org [$(OOO_JAVA_ARCHS)], librepository-java-openoffice.org [$(OOO_JAVA_ARCHS)], libfonts-java-openoffice.org [$(OOO_JAVA_ARCHS)], libserializer-java-openoffice.org [$(OOO_JAVA_ARCHS)]
+	REPORT_BUILDER_BUILD_DEPS += , libbase-java-openoffice.org [$(OOO_REPORTDESIGN_ARCHS)], libsac-java [$(OOO_REPORTDESIGN_ARCHS)], libxml-java-openoffice.org [$(OOO_REPORTDESIGN_ARCHS)], libflute-java-openoffice.org [$(OOO_REPORTDESIGN_ARCHS)], libpentaho-reporting-flow-engine-java-openoffice.org [$(OOO_REPORTDESIGN_ARCHS)], liblayout-java-openoffice.org [$(OOO_REPORTDESIGN_ARCHS)], libloader-java-openoffice.org [$(OOO_REPORTDESIGN_ARCHS)], libformula-java-openoffice.org [$(OOO_REPORTDESIGN_ARCHS)], librepository-java-openoffice.org [$(OOO_REPORTDESIGN_ARCHS)], libfonts-java-openoffice.org [$(OOO_REPORTDESIGN_ARCHS)], libserializer-java-openoffice.org [$(OOO_REPORTDESIGN_ARCHS)]
 	REPORT_BUILDER_JAR_DEPENDS := , libbase-java-openoffice.org, libsac-java, libxml-java-openoffice.org, libflute-java-openoffice.org, libpentaho-reporting-flow-engine-java-openoffice.org, liblayout-java-openoffice.org, libloader-java-openoffice.org, libformula-java-openoffice.org, librepository-java-openoffice.org, libfonts-java-openoffice.org, libserializer-java-openoffice.org
 	BUILD_DEPS += $(REPORT_BUILDER_BUILD_DEPS)
 	CONFIGURE_FLAGS += --with-system-jfreereport --with-libbase-jar=/usr/share/java/openoffice/libbase.jar --with-libxml-jar=/usr/share/java/openoffice/libxml.jar --with-flute-jar=/usr/share/java/openoffice/flute.jar --with-jfreereport-jar=/usr/share/java/openoffice/flow-engine.jar --with-liblayout-jar=/usr/share/java/openoffice/liblayout.jar --with-libloader-jar=/usr/share/java/openoffice/libloader.jar --with-libformula-jar=/usr/share/java/openoffice/libformula.jar --with-librepository-jar=/usr/share/java/openoffice/librepository.jar --with-libfonts-jar=/usr/share/java/openoffice/libfonts.jar --with-libserializer-jar=/usr/share/java/openoffice/libserializer.jar
@@ -1107,11 +1124,11 @@ else
   ifeq "$(ENABLE_KDEAB)" "y"
     ifeq "$(KDE_VER)" "4"
 	ADDITIONAL_SECTIONS += KDE4Experimental
-	BUILD_DEPS += , kdepimlibs$(shell expr $(KDE_VER) + 1)-dev
+	BUILD_DEPS += , kdepimlibs$(shell expr $(KDE_VER) + 1)-dev [$(OOO_NO_BASE_ARCHS)]
     endif
   else
 	CONFIGURE_FLAGS+= --disable-kdeab
-	DEBHELPER_OPTIONS += -Nopenoffice.org$(VER)-kab
+	DEBHELPER_OPTIONS += -Nopenoffice.org$(VER)-kab [$(OOO_NO_BASE_ARCHS)]
   endif
 endif
 
@@ -1140,7 +1157,7 @@ ifeq "$(ENABLE_EVO2)" "n"
 	CONFIGURE_FLAGS += --disable-evolution2
 	DEBHELPER_OPTIONS+= -Nopenoffice.org$(VER)-evolution
 else
-	BUILD_DEPS += , libebook1.2-dev
+	BUILD_DEPS += , libebook1.2-dev [$(OOO_NO_BASE_ARCHS)]
 endif
 
 ifeq "$(ENABLE_RANDR)" "y"
@@ -1762,6 +1779,8 @@ endif
 	done
 
 	perl -pi -e "s,%OOO_ARCHS%,$(OOO_ARCHS),g" debian/control
+	perl -pi -e "s,%OOO_BASE_ARCHS%,$(OOO_BASE_ARCHS),g" debian/control
+	perl -pi -e "s,%OOO_NO_BASE_ARCHS%,$(OOO_NO_BASE_ARCHS),"g debian/control
 	perl -pi -e "s,%OOO_JAVA_ARCHS%,$(OOO_JAVA_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_GCJ_ARCHS%,$(OOO_GCJ_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_MONO_ARCHS%,$(OOO_MONO_ARCHS),g" debian/control
@@ -2163,6 +2182,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 	mv $(PKGDIR)-common/$(OODIR)/program/classes/officebean.jar \
 		$(PKGDIR)-core/usr/share/java/$(OODIRNAME)
 
+  ifeq "$(PACKAGE_BASE)" "y"
 	# move sdbc_hsqldb.jar into -base (do the move
 	# to /usr/share/java here directly, we do it for the "rest"
 	# later
@@ -2173,12 +2193,13 @@ ifeq "$(ENABLE_JAVA)" "y"
 	ln -s /usr/share/java/$(OODIRNAME)/sdbc_hsqldb.jar \
 		$(PKGDIR)-base/$(OODIR)/program/classes/sdbc_hsqldb.jar
 
-  ifneq "$(USE_SYSTEM_HSQLDB)" "y"
+    ifneq "$(USE_SYSTEM_HSQLDB)" "y"
 	# we need this in -base. Otherwise we get unwanted package differences
 	# in the unstable version and backports which might use internal hsqldb
 	mkdir -p $(PKGDIR)-base/$(OODIR)/program/classes
 	mv $(PKGDIR)-common/$(OODIR)/program/classes/hsqldb.jar \
 		$(PKGDIR)-base/$(OODIR)/program/classes
+    endif
   endif
 endif
 
@@ -2856,12 +2877,14 @@ ifneq "$(ENABLE_REPORTDESIGN)" "y"
 	# in -base)
 	rm -f $(PKGDIR)-base/$(OODIR)/program/librpt*
 else
+  ifeq "$(PACKAGE_BASE)" "y"
 	# move rpt stuff into -report-builder-bin
 	rm -rf $(PKGDIR)-report-builder
 	rm -rf $(PKGDIR)-report-builder-bin
 	mkdir -p $(PKGDIR)-report-builder-bin/$(OODIR)/program
 	mv $(PKGDIR)-base/$(OODIR)/program/librpt* \
 		$(PKGDIR)-report-builder-bin/$(OODIR)/program
+  endif
   ifeq "$(ENABLE_JAVA)" "y"
 	# install this; we need to register this ourselves later in
 	# the maintainer scripts. This is intended upstream (*rpt* stuff
@@ -3549,17 +3572,18 @@ ifeq "$(ENABLE_JAVA)" "y"
 			-ldebian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program:$(GCJ_JAWT_DIR) \
 			$(SHLIBS_OVERRIDE)
 endif
+ifeq "$(PACKAGE_BASE)" "y"
 	# this is in an extension (.zip), so dh_shlibdeps doesn't get it. We need to do
 	# it manually.
-ifeq "$(ENABLE_SDBC_POSTGRESQL)" "y"
+  ifeq "$(ENABLE_SDBC_POSTGRESQL)" "y"
 	LD_LIBRARY_PATH="/usr/lib/libfakeroot:debian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program" \
 		dpkg-shlibdeps -O \
 			-Sdebian/uno-libs3/$(OOUREDIR)/lib \
 			-Sdebian/ure/$(OOUREDIR)/lib \
 			$(SOURCE_TREE)/connectivity/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/postgresql-sdbc*.so \
 			> debian/openoffice.org$(VER)-sdbc-postgresql.substvars
-endif
-ifeq "$(ENABLE_MYSQLNATIVE)" "y"
+  endif
+  ifeq "$(ENABLE_MYSQLNATIVE)" "y"
 	LD_LIBRARY_PATH="/usr/lib/libfakeroot:debian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program" \
 		dpkg-shlibdeps -O \
 			-Sdebian/uno-libs3/$(OOUREDIR)/lib \
@@ -3567,12 +3591,13 @@ ifeq "$(ENABLE_MYSQLNATIVE)" "y"
 			$(SOURCE_TREE)/mysqlc/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/mysqlc.uno.so \
 			$(SOURCE_TREE)/mysqlcppconn/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/lib/libmysqlcppconn.so \
 			> debian/openoffice.org$(VER)-mysql-connector.substvars
-  ifeq "$(USE_SYSTEM_MYSQLCPPCONN)" "n"
+    ifeq "$(USE_SYSTEM_MYSQLCPPCONN)" "n"
 	# add mysqlclient dependency; it apparently is only dlopen()ed in
 	# the internal case.. (And in the external case we have a dep on
 	# libmysqlcppconn4 which deps on libmysqlclient16 already)
 	perl -pi -e 's/(shlibs:Depends=.*$$)/$$1, $(shell cat /var/lib/dpkg/info/libmysqlclient16.shlibs | grep _r | cut -d" " -f3,4,5)/' \
 		debian/openoffice.org$(VER)-mysql-connector.substvars
+    endif
   endif
 endif
 ifeq "$(ENABLE_MINIMIZER)" "y"
@@ -3655,13 +3680,15 @@ ifeq "$(ENABLE_PRESENTER_CONSOLE)" "y"
 	dh_gencontrol -popenoffice.org$(VER)-presenter-console -- \
 		-v$(shell grep "<version" $(SOURCE_TREE)/sdext/source/presenter/description.xml | perl -pi -e 's,<version value=\"(.*)\" />,\1,; s/^\s+//')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
 endif
-ifeq "$(ENABLE_SDBC_POSTGRESQL)" "y"
+ifeq "$(PACKAGE_BASE)" "y"
+  ifeq "$(ENABLE_SDBC_POSTGRESQL)" "y"
 	dh_gencontrol -popenoffice.org$(VER)-sdbc-postgresql -- \
 		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g | sed -e s/a$$//)+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
-endif
-ifeq "$(ENABLE_MYSQLNATIVE)" "y"
+  endif
+  ifeq "$(ENABLE_MYSQLNATIVE)" "y"
 	dh_gencontrol -popenoffice.org$(VER)-mysql-connector -- \
 		-v$(shell grep "<version" $(SOURCE_TREE)/mysqlc/$(shell . $(SOURCE_TREE)/*.sh; echo $$OUTPATH$$PROEXT)/misc/description.xml | perl -pi -e 's,<version value=\"(.*)\" />,\1,; s/^\s+//; s/\s+$$//')+OOo`echo $(BINARY_VERSION) | cut -d: -f2`
+  endif
 endif
 endif
 	dh_gencontrol -pure -pure-dbg -puno-libs3 -puno-libs3-dbg -- \
