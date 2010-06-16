@@ -204,7 +204,13 @@ NEONSONR=27
 USE_SYSTEM_REDLAND=y
 USE_OOO_BUILD_DESKTOPS=n
 PACKAGE_SDK=y
-RUN_SMOKETEST=y
+ifeq "$(JDK)" "openjdk"
+  RUN_SMOKETEST=y
+else
+    ifneq (buildd,$(shell whoami))
+      RUN_SMOKETEST=n
+    endif
+endif
 RUN_API_TESTS=n
 RUN_UNIT_TESTS=n
 USE_LIBCURL4=y
@@ -829,11 +835,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 	JAVA_HOME=/usr/lib/jvm/java-6-openjdk
 	CONFIGURE_FLAGS += --with-java-target-version=1.5
   endif
-  ifeq "$(ARCH)" "armel"
-        TEST_JAVA_HOME=/usr/lib/jvm/java-gcj
-  else
         TEST_JAVA_HOME=$(JAVA_HOME)
-  endif
   ifeq "$(BUILD_JARS_NATIVE)" "y"
 	CONFIGURE_FLAGS += --enable-gcjaot
     ifeq "$(LENNY_BACKPORT)" "y"
@@ -2059,9 +2061,11 @@ endif
 	cd $(SOURCE_TREE)/smoketestoo_native && \
 		. $(CURDIR)/$(SOURCE_TREE)/*.sh; \
 		export PATH=$(BUILD_PATH); \
-		export TMPDIR=`mktemp -q -d`; \
+		export TMPDIR=$(CURDIR)/debian/smoketest; \
 		export JAVA_HOME=$(TEST_JAVA_HOME); \
 		SAL_USE_VCLPLUGIN="svp" ../solenv/bin/build.pl
+	# doesn't get cleaned up...
+	rmdir $(CURDIR)/debian/smoketest/ooopackaging
 ifeq "$(ARCH)" "armel"
 	cd $(SOURCE_TREE)/smoketestoo_native && \
 		patch -p1 -R < $(CURDIR)/debian/smoketest/patches/smoketest-disable-db-insert-delete-seek-tests.diff
