@@ -1,6 +1,49 @@
---- /dev/null	2010-05-24 16:58:35.275686347 +0200
-+++ openoffice.org-3.2.1/ooo-build-3-2-1-4/patches/dev300/fix-smoketest-without-java.diff	2010-06-08 15:21:36.000000000 +0200
-@@ -0,0 +1,22 @@
+--- /dev/null	2010-06-21 14:50:44.132270648 +0200
++++ openoffice.org-3.2.1/ooo-build-3-2-1-4/patches/dev300/fix-smoketest-without-java.diff	2010-06-22 01:14:00.000000000 +0200
+@@ -0,0 +1,65 @@
++diff -urN smoketestoo_native.old//com/sun/star/comp/smoketest/makefile.mk smoketestoo_native/com/sun/star/comp/smoketest/makefile.mk
++--- smoketestoo_native.old//com/sun/star/comp/smoketest/makefile.mk	2010-05-26 18:30:01.000000000 +0000
+++++ smoketestoo_native/com/sun/star/comp/smoketest/makefile.mk	2010-06-21 22:44:12.000000000 +0000
++@@ -34,6 +34,8 @@
++ 
++ # --- Settings -----------------------------------------------------
++ 
+++.IF "$(SOLAR_JAVA)" != ""
+++
++ .INCLUDE : settings.mk
++ 
++ JARFILES = ridl.jar jurt.jar unoil.jar juh.jar
++@@ -77,3 +79,8 @@
++ 
++ $(MISC)$/$(TARGET)$/$(JARTARGET) : $(JARTARGETN)
++ 	$(COPY) $< $@
+++
+++.ELSE
+++@all:
+++	@echo "Java disabled. Nothing to do."
+++.ENDIF
++diff -urN smoketestoo_native.old//smoketest.pl smoketestoo_native/smoketest.pl
++--- smoketestoo_native.old//smoketest.pl	2010-06-20 21:50:03.000000000 +0000
+++++ smoketestoo_native/smoketest.pl	2010-06-21 22:51:37.000000000 +0000
++@@ -502,12 +502,13 @@
++ 		print_error ($error_messages[$error_patchBootstrap], $error_patchBootstrap);
++ 	}
++ 
++-	# copy extension (error 6)
++-
++-	createPath ($LOGPATH, $error_copyExtension);  
++-	$Command = "$COPY_FILE \"$ExtensionDir" . "TestExtension.oxt\" " . "\"$LOGPATH$PathSeparator\"";
++-	execute_Command ($Command, $error_copyExtension, $show_Message, $command_withoutOutput);
+++	if ( "$ENV{SOLAR_JAVA}" eq "TRUE" ) {
+++		# copy extension (error 6)
++ 
+++		createPath ($LOGPATH, $error_copyExtension);  
+++		$Command = "$COPY_FILE \"$ExtensionDir" . "TestExtension.oxt\" " . "\"$LOGPATH$PathSeparator\"";
+++		execute_Command ($Command, $error_copyExtension, $show_Message, $command_withoutOutput);
+++	}
++ 
++ 	# start office (error 4)
++ 
 +diff --git a/smoketestoo_native/data/scripts/Global.xba b/smoketestoo_native/data/scripts/Global.xba
 +--- smoketestoo_native/data/scripts/Global.xba
 ++++ smoketestoo_native/data/scripts/Global.xba
@@ -11,7 +54,7 @@
 +-	bMakeJavaTest = true
 +-	bMakeDBTest = true
 +-	bMakeExtensionTest = true
-++	if Environ(&quot;SOLAR_JAVA&quot;) = &quot;NO&quot; then
+++	if Environ(&quot;SOLAR_JAVA&quot;) = &quot;&quot; then
 ++		bMakeJavaTest = false
 ++		bMakeDBTest = false
 ++		bMakeExtensionTest = false
