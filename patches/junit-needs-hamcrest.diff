@@ -1,261 +1,59 @@
 --- /dev/null	2010-06-21 14:50:44.132270648 +0200
 +++ openoffice.org-3.3.0~dev300m83/ooo-build-3-2-99-1/patches/dev300/junit-needs-hamcrest.diff	2010-06-23 16:41:10.000000000 +0200
-@@ -0,0 +1,255 @@
-+diff --git a/chart2/qa/unoapi/makefile.mk b/chart2/qa/unoapi/makefile.mk
-+--- chart2/qa/unoapi/makefile.mk
-++++ chart2/qa/unoapi/makefile.mk
-+@@ -36,7 +36,7 @@
-+ JAVATESTFILES = Test.java
-+ JAVAFILES = $(JAVATESTFILES)
-+ JARFILES = OOoRunner.jar ridl.jar test.jar
-+-EXTRAJARFILES = $(OOO_JUNIT_JAR)
-++EXTRAJARFILES = $(OOO_JUNIT_JAR) $(OOO_HAMCREST_CORE_JAR)
-+ .END
-+ 
-+ .INCLUDE: settings.mk
-+diff --git a/configmgr/qa/unoapi/makefile.mk b/configmgr/qa/unoapi/makefile.mk
-+--- configmgr/qa/unoapi/makefile.mk
-++++ configmgr/qa/unoapi/makefile.mk
-+@@ -38,7 +38,7 @@
-+ JAVATESTFILES = Test.java
-+ JAVAFILES = $(JAVATESTFILES)
-+ JARFILES = OOoRunner.jar ridl.jar test.jar
-+-EXTRAJARFILES = $(OOO_JUNIT_JAR)
-++EXTRAJARFILES = $(OOO_JUNIT_JAR) $(OOO_HAMCREST_CORE_JAR)
-+ .END
-+ 
-+ .INCLUDE: settings.mk
+@@ -0,0 +1,53 @@
++diff --git a/configure.in b/configure.in
 +--- configure.in
 ++++ configure.in
-+@@ -6740,8 +6740,25 @@
++@@ -6740,6 +6740,37 @@
 + location (/usr/share/java), specify its pathname via
 + --with-junit=..., or disable it via --without-junit])
 +     fi
 ++
-++    AC_MSG_CHECKING([whether $OOO_JUNIT_JAR contains org.hamcrest.SelfDescribing])
+++    AC_MSG_CHECKING([whether $OOO_JUNIT_JAR has working org.hamcrest.SelfDescribing])
 ++    "$JAVA_HOME/bin/jar" tf "$OOO_JUNIT_JAR" 2>&5 | \
 ++	grep org/hamcrest/SelfDescribing.class > /dev/null 2>&5
 ++    if test $? -eq 0; then
 ++	AC_MSG_RESULT([yes])
 ++    else
-++	AC_MSG_RESULT([no])
-++	if test -n "$with_hamcrest_core_jar"; then
+++	# check whether we have it in Class-Path:
+++        export OOO_JUNIT_JAR
+++        if $PERL -e 'use Archive::Zip;
+++            my $file = "$ENV{'OOO_JUNIT_JAR'}";
+++            my $zip = Archive::Zip->new( $file );
+++            my $mf = $zip->contents ( "META-INF/MANIFEST.MF" );
+++            if ( $mf =~ m/Class-Path:.*hamcrest/ ) {
+++                exit 0;
+++            } else {
+++                exit 1;
+++            }'; then
+++            AC_MSG_RESULT([yes])
+++         else
+++            AC_MSG_RESULT([no])
+++	    if test -n "$with_hamcrest_core_jar"; then
 ++		OOO_HAMCREST_CORE_JAR=$with_hamcrest_core_jar
-++	else
+++	    else
 ++		# try to deduct from junits location
 ++		OOO_HAMCREST_CORE_JAR=`dirname $OOO_JUNIT_JAR`/hamcrest-core.jar
-++	fi
-++	AC_CHECK_FILE([$OOO_HAMCREST_CORE_JAR], [], [AC_MSG_ERROR(hamcrest-core.jar not found. Install or specify location with --with-hamcrest-core-jar)])
+++	    fi
+++	    AC_CHECK_FILE([$OOO_HAMCREST_CORE_JAR], [], [AC_MSG_ERROR(hamcrest-core.jar not found. Install or specify location with --with-hamcrest-core-jar)])
+++            OOO_JUNIT_JAR="$OOO_JUNIT_JAR $OOO_HAMCREST_CORE_JAR"
+++         fi
 ++    fi
 + fi
 + AC_SUBST(OOO_JUNIT_JAR)
-++AC_SUBST(OOO_HAMCREST_CORE_JAR)
 + 
-+ AC_MSG_CHECKING([which languages to be built])
-+ WITH_LANG="$with_lang"
-+diff --git a/dbaccess/qa/unoapi/makefile.mk b/dbaccess/qa/unoapi/makefile.mk
-+--- dbaccess/qa/unoapi/makefile.mk
-++++ dbaccess/qa/unoapi/makefile.mk
-+@@ -36,7 +36,7 @@
-+ JAVATESTFILES = Test.java
-+ JAVAFILES = $(JAVATESTFILES)
-+ JARFILES = OOoRunner.jar ridl.jar test.jar
-+-EXTRAJARFILES = $(OOO_JUNIT_JAR)
-++EXTRAJARFILES = $(OOO_JUNIT_JAR) $(OOO_HAMCREST_CORE_JAR)
-+ .END
-+ 
-+ .INCLUDE: settings.mk
-+diff --git a/extensions/qa/unoapi/makefile.mk b/extensions/qa/unoapi/makefile.mk
-+--- extensions/qa/unoapi/makefile.mk
-++++ extensions/qa/unoapi/makefile.mk
-+@@ -36,7 +36,7 @@
-+ JAVATESTFILES = Test.java
-+ JAVAFILES = $(JAVATESTFILES)
-+ JARFILES = OOoRunner.jar ridl.jar test.jar
-+-EXTRAJARFILES = $(OOO_JUNIT_JAR)
-++EXTRAJARFILES = $(OOO_JUNIT_JAR) $(OOO_HAMCREST_CORE_JAR)
-+ .END
-+ 
-+ .INCLUDE: settings.mk
-+diff --git a/forms/qa/unoapi/makefile.mk b/forms/qa/unoapi/makefile.mk
-+--- forms/qa/unoapi/makefile.mk
-++++ forms/qa/unoapi/makefile.mk
-+@@ -36,7 +36,7 @@
-+ JAVATESTFILES = Test.java
-+ JAVAFILES = $(JAVATESTFILES)
-+ JARFILES = OOoRunner.jar ridl.jar test.jar
-+-EXTRAJARFILES = $(OOO_JUNIT_JAR)
-++EXTRAJARFILES = $(OOO_JUNIT_JAR) $(OOO_HAMCREST_CORE_JAR)
-+ .END
-+ 
-+ .INCLUDE: settings.mk
-+diff --git a/framework/qa/unoapi/makefile.mk b/framework/qa/unoapi/makefile.mk
-+--- framework/qa/unoapi/makefile.mk
-++++ framework/qa/unoapi/makefile.mk
-+@@ -36,7 +36,7 @@
-+ JAVATESTFILES = Test.java
-+ JAVAFILES = $(JAVATESTFILES)
-+ JARFILES = OOoRunner.jar ridl.jar test.jar
-+-EXTRAJARFILES = $(OOO_JUNIT_JAR)
-++EXTRAJARFILES = $(OOO_JUNIT_JAR) $(OOO_HAMCREST_CORE_JAR)
-+ .END
-+ 
-+ .INCLUDE: settings.mk
-+diff --git a/linguistic/qa/unoapi/makefile.mk b/linguistic/qa/unoapi/makefile.mk
-+--- linguistic/qa/unoapi/makefile.mk
-++++ linguistic/qa/unoapi/makefile.mk
-+@@ -36,7 +36,7 @@
-+ JAVATESTFILES = Test.java
-+ JAVAFILES = $(JAVATESTFILES)
-+ JARFILES = OOoRunner.jar ridl.jar test.jar
-+-EXTRAJARFILES = $(OOO_JUNIT_JAR)
-++EXTRAJARFILES = $(OOO_JUNIT_JAR) $(OOO_HAMCREST_CORE_JAR)
-+ .END
-+ 
-+ .INCLUDE: settings.mk
-+diff --git a/qadevOOo/qa/unoapi/makefile.mk b/qadevOOo/qa/unoapi/makefile.mk
-+--- qadevOOo/qa/unoapi/makefile.mk
-++++ qadevOOo/qa/unoapi/makefile.mk
-+@@ -36,7 +36,7 @@
-+ JAVATESTFILES = Test.java
-+ JAVAFILES = $(JAVATESTFILES)
-+ JARFILES = OOoRunner.jar ridl.jar test.jar
-+-EXTRAJARFILES = $(OOO_JUNIT_JAR)
-++EXTRAJARFILES = $(OOO_JUNIT_JAR) $(OOO_HAMCREST_CORE_JAR)
-+ .END
-+ 
-+ .INCLUDE: settings.mk
-+diff --git a/sc/qa/unoapi/makefile.mk b/sc/qa/unoapi/makefile.mk
-+--- sc/qa/unoapi/makefile.mk
-++++ sc/qa/unoapi/makefile.mk
-+@@ -36,7 +36,7 @@
-+ JAVATESTFILES = Test.java
-+ JAVAFILES = $(JAVATESTFILES)
-+ JARFILES = OOoRunner.jar ridl.jar test.jar
-+-EXTRAJARFILES = $(OOO_JUNIT_JAR)
-++EXTRAJARFILES = $(OOO_JUNIT_JAR) $(OOO_HAMCREST_CORE_JAR)
-+ .END
-+ 
-+ .INCLUDE: settings.mk
-+diff --git a/sd/qa/unoapi/makefile.mk b/sd/qa/unoapi/makefile.mk
-+--- sd/qa/unoapi/makefile.mk
-++++ sd/qa/unoapi/makefile.mk
-+@@ -36,7 +36,7 @@
-+ JAVATESTFILES = Test.java
-+ JAVAFILES = $(JAVATESTFILES)
-+ JARFILES = OOoRunner.jar ridl.jar test.jar
-+-EXTRAJARFILES = $(OOO_JUNIT_JAR)
-++EXTRAJARFILES = $(OOO_JUNIT_JAR) $(OOO_HAMCREST_CORE_JAR)
-+ .END
-+ 
-+ .INCLUDE: settings.mk
-+diff --git a/set_soenv.in b/set_soenv.in
-+--- set_soenv.in
-++++ set_soenv.in
-+@@ -1628,6 +1628,7 @@
-+ ToFile( "ENABLE_REPORTBUILDER","@ENABLE_REPORTBUILDER@","e" );
-+ ToFile( "SYSTEM_JFREEREPORT","@SYSTEM_JFREEREPORT@","e" );
-+ ToFile( "OOO_JUNIT_JAR",     "@OOO_JUNIT_JAR@",    "e" );
-++ToFile( "OOO_HAMCREST_CORE_JAR","@OOO_HAMCREST_CORE_JAR@", "e" );
-+ ToFile( "SAC_JAR",           "@SAC_JAR@",          "e" );
-+ ToFile( "LIBXML_JAR",        "@LIBXML_JAR@",       "e" );
-+ ToFile( "FLUTE_JAR",         "@FLUTE_JAR@",        "e" );
-+diff --git a/sfx2/qa/unoapi/makefile.mk b/sfx2/qa/unoapi/makefile.mk
-+--- sfx2/qa/unoapi/makefile.mk
-++++ sfx2/qa/unoapi/makefile.mk
-+@@ -36,7 +36,7 @@
-+ JAVATESTFILES = Test.java
-+ JAVAFILES = $(JAVATESTFILES)
-+ JARFILES = OOoRunner.jar ridl.jar test.jar
-+-EXTRAJARFILES = $(OOO_JUNIT_JAR)
-++EXTRAJARFILES = $(OOO_JUNIT_JAR) $(OOO_HAMCREST_CORE_JAR)
-+ .END
-+ 
-+ .INCLUDE: settings.mk
-+diff --git a/starmath/qa/unoapi/makefile.mk b/starmath/qa/unoapi/makefile.mk
-+--- starmath/qa/unoapi/makefile.mk
-++++ starmath/qa/unoapi/makefile.mk
-+@@ -36,7 +36,7 @@
-+ JAVATESTFILES = Test.java
-+ JAVAFILES = $(JAVATESTFILES)
-+ JARFILES = OOoRunner.jar ridl.jar test.jar
-+-EXTRAJARFILES = $(OOO_JUNIT_JAR)
-++EXTRAJARFILES = $(OOO_JUNIT_JAR) $(OOO_HAMCREST_CORE_JAR)
-+ .END
-+ 
-+ .INCLUDE: settings.mk
-+diff --git a/svtools/qa/unoapi/makefile.mk b/svtools/qa/unoapi/makefile.mk
-+--- svtools/qa/unoapi/makefile.mk
-++++ svtools/qa/unoapi/makefile.mk
-+@@ -36,7 +36,7 @@
-+ JAVATESTFILES = Test.java
-+ JAVAFILES = $(JAVATESTFILES)
-+ JARFILES = OOoRunner.jar ridl.jar test.jar
-+-EXTRAJARFILES = $(OOO_JUNIT_JAR)
-++EXTRAJARFILES = $(OOO_JUNIT_JAR) $(OOO_HAMCREST_CORE_JAR)
-+ .END
-+ 
-+ .INCLUDE: settings.mk
-+diff --git a/svx/qa/unoapi/makefile.mk b/svx/qa/unoapi/makefile.mk
-+--- svx/qa/unoapi/makefile.mk
-++++ svx/qa/unoapi/makefile.mk
-+@@ -36,7 +36,7 @@
-+ JAVATESTFILES = Test.java
-+ JAVAFILES = $(JAVATESTFILES)
-+ JARFILES = OOoRunner.jar ridl.jar test.jar
-+-EXTRAJARFILES = $(OOO_JUNIT_JAR)
-++EXTRAJARFILES = $(OOO_JUNIT_JAR) $(OOO_HAMCREST_CORE_JAR)
-+ .END
-+ 
-+ .INCLUDE: settings.mk
-+diff --git a/sw/qa/unoapi/makefile.mk b/sw/qa/unoapi/makefile.mk
-+--- sw/qa/unoapi/makefile.mk
-++++ sw/qa/unoapi/makefile.mk
-+@@ -36,7 +36,7 @@
-+ JAVATESTFILES = Test.java
-+ JAVAFILES = $(JAVATESTFILES)
-+ JARFILES = OOoRunner.jar ridl.jar test.jar
-+-EXTRAJARFILES = $(OOO_JUNIT_JAR)
-++EXTRAJARFILES = $(OOO_JUNIT_JAR) $(OOO_HAMCREST_CORE_JAR)
-+ .END
-+ 
-+ .INCLUDE: settings.mk
-+diff --git a/toolkit/qa/unoapi/makefile.mk b/toolkit/qa/unoapi/makefile.mk
-+--- toolkit/qa/unoapi/makefile.mk
-++++ toolkit/qa/unoapi/makefile.mk
-+@@ -36,7 +36,7 @@
-+ JAVATESTFILES = Test.java
-+ JAVAFILES = $(JAVATESTFILES)
-+ JARFILES = OOoRunner.jar ridl.jar test.jar
-+-EXTRAJARFILES = $(OOO_JUNIT_JAR)
-++EXTRAJARFILES = $(OOO_JUNIT_JAR) $(OOO_HAMCREST_CORE_JAR)
-+ .END
-+ 
-+ .INCLUDE: settings.mk
-+diff --git a/ucb/qa/unoapi/makefile.mk b/ucb/qa/unoapi/makefile.mk
-+--- ucb/qa/unoapi/makefile.mk
-++++ ucb/qa/unoapi/makefile.mk
-+@@ -36,7 +36,7 @@
-+ JAVATESTFILES = Test.java
-+ JAVAFILES = $(JAVATESTFILES)
-+ JARFILES = OOoRunner.jar ridl.jar test.jar
-+-EXTRAJARFILES = $(OOO_JUNIT_JAR)
-++EXTRAJARFILES = $(OOO_JUNIT_JAR) $(OOO_HAMCREST_CORE_JAR)
-+ .END
-+ 
-+ .INCLUDE: settings.mk
-+diff --git a/xmloff/qa/unoapi/makefile.mk b/xmloff/qa/unoapi/makefile.mk
-+--- xmloff/qa/unoapi/makefile.mk
-++++ xmloff/qa/unoapi/makefile.mk
-+@@ -36,7 +36,7 @@
-+ JAVATESTFILES = Test.java
-+ JAVAFILES = $(JAVATESTFILES)
-+ JARFILES = OOoRunner.jar ridl.jar test.jar
-+-EXTRAJARFILES = $(OOO_JUNIT_JAR)
-++EXTRAJARFILES = $(OOO_JUNIT_JAR) $(OOO_HAMCREST_CORE_JAR)
-+ .END
-+ 
-+ .INCLUDE: settings.mk
++diff --git a/solenv/inc/installationtest.mk b/solenv/inc/installationtest.mk
++--- solenv/inc/installationtest.mk
+++++ solenv/inc/installationtest.mk
++@@ -114,7 +114,7 @@
++     $(RM) -r $(MISC)/$(TARGET)/user
++     $(MKDIRHIER) $(MISC)/$(TARGET)/user
++     $(JAVAI) $(JAVAIFLAGS) $(JAVACPS) \
++-        '$(OOO_JUNIT_JAR)$(PATH_SEPERATOR)$(CLASSPATH)' \
+++        '$(subst,%Z*Z%,$(PATH_SEPERATOR) $(OOO_JUNIT_JAR:s//%Z*Z%/))$(PATH_SEPERATOR)$(CLASSPATH)' \
++         -Dorg.openoffice.test.arg.soffice=$(my_soffice) \
++         -Dorg.openoffice.test.arg.user=$(my_file)$(PWD)/$(MISC)/$(TARGET)/user \
++         $(my_javaenv) org.junit.runner.JUnitCore \
 diff --git a/patches/dev300/apply b/patches/dev300/apply
 index df205d4..a397d8e 100644
 --- openoffice.org-3.3.0~dev300m83/ooo-build-3-2-99-1/patches/dev300/apply
