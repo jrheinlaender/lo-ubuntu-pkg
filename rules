@@ -203,18 +203,17 @@ NEONSONR=27
 USE_SYSTEM_REDLAND=y
 USE_OOO_BUILD_DESKTOPS=n
 PACKAGE_SDK=y
-# broken. http://tools.openoffice.org/servlets/ReadMsg?list=dev&msgNo=7310
-#ifeq "$(ENABLE_JAVA)" "y"
-#  ifeq "$(JDK)" "openjdk"
-#    RUN_SMOKETEST=y
-#  else
-#    ifneq (buildd,$(shell whoami))
-#      RUN_SMOKETEST=n
-#    endif
-#  endif
-#else
+ifeq "$(ENABLE_JAVA)" "y"
+  ifeq "$(JDK)" "openjdk"
+    RUN_SMOKETEST=y
+  else
+    ifneq (buildd,$(shell whoami))
+      RUN_SMOKETEST=n
+    endif
+  endif
+else
   RUN_SMOKETEST=n
-#endif
+endif
 RUN_SUBSEQUENT_TESTS=y
 ENABLE_JUNIT4=n
 JUNIT_MIN_VER= (>= 4.8.2-2)
@@ -773,6 +772,7 @@ endif
 
 ifeq "$(RUN_SMOKETEST)" "y"
 	BUILD_DEPS += , epm
+	BUILD_DEPS += , xvfb, xfonts-base, xauth
 endif
 ifeq "$(USE_SYSTEM_CPPUNIT)" "y"
 	CONFIGURE_FLAGS += --with-system-cppunit
@@ -2074,19 +2074,22 @@ endif
 	touch $@
 
 test: 
-	cd $(SOURCE_TREE)/test && \
-		. $(CURDIR)/$(SOURCE_TREE)/*Env*.sh; \
-		export PATH=$(BUILD_PATH); \
-		../solenv/bin/build.pl; \
-		../solenv/bin/deliver.pl
+	# some test library needed for the tests...
+	if [ ! -f $(SOURCE_TREE)/test/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/lib/libtest.so ]; then \
+		cd $(SOURCE_TREE)/test && \
+			. $(CURDIR)/$(SOURCE_TREE)/*Env*.sh; \
+			export PATH=$(BUILD_PATH); \
+			../solenv/bin/build.pl; \
+			../solenv/bin/deliver.pl; \
+	fi
 ifeq "$(RUN_SMOKETEST)" "y"
 	# sigh. the new smoketest needs a archive/install/en-US/OOo_*_install_*.tar.gz
 	# build it.
-	if [ ! -d $(SOURCE_TREE)/instsetoo_native/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/OpenOffice/archive ]; then \
-		cd $(SOURCE_TREE)/instsetoo_native && \
+	if [ ! -d $(SOURCE_TREE)/instsetoo_native/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/OpenOffice/archive/install/en-US ]; then \
+		cd $(SOURCE_TREE)/instsetoo_native/util && \
 			. $(CURDIR)/$(SOURCE_TREE)/*Env*.sh; \
 			export PATH=$(BUILD_PATH); \
-			EPM=yes ../solenv/bin/build.pl; \
+			EPM=yes PKGFORMAT=archive dmake openoffice; \
 	fi
 	# smoketest
 ifeq "$(ARCH)" "armel"
@@ -2103,7 +2106,7 @@ endif
 		export PATH=$(BUILD_PATH); \
 		export TMPDIR=$(CURDIR)/debian/smoketest; \
 		export JAVA_HOME=$(TEST_JAVA_HOME); \
-		SAL_USE_VCLPLUGIN="svp" ../solenv/bin/build.pl
+		xvfb-run -a ../solenv/bin/build.pl
 	# doesn't get cleaned up...
 	rmdir $(CURDIR)/debian/smoketest/ooopackaging
 ifeq "$(ARCH)" "armel"
@@ -2115,8 +2118,13 @@ ifeq "$(RUN_SUBSEQUENT_TESTS)" "y"
 	cd $(SOURCE_TREE) && \
 		export PATH=$(BUILD_PATH); \
 		. $(CURDIR)/$(SOURCE_TREE)/*Env*.sh; \
-		chmod 755 solenv/bin/subsequenttests && \
-		solenv/bin/subsequenttests
+		if echo $(CURDIR)/ | grep -q ~; then \
+			cd instsetoo_native && \
+			OOO_SUBSEQUENT_TESTS=x ../solenv/bin/build.pl --all; \
+		else \
+			chmod 755 solenv/bin/subsequenttests && \
+			solenv/bin/subsequenttests; \
+		fi
 endif
 
 install: $(STAMP_DIR)/install
