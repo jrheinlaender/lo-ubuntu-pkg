@@ -101,6 +101,12 @@ BUILD_DEPS=
 BUILD_PYUNO=y
 USE_PYCENTRAL=y
 USE_PYSUPPORT=n
+PYTHON_VERSION=current
+ifeq "$(PYTHON_VERSION)" "current"
+  PYTHON=python
+else
+  PYTHON=python$(PYTHON_VERSION)
+endif
 PACKAGE_TTF_OPENSYMBOL=y
 ifneq "$(ARCH)" "powerpc"
   ifneq "$(ARCH)" "ppc64"
@@ -738,6 +744,12 @@ ifeq (noopt,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
 	ARCH_FLAGS += -O0
 endif
 
+# Build python depends from current python version
+PYMAJOR:=$(shell python -c "import sys; print sys.version_info[0]")
+PYMINOR:=$(shell python -c "import sys; print sys.version_info[1]")
+PYMINORPLUS1:=$(shell python -c "import sys; print sys.version_info[1]+1")
+PYTHON_SITE:=debian/python-uno/$(shell python -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
+
 ifeq "$(BUILD_PYUNO)" "y"
   ifeq "$(USE_PYCENTRAL)" "y"
 	BUILD_DEPS += , python-central (>= 0.5)
@@ -750,7 +762,8 @@ ifeq "$(BUILD_PYUNO)" "y"
     endif
   endif
 	DBG_DBG_SUGGESTS+= , python-dbg
-	BUILD_DEPS += , python-dev, python-all
+	BUILD_DEPS += , $(PYTHON)-dev
+	CONFIGURE_FLAGS += PYTHON=$(PYTHON)
 else
 	BUILD_DEPS += , python
 endif
@@ -1636,6 +1649,7 @@ debian/control: $(wildcard debian/control*in) $(OOO_BUILD_TREE)/bin/openoffice-x
 	    -e "s#%[A-Za-z]*=[^%]*%##g#" \
 	    -e "s#%BUILD_DEPS%#$(strip $(BUILD_DEPS))#g" \
 	    -e "s#%BUILD_DEPS_INDEP%#$(strip $(BUILD_DEPS_INDEP))#g" \
+	    -e "s#@PYTHON_VERSION@#$(PYTHON_VERSION)#g" \
 	    < debian/control.in > debian/control
 
 	for LNUM in $(filter-out en-US,$(LANGPACKISOS)) ; do \
@@ -2405,7 +2419,7 @@ endif
 	cp $$aotcompile_py debian/scripts
 	cd debian/scripts && \
 		patch -p0 < $(CURDIR)/debian/aotcompile-256M-default.diff
-	PYTHONPATH="debian/scripts:$(shell python$$v -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')" \
+	PYTHONPATH="debian/scripts:$(shell echo $(PYTHON_SITE) | sed -e s,debian/python-uno,,)" \
 	AOT_MAKEFLAGS=-j$(NUM_CPUS) aot-compile -L /usr/lib/gcj/openoffice \
 	    debian/tmp/native-jars debian/tmp/native-jars/gcj
 	gcj-dbtool -n debian/tmp/native-jars/tmp.db 64
@@ -2715,17 +2729,13 @@ endif
 
 ifeq "$(BUILD_PYUNO)" "y"
 	# PyUNO packaging
-	for v in `pyversions -sv`; do \
-		PYTHON_SITE=`python$$v -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())'`; \
-		install -d debian/python-uno/$$PYTHON_SITE; \
-		install -m644 debian/python-uno/$(OODIR)/program/uno.py debian/python-uno/$$PYTHON_SITE; \
-		install -m464 debian/python-uno/$(OODIR)/program/unohelper.py debian/python-uno/$$PYTHON_SITE; \
-	done
-	rm debian/python-uno/$(OODIR)/program/uno*py
+	install -d $(PYTHON_SITE)
+	mv debian/python-uno/$(OODIR)/program/uno.py $(PYTHON_SITE)
+	mv debian/python-uno/$(OODIR)/program/unohelper.py $(PYTHON_SITE)
 	touch debian/python-uno/$(OODIR)/program/pythonloader.unorc
 	chmod u+w debian/python-uno/$(OODIR)/program/pythonloader.unorc
 	( echo '[Bootstrap]'; \
-	  echo 'PYTHONHOME=file:///usr/lib/$(shell pyversions -ds)'; \
+	  echo 'PYTHONHOME=file:///usr/lib/python$(PYMAJOR).$(PYMINOR)' ;\
 	  echo 'PYTHONPATH=$$PYTHONHOME $$PYTHONHOME/site-packages $$PYTHONHOME/lib-dynload $$PYTHONHOME/lib-tk $$ORIGIN' \
 	) > debian/python-uno/$(OODIR)/program/pythonloader.unorc
 	chmod u-w debian/python-uno/$(OODIR)/program/pythonloader.unorc
