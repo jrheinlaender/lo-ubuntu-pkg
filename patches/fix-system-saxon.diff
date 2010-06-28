@@ -1,0 +1,140 @@
+--- /dev/null	2010-06-21 14:50:44.132270648 +0200
++++ openoffice.org-3.2.1/ooo-build-3-2-1-4/patches/dev300/fix-system-saxon.diff	2010-06-28 02:54:09.000000000 +0200
+@@ -0,0 +1,124 @@
++diff -r 840700d7dd4b configure.in
++--- configure.in	Fri Mar 12 13:17:18 2010 +0000
+++++ configure.in	Mon Mar 15 12:41:47 2010 +0000
++@@ -4056,6 +4056,70 @@
++                [AC_MSG_ERROR(serializer.jar not found.)], [])
++           AC_SUBST(SERIALIZER_JAR)
++         fi
+++
+++dnl Saxon comes in two practically available versions, the out-of-date saxonb which
+++dnl supports the java extensions that OOo uses, and the up-to-date saxon he 
+++dnl "home edition" version, which is crippled to not support those java extensions.
+++dnl And as an aside the he one also needs to be tweaked to include 
+++dnl a META-INF/services to broadcast that it supports the jaxp transform factory
+++
+++        AC_MSG_CHECKING([if saxon works])
+++        cat > saxontest.java <<_ACEOF
+++[import javax.xml.transform.TransformerFactory;
+++import javax.xml.transform.Transformer;
+++import javax.xml.transform.stream.StreamSource;
+++import java.io.*;
+++
+++import net.sf.saxon.FeatureKeys;
+++
+++class saxontest {
+++    public static void main(String[] args) {
+++      System.setProperty("javax.xml.transform.TransformerFactory",
+++        "net.sf.saxon.TransformerFactoryImpl");
+++      try {
+++        TransformerFactory tfactory = TransformerFactory.newInstance();
+++	// some external saxons (Debian, Ubuntu, ...) have this disabled
+++	// per default
+++	tfactory.setAttribute(FeatureKeys.ALLOW_EXTERNAL_FUNCTIONS, new Boolean(true));
+++        System.out.println("TransformerFactory is" +
+++          tfactory.getClass().getName());
+++        Transformer transformer = tfactory.newTransformer(
+++          new StreamSource(new File(args[0])));
+++      } catch(Exception e){
+++        e.printStackTrace(System.err);
+++        System.exit(-1);
+++      }
+++      System.exit(0);
+++    }
+++}
+++]
+++_ACEOF
+++        cat > saxontest.xsl<<_ACEOF
+++[<?xml version="1.0" encoding="UTF-8"?>
+++<xsl:stylesheet version="2.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+++ <xsl:template match="/">
+++  <xsl:value-of select="math:sqrt(1)" xmlns:math="java:java.lang.Math"/>
+++ </xsl:template>
+++</xsl:stylesheet>
+++]
+++_ACEOF
+++        javac_cmd="$JAVACOMPILER -cp $SAXON_JAR saxontest.java 1>&2"
+++        AC_TRY_EVAL(javac_cmd)
+++        if test $? = 0 && test -f ./saxontest.class ; then
+++            java_cmd="$JAVAINTERPRETER -cp $SAXON_JAR:. saxontest saxontest.xsl 1>&2"
+++            AC_TRY_EVAL(java_cmd)
+++            if test $? = 0; then
+++              AC_MSG_RESULT([yes])
+++            else
+++              cat saxontest.java >&5
+++              AC_MSG_RESULT([no])
+++              AC_MSG_ERROR([Non-functional saxon jar, e.g. crippled saxon-he instead of saxonb])
+++            fi
+++        else
+++          AC_MSG_RESULT([no])
+++          cat saxontest.java >&5
+++          AC_MSG_ERROR([saxontest could not be compiled, non-functional saxon jar])
+++        fi
++ else
++     AC_MSG_RESULT([internal])
++     SYSTEM_SAXON=NO
++Index: source/xsltfilter/makefile.mk
++===================================================================
++--- filter/source/xsltfilter/makefile.mk	(Revision 277995)
+++++ filter/source/xsltfilter/makefile.mk	(Arbeitskopie)
++@@ -37,9 +37,6 @@
++ 
++ # --- Settings -----------------------------------------------------
++ CLASSDIR!:=$(CLASSDIR)$/$(TARGET)
++-.IF "$(XML_CLASSPATH)" != ""
++-XCLASSPATH+=":$(XML_CLASSPATH)"
++-.ENDIF
++ .INCLUDE: settings.mk
++ 
++ SLOFILES=$(SLO)$/XSLTFilter.obj $(SLO)$/fla.obj
++@@ -72,6 +69,12 @@
++ JARCLASSDIRS	= XSLTransformer*.class XSLTFilterOLEExtracter*.class Base64*.class
++ JARTARGET		= $(TARGET).jar
++ 
+++.IF "$(SYSTEM_SAXON)" == "YES"
+++XCLASSPATH:=$(XCLASSPATH)$(PATH_SEPERATOR)$(SAXON_JAR)
+++.ELSE
+++JARFILES += saxon9.jar
+++.ENDIF
+++
++ # --- Files --------------------------------------------------------
++ JAVACLASSFILES=$(CLASSDIR)$/XSLTransformer.class  $(CLASSDIR)$/XSLTFilterOLEExtracter.class $(CLASSDIR)$/Base64.class
++ .ENDIF
++Index: source/xsltfilter/XSLTransformer.java
++===================================================================
++--- filter/source/xsltfilter/XSLTransformer.java	(Revision 277995)
+++++ filter/source/xsltfilter/XSLTransformer.java	(Arbeitskopie)
++@@ -80,6 +80,8 @@
++ import com.sun.star.lib.uno.adapter.XInputStreamToInputStreamAdapter;
++ import com.sun.star.lib.uno.adapter.XOutputStreamToOutputStreamAdapter;
++ 
+++import net.sf.saxon.FeatureKeys;
+++
++ /** This outer class provides an inner class to implement the service
++  * description, a method to instantiate the
++  * component on demand (__getServiceFactory()), and a method to give
++@@ -293,6 +295,9 @@
++                             // create new transformer for this stylesheet                                                                                   
++                             TransformerFactory tfactory = TransformerFactory.newInstance();
++                             debug("TransformerFactory is '" + tfactory.getClass().getName() + "'");
+++			    // some external saxons (Debian, Ubuntu, ...) have this disabled
+++			    // per default
+++			    tfactory.setAttribute(FeatureKeys.ALLOW_EXTERNAL_FUNCTIONS, new Boolean(true));
++                             transformer = tfactory.newTransformer(new StreamSource(stylesheeturl));
++                             transformer.setOutputProperty("encoding", "UTF-8");
++                             // transformer.setURIResolver(XSLTransformer.this);                  
+--- openoffice.org-3.2.1/ooo-build-3-2-1-4/patches/dev300/apply-old	2010-06-28 02:55:59.000000000 +0200
++++ openoffice.org-3.2.1/ooo-build-3-2-1-4/patches/dev300/apply	2010-06-28 02:56:43.000000000 +0200
+@@ -3225,6 +3225,10 @@
+ # unresolved Base64 Java classes
+ base64.diff, i#100620, hmth
+ 
++[ SystemBits and Fixes ]
++# add checks needed for system saxon
++fix-system-saxon.diff, i#110136
++
+ [ OxygenOfficeDefaultSettings ]
+ #Create langpack and full installers
+ ooop-langpack-policy.diff
