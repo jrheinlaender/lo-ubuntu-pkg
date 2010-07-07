@@ -2690,8 +2690,7 @@ endif
 ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	# menu files from sysui
 	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare >/dev/null; pwd`" ;\
-	for a in writer calc impress draw math base javafilter; do \
-		if [ "$$a" = "javafilter" ]; then p=filter-mobiledev; else p=$$a; fi; \
+	for a in writer calc impress draw math base; do \
 		mkdir -p -m755 $(PKGDIR)-$$p/usr/share/applications ;\
 		sed -e 's,Exec=$${UNIXPRODUCTNAME}$${PRODUCTVERSION} \(.*\) %U,Exec=ooffice$(VER) \1 %U,' \
 		    -e 's,Icon=$${WITHOUTDOTUNIXPRODUCTNAME},Icon=openofficeorg,' \
@@ -3051,7 +3050,7 @@ endif
 		fi; \
 	done
 	for i in writer calc draw impress math base startcenter javafilter; do \
-		if [ "$$i" = "startcenter" ]; then d=common; else d=$$i; fi; \
+		case "$$i" in startcenter) d=common ;; javafilter) d=filter-mobiledev ;; *) d=$$i;; esac; \
 		cat $(PKGDIR)-$$d/usr/share/applications/openoffice.org$(VER)-$$i.desktop \
 			| sed -e "s/ooff/broff/" | sed -e "s/OpenO/BrO/" \
 			> debian/broffice.org$(VER)/usr/share/applications/openoffice.org$(VER)-$$i.desktop; \
@@ -3226,6 +3225,17 @@ ifeq "$(ENABLE_JAVA)" "y"
 	  mv $(PKGDIR)-common/$(OODIR)/share/registry/$$i.xcd \
 		$(PKGDIR)-filter-mobiledev/$(OODIR)/share/registry; \
 	done
+ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
+	# menu files from sysui
+	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare >/dev/null; pwd`" ;\
+	mkdir -p -m755 $(PKGDIR)-filter-mobiledev/usr/share/applications ;\
+	sed -e 's,Exec=$${UNIXPRODUCTNAME}$${PRODUCTVERSION} \(.*\) %U,Exec=ooffice$(VER) \1 %U,' \
+		-e 's,Icon=$${WITHOUTDOTUNIXPRODUCTNAME},Icon=openofficeorg,' \
+	   	-e 's,Name=$${PRODUCTNAME} $${PRODUCTVERSION},Name=OpenOffice.org $(VER),' \
+	   	-e 's/  / /' \
+	  	< $$dirname/javafilter.desktop \
+	  	> $(PKGDIR)-filter-mobiledev/usr/share/applications/openoffice.org$(VER)-javafilter.desktop || exit 1
+endif
 endif
 
 	# fix permissions
