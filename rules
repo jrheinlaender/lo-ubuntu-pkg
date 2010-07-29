@@ -71,7 +71,7 @@ MILESTONE:=$(shell echo "$(UPSTREAM_VERSION)" | cut -d~ -f3 | sed -e s/$(shell e
 TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
 #TAG=$(MWS)_$(MILESTONE)
 #OOO_BUILD_BRANCH=ooo-build-3-3
-OOO_BUILD_VERSION=0e5cd4ee71f4892e8044cdb49572647099a81faf
+OOO_BUILD_VERSION=e7adef456fc6f8e4824455b1bfe5ff8d00237af6
 OOO_BUILD_TAG=
 OOO_BUILD_TREE=ooo-build-$(shell echo $(OOO_BUILD_VERSION) | sed -e 's/\./-/g')
 SOURCE_TREE=$(OOO_BUILD_TREE)/build/$(TAG)
@@ -100,6 +100,10 @@ BUILD_DEPS=
 BUILD_PYUNO=y
 USE_PYCENTRAL=y
 USE_PYSUPPORT=n
+# THIS IS ONLY FOR TESTING. When building against a specified pythonX.Y
+# this will work inside OOo but *not* from outside OOo unless the user
+# uses pythonX.Y directly (and the dh_pycentral-created dependencies allow
+# also the non-working default python then) - see e.g. #587402
 PYTHON_VERSION=current
 ifeq "$(PYTHON_VERSION)" "current"
   PYTHON=python
@@ -115,18 +119,20 @@ endif
 BUILD_BINFILTERS=y
 BUILD_ONLY_EN_US=y
 ENABLE_JAVA=y
-JDK=openjdk
-ifeq "$(ARCH)" "ia64"
-  JDK=gcj-jdk
-endif
-ifneq (,$(findstring mips,$(ARCH)))
-  JDK=gcj-jdk
-endif
-ifneq (,$(findstring kfreebsd,$(ARCH)))
-  JDK=gcj-jdk
-endif
-ifeq "$(ARCH)" "hppa"
-  JDK=gcj-jdk
+ifeq "$(ENABLE_JAVA)" "y"
+  JDK=openjdk
+  ifeq "$(ARCH)" "ia64"
+    JDK=gcj-jdk
+  endif
+  ifneq (,$(findstring mips,$(ARCH)))
+    JDK=gcj-jdk
+  endif
+  ifneq (,$(findstring kfreebsd,$(ARCH)))
+    JDK=gcj-jdk
+  endif
+  ifeq "$(ARCH)" "hppa"
+    JDK=gcj-jdk
+  endif
 endif
 ENABLE_MONO=n
 MONO2=y
@@ -192,6 +198,7 @@ BUILD_DBG_PACKAGE=y
 USE_SYSTEM_BSH=y
 USE_SYSTEM_HSQLDB=y
 HSQLDB_MINVER= (>> 1.8.0.10)
+HSQLDB_TOONEWVER=1.8.1
 # disabled because system-saxon breaks all kinds exports using XSLT transforms
 # (e.g. M$ Word/Excel 2003 XML, Mediawiki, XHTML, UOF, ...)
 # It does *NOT* fail with _plain_ saxon 9.0.0.8 built with OOos build.xml
@@ -1230,7 +1237,7 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
   ifeq "$(USE_SYSTEM_HSQLDB)" "y"
 	BUILD_DEPS += , libhsqldb-java $(HSQLDB_MINVER) [$(OOO_JAVA_ARCHS)]
-	BASE_HSQLDB_DEPENDS = libhsqldb-java $(HSQLDB_MINVER)
+	BASE_HSQLDB_DEPENDS = libhsqldb-java $(HSQLDB_MINVER), libhsqldb-java (<< $(HSQLDB_TOONEWVER)~)
 	CONFIGURE_FLAGS+= --with-system-hsqldb
 	JAVA_GCJ_DEPENDS += , libhsqldb-java-gcj
   endif
@@ -1849,6 +1856,10 @@ ifneq "$(LENNY_BACKPORT)" "y"
 	perl -pi -e "s/(Build-Conflicts: .*)/\1, base-files (= 5)/" debian/control
 endif
 
+ifeq "$(USE_SYSTEM_HSQLDB)" "y"
+	perl -pi -e "s/(Build-Conflicts: .*)/\1, libhsqldb-java (>= $(HSQLDB_TOONEWVER)~)/" debian/control
+endif
+
 ifneq "$(USE_SYSTEM_STLPORT)" "y"
 	# at least here it crashes the build in some funny way.
 	perl -pi -e "s/(Build-Conflicts: .*)/\1, libstlport4.6-dev/" debian/control
@@ -2119,7 +2130,10 @@ endif
 		export PATH=$(BUILD_PATH); \
 		export TMPDIR=$(CURDIR)/debian/smoketest; \
 		export JAVA_HOME=$(TEST_JAVA_HOME); \
-		xvfb-run -a ../solenv/bin/build.pl
+		SAL_USE_VCLPLUGIN="svp" ../solenv/bin/build.pl
+	# doesn't get cleaned up.. (at least the dirs, the contents are gone)
+	cd $(CURDIR)/debian/smoketest && \
+	find . -noleaf -maxdepth 1 ! -name "patches" ! -name "." -exec rm -rf {} \;
 ifeq "$(ARCH)" "armel"
 	cd $(SOURCE_TREE)/smoketestoo_native && \
 		patch -p1 -R < $(CURDIR)/debian/smoketest/patches/smoketest-disable-db-insert-delete-seek-tests.diff
@@ -3320,12 +3334,20 @@ endif
 		fi; \
 	done
 
+ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
+	# install the matching startcenter.png
+	for i in 16x16 32x32 48x48; do \
+		install -m644 debian/icons/sysui/desktop/icons/hicolor/$$i/apps/startcenter.png \
+			$(PKGDIR)-common/usr/share/icons/hicolor/$$i/apps/openofficeorg$(shell echo $(OOVER) | cut -d. -f1)-startcenter.png; \
+	done
+else
 	# install ooo-build desktop icons
 	for r in 16x16 22x22 24x24 32x32 48x48; do \
 		mkdir -p $(PKGDIR)-common/usr/share/icons/hicolor/$$r/apps; \
 		cp $(OOO_BUILD_TREE)/desktop/$$r/*.png \
 			$(PKGDIR)-common/usr/share/icons/hicolor/$$r/apps; \
 	done
+endif
 
 	# move psprint.conf into /etc
 	mkdir -p $(PKGDIR)-common/etc/$(OODIRNAME)
@@ -3506,6 +3528,13 @@ ifeq "$(USE_SYSTEM_TEXTCAT_DATA)" "y"
 	done
 endif
 
+	# example. move where it belongs
+	mkdir -p $(PKGDIR)-common/usr/share/doc/openoffice.org-common/examples
+	mv $(PKGDIR)-common/$(OOBASISDIR)/share/registry/data/org/openoffice/LDAP.xcu.sample \
+		$(PKGDIR)-common/usr/share/doc/openoffice.org-common/examples
+	cd $(PKGDIR)-common/$(OOBASISDIR)/share/registry/data/org/openoffice && \
+		ln -s /usr/share/doc/openoffice.org-common/examples/LDAP.xcu.sample
+
 	touch $@
 
 binary-arch: $(STAMP_DIR)/binary-arch
@@ -3546,8 +3575,8 @@ endif
 ifeq "$(USE_PYCENTRAL)" "y"
 	dh_pycentral -ppython-uno
   ifeq "$(PYTHON_VERSION)" "current"
-	# fix up broken depends (should be python (<< 2.6), python (>= 2.5) as
-	# it was the case before it broke somewhen
+	# fix up broken depends (should be like python (<< 2.6), python (>= 2.5)
+	# as it was the case before it broke somewhen
 	perl -pi -e 's/python, python-central/python (<< $(PYMAJOR).$(PYMINORPLUS1)), python (>= $(PYMAJOR).$(PYMINOR)), python-central/' debian/python-uno.substvars
   endif
 else
@@ -3782,7 +3811,7 @@ endif
 ifeq "$(ENABLE_MONO)" "y"
 	dh_installcligac -i
 endif
-	dh_compress -i -X.py -X.mk -X.sxd
+	dh_compress -i -X.py -X.mk -X.sxd -X.xcd.sample
 	dh_installdeb -i
 ifeq "$(ENABLE_MONO)" "y"
 	dh_makeclilibs -i
