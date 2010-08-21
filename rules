@@ -2238,20 +2238,20 @@ endif
 
 ifeq "$(ENABLE_JAVA)" "y"
 	# move officebean.jar into -officebean (They will be moved out of -core
-	# in the install-arch target). Do the /usr/share/java move here already
-	mkdir -p $(PKGDIR)-core/usr/share/java/$(OODIRNAME); \
+	# in the install-arch target). Do the /usr/share move here already
+	mkdir -p $(PKGDIR)-core/$(shell echo $(OOBASISDIR) | sed -e s/lib/share/)/program/classes; \
 	mv $(PKGDIR)-common/$(OODIR)/program/classes/officebean.jar \
-		$(PKGDIR)-core/usr/share/java/$(OODIRNAME)
+		$(PKGDIR)-core/$(shell echo $(OOBASISDIR) | sed -e s/lib/share/)/program/classes
 
   ifeq "$(PACKAGE_BASE)" "y"
 	# move sdbc_hsqldb.jar into -base (do the move
 	# to /usr/share/java here directly, we do it for the "rest"
 	# later
-	mkdir -p $(PKGDIR)-base/usr/share/java/$(OODIRNAME); \
+	mkdir -p $(PKGDIR)-base/$(shell echo $(OOBASISDIR) | sed -e s/lib/share/)/program/classes; \
 	mkdir -p $(PKGDIR)-base/$(OODIR)/program/classes; \
 	mv $(PKGDIR)-common/$(OODIR)/program/classes/sdbc_hsqldb.jar \
-		$(PKGDIR)-base/usr/share/java/$(OODIRNAME); \
-	ln -s /usr/share/java/$(OODIRNAME)/sdbc_hsqldb.jar \
+		$(PKGDIR)-base/$(shell echo $(OOBASISDIR) | sed -e s/lib/share/)/program/classes; \
+	ln -s $(shell echo /$(OOBASISDIR) | sed -e s/lib/share/)/program/classes/sdbc_hsqldb.jar \
 		$(PKGDIR)-base/$(OODIR)/program/classes/sdbc_hsqldb.jar
 
     ifneq "$(USE_SYSTEM_HSQLDB)" "y"
@@ -2424,14 +2424,14 @@ $(STAMP_NATIVE_JARS): $(STAMP_DIR)/install
 	rm -rf debian/tmp/native-jars
 	mkdir -p debian/tmp/native-jars/gcj
 	cp -a \
-	    $(PKGDIR)-common/$(OODIR)/program/classes/*.jar \
+	    $(PKGDIR)-common/$(OOBASISDIR)/program/classes/*.jar \
 		debian/tmp/native-jars/
 	cp -a \
-	    $(PKGDIR)-core/usr/share/java/$(OODIRNAME)/*.jar \
+	    $(PKGDIR)-core/$(shell echo $(OOBASISDIR) | sed -e s/lib/share/)/program/classes/*.jar \
 	        debian/tmp/native-jars/
 ifeq "$(PACKAGE_BASE)" "y"
 	cp -a \
-	    $(PKGDIR)-base/usr/share/java/$(OODIRNAME)/*.jar \
+	    $(PKGDIR)-base/$(OODIR)/program/classes/*.jar \
 	        debian/tmp/native-jars/
 endif
 	: # remove problematic ones
@@ -2493,16 +2493,12 @@ endif
 	mv debian/ure/$(OOBRANDDIR)/ure debian/ure/usr/lib
 	rmdir debian/ure/$(OOBRANDDIR)
 	# move URE Java stuff to /usr/share/java
-	mkdir -p debian/ure/usr/share/java/$(OODIRNAME)
+	mkdir -p debian/ure/usr/share/java
 ifeq "$(ENABLE_JAVA)" "y"
-	mv debian/ure/$(OOUREDIR)/lib/JREProperties.class \
-		debian/ure/usr/share/java/$(OODIRNAME)
 	mv debian/ure/$(OOUREDIR)/share/java/* \
-		debian/ure/usr/share/java/$(OODIRNAME)
-	ln -sf /usr/share/java/$(OODIRNAME)/JREProperties.class \
-		debian/ure/$(OOUREDIR)/lib/JREProperties.class
+		debian/ure/usr/share/java
 	cd debian/ure/$(OOUREDIR)/share/java && \
-		for i in $(CURDIR)/debian/ure/usr/share/java/$(OODIRNAME)/*.jar; do \
+		for i in $(CURDIR)/debian/ure/usr/share/java/*.jar; do \
 			ln -sf `echo $$i | sed -e 's,$(CURDIR)/debian/ure,,'` `basename $$i`; \
 		done
 endif
@@ -2669,10 +2665,10 @@ endif
 ifeq "$(ENABLE_JAVA)" "y"
 	rm -rf $(PKGDIR)-officebean
 	mkdir -p -m755 $(PKGDIR)-officebean/$(OODIR)/program/classes
-	mkdir -p -m755 $(PKGDIR)-officebean/usr/share/java
-	mv $(PKGDIR)-core/usr/share/java/$(OODIRNAME) \
-		$(PKGDIR)-officebean/usr/share/java
-	ln -s /usr/share/java/$(OODIRNAME)/officebean.jar \
+	mkdir -p -m755 $(PKGDIR)-officebean/$(shell echo $(OOBASISDIR) | sed -e s/lib/share/)/program/classes
+	mv $(PKGDIR)-core/$(shell echo $(OOBASISDIR) | sed -e s/lib/share/)/program/classes/officebean.jar \
+		$(PKGDIR)-officebean/$(shell echo $(OOBASISDIR) | sed -e s/lib/share/)/program/classes
+	ln -s $(shell echo /$(OOBASISDIR) | sed -e s/lib/share/)/program/classes/officebean.jar \
 		 $(PKGDIR)-officebean/$(OODIR)/program/classes/officebean.jar
 	mv $(PKGDIR)-core/$(OODIR)/program/libofficebean.so \
 		$(PKGDIR)-officebean/$(OODIR)/program
@@ -2797,21 +2793,24 @@ ifeq "$(PACKAGE_SDK)" "y"
 		rm -rf stl && ln -s /usr/include/stlport stl
   endif
   ifeq "$(ENABLE_JAVA)" "y"
-	# move SDK Java stuff into /usr/share/java/openoffice
+	# move SDK Java stuff into /usr/share/java
 	rm -f $(PKGDIR)-dev/$(OOSDKDIR)/classes
-	mkdir -p $(PKGDIR)-dev/usr/share/java/$(OODIRNAME)/win
-	mkdir -p $(PKGDIR)-dev/usr/share/java/$(OODIRNAME)/com/sun/star/lib/loader
+	mkdir -p $(PKGDIR)-dev/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/win
+	mkdir -p $(PKGDIR)-dev/$(OOSDKDIR)/classes/win
 	mkdir -p $(PKGDIR)-dev/$(OOSDKDIR)/classes/com/sun/star/lib/loader
-	mv $(PKGDIR)-dev/usr/share/openoffice$(VER)/sdk/classes/com/sun/star/lib/loader/* \
-		$(PKGDIR)-dev/usr/share/java/$(OODIRNAME)/com/sun/star/lib/loader && \
-	mv $(PKGDIR)-dev/usr/share/openoffice$(VER)/sdk/classes/win \
-		$(PKGDIR)-dev/$(OOSDKDIR)/classes
-	chmod 644 $(PKGDIR)-dev/$(OOSDKDIR)/classes/win/unowinreg.dll
+	mkdir -p $(PKGDIR)-dev/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/com/sun/star/lib/loader
+	mv $(PKGDIR)-dev/usr/share/openoffice/sdk/classes/com/sun/star/lib/loader/* \
+		$(PKGDIR)-dev/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/com/sun/star/lib/loader && \
+	mv $(PKGDIR)-dev/usr/share/$(OODIRNAME)/sdk/classes/win \
+		$(PKGDIR)-dev/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes
+	chmod 644 $(PKGDIR)-dev/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/win/unowinreg.dll
 	cd $(PKGDIR)-dev/$(OOSDKDIR)/classes/com/sun/star/lib/loader && \
-		for i in $(CURDIR)/$(PKGDIR)-dev/usr/share/java/$(OODIRNAME)/com/sun/star/lib/loader/*.class; do \
+		for i in $(CURDIR)/$(PKGDIR)-dev/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/com/sun/star/lib/loader/*.class; do \
 			ln -s `echo $$i | sed -e 's,$(CURDIR)/$(PKGDIR)-dev,,'` `basename $$i`; \
 		done
-	rm -rf $(PKGDIR)-dev/usr/share/openoffice$(VER)/sdk
+	ln -s $(PKGDIR)-dev/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/win/unowinreg.dll \
+		$(PKGDIR)-dev/$(OOSDKDIR)/classes/win/unowinreg.dll
+	rm -rf $(PKGDIR)-dev/usr/share/openoffice/sdk
   endif
 	chmod 644 $(PKGDIR)-dev/$(OOSDKDIR)/configure.pl
 	for i in csh csh.in; do \
@@ -2889,11 +2888,11 @@ endif
 ifeq "$(PACKAGE_SDK)" "y"
   ifeq "$(ENABLE_JAVA)" "y"
 	# install the UNO Java sources for e.g. eclipse
-	mkdir -p $(CURDIR)/$(PKGDIR)-dev/usr/share/java/$(OODIRNAME)
+	mkdir -p $(CURDIR)/$(PKGDIR)-dev/usr/share/java
 	cd $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/bin && \
 		for i in juh jurt jut ridl unoloader; do \
 			cp $${i}_src.zip \
-			  $(CURDIR)/$(PKGDIR)-dev/usr/share/java/openoffice; \
+			  $(CURDIR)/$(PKGDIR)-dev/usr/share/java; \
 		done
   endif
 endif
@@ -3193,13 +3192,13 @@ ifeq "$(ENABLE_JAVA)" "y"
 	rm -rf $(PKGDIR)-java-common
 	mkdir -p $(PKGDIR)-java-common/$(OODIR)/program/classes
 	mkdir -p $(PKGDIR)-java-common/$(OODIR)/share/Scripts
-	mkdir -p $(PKGDIR)-java-common/usr/share/java/$(OODIRNAME)
+	mkdir -p $(PKGDIR)-java-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes
 	mv $(PKGDIR)-common/$(OODIR)/share/Scripts/java \
 		$(PKGDIR)-java-common/$(OODIR)/share/Scripts
 	mv $(PKGDIR)-common/$(OODIR)/program/classes/* \
-		$(PKGDIR)-java-common/usr/share/java/$(OODIRNAME)
+		$(PKGDIR)-java-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes
 	cd $(PKGDIR)-java-common/$(OODIR)/program/classes && \
-		for i in $(CURDIR)/$(PKGDIR)-java-common/usr/share/java/$(OODIRNAME)/*; do \
+		for i in $(CURDIR)/$(PKGDIR)-java-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes/*; do \
 			case "`basename $$i`" in aportisdoc.jar|pexcel.jar|pocketword.jar) continue ;; \
 			*) ln -s `echo $$i | sed -e 's,$(CURDIR)/$(PKGDIR)-java-common,,'` `basename $$i` ;; esac; \
 	done
