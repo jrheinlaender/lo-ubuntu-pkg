@@ -2504,6 +2504,17 @@ ifeq "$(ENABLE_JAVA)" "y"
 		for i in $(CURDIR)/debian/ure/usr/share/java/*.jar; do \
 			ln -sf `echo $$i | sed -e 's,$(CURDIR)/debian/ure,,'` `basename $$i`; \
 		done
+	# fix up Class-Path of jurt.jar to be able to find libjpipe.so.
+	# See http://www.openoffice.org/servlets/ReadMsg?list=dev&msgNo=27765
+	t=`mktemp -q -d`; \
+	mkdir -p $$t && cd $$t && \
+	unzip $(CURDIR)/debian/ure/usr/share/java/$(OODIRNAME)/jurt.jar \
+		META-INF/MANIFEST.MF && \
+	perl -pi -e 's#../../lib/#../../lib/ /$(OOUREDIR)/lib/#g' \
+		META-INF/MANIFEST.MF && \
+	zip -r $(CURDIR)/debian/ure/usr/share/java/$(OODIRNAME)/jurt.jar \
+		META-INF/MANIFEST.MF && \
+	cd $(CURDIR) && rm -rf $$t
 endif
 	# and the public libs to uno-libs3
 	mkdir -p debian/uno-libs3/$(OOUREDIR)/lib
@@ -3495,7 +3506,7 @@ endif
 	# three-layer symlinks also for /usr/share
 	ln -s basis$(OOVER) \
 		$(PKGDIR)-common/$(shell echo $(OOBRANDDIR) | sed -e s/lib/share/)/basis-link
-	ln -s /usr/lib/ure \
+	ln -s /$(OOUREDIR) \
 		$(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/ure-link
 
 ifeq "$(USE_SYSTEM_TEXTCAT_DATA)" "y"
