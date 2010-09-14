@@ -20,3 +20,6 @@ remove_extension() {
   fi
 }
 
+validate_extensions() {
+	/usr/lib/openoffice/program/unopkg validate -v --shared
+}
