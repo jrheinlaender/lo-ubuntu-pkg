@@ -73,6 +73,9 @@ TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
 GIT_TAG=$(MWS)_$(MILESTONE)
 #OOO_BUILD_BRANCH=ooo-build-3-3
 OOO_BUILD_VERSION=873f1abc092a8be9303c8e27e7b8471e29a34ce6
+# in ooo-build releases the same as OOO_BUILD_VERSION
+#OOO_BUILD_TARBALL_VERSION=$(OOO_BUILD_VERSION)
+OOO_BUILD_TARBALL_VERSION=3.2.98.0
 OOO_BUILD_TAG=
 OOO_BUILD_TREE=ooo-build-$(shell echo $(OOO_BUILD_VERSION) | sed -e 's/\./-/g')
 SOURCE_TREE=$(OOO_BUILD_TREE)/build/$(TAG)
@@ -3879,100 +3882,58 @@ get-ooo-build:
 get-ext-sources:
 	rm -rf $(TARFIILE_LOCATION)
 	mkdir -p $(TARFILE_LOCATION)
-	wget http://hg.services.openoffice.org/$(MWS)/raw-file/$(MWS)_$(MILESTONE)/fetch_tarballs.sh && chmod 755 ./fetch_tarballs.sh \
-	wget http://hg.services.openoffice.org/$(MWS)/raw-file/$(MWS)_$(MILESTONE)/ooo.lst && \
-	./fetch_tarballs.sh ooo.lst && \
+	wget http://cgit.freedesktop.org/ooo-build/bootstrap/plain/fetch_tarballs.sh?id=ooo/$(GIT_TAG) -O fetch_tarballs.sh && chmod 755 fetch_tarballs.sh && \
+	wget http://cgit.freedesktop.org/ooo-build/bootstrap/plain/ooo.lst?id=ooo/$(GIT_TAG) -O ooo.lst && \
+	./fetch_tarballs.sh ooo.lst; \
 	rm -f fetch_tarballs.sh ooo.lst
 
 get-orig-source:
-ifneq "$(WITH_SPLIT)" "y"
+	if ! which git >/dev/null 2>/dev/null; then \
+		echo "You need git."; \
+		exit 1; \
+	fi; \
 	if test -n "$$TMP"; then \
 		TMPD=`mktemp -d -p $$TMP`; \
 	else \
 		TMPD=`mktemp -d`; \
 	fi && \
 	cd $$TMPD && \
-	mkdir -p openoffice.org-$(UPSTREAM_VERSION)/sources && \
-	cd openoffice.org-$(UPSTREAM_VERSION)/sources && \
-		wget http://download.services.openoffice.org/files/stable/$(UPSTREAM_VERSION)/OOo_$(UPSTREAM_VERSION)_src_binfilter.tar.bz2 && \
-		wget http://download.services.openoffice.org/files/stable/$(UPSTREAM_VERSION)/OOo_$(UPSTREAM_VERSION)_src_core.tar.bz2 && \
-		wget http://download.services.openoffice.org/files/stable/$(UPSTREAM_VERSION)/OOo_$(UPSTREAM_VERSION)_src_extensions.tar.bz2 && \
-		wget http://download.services.openoffice.org/files/stable/$(UPSTREAM_VERSION)/OOo_$(UPSTREAM_VERSION)_src_l10n.tar.bz2 && \
-		wget http://download.services.openoffice.org/files/stable/$(UPSTREAM_VERSION)/OOo_$(UPSTREAM_VERSION)_src_system.tar.bz2 && \
-		tar xfvj OOo_$(UPSTREAM_VERSION)_src_core.tar.bz2 && \
-		for i in `find $(TAG)/psprint_config/configuration/ppds ! -name "SGEN*" -name "*.PS"`; do \
-			rm $$i; \
-		done && \
-		tar cfvj OOo_$(UPSTREAM_VERSION)_src_core.tar.bz2.dfsg $(TAG) && \
-		rm -rf $(TAG) && \
-		ln -sf OOo_$(UPSTREAM_VERSION)_src_core.tar.bz2.dfsg OOo_$(UPSTREAM_VERSION)_src_core.tar.bz2 && \
-		tar xfvj OOo_$(UPSTREAM_VERSION)_src_system.tar.bz2 && \
-		for i in da_DK ru_RU; do \
-			rm $(TAG)/dictionaries/$$i/hyph_$${i}.dic; \
-		done && \
-		tar cfvj OOo_$(UPSTREAM_VERSION)_src_system.tar.bz2.dfsg $(TAG) && \
-		rm -rf $(TAG) && \
-		ln -sf OOo_$(UPSTREAM_VERSION)_src_system.tar.bz2.dfsg OOo_$(UPSTREAM_VERSION)_src_system.tar.bz2 && \
-		tar xfvj OOo_$(UPSTREAM_VERSION)_src_extensions.tar.bz2 && \
-			zip -d $(TAG)/jfreereport/download/liblayout.zip \
-				liblayout/resource/rfc1345.txt && \
-		tar cfvj OOo_$(UPSTREAM_VERSION)_src_extensions.tar.bz2.dfsg $(TAG) && \
-		rm -rf $(TAG) && \
-		ln -sf OOo_$(UPSTREAM_VERSION)_src_extensions.tar.bz2.dfsg OOo_$(UPSTREAM_VERSION)_src_extensions.tar.bz2 && \
-		cd $$TMPD && tar cfvz openoffice.org_$(UPSTREAM_VERSION).orig.tar.gz openoffice.org-$(UPSTREAM_VERSION) && \
-		rm -rf openoffice.org-$(UPSTREAM_VERSION) && \
-		mv  openoffice.org_$(UPSTREAM_VERSION).orig.tar.gz $(CURDIR)/.. && \
-		rmdir $$TMPD
-else
-	if test -n "$$TMP"; then \
-		TMPD=`mktemp -d -p $$TMP`; \
-	else \
-		TMPD=`mktemp -d`; \
-	fi && \
-	cd $$TMPD && \
-        mkdir -p openoffice.org-$(UPSTREAM_VERSION) && \
-        cd openoffice.org-$(UPSTREAM_VERSION) && \
+	mkdir -p openoffice.org-$(UPSTREAM_VERSION) && \
+	cd openoffice.org-$(UPSTREAM_VERSION) && \
 		cp -ra $(CURDIR)/$(OOO_BUILD_TREE) $(OOO_BUILD_TREE); \
 		cd $(OOO_BUILD_TREE) && \
-		./configure --with-tag=$(TAG) --with-distro=$(PATCHSET) \
-			--without-git --with-lang="$(BUILD_ISOS)" && \
-			./download || wait 60; ./download || wait 60; ./download && \
-			rm -f src/$(TAG)-l10n.tar.bz2 && \
-			./download || wait 60; ./download || wait 60; ./download; \
-			mkdir -p ../sources && mv src/$(TAG)*bz2 ../sources && \
-			mkdir -p ../ext-sources-$(OOO_BUILD_TREE) && \
-			for i in biblio.tar.bz2 extras-3.tar.bz2 ooo_oxygen_images-2009-06-17.tar.gz; do \
+			./configure --with-tag=$(TAG) --with-distro=$(PATCHSET) \
+				--with-git --with-lang="$(BUILD_ISOS)" && \
+			./download && \
+			mkdir ../ext-sources-$(OOO_BUILD_TREE) && \
+			for i in biblio.tar.bz2 extras-3.tar.bz2; do \
 				mv src/$$i ../ext-sources-$(OOO_BUILD_TREE); \
 			done && \
 		cd .. && \
 		tar cfvz $(CURDIR)/../openoffice.org_$(UPSTREAM_VERSION).orig-ext-sources-$(OOO_BUILD_TREE).tar.gz ext-sources-$(OOO_BUILD_TREE) && \
-		rm -rf $(OOO_BUILD_TREE) ext-sources-$(OOO_BUILD_TREE) && \
-		cd sources && \
-		tar xfvj $(TAG)-libs-extern-sys.tar.bz2 && \
+		rm -rf ext-sources-$(OOO_BUILD_TREE) && \
+		cd $(OOO_BUILD_TREE) && \
+			./bin/ooo-pack-sources --force --no-ooo-build . && \
+			mv archive ../archive-$(OOO_BUILD_VERSION) && \
+		cd ../archive-$(OOO_BUILD_VERSION) && \
+		tar xfvj ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-extern-sys.tar.bz2 && \
 		for i in da_DK en_GB nl_NL ru_RU; do \
-			rm ooo/$(MWS)_$(MILESTONE)/dictionaries/$$i/hyph_$${i}.dic; \
+			rm ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-extern-sys/dictionaries/$$i/hyph_$${i}.dic; \
 		done && \
-		tar cfvj $(TAG)-libs-extern-sys.tar.bz2.dfsg ooo && \
-		ln -sf $(TAG)-libs-extern-sys.tar.bz2.dfsg $(TAG)-libs-extern-sys.tar.bz2 && \
-		rm -rf ooo && \
-		tar xfvj $(TAG)-libs-gui.tar.bz2 && \
-		for i in `find ooo/$(MWS)_$(MILESTONE)/psprint_config/configuration/ppds ! -name "SGEN*" -name "*.PS"`; do \
+		tar cfvj ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-extern-sys.tar.bz2.dfsg ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-extern-sys && \
+		ln -sf ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-extern-sys.tar.bz2.dfsg ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-extern-sys.tar.bz2 && \
+		rm -rf ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-extern-sys && \
+		tar xfvj ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-gui.tar.bz2 && \
+		for i in `find ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-gui/psprint_config/configuration/ppds ! -name "SGEN*" -name "*.PS"`; do \
 			rm $$i; \
 		done && \
-		tar cfvj $(TAG)-libs-gui.tar.bz2.dfsg ooo && \
-		ln -sf $(TAG)-libs-gui.tar.bz2.dfsg $(TAG)-libs-gui.tar.bz2 && \
-		rm -rf ooo && \
-		tar xfvj $(TAG)-extensions.tar.bz2 && \
-			zip -d ooo/$(MWS)_$(MILESTONE)/jfreereport/download/liblayout.zip \
-				liblayout/resource/rfc1345.txt && \
-		tar cfvj $(TAG)-extensions.tar.bz2.dfsg ooo && \
-		ln -sf $(TAG)-extensions.tar.bz2.dfsg $(TAG)-extensions.tar.bz2 && \
-		rm -rf ooo && \
-		cd $$TMPD && tar cfvz openoffice.org_$(UPSTREAM_VERSION).orig.tar.gz openoffice.org-$(UPSTREAM_VERSION) && \
+		tar cfvj ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-gui.tar.bz2.dfsg ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-gui && \
+		ln -sf ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-gui.tar.bz2.dfsg ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-gui.tar.bz2 && \
+		rm -rf ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-gui && \
+		cd $$TMPD && tar cfvz openoffice.org_$(UPSTREAM_VERSION).orig-archive-$(OOO_BUILD_VERSION).tar.gz openoffice.org-$(UPSTREAM_VERSION)/archive-$(OOO_BUILD_VERSION) && \
 		rm -rf openoffice.org-$(UPSTREAM_VERSION) && \
-		mv  openoffice.org_$(UPSTREAM_VERSION).orig.tar.gz $(CURDIR)/.. && \
+		mv openoffice.org_$(UPSTREAM_VERSION).orig-archive-$(OOO_BUILD_VERSION).tar.gz $(CURDIR)/.. && \
 		rmdir $$TMPD
-endif
 ifeq "$(DEBSRC_VERSION)" "3.0"
 	if test -n "$$TMP"; then \
 		TMPD=`mktemp -d -p $$TMP`; \
@@ -3982,9 +3943,10 @@ ifeq "$(DEBSRC_VERSION)" "3.0"
 	cd $$TMPD && \
 		export TARFILE_LOCATION=`basename $(TARFILE_LOCATION)`; \
 		$(CURDIR)/debian/rules get-ext-sources && \
+		zip -d $$TARFILE_LOCATION/*liblayout.zip liblayout/resource/rfc1345.txt && \
 		tar cfvz openoffice.org_$(UPSTREAM_VERSION).orig-$$TARFILE_LOCATION.tar.gz $$TARFILE_LOCATION && \
 		mv openoffice.org_$(UPSTREAM_VERSION).orig-$$TARFILE_LOCATION.tar.gz $(CURDIR)/.. && \
-		rmdir $$TMPD
+		rm -rf $$TMPD/$$TARFILE_LOCATION && rmdir $$TMPD
 endif
 ifeq "$(DEBSRC_VERSION)" "3.0"
 	# get ooo-build
