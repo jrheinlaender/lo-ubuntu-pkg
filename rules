@@ -3872,11 +3872,25 @@ binary: binary-arch binary-indep
 
 # Get ooo-build
 get-ooo-build:
-	rm -rf $(OOO_BUILD_TREE)
-	wget http://download.go-oo.org/$(MWS)/ooo-build-$(OOO_BUILD_VERSION).tar.gz && \
-	tar xfvz ooo-build-$(OOO_BUILD_VERSION).tar.gz && \
-	mv ooo-build-$(OOO_BUILD_VERSION) $(OOO_BUILD_TREE) && \
-	rm ooo-build-$(OOO_BUILD_VERSION).tar.gz
+	if echo $(OOO_BUILD_VERSION) | egrep -q "\."; then \
+		wget http://download.go-oo.org/$(MWS)/ooo-build-$(OOO_BUILD_TARBALL_VERSION).tar.gz && \
+		mv ooo-build-$(OOO_BUILD_TARBALL_VERSION).tar.gz ../openoffice.org_$(UPSTREAM_VERSION).orig-ooo-build-$(OOO_BUILD_TARBALL_VERSION).tar.gz && \
+		tar xfvz ooo-build-$(OOO_BUILD_TARBALL_VERSION).tar.gz && \
+		mv ooo-build-$(OOO_BUILD_TARBALL_VERSION) $(OOO_BUILD_TREE); \
+	else \
+		if test -n "$$TMP"; then \
+			TMPD=`mktemp -d -p $$TMP`; \
+		else \
+			TMPD=`mktemp -d`; \
+		fi && \
+		cd $$TMPD && pwd && \
+		$(CURDIR)/$(OOO_BUILD_TREE)/bin/ooo-pack-sources --force --no-ooo-pieces $(CURDIR)/$(OOO_BUILD_TREE) && \
+		tar xfvz ooo-build-$(OOO_BUILD_TARBALL_VERSION).tar.gz && \
+		mv ooo-build-$(OOO_BUILD_TARBALL_VERSION) $(OOO_BUILD_TREE) && \
+		rm ooo-build-$(OOO_BUILD_TARBALL_VERSION).tar.gz archive/ooo-build-$(OOO_BUILD_TARBALL_VERSION).tar.gz && \
+		tar cfvz $(CURDIR)/../openoffice.org_$(UPSTREAM_VERSION).orig-ooo-build-$(OOO_BUILD_VERSION).tar.gz $(OOO_BUILD_TREE) && \
+		rm -rf $$TMPD; \
+	fi
 
 # Get upstream external sources
 get-ext-sources:
@@ -3906,7 +3920,7 @@ get-orig-source:
 				--with-git --with-lang="$(BUILD_ISOS)" && \
 			./download && \
 			mkdir ../ext-sources-$(OOO_BUILD_TREE) && \
-			for i in evolocal.odb biblio.tar.bz2 extras-3.tar.bz2; do \
+			for i in biblio.tar.bz2 extras-3.tar.bz2; do \
 				mv src/$$i ../ext-sources-$(OOO_BUILD_TREE); \
 			done && \
 		cd .. && \
@@ -3930,10 +3944,10 @@ get-orig-source:
 		tar cfvj ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-gui.tar.bz2.dfsg ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-gui && \
 		ln -sf ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-gui.tar.bz2.dfsg ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-gui.tar.bz2 && \
 		rm -rf ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-gui && \
-		cd $$TMPD && tar cfvz openoffice.org_$(UPSTREAM_VERSION).orig-archive-$(OOO_BUILD_VERSION).tar.gz openoffice.org-$(UPSTREAM_VERSION)/archive-$(OOO_BUILD_VERSION) && \
+		cd $$TMPD/openoffice.org-$(UPSTREAM_VERSION) && tar cfvz openoffice.org_$(UPSTREAM_VERSION).orig-archive-$(OOO_BUILD_VERSION).tar.gz archive-$(OOO_BUILD_VERSION) && \
 		rm -rf openoffice.org-$(UPSTREAM_VERSION) && \
 		mv openoffice.org_$(UPSTREAM_VERSION).orig-archive-$(OOO_BUILD_VERSION).tar.gz $(CURDIR)/.. && \
-		rmdir $$TMPD
+		rm -rf $$TMPD
 ifeq "$(DEBSRC_VERSION)" "3.0"
 	if test -n "$$TMP"; then \
 		TMPD=`mktemp -d -p $$TMP`; \
@@ -3946,7 +3960,7 @@ ifeq "$(DEBSRC_VERSION)" "3.0"
 		zip -d $$TARFILE_LOCATION/*liblayout.zip liblayout/resource/rfc1345.txt && \
 		tar cfvz openoffice.org_$(UPSTREAM_VERSION).orig-$$TARFILE_LOCATION.tar.gz $$TARFILE_LOCATION && \
 		mv openoffice.org_$(UPSTREAM_VERSION).orig-$$TARFILE_LOCATION.tar.gz $(CURDIR)/.. && \
-		rm -rf $$TMPD/$$TARFILE_LOCATION && rmdir $$TMPD
+		rm -rf $$TMPD
 endif
 ifeq "$(DEBSRC_VERSION)" "3.0"
 	# get ooo-build
