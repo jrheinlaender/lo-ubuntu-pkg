@@ -23,3 +23,14 @@ remove_extension() {
 validate_extensions() {
 	/usr/lib/openoffice/program/unopkg validate -v --shared
 }
+
+sync_extensions() {
+  if [ -e /usr/lib/openoffice/share/prereg/bundled ] && readlink /usr/lib/openoffice/share/prereg/bundled 2>&1 >/dev/null; then
+    /usr/lib/openoffice/program/unopkg sync -v --shared \
+      "-env:BUNDLED_EXTENSIONS_USER=file:///usr/lib/openoffice/share/prereg/bundled" \
+      "-env:UserInstallation=file://$INSTDIR" \
+      "-env:UNO_JAVA_JFW_INSTALL_DATA=file://$d/share/config/javasettingsunopkginstall.xml" \
+      "-env:JFW_PLUGIN_DO_NOT_CHECK_ACCESSIBILITY=1"
+  fi
+}
+
