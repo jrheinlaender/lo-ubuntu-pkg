@@ -41,7 +41,7 @@ DEB_BUILD_GNU_TYPE  ?= $(shell dpkg-architecture -qDEB_BUILD_GNU_TYPE)
 SHELL:=/bin/bash
 
 PKGDIR:=debian/openoffice.org$(VER)
-OODIRNAME=openoffice$(VER)
+OODIRNAME=libreoffice$(VER)
 OOBRANDDIR:=usr/lib/$(OODIRNAME)
 OOBASISDIR:=$(OOBRANDDIR)/basis$(BASIS_VERSION)
 OOSDKDIR:=$(OOBASISDIR)/sdk
@@ -321,7 +321,7 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
 		--with-system-dicts \
 		--with-additional-sections="$(ADDITIONAL_SECTIONS)"
 
-#CONFIGURE_FLAGS += --with-git
+CONFIGURE_FLAGS += --with-git
 
 # distro-configs is too late; it already gets searched in unpack
 # when we don't do that here, too.
@@ -1949,7 +1949,7 @@ ifneq "$(DEBSRC_VERSION)" "3.0"
 endif
 
 	cp -a ext-sources-$(OOO_BUILD_TREE)/* $(OOO_BUILD_TREE)/src
-	cp -a archive-$(OOO_BUILD_TREE)/* $(OOO_BUILD_TREE)/src
+	#cp -a archive-$(OOO_BUILD_TREE)/* $(OOO_BUILD_TREE)/src
 
 ifneq ($(GCC_VERSION),)
   ifneq ($(GCC_VERSION),snapshot)
@@ -2341,6 +2341,14 @@ endif
 
 	find debian/tmp ! -perm -200 | xargs -r chmod u+w
 
+	# move them into -core for proper installation later in install-arch.
+	# The "rest" (arch-indep) is in -common anyways
+	for i in mysql-connector-ooo pdfimport presenter-screen presentation-minimizer; do \
+		mkdir -p $(PKGDIR)-core/$(OOBRANDDIR)/share/extensions; \
+		mv $(PKGDIR)-common/$(OOBRANDDIR)/share/extensions/$$i \
+			$(PKGDIR)-core/$(OOBRANDDIR)/share/extensions; \
+	done
+
 	touch $@
 
 #
@@ -2353,7 +2361,7 @@ $(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*Env*.sh) $(wildcard debia
 
 	# generate maintainer scripts from *.in
 	for PKG in $(PACKAGES); do \
-	  for FILE in postinst postrm preinst prerm; do \
+	  for FILE in postinst postrm preinst prerm triggers; do \
 	    MAINTSCRIPT=debian/$$PKG.$$FILE ; \
 	    if [ -e $$MAINTSCRIPT.in ]; then \
 	      sed -n '1,/^#INCLUDE_SHELL_LIB#$$/p' < $$MAINTSCRIPT.in | sed -e '/^#INCLUDE_SHELL_LIB#$$/d' > $$MAINTSCRIPT; \
@@ -2817,7 +2825,7 @@ ifeq "$(PACKAGE_SDK)" "y"
 	mkdir -p $(PKGDIR)-dev/$(OOSDKDIR)/classes/win
 	mkdir -p $(PKGDIR)-dev/$(OOSDKDIR)/classes/com/sun/star/lib/loader
 	mkdir -p $(PKGDIR)-dev/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/com/sun/star/lib/loader
-	mv $(PKGDIR)-dev/usr/share/openoffice/sdk/classes/com/sun/star/lib/loader/* \
+	mv $(PKGDIR)-dev/usr/share/libreoffice/sdk/classes/com/sun/star/lib/loader/* \
 		$(PKGDIR)-dev/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/com/sun/star/lib/loader && \
 	mv $(PKGDIR)-dev/usr/share/$(OODIRNAME)/sdk/classes/win \
 		$(PKGDIR)-dev/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes
@@ -2828,7 +2836,7 @@ ifeq "$(PACKAGE_SDK)" "y"
 		done
 	ln -s $(PKGDIR)-dev/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/win/unowinreg.dll \
 		$(PKGDIR)-dev/$(OOSDKDIR)/classes/win/unowinreg.dll
-	rm -rf $(PKGDIR)-dev/usr/share/openoffice/sdk
+	rm -rf $(PKGDIR)-dev/usr/share/libreoffice/sdk
   endif
 	chmod 644 $(PKGDIR)-dev/$(OOSDKDIR)/configure.pl
 	for i in csh csh.in; do \
@@ -2940,34 +2948,20 @@ else
 	mv $(PKGDIR)-base/$(OODIR)/program/librpt* \
 		$(PKGDIR)-report-builder-bin/$(OODIR)/program
   endif
-  ifeq "$(ENABLE_JAVA)" "y"
-	# install this; we need to register this ourselves later in
-	# the maintainer scripts. This is intended upstream (*rpt* stuff
-	# in OOo and the actual report builder as an extension, without which
-	# the *rpt* stuff is a no-op.
-	rm -rf $(PKGDIR)-report-builder
-	mkdir -p $(PKGDIR)-report-builder/$(OOBRANDDIR)/share/extensions/report-builder.oxt
-	cd $(PKGDIR)-report-builder/$(OOBRANDDIR)/share/extensions/report-builder.oxt && \
-		unzip $(CURDIR)/$(SOURCE_TREE)/reportbuilder/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/bin/report-builder.oxt
-	# unneeded license files
-	for i in THIRDPARTYREADMELICENSE.html readme_en-US.html readme_en-US.txt; do \
-		rm -f $(PKGDIR)-report-builder/$(OOBRANDDIR)/share/extensions/report-builder.oxt/$$i; \
-	done
-  endif
 endif
 
 ifeq "$(ENABLE_MINIMIZER)" "y"
 	rm -rf $(PKGDIR)-presentation-minimizer
-	mkdir -p $(PKGDIR)-presentation-minimizer/$(OOBRANDDIR)/share/extensions/presentation-minimzer.oxt
-	cd $(PKGDIR)-presentation-minimizer/$(OOBRANDDIR)/share/extensions/presentation-minimzer.oxt && \
-		unzip $(CURDIR)/$(SOURCE_TREE)/sdext/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/bin/presentation-minimizer.oxt
+	mkdir -p $(PKGDIR)-presentation-minimizer/$(OOBRANDDIR)/share/extensions
+	mv $(PKGDIR)-core/$(OOBRANDDIR)/share/extensions/presentation-minimizer \
+		$(PKGDIR)-presentation-minimizer/$(OOBRANDDIR)/share/extensions
 endif
 
 ifeq "$(ENABLE_PRESENTER_CONSOLE)" "y"
 	rm -rf $(PKGDIR)-presenter-console
-	mkdir -p $(PKGDIR)-presenter-console/$(OOBRANDDIR)/share/extensions/presenter-screen.oxt
-	cd $(PKGDIR)-presenter-console/$(OOBRANDDIR)/share/extensions/presenter-screen.oxt && \
-		unzip $(CURDIR)/$(SOURCE_TREE)/sdext/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/bin/presenter-screen.oxt
+	mkdir -p $(PKGDIR)-presenter-console/$(OOBRANDDIR)/share/extensions
+	mv $(PKGDIR)-core/$(OOBRANDDIR)/share/extensions/presenter-screen \
+		$(PKGDIR)-presenter-console/$(OOBRANDDIR)/share/extensions
 endif
 
 ifeq "$(ENABLE_SDBC_POSTGRESQL)" "y"
@@ -2979,16 +2973,16 @@ endif
 
 ifeq "$(ENABLE_MYSQLNATIVE)" "y"
 	rm -rf $(PKGDIR)-mysql-connector
-	mkdir -p $(PKGDIR)-mysql-connector/$(OOBRANDDIR)/share/extensions/mysql-connector-ooo.oxt
-	cd $(PKGDIR)-mysql-connector/$(OOBRANDDIR)/share/extensions/mysql-connector-ooo.oxt && \
-		unzip $(CURDIR)/$(SOURCE_TREE)/mysqlc/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/bin/mysql-connector-ooo.oxt
+	mkdir -p $(PKGDIR)-mysql-connector/$(OOBRANDDIR)/share/extensions
+	mv $(PKGDIR)-core/$(OOBRANDDIR)/share/extensions/mysql-connector-ooo \
+		$(PKGDIR)-mysql-connector/$(OOBRANDDIR)/share/extensions
 endif
 
 ifeq "$(ENABLE_PDFIMPORT)" "y"
 	rm -rf $(PKGDIR)-pdfimport
-	mkdir -p $(PKGDIR)-pdfimport/$(OOBRANDDIR)/share/extensions/pdfimport.oxt
-	cd $(PKGDIR)-pdfimport/$(OOBRANDDIR)/share/extensions/pdfimport.oxt && \
-		unzip $(CURDIR)/$(SOURCE_TREE)/sdext/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/bin/pdfimport.oxt
+	mkdir -p $(PKGDIR)-pdfimport/$(OOBRANDDIR)/share/extensions
+	mv $(PKGDIR)-core/$(OOBRANDDIR)/share/extensions/pdfimport \
+		$(PKGDIR)-pdfimport/$(OOBRANDDIR)/share/extensions
 endif
 
 	# move services.rdb to /var/lib/openoffice
@@ -3427,12 +3421,29 @@ ifeq "$(PACKAGE_SDK)" "y"
 		ln -s /$(OOSDKDIR)/index.html index.html
 endif
 
+ifeq "$(PACKAGE_REPORTDESIGN)" "y"
+  ifeq "$(ENABLE_JAVA)" "y"
+	# install this; we need to register this ourselves later in
+	# the maintainer scripts. This is intended upstream (*rpt* stuff
+	# in OOo and the actual report builder as an extension, without which
+	# the *rpt* stuff is a no-op.
+	rm -rf $(PKGDIR)-report-builder
+	mkdir -p $(PKGDIR)-report-builder/$(OOBRANDDIR)/share/extensions
+	mv $(PKGDIR)-common/$(OOBRANDDIR)/share/extensions/report-builder \
+		$(PKGDIR)-report-builder/$(OOBRANDDIR)/share/extensions
+	# unneeded license files
+	for i in THIRDPARTYREADMELICENSE.html readme_en-US.html readme_en-US.txt; do \
+		rm -f $(PKGDIR)-report-builder/$(OOBRANDDIR)/share/extensions/report-builder/$$i; \
+	done
+  endif
+endif
+
 ifeq "$(ENABLE_MEDIAWIKI)" "y"
 	rm -rf $(PKGDIR)-wiki-publisher
-	mkdir -p $(PKGDIR)-wiki-publisher/$(OOBRANDDIR)/share/extensions/wiki-publisher.oxt
-	cd $(PKGDIR)-wiki-publisher/$(OOBRANDDIR)/share/extensions/wiki-publisher.oxt && \
-		unzip $(CURDIR)/$(SOURCE_TREE)/swext/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/bin/wiki-publisher.oxt
-	rm -f $(PKGDIR)-wiki-publisher/$(OOBRANDDIR)/share/extensions/wiki-publisher.oxt/license/THIRDPARTYLICENSEREADME.html
+	mkdir -p $(PKGDIR)-wiki-publisher/$(OOBRANDDIR)/share/extensions
+	mv $(PKGDIR)-common/$(OOBRANDDIR)/share/extensions/wiki-publisher \
+		$(PKGDIR)-wiki-publisher/$(OOBRANDDIR)/share/extensions
+	rm -f $(PKGDIR)-wiki-publisher/$(OOBRANDDIR)/share/extensions/wiki-publisher/license/THIRDPARTYLICENSEREADME.html
 endif
 
 	# add version to  .lintian-overrides
