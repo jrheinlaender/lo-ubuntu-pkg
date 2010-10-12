@@ -4,46 +4,17 @@ set -e
 
 #INCLUDE_SHELL_LIB#
 
-case "$1" in install|upgrade)
-	if dpkg --compare-versions "$2" lt "2.0.0-2"; then
-		rm_conffile "/etc/bash_completion.d/openoffice" $DPKG_MAINTSCRIPT_PACKAGE
-		rm_conffile "/etc/openoffice/autoresponse.conf" $DPKG_MAINTSCRIPT_PACKAGE
-		rm_conffile "/etc/openoffice/openoffice.conf" $DPKG_MAINTSCRIPT_PACKAGE
-	fi
-	if dpkg --compare-versions "$2" lt "2.0.2-2"; then
-		rm_conffile "/etc/bash_completion.d/ooo-wrapper.sh" $DPKG_MAINTSCRIPT_PACKAGE
-	fi
-	# obsolete. no conffile.
-	rm -f /etc/openoffice/dictionary.lst /etc/openoffice/dictionary.lst-old
-	
-	# try to recover. No idea whether that completely helps but it
-	# at least gets the bogus dir away.
-	if [ -e /usr/lib/libreoffice/basis-link -a \
-		! -L /usr/lib/libreoffice/basis-link ] && \
-		[ -e /usr/lib/libreoffice/basis-link/share/config/javasettingsunopkginstall.xml ]; then
-		rm -f /usr/lib/libreoffice/basis-link/share/config/javasettingsunopkginstall.xml
-		rmdir --ignore-fail-on-non-empty /usr/lib/libreoffice/basis-link/share/config
-		rmdir --ignore-fail-on-non-empty /usr/lib/libreoffice/basis-link/share
-		rmdir --ignore-fail-on-non-empty /usr/lib/libreoffice/basis-link
-	fi
-
+case "$1" in install)
 	# move a already-filled in javasettingsunopkginstall.xml to the new
  	# location on upgrades
 	if [ ! -e `echo /@OOBASISDIR@ | sed -e s/usr/var/`/share/config/javasettingsunopkginstall.xml ]; then
 		if [ ! -d `echo /@OOBASISDIR@ | sed -e s/usr/var/`/share/config ]; then
 			mkdir -p `echo /@OOBASISDIR@ | sed -e s/usr/var/`/share/config
 		fi
-		if [ -e /var/lib/openoffice/javasettingsunopkginstall.xml ]; then
-			mv /var/lib/openoffice/javasettingsunopkginstall.xml \
+		if [ -e `echo /@OOBASISDIR@ | sed -e s/usr/var/ | sed -e s/libre/open/`/config/javasettingsunopkginstall.xml ]; then
+			mv `echo /@OOBASISDIR@ | sed -e s/usr/var/ | sed -e s/libre/open/`/share/config/javasettingsunopkginstall.xml \
 				 `echo /@OOBASISDIR@ | sed -e s/usr/var/`/share/config/javasettingsunopkginstall.xml
 		fi
-		if [ -e /var/lib/openoffice/share/config/javasettingsunopkginstall.xml ]; then
-			mv /var/lib/openoffice/share/config/javasettingsunopkginstall.xml \
-				 `echo /@OOBASISDIR@ | sed -e s/usr/var/`/share/config/javasettingsunopkginstall.xml
-		fi
-	else
-		rm -f /var/lib/openoffice/javasettingsunopkginstall.xml
-		rm -f /var/lib/openoffice/share/config/javasettingsunopkginstall.xml
 	fi
 	;;
 esac
