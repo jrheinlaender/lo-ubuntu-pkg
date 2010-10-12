@@ -15,10 +15,10 @@ register_all_components_to_services_rdb() {
 }
 
 revoke_from_services_rdb() {
-  if [ "$THIS_PACKAGE" != "openoffice.org-core" ]; then
-      status=$(dpkg-query -W -f='${status}' openoffice.org-core|cut -d ' ' -f3)
+  if [ "$THIS_PACKAGE" != "libreoffice-core" ]; then
+      status=$(dpkg-query -W -f='${status}' libreoffice-core|cut -d ' ' -f3)
       if [ "$status" != "installed" ]; then
-	  echo "skipping revoke because of unconfigured openoffice.org-core"
+	  echo "skipping revoke because of unconfigured libreoffice-core"
 	  return
       fi
   fi
@@ -30,10 +30,10 @@ revoke_from_services_rdb() {
 }
 
 register_to_services_rdb() {
-  if [ "$THIS_PACKAGE" != "openoffice.org-core" ]; then
-      status=$(dpkg-query -W -f='${status}' openoffice.org-core|cut -d ' ' -f3)
+  if [ "$THIS_PACKAGE" != "libreoffice-core" ]; then
+      status=$(dpkg-query -W -f='${status}' libreoffice-core|cut -d ' ' -f3)
       if [ "$status" != "installed" ]; then
-	  echo "skipping register because of unconfigured openoffice.org-core"
+	  echo "skipping register because of unconfigured libreoffice-core"
 	  return
       fi
   fi
