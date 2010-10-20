@@ -68,7 +68,7 @@ export QUILT_OPTIONS="-p1 -F0"
 unexport LS_COLORS
 
 MWS=OOO330
-MILESTONE=m9
+MILESTONE=m10
 TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
 GIT_TAG=$(MWS)_$(MILESTONE)
 #OOO_BUILD_BRANCH=ooo-build-3-3
@@ -82,7 +82,7 @@ SOURCE_TREE=$(OOO_BUILD_TREE)/build/libreoffice-$(OOO_BUILD_TARBALL_VERSION)
 STAMP_DIR=debian/stampdir
 TARFILE_LOCATION=$(CURDIR)/ext-sources
 export TARFILE_LOCATION
-USE_SOURCE_TARBALLS=y
+USE_SOURCE_TARBALLS=n
 
 ifeq "$(DISTREL)" "lenny"
  LENNY_BACKPORT=y
@@ -159,7 +159,7 @@ LIBHYPHEN_MINVER= (>= 2.4)
 USE_AGG=n
 SYSTEM_AGG=n
 USE_STLPORT=n
-USE_SYSTEM_STLPORT=n
+USE_SYSTEM_STLPORT=y
 USE_SYSTEM_BOOST=y
 BOOST_VERSION=default
 ifeq "$(BOOST_VERSION)" "default"
@@ -236,7 +236,11 @@ ifeq "$(ENABLE_JAVA)" "y"
 else
   RUN_SMOKETEST=n
 endif
+ifeq "$(ARCH)" "i386"
+RUN_SUBSEQUENT_TESTS=n
+else
 RUN_SUBSEQUENT_TESTS=y
+endif
 # "Unfortunately, running the unoapi tests is still not stable enough to give
 # useful results. Therefore, running subsequenttests has been disabled in the
 # build bots for now. Making the tests sufficiently stable is ongoing work. "
@@ -282,19 +286,11 @@ ifeq "$(BUILD_GTK)" "y"
 endif
 PACKAGE_BASE=y
 ENABLE_GRAPHITE=y
-ifneq "$(ARCH)" "i386"
-  USE_SYSTEM_GRAPHITE=y
-else
-  USE_SYSTEM_GRAPHITE=n
-endif
+USE_SYSTEM_GRAPHITE=y
 ALLOC=system
 DEBSRC_VERSION=3.0
 USE_SYSTEM_TEXTCAT_DATA=y
-ifneq "$(ARCH)" "i386"
 USE_SYSTEM_CPPUNIT=y
-else
-USE_SYSTEM_CPPUNIT=n
-endif
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with libreoffice2), we need to set this. Don't touch
@@ -326,9 +322,9 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
 		--with-drink=coffee \
 		--libdir=/usr/lib \
 		--host=$(DEB_HOST_GNU_TYPE) --build=$(DEB_BUILD_GNU_TYPE) \
-		--enable-hids \
 		--with-system-dicts \
-		--with-additional-sections="$(ADDITIONAL_SECTIONS)"
+		--with-additional-sections="$(ADDITIONAL_SECTIONS)" \
+		--enable-broffice
 
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
   CONFIGURE_FLAGS += --without-git
@@ -662,6 +658,10 @@ ifeq "$(BUILD_SPARC)" "y"
 	OOO_MOZILLA_ARCHS += sparc
 endif
 
+ifeq "$(USE_SOURCE_TARBALL)" "n"
+	BUILD_DEPS += , git, rsync
+endif
+
 ifeq "$(USE_BZIP_COMPRESS)" "y"
 	DPKG_DEPENDS = dpkg (>= 1.10.24)
 	BUILDDEB_OPTIONS = -- -Zbzip2
@@ -804,9 +804,12 @@ endif
 ifeq "$(RUN_SMOKETEST)" "y"
 	BUILD_DEPS += , epm
 endif
+ifeq "$(RUN_TESTTOOL)" "y"
+	CONFIGURE_FLAGS += --enable-hids
+endif
 ifeq "$(USE_SYSTEM_CPPUNIT)" "y"
 	CONFIGURE_FLAGS += --with-system-cppunit
-	BUILD_DEPS += , libcppunit-dev (>= 1.12) [!$(OOO_STLPORT_ARCHS)]
+	BUILD_DEPS += , libcppunit-dev (>= 1.12)
   ifeq "$(USE_STLPORT)" "y"
 	ADDITIONAL_SECTIONS += SystemBitsWithSTLport
   endif
@@ -818,6 +821,8 @@ ifeq "$(RUN_SUBSEQUENT_TESTS)" "y"
   else
 	CONFIGURE_FLAGS += --without-junit
   endif
+else
+	CONFIGURE_FLAGS += --without-junit
 endif
 
 ifneq "$(BUILD_ONLY_EN_US)" "y"
@@ -1090,9 +1095,11 @@ ifeq "$(USE_SYSTEM_BOOST)" "y"
     endif
   else
     ifneq "$(BOOST_VERSION)" "default"
-	BUILD_DEPS += , libboost$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-thread$(BOOST_VERSION)-dev, libboost-program-options$(BOOST_VERSION)-dev
+	BUILD_DEPS += , libboost$(BOOST_VERSION)-dev $(BOOST_MINVER)
+	#BUILD_DEPS += , libboost-thread$(BOOST_VERSION)-dev, libboost-program-options$(BOOST_VERSION)-dev
     else
-	BUILD_DEPS += , libboost-dev $(BOOST_MINVER), libboost-thread-dev, libboost-program-options-dev
+	BUILD_DEPS += , libboost-dev $(BOOST_MINVER)
+	#BUILD_DEPS += , libboost-thread-dev, libboost-program-options-dev
     endif
   endif
 	CONFIGURE_FLAGS += --with-system-boost
@@ -1959,7 +1966,7 @@ ifneq "$(DEBSRC_VERSION)" "3.0"
 	done
 endif
 
-	cp -a sources/* $(OOO_BUILD_TREE)/src
+	#cp -a sources/* $(OOO_BUILD_TREE)/src
 	cp -a ext-sources-$(OOO_BUILD_TREE)/* $(OOO_BUILD_TREE)/src
 
 ifneq ($(GCC_VERSION),)
@@ -2492,6 +2499,11 @@ $(STAMP_DIR)/install-arch: $(STAMP_DIR)/install $(STAMP_NATIVE_JARS)
 	dh_testdir
 	dh_testroot
 	umask 022
+
+	# FIXME
+	mv $(PKGDIR)-common/$(OOBRANDDIR)/ure/lib/* \
+		debian/ure/$(OOBRANDDIR)/ure/lib
+	rm -rf $(PKGDIR)-common/$(OOBRANDDIR)/ure
 
 ifeq "$(ENABLE_EVO2)" "y"
 	debian/ure/$(OOBRANDDIR)/ure/bin/regcomp -revoke \
@@ -3088,16 +3100,13 @@ endif
 	for i in $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/misc/broffice.org/*.keys; do \
 		cat $$i >> debian/broffice.org/usr/share/mime-info/openoffice.keys; \
 	done
-	t=`mktemp -q`.bmp ; \
-	if dpkg-parsechangelog | grep urgency | egrep -q "\~.*m[0123456789]+"; then \
-		convert -compress none -type truecolor -resize 548x364 \
-			$(SOURCE_TREE)/ooo_custom_images/dev_nologo_broffice/introabout/intro.png debian/broffice.org$(VER)/$(OOBRANDDIR)/program/intro.bmp; \
-	else \
-		convert -compress none -type truecolor -resize 548x364 \
-			$(SOURCE_TREE)/ooo_custom_images/nologo_broffice/introabout/intro.png debian/broffice.org$(VER)/$(OOBRANDDIR)/program/intro.bmp; \
-	fi
-	install -m644 $(SOURCE_TREE)/ooo_custom_images/broffice/introabout/about.png \
-		debian/broffice.org$(VER)/$(OOBRANDDIR)/program/about.png
+	mv $(PKGDIR)-common/$(OOBRANDDIR)/program/intro-pt_BR.png \
+		debian/broffice.org$(VER)/$(OOBRANDDIR)/program/intro-pt_BR.png
+	mv $(PKGDIR)-common/$(OOBRANDDIR)/program/about-pt_BR.png \
+		debian/broffice.org$(VER)/$(OOBRANDDIR)/program/about-pt_BR.png
+	cd debian/broffice.org$(VER)/$(OOBRANDDIR)/program/ && \
+		ln -s intro-pt_BR.png intro.png; \
+		ln -s about-pt_BR.png about.png
 	cd debian/broffice.org$(VER)/usr/bin && ln -s ooffice$(VER) broffice$(VER)
 
 	# this is referenced in .keys/.applications
@@ -3480,19 +3489,6 @@ endif
 				> debian/$$i.bug-script; \
 		fi ;\
 	done
-
-ifeq "$(DIST)" "Debian"
-	# fix intro
-	t=`mktemp -q`.bmp ; \
-	if dpkg-parsechangelog | grep urgency | egrep -q "\~.*m[0123456789]+"; then \
-		convert -compress none -type truecolor -resize 548x364 \
-			$(SOURCE_TREE)/ooo_custom_images/dev_nologo/introabout/intro.png $(PKGDIR)-common/$(OOBRANDDIR)/program/intro.bmp; \
-	else \
-		convert -compress none -type truecolor -resize 548x364 \
-			$(SOURCE_TREE)/ooo_custom_images/nologo/introabout/intro.png $(PKGDIR)-common/$(OOBRANDDIR)/program/intro.bmp; \
-	fi; \
-	rm -f $$t && rm -f $(PKGDIR)-common/$(OOBRANDDIR)/program/intro.png
-endif
 
 ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	# menu files from sysui
