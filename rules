@@ -851,7 +851,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	  ta te tg th tn tr ts ug uk uz ve vi xh zh-CN zh-TW zu
 	#HELPISOS:=$(shell $(OOO_BUILD_TREE)/bin/openoffice-xlate-lang -i all') 
 	HELPISOS:=en-US ca cs da de dz el en-GB es et eu fi fr gl hi hu it \
-	  ja km ko nl om pl pt pt-BR ru sl sv zh-CN zh-TW
+	  ja km ko nl om pl pt pt-BR ru sk sl sv zh-CN zh-TW
 	#LANGPACKISOS:=$(shell $(OOO_BUILD_TREE)/bin/openoffice-xlate-lang -i all')
 	LANGPACKISOS:=en-US af ar as ast be-BY bg bn br bs ca cs cy da de dz el \
 	  en-GB en-ZA eo es et eu fa fi fr ga gl gu he hi hr hu id it ja \
@@ -1881,6 +1881,10 @@ ifeq (he,$(findstring he,$(LANGPACKISOS)))
 	perl -pi -e 's/libreoffice-help-he$$/libreoffice-help-he, libreoffice-ctl-he/' debian/control
 endif
 
+ifeq (sk,$(findstring sk,$(HELPISOS)))
+	perl -pi -e 's/(Depends:.*)libreoffice-l10n-sk(.*)$$/\1libreoffice-l10n-sk, libreoffice-help-cs\2/' debian/control
+endif
+
 	perl -pi -e 's/Package: libreoffice$(VER)-help-en-us/Package: libreoffice$(VER)-help-en-us\nReplaces: libreoffice$(VER)-common (<< 1:3.0.0~dev300m28)/' debian/control
 
 ifeq "$(ENABLE_GIO)" "y"
@@ -2249,7 +2253,7 @@ ifneq "$(HELPISOS)" ""
 	# no .install files created and dh_install will warn/fail due
 	# to non-installed files.
 	for iso in $(filter-out en-US,$(LANGPACKISOS)); do \
-		if ! `echo $(HELPISOS) | grep -q $$iso`; then \
+		if ! `echo $(HELPISOS) | grep -q $$iso` || [ "$$iso" = "sk" ] ; then \
 			pkgiso=`echo $$iso | tr A-Z a-z`; \
 			rm -rf debian/tmp/pkg/libreoffice-help-$$iso; \
 			rm -f debian/libreoffice-help-$$pkgiso.dirs; \
@@ -2274,6 +2278,13 @@ endif
 				$(PKGDIR)-help-$$pkgiso/usr/share; \
 		fi; \
 	done
+
+ifeq (sk,$(findstring sk,$(HELPISOS)))
+	# add fake sk help
+	mkdir -p $(PKGDIR)-help-sk/$(shell echo $(OOBASISDIR) | sed -e s/lib/share/)/help
+	ln -s cs \
+		$(PKGDIR)-help-sk/$(shell echo $(OOBASISDIR) | sed -e s/lib/share/)/help/sk
+endif
 
 	# add registered-components dir
 	mkdir -p $(PKGDIR)-core/$(OOBASISDIR)/registered-components
