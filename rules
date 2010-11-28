@@ -82,7 +82,7 @@ SOURCE_TREE=$(OOO_BUILD_TREE)/build/libreoffice-$(OOO_BUILD_TARBALL_VERSION)
 STAMP_DIR=debian/stampdir
 TARFILE_LOCATION=$(CURDIR)/ext-sources
 export TARFILE_LOCATION
-USE_SOURCE_TARBALLS=y
+USE_SOURCE_TARBALLS=n
 
 ifeq "$(DISTREL)" "lenny"
  LENNY_BACKPORT=y
@@ -171,15 +171,12 @@ endif
 USE_SYSTEM_MDDS=y
 USE_SYSTEM_VIGRA=y
 USE_EXTERNAL_CXXLIBS=y
-USE_LIBWPD9=y
-ifeq "$(USE_LIBWPD9)" "n"
-LIBWPD8_MINVER= (>= 0.8.3-3)
-endif
 USE_SYSTEM_SABLOT=n
 USE_LIBXSLT=y
 USE_EXTERNAL_MYTHES=y
 USE_SYSTEM_ICU=y
 ICU_MINVER= (>= 4.0)
+USE_SYSTEM_LIBWPD=y
 USE_SYSTEM_LIBWPG=y
 USE_SYSTEM_LIBWPS=y
 USE_SYSTEM_XMLSEC=n
@@ -393,6 +390,9 @@ endif
   DEBSRC_VERSION=1.0
   USE_SYSTEM_REDLAND=n
   USE_SYSTEM_TEXTCAT_DATA=n
+  USE_SYSTEM_LIBWPD=n
+  USE_SYSTEM_LIBWPG=n
+  USE_SYSTEM_LIBWPS=n
 endif
 
 # the archive only accepts bzip2 compressed members on 3.0 (quilt)
@@ -1123,13 +1123,10 @@ ifeq "$(USE_SYSTEM_VIGRA)" "y"
 endif
 
 ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
-  ifeq "$(USE_LIBWPD9)" "y"
+  ifeq "$(USE_SYSTEM_LIBWPD)" "y"
 	BUILD_DEPS += , libwpd-dev (>= 0.9.0)
-	CONFIGURE_FLAGS += --with-unstable-wp	
-  else
-	BUILD_DEPS += , libwpd8-dev $(LIBWPD8_MINVER)
-  endif
 	CONFIGURE_FLAGS+=  --with-system-libwpd
+  endif
   ifeq "$(USE_SYSTEM_SABLOT)" "y"
 	BUILD_DEPS += , libsablot0-dev (>= 1.0.2-4)
 	CONFIGURE_FLAGS += --with-system-sablot
@@ -1139,17 +1136,11 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
 	CONFIGURE_FLAGS += --with-system-mythes
   endif
   ifeq "$(USE_SYSTEM_LIBWPS)" "y"
-	BUILD_DEPS += , libwps-dev
-    ifeq "$(USE_LIBWPD9)" "y"
-	BUILD_DEPS += (>= 0.2.0)
-    endif
+	BUILD_DEPS += , libwps-dev (>= 0.2.0)
 	CONFIGURE_FLAGS += --with-system-libwps
   endif
   ifeq "$(USE_SYSTEM_LIBWPG)" "y"
-	BUILD_DEPS += , libwpg-dev
-    ifeq "$(USE_LIBWPD9)" "y"
-	BUILD_DEPS += (>= 0.2.0)
-    endif
+	BUILD_DEPS += , libwpg-dev (>= 0.2.0)
 	CONFIGURE_FLAGS += --with-system-libwpg
   endif
 endif
@@ -3031,9 +3022,9 @@ endif
 
 ifeq "$(ENABLE_SDBC_POSTGRESQL)" "y"
 	rm -rf $(PKGDIR)-sdbc-postgresql
-	mkdir -p $(PKGDIR)-sdbc-postgresql/$(OOBRANDDIR)/share/extensions/postgresql-sdbc-$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g).zip
-	cd $(PKGDIR)-sdbc-postgresql/$(OOBRANDDIR)/share/extensions/postgresql-sdbc-$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g).zip && \
-		unzip $(CURDIR)/$(SOURCE_TREE)/connectivity/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/lib/postgresql-sdbc-$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g).zip 
+	mkdir -p $(PKGDIR)-sdbc-postgresql/$(OOBRANDDIR)/share/extensions/postgresql-sdbc-$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g)
+	cd $(PKGDIR)-sdbc-postgresql/$(OOBRANDDIR)/share/extensions/postgresql-sdbc-$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g) && \
+		unzip $(CURDIR)/$(SOURCE_TREE)/connectivity/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/lib/postgresql-sdbc-$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g).oxt 
 endif
 
 ifeq "$(ENABLE_MYSQLNATIVE)" "y"
@@ -3621,11 +3612,12 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 			fi; \
 		done; \
 	done
-	if [ -s $(OOO_BUILD_TREE)/ChangeLog ]; then \
-		dh_installchangelogs -s -k $(OOO_BUILD_TREE)/ChangeLog; \
-	else \
-		dh_installchangelogs -s -k; \
-	fi
+	dh_installchangelogs -s -k
+ifeq "$(SOURCE_TARBALLS)" "y"
+	for i in pkg in $(ARCH_DEP_PACKAGES) ; do \
+		debian/scripts/install-upstream-changelogs $$pkg $(OOO_BUILD_TARBALL_VERSION)
+	done
+endif
 	dh_installmime -s
 	dh_installmenu -s
 ifeq "$(BUILD_JARS_NATIVE)" "y"
@@ -3770,7 +3762,7 @@ endif
 ifeq "$(PACKAGE_BASE)" "y"
   ifeq "$(ENABLE_SDBC_POSTGRESQL)" "y"
 	dh_gencontrol -plibreoffice$(VER)-sdbc-postgresql -- \
-		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g | sed -e s/a$$//)+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
+		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g | sed -e s/b$$//)+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
   endif
   ifeq "$(ENABLE_MYSQLNATIVE)" "y"
 	dh_gencontrol -plibreoffice$(VER)-mysql-connector -- \
@@ -3847,11 +3839,12 @@ endif
 			ln -sf openoffice.1.gz $$i.gz; \
 		fi; \
 	done
-	if [ -s $(OOO_BUILD_TREE)/ChangeLog ]; then \
-		dh_installchangelogs -i -k $(OOO_BUILD_TREE)/ChangeLog; \
-	else \
-		dh_installchangelogs -i -k; \
-	fi
+	dh_installchangelogs -i -k
+ifeq "$(SOURCE_TARBALLS)" "y"
+	for i in pkg in $(ARCH_INDEP_PACKAGES) ; do \
+		debian/scripts/install-upstream-changelogs $$pkg $(OOO_BUILD_TARBALL_VERSION)
+	done
+endif
 	dh_installmime -i
 	dh_lintian -i
 	dh_bugfiles -i -A
