@@ -332,7 +332,8 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
 		--host=$(DEB_HOST_GNU_TYPE) --build=$(DEB_BUILD_GNU_TYPE) \
 		--with-system-dicts \
 		--with-additional-sections="$(ADDITIONAL_SECTIONS)" \
-		--enable-broffice
+		--enable-broffice \
+		--with-extension-integration
 
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
   CONFIGURE_FLAGS += --without-git
@@ -2395,14 +2396,6 @@ endif
 
 	find debian/tmp ! -perm -200 | xargs -r chmod u+w
 
-	# move them into -core for proper installation later in install-arch.
-	# The "rest" (arch-indep) is in -common anyways
-	for i in mysql-connector-ooo pdfimport presenter-screen presentation-minimizer; do \
-		mkdir -p $(PKGDIR)-core/$(OOBRANDDIR)/share/extensions; \
-		mv $(PKGDIR)-common/$(OOBRANDDIR)/share/extensions/$$i \
-			$(PKGDIR)-core/$(OOBRANDDIR)/share/extensions; \
-	done
-
 	touch $@
 
 #
@@ -3025,14 +3018,14 @@ endif
 ifeq "$(ENABLE_MINIMIZER)" "y"
 	rm -rf $(PKGDIR)-presentation-minimizer
 	mkdir -p $(PKGDIR)-presentation-minimizer/$(OOBRANDDIR)/share/extensions
-	mv $(PKGDIR)-core/$(OOBRANDDIR)/share/extensions/presentation-minimizer \
+	mv debian/tmp/$(OOBRANDDIR)/share/extensions/presentation-minimizer \
 		$(PKGDIR)-presentation-minimizer/$(OOBRANDDIR)/share/extensions
 endif
 
 ifeq "$(ENABLE_PRESENTER_CONSOLE)" "y"
 	rm -rf $(PKGDIR)-presenter-console
 	mkdir -p $(PKGDIR)-presenter-console/$(OOBRANDDIR)/share/extensions
-	mv $(PKGDIR)-core/$(OOBRANDDIR)/share/extensions/presenter-screen \
+	mv debian/tmp/$(OOBRANDDIR)/share/extensions/presenter-screen \
 		$(PKGDIR)-presenter-console/$(OOBRANDDIR)/share/extensions
 endif
 
@@ -3046,14 +3039,14 @@ endif
 ifeq "$(ENABLE_MYSQLNATIVE)" "y"
 	rm -rf $(PKGDIR)-mysql-connector
 	mkdir -p $(PKGDIR)-mysql-connector/$(OOBRANDDIR)/share/extensions
-	mv $(PKGDIR)-core/$(OOBRANDDIR)/share/extensions/mysql-connector-ooo \
+	mv debian/tmp/$(OOBRANDDIR)/share/extensions/mysql-connector-ooo \
 		$(PKGDIR)-mysql-connector/$(OOBRANDDIR)/share/extensions
 endif
 
 ifeq "$(ENABLE_PDFIMPORT)" "y"
 	rm -rf $(PKGDIR)-pdfimport
 	mkdir -p $(PKGDIR)-pdfimport/$(OOBRANDDIR)/share/extensions
-	mv $(PKGDIR)-core/$(OOBRANDDIR)/share/extensions/pdfimport \
+	mv debian/tmp/$(OOBRANDDIR)/share/extensions/pdfimport \
 		$(PKGDIR)-pdfimport/$(OOBRANDDIR)/share/extensions
 endif
 
@@ -3122,7 +3115,7 @@ endif
 			| sed -e "s/libreoffice/broffice/" | sed -e "s/LibreOffice/BrOffice/" \
 			> debian/broffice$(VER)/usr/share/applications/libreoffice$(VER)-$$i.desktop; \
 	done
-	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/misc/broffice.org >/dev/null; pwd`" ;\
+	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/misc/broffice >/dev/null; pwd`" ;\
 	mkdir -p -m755 debian/broffice/usr/share/mimelnk/application ;\
 	sed -e 's,Comment=Extension,Comment=BrOffice $(VER) Extension,' \
 	    -e 's,Icon=broffice[0123456789]-extension,Icon=application-vnd.openofficeorg.extension.png,' \
@@ -3130,13 +3123,13 @@ endif
 	    < $$dirname/extension.desktop \
 	    > debian/broffice/usr/share/mimelnk/application/vnd.openofficeorg.extension.desktop || exit 1
 	mkdir -p debian/broffice/usr/share/application-registry && \
-	cat $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/misc/broffice.org/openoffice.applications \
+	cat $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/misc/broffice/openoffice.applications \
 		| sed -e s/OFFICENAME/broffice/g \
 		| sed -e s/\%PRODUCTNAME/BrOffice/g \
 		> debian/broffice/usr/share/application-registry/openoffice.applications
 	rm -f debian/broffice/usr/share/mime-info/openoffice.keys; \
 	mkdir -p debian/broffice/usr/share/mime-info/
-	for i in $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/misc/broffice.org/*.keys; do \
+	for i in $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/misc/broffice/*.keys; do \
 		cat $$i >> debian/broffice/usr/share/mime-info/openoffice.keys; \
 	done
 	mv $(PKGDIR)-common/$(OOBRANDDIR)/program/intro-pt_BR.png \
@@ -3493,7 +3486,7 @@ ifeq "$(PACKAGE_REPORTDESIGN)" "y"
 	# the *rpt* stuff is a no-op.
 	rm -rf $(PKGDIR)-report-builder
 	mkdir -p $(PKGDIR)-report-builder/$(OOBRANDDIR)/share/extensions
-	mv $(PKGDIR)-common/$(OOBRANDDIR)/share/extensions/report-builder \
+	mv debian/tmp/$(OOBRANDDIR)/share/extensions/report-builder \
 		$(PKGDIR)-report-builder/$(OOBRANDDIR)/share/extensions
 	# unneeded license files
 	for i in THIRDPARTYREADMELICENSE.html readme_en-US.html readme_en-US.txt \
@@ -3506,7 +3499,7 @@ endif
 ifeq "$(ENABLE_MEDIAWIKI)" "y"
 	rm -rf $(PKGDIR)-wiki-publisher
 	mkdir -p $(PKGDIR)-wiki-publisher/$(OOBRANDDIR)/share/extensions
-	mv $(PKGDIR)-common/$(OOBRANDDIR)/share/extensions/wiki-publisher \
+	mv debian/tmp/$(OOBRANDDIR)/share/extensions/wiki-publisher \
 		$(PKGDIR)-wiki-publisher/$(OOBRANDDIR)/share/extensions
 	rm -f $(PKGDIR)-wiki-publisher/$(OOBRANDDIR)/share/extensions/wiki-publisher/license/THIRDPARTYLICENSEREADME.html
 endif
@@ -3615,7 +3608,7 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 	done
 
 	dh_installdocs -s -A debian/README.Debian \
-		$(SOURCE_TREE)/instsetoo_native/util/LibreOffice/replace_file/*/00/README \
+		$(SOURCE_TREE)/instsetoo_native/util/LibreOffice/replace_file/*/en-US/README_en-US \
 		$(OOO_BUILD_TREE)/NEWS
 	dh_installdebconf -s
 	dh_installman -s
@@ -3841,7 +3834,7 @@ ifeq "$(PACKAGE_SDK)" "y"
 	perl -pi -e 's,html/,html /,g' debian/libreoffice-dev-doc.doc-base.udk-common-ref
 endif
 	dh_installdocs -i -A debian/README.Debian \
-		$(SOURCE_TREE)/instsetoo_native/util/LibreOffice/replace_file/*/00/README \
+		$(SOURCE_TREE)/instsetoo_native/util/LibreOffice/replace_file/*/en-US/README_en-US \
 		$(OOO_BUILD_TREE)/NEWS
 	dh_installman -i
 	for i in `find $(PKGDIR)-common -type l -name "o*.1"`; do \
