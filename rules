@@ -1888,7 +1888,11 @@ endif
 ifeq (sk,$(findstring sk,$(HELPISOS)))
 	perl -pi -e 's/(Depends:.*)libreoffice-l10n-sk(.*)$$/\1libreoffice-l10n-sk, libreoffice-help-cs\2/' debian/control
 endif
-
+ifeq (pt-BR,$(findstring pt-BR,$(LANGPACKISOS)))
+	perl -pi -e 's/libreoffice2-l10n-pt-br$$/libreoffice2-l10n-pt-br, broffice/' debian/control
+	perl -pi -e 's/libreoffice2-l10n-pt-br$$/libreoffice2-l10n-pt-br, broffice/' debian/control
+	perl -pi -e 's/libreoffice2-l10n-pt-br$$/libreoffice2-l10n-pt-br, broffice/' debian/control
+endif
 	perl -pi -e 's/Package: libreoffice$(VER)-help-en-us/Package: libreoffice$(VER)-help-en-us\nReplaces: libreoffice$(VER)-common (<< 1:3.0.0~dev300m28)/' debian/control
 
 ifeq "$(ENABLE_GIO)" "y"
@@ -2490,6 +2494,14 @@ ifeq "$(DIST)" "Debian"
 	done
 endif
 
+ifeq (pt-BR,$(findstring pt-BR,$(LANGPACKISOS)))
+	# move pt-BR ("BrOffice") splashs into -l10n-pt-br
+	mv $(PKGDIR)-common/$(OOBRANDDIR)/program/intro-pt_BR.png \
+		$(PKGDIR)-l10n-pt-br/$(OOBRANDDIR)/program/intro-pt_BR.png
+	mv $(PKGDIR)-common/$(OOBRANDDIR)/program/about-pt_BR.png \
+		$(PKGDIR)-l10n-pt-br/$(OOBRANDDIR)/program/about-pt_BR.png
+endif
+
 	touch $@
 
 native-jars: $(STAMP_NATIVE_JARS)
@@ -3077,76 +3089,6 @@ endif
 	done
 
 
-	touch $@
-
-broffice: $(STAMP_DIR)/broffice
-$(STAMP_DIR)/broffice: $(STAMP_DIR)/install $(STAMP_DIR)/install-arch $(STAMP_DIR)/install-indep $(STAMP_DIR)/langpacks
-	dh_testdir
-	dh_testroot
-	
-	# BrOffice.org
-	rm -rf debian/broffice
-	mkdir -p debian/broffice$(VER)/usr/bin
-	mkdir -p debian/broffice$(VER)/usr/share/applications
-	mkdir -p debian/broffice$(VER)/usr/share/application-registry
-	mkdir -p debian/broffice$(VER)/usr/share/mimelnk/application
-	mkdir -p debian/broffice$(VER)/$(OOBRANDDIR)/program/resource
-	mkdir -p debian/broffice$(VER)/$(OOBRANDDIR)/share/registry
-ifeq "$(BUILD_KDE)" "y"
-	mkdir -p debian/broffice$(VER)/usr/share/templates
-endif
-	cat $(PKGDIR)-common/$(OOBRANDDIR)/program/bootstraprc \
-		| sed -e "s/LibreOffice/BrOffice/" | sed -e "s/libreoffice/broffice/" \
-		> debian/broffice$(VER)/$(OOBRANDDIR)/program/bootstraprc
-	cat $(PKGDIR)-common/$(OOBRANDDIR)/share/registry/brand.xcd \
-		| sed -e 's,<prop oor:name="ooName"><value>LibreOffice</value>,<prop oor:name="ooName"><value>BrOffice</value>,' \
-		> debian/broffice$(VER)/$(OOBRANDDIR)/share/registry/brand.xcd
-ifeq "$(BUILD_KDE)" "y"
-	for i in odt ods odp odg; do \
-		cat $(PKGDIR)-kde/usr/share/templates/soffice.$${i}.desktop \
-			| sed -e "s/LibreOffice/BrOffice/" \
-			> debian/broffice$(VER)/usr/share/templates/soffice.$${i}.desktop; \
-	done
-endif
-	for i in writer calc draw impress math base startcenter javafilter; do \
-		case "$$i" in startcenter) d=common ;; javafilter) d=filter-mobiledev ;; *) d=$$i;; esac; \
-		cat $(PKGDIR)-$$d/usr/share/applications/libreoffice$(VER)-$$i.desktop \
-			| sed -e "s/Icon=libreoffice\(.*\)/Icon=broffice\1/" \
-			| sed -e "s/libreoffice/broffice/" | sed -e "s/LibreOffice/BrOffice/" \
-			> debian/broffice$(VER)/usr/share/applications/libreoffice$(VER)-$$i.desktop; \
-	done
-	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/misc/broffice >/dev/null; pwd`" ;\
-	mkdir -p -m755 debian/broffice/usr/share/mimelnk/application ;\
-	sed -e 's,Comment=Extension,Comment=BrOffice $(VER) Extension,' \
-	    -e 's,Icon=broffice[0123456789]-extension,Icon=application-vnd.openofficeorg.extension.png,' \
-	    -e 's/  / /' \
-	    < $$dirname/extension.desktop \
-	    > debian/broffice/usr/share/mimelnk/application/vnd.openofficeorg.extension.desktop || exit 1
-	mkdir -p debian/broffice/usr/share/application-registry && \
-	cat $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/misc/broffice/openoffice.applications \
-		| sed -e s/OFFICENAME/broffice/g \
-		| sed -e s/\%PRODUCTNAME/BrOffice/g \
-		> debian/broffice/usr/share/application-registry/openoffice.applications
-	rm -f debian/broffice/usr/share/mime-info/openoffice.keys; \
-	mkdir -p debian/broffice/usr/share/mime-info/
-	for i in $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/misc/broffice/*.keys; do \
-		cat $$i >> debian/broffice/usr/share/mime-info/openoffice.keys; \
-	done
-	mv $(PKGDIR)-common/$(OOBRANDDIR)/program/intro-pt_BR.png \
-		debian/broffice$(VER)/$(OOBRANDDIR)/program/intro-pt_BR.png
-	mv $(PKGDIR)-common/$(OOBRANDDIR)/program/about-pt_BR.png \
-		debian/broffice$(VER)/$(OOBRANDDIR)/program/about-pt_BR.png
-	cd debian/broffice$(VER)/$(OOBRANDDIR)/program/ && \
-		ln -s intro-pt_BR.png intro.png; \
-		ln -s about-pt_BR.png about.png
-	cd debian/broffice$(VER)/usr/bin && ln -s ooffice$(VER) broffice$(VER)
-
-	# this is referenced in .keys/.applications
-	for i in `find $(PKGDIR)-common/usr/share/icons -name "libreoffice*png"`; do \
-		mkdir -p `dirname $$i | sed -e s,libreoffice-common,broffice,`; \
-		ln -s `basename $$i` `echo $$i | sed -e s,libreoffice-common,broffice, | sed -e s/libreoffice/broffice/`; \
-	done
- 
 	touch $@
 
 # Install files generated by setup into arch-independent package directories
