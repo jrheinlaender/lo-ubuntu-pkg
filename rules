@@ -13,7 +13,10 @@
 # /usr/share/common-licenses/GPL or <http://www.gnu.org/copyleft/gpl.txt>.
 ################################################################################
 
-PKGSOURCE := $(shell dpkg-parsechangelog | awk '/^Source:/ {print $$2;exit 0}')
+vafilt = $(subst $(2)=,,$(filter $(2)=%,$(1)))
+CHANGELOG_VARS := $(shell dpkg-parsechangelog | \
+        sed -n 's/ /_/g;/^[^_]/s/^\([^:]*\):_\(.*\)/\1=\2/p')
+PKGSOURCE := $(call vafilt,$(CHANGELOG_VARS),Source)
 SOURCE_VERSION:=$(shell head -1 debian/changelog | cut -d\( -f2 | cut -d\) -f1)
 UPSTREAM_VERSION:=$(shell echo "$(SOURCE_VERSION)"| cut -d: -f2 | cut -d- -f1)
 BASE_VERSION:=$(shell echo $(SOURCE_VERSION) | cut -d: -f1):$(UPSTREAM_VERSION)
@@ -28,17 +31,21 @@ BASIS_VERSION:=$(OOVER)
 NEXT_OOVER:=$(shell echo "$(OOVER) + 0.1" | bc)
 NEXT_BASIS_VERSION:=$(NEXT_OOVER)
 
-PACKAGES := $(shell dh_listpackages)
 ARCH_INDEP_PACKAGES := $(shell dh_listpackages -i)
 ARCH_DEP_PACKAGES := $(shell dh_listpackages -s)
+PACKAGES := $(ARCH_INDEP_PACKAGES) $(ARCH_DEP_PACKAGES)
 
-OS := $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
-ARCH := $(shell dpkg-architecture -qDEB_HOST_ARCH)
+DPKG_VARS := $(shell dpkg-architecture)
+OS := $(call vafilt,$(DPKG_VARS),DEB_HOST_ARCH_OS)
+ARCH := $(call vafilt,$(DPKG_VARS),DEB_HOST_ARCH)
 DIST := $(shell if [ -x /usr/bin/dpkg-vendor ]; then dpkg-vendor --query Vendor; else lsb_release -is; fi)
 DISTREL := $(shell lsb_release -cs)
-DEB_HOST_GNU_TYPE   ?= $(shell dpkg-architecture -qDEB_HOST_GNU_TYPE)
-DEB_BUILD_GNU_TYPE  ?= $(shell dpkg-architecture -qDEB_BUILD_GNU_TYPE)
+DEB_HOST_GNU_TYPE   ?= $(call vafilt,$(DPKG_VARS),DEB_HOST_GNU_TYPE)
+DEB_BUILD_GNU_TYPE  ?= $(call vafilt,$(DPKG_VARS),DEB_BUILD_GNU_TYPE)
 SHELL:=/bin/bash
+
+# Debian buildds run as user `buildd', other are using /CurrentlyBuilding
+ON_BUILDD := $(shell [ "`whoami`" = buildd -o -f /CurrentlyBuilding ] && echo y || echo n)
 
 PKGDIR:=debian/libreoffice$(VER)
 OODIRNAME=libreoffice$(VER)
@@ -240,7 +247,7 @@ ifeq "$(ENABLE_JAVA)" "y"
       RUN_SUBSEQUENT_TESTS=n
     endif
   else
-    ifneq (buildd,$(shell whoami))
+    ifneq ($(ON_BUILDD),y)
       RUN_SMOKETEST=n
       RUN_SUBSEQUENT_TESTS=n
     endif
@@ -354,7 +361,7 @@ CONFIGURE_FLAGS += --with-alloc=$(ALLOC)
 ifeq "$(DIST)" "Debian"
   # we don't need to build all languages and the thesaurus on the buildds;
   # they do binary-only builds anyway
-  ifeq (buildd,$(shell whoami))
+  ifeq ($(ON_BUILDD),y)
        BUILD_ONLY_EN_US=y
   endif
 endif
@@ -656,7 +663,7 @@ endif
 ifeq "$(BUILD_AMD64)" "y"
 	OOO_MOZILLA_ARCHS += amd64
   ifeq "$(BUILD_KFREEBSD)" "y"
-   	OOO_MOZILLA_ARCHS += kfreebsd-amd64
+	OOO_MOZILLA_ARCHS += kfreebsd-amd64
   endif
 endif
 ifeq "$(BUILD_ARMEL)" "y"
@@ -2122,7 +2129,7 @@ ifeq "$(BUILD_KDE)" "n"
 	fi
 endif
 
-ifeq (buildd,$(shell whoami))
+ifeq ($(ON_BUILDD),y)
 	cd $(OOO_BUILD_TREE) ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 ARCH_FLAGS=$(ARCH_FLAGS) TMP=/tmp $(MAKE)
 else
 	cd $(OOO_BUILD_TREE) ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 VERBOSE=true ARCH_FLAGS=$(ARCH_FLAGS) TMP=/tmp $(MAKE)
@@ -2422,7 +2429,7 @@ $(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*Env*.sh) $(wildcard debia
 	      if echo $(ARCH_DEP_PACKAGES) | grep -q $$PKG; then \
 	        grep LIBSUFFIX debian/scripts/vars.$(ARCH) >> $$MAINTSCRIPT; \
 	        grep PLATFORMID debian/scripts/vars.$(ARCH) >> $$MAINTSCRIPT; \
- 	      fi; \
+	      fi; \
 	      echo "" >> $$MAINTSCRIPT; \
 	      if grep -q conffile $$MAINTSCRIPT.in; then \
 		 cat debian/shell-lib-conffiles.sh >> $$MAINTSCRIPT; \
@@ -3073,7 +3080,6 @@ endif
 	ln -s /var/lib/$(OODIRNAME)/basis$(OOVER)/program/services.rdb \
 		$(PKGDIR)-core/usr/lib/$(OODIRNAME)/basis$(OOVER)/program/services.rdb
 
-		
 	for i in $(ARCH_DEP_PACKAGES); do \
 		if [ -e debian/$$i.bug-script.in ]; then \
 			cat debian/$$i.bug-script.in \
