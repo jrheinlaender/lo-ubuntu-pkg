@@ -306,6 +306,7 @@ ALLOC=system
 DEBSRC_VERSION=3.0
 USE_SYSTEM_TEXTCAT_DATA=y
 USE_SYSTEM_CPPUNIT=y
+L10N_SEPARATE_SOURCE=n
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with libreoffice2), we need to set this. Don't touch
@@ -443,6 +444,12 @@ ifeq "$(DIST)" "Ubuntu"
     USE_SYSTEM_LIBWPD=n
     USE_SYSTEM_LIBWPG=n
     USE_SYSTEM_LIBWPS=n
+  endif
+endif
+
+ifeq "$(L10N_SEPARATE_SOURCE)" "y"
+  ifeq "$(PKGSOURCE)" "libreoffice$(VER)"
+    BUILD_ONLY_EN_US=y
   endif
 endif
 
@@ -839,7 +846,9 @@ endif
 
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(BUILD_JARS_NATIVE)" "y"
+    ifneq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
 	STAMP_NATIVE_JARS = $(STAMP_DIR)/native-jars
+    endif
     ifeq "$(NEW_DPKG_SHLIBDEPS)" "n"
 	BUILD_DEPS += , dpkg-dev (>= 1.13.19)
     endif
@@ -1470,6 +1479,13 @@ clean-debdir:
 	dh_testdir
 	rm -f debian/*.postinst debian/*.postrm debian/*.preinst debian/*.prerm debian/*.triggers
 	rm -f $(STAMP_DIR)/setup
+ifeq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
+	rm -rf debian/ttf-opensymbol \
+		debian/libreoffice$(VER)-common \
+		debian/libreoffice$(VER)-dev-doc \
+		debian/libreoffice$(VER)-java-common \
+		debian/libreoffice$(VER)-l10n-en-us
+endif
 	dh_clean
 
 # Clean compilation results, but leave solver (about 600Mb in addition to instsetoo)
@@ -1563,6 +1579,14 @@ endif
 
 ifneq "$(OOO_L10N_DIR)" ""
 	rm -rf $(OOO_L10N_DIR)
+endif
+
+ifeq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
+	rm -rf debian/ttf-opensymbol \
+		debian/libreoffice$(VER)-common \
+		debian/libreoffice$(VER)-dev-doc \
+		debian/libreoffice$(VER)-java-common \
+		debian/libreoffice$(VER)-l10n-en-us
 endif
 
 ifeq "$(DEBSRC_VERSION)" "1.0"
@@ -1750,6 +1774,14 @@ debian/control: $(wildcard debian/control*in) $(OOO_BUILD_TREE)/bin/openoffice-x
 	    -e "s#@BUGS@#$(BUGS)#g" \
 	    < debian/control.in > debian/control
 
+ifeq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
+	awk '{print} /^ *$$/ {exit}' debian/control > debian/control.l10n
+	mv debian/control.l10n debian/control
+
+	sed -e "s|libreofficeVER|libreoffice$(VER)|g" \
+	    >> debian/control < debian/control.l10n.in
+endif
+
 	for LNUM in $(filter-out en-US,$(LANGPACKISOS)) ; do \
 	    [ "$$LNUM" = en-US -a "$(PKGSOURCE)" = "libreoffice$(VER)-l10n" ] && continue; \
 	    LNAME=`$(OOO_BUILD_TREE)/bin/openoffice-xlate-lang -l $$LNUM | perl -e 'print ucfirst(<STDIN>);'`; \
@@ -1825,6 +1857,7 @@ ifneq "$(HELPISOS)" ""
 	perl -pi -e 's|(Depends: libreoffice$(VER)-writer, libreoffice$(VER)-l10n-en-us)|\1, ttf-devanagari-fonts|' \
 		debian/control
 endif
+ifeq "$(PKGSOURCE)" "libreoffice$(VER)"
 	sed -e "s|libreofficeVER|libreoffice$(VER)|g" \
 		>> debian/control < debian/control.ure.in
 ifeq "$(ENABLE_JAVA)" "y"
@@ -1892,6 +1925,7 @@ ifeq "$(ENABLE_MYSQLNATIVE)" "y"
 	sed -e "s|libreofficeVER|libreoffice$(VER)|g" \
 		>> debian/control < debian/control.mysql.in
 endif
+endif # ifeq "$(PKGSOURCE)" "libreoffice$(VER)"
 
 	perl -pi -e "s,%OOO_ARCHS%,$(OOO_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_BASE_ARCHS%,$(OOO_BASE_ARCHS),g" debian/control
@@ -2299,7 +2333,11 @@ endif
 	rm -rf debian/tmp/pkg/libreoffice-qa-tools
 
 	dh_installdirs -A
+ifeq "$(PKGSOURCE)" "libreoffice$(VER)"
 	dh_install -A --sourcedir=debian/tmp/pkg --fail-missing
+else
+	dh_install -A --sourcedir=debian/tmp/pkg
+endif
 
 	rm -rf debian/tmp/pkg
 
@@ -2322,6 +2360,7 @@ endif
 	# add registered-components dir
 	mkdir -p $(PKGDIR)-core/$(OOBASISDIR)/registered-components
 
+ifeq "$(PKGSOURCE)" "libreoffice$(VER)"
 ifeq "$(ENABLE_JAVA)" "y"
 	# move officebean.jar into -officebean (They will be moved out of -core
 	# in the install-arch target). Do the /usr/share move here already
@@ -2422,6 +2461,7 @@ endif
 	# but the link is in -common so we need to do it here.
 	cd $(PKGDIR)-common/$(OOBASISDIR) && \
 		rm ure-link && ln -sf /$(OOUREDIR) ure-link
+endif # ifeq "$(PKGSOURCE)" "libreoffice$(VER)"
 
 	find debian/tmp ! -perm -200 | xargs -r chmod u+w
 
@@ -2520,11 +2560,19 @@ ifeq "$(DIST)" "Debian"
 endif
 
 ifeq (pt-BR,$(findstring pt-BR,$(LANGPACKISOS)))
+  ifeq "$(PKGSOURCE)" "libreoffice$(VER)"
 	# move pt-BR ("BrOffice") splashs into -l10n-pt-br
 	mv $(PKGDIR)-common/$(OOBRANDDIR)/program/intro-pt_BR.png \
 		$(PKGDIR)-l10n-pt-br/$(OOBRANDDIR)/program/intro-pt_BR.png
 	mv $(PKGDIR)-common/$(OOBRANDDIR)/program/about-pt_BR.png \
 		$(PKGDIR)-l10n-pt-br/$(OOBRANDDIR)/program/about-pt_BR.png
+  else
+	# FIXME: -common is not installed
+	cp build/default_images/brand/intro-pt_BR.png \
+		$(PKGDIR)-l10n-pt-br/$(OOBRANDDIR)/program/intro-pt_BR.png
+	cp build/default_images/brand/about-pt_BR.png \
+		$(PKGDIR)-l10n-pt-br/$(OOBRANDDIR)/program/about-pt_BR.png
+  endif
 endif
 
 	touch $@
@@ -2579,6 +2627,8 @@ $(STAMP_DIR)/install-arch: $(STAMP_DIR)/install $(STAMP_NATIVE_JARS)
 	dh_testdir
 	dh_testroot
 	umask 022
+
+ifneq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
 
 ifeq "$(ENABLE_EVO2)" "y"
 	debian/ure/$(OOBRANDDIR)/ure/bin/regcomp -revoke \
@@ -3113,6 +3163,7 @@ endif
 	  fi; \
 	done
 
+endif # ifneq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
 
 	touch $@
 
@@ -3125,6 +3176,7 @@ $(STAMP_DIR)/install-indep: $(STAMP_DIR)/install
 	dh_testdir
 	dh_testroot
 
+ifneq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
 	perl -pi -e 's,/bin,/usr/bin,' \
 		 debian/libreoffice$(VER)-emailmerge/$(OODIR)/program/mailmerge.py
 
@@ -3562,7 +3614,20 @@ endif
 	install -m644 -D $(SOURCE_TREE)/more_fonts/fonts/fc_local.conf \
 		$(PKGDIR)-common/$(OODIR)/share/fonts/truetype/fc_local.conf
 
+endif # ifneq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
+
 	touch $@
+
+ifeq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
+# Simplified packaging, langpacks only
+
+binary-arch: $(STAMP_DIR)/binary-arch
+$(STAMP_DIR)/binary-arch:
+	: # nothing to do
+	touch $(STAMP_DIR)/install-arch
+	touch $@
+
+else
 
 binary-arch: $(STAMP_DIR)/binary-arch
 $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/maintscripts
@@ -3748,6 +3813,7 @@ endif
 	dh_builddeb -s $(DEBHELPER_OPTIONS) $(BUILDDEB_OPTIONS)
 
 	touch $@
+endif # binary-arch for openoffice.org source
 
 binary-indep: $(GSI_EXPORT_STAMP) $(STAMP_DIR)/binary-indep
 $(STAMP_DIR)/binary-indep: $(STAMP_DIR)/install-indep debian/control $(STAMP_DIR)/maintscripts $(STAMP_DIR)/langpacks
@@ -3769,6 +3835,7 @@ endif
 	  rm -rf debian/$$pkg/DEBIAN;\
 	done
 
+ifneq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
 ifeq "$(PACKAGE_SDK)" "y"
 	. $(SOURCE_TREE)/solenv/inc/udkversion.mk && \
 	for i in common cpp java; do \
@@ -3800,6 +3867,7 @@ ifeq "$(PACKAGE_SDK)" "y"
 	# But fix it..
 	perl -pi -e 's,html/,html /,g' debian/libreoffice-dev-doc.doc-base.udk-common-ref
 endif
+endif
 	dh_installdocs -i -A debian/README.Debian \
 		$(SOURCE_TREE)/instsetoo_native/util/LibreOffice/replace_file/*/en-US/README_en-US \
 		$(OOO_BUILD_TREE)/NEWS
@@ -3821,14 +3889,18 @@ ifeq "$(LENNY_BACKPORT)" "y"
 endif
 	dh_icons -i
 	dh_installxmlcatalogs -i
+ifneq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
 ifeq "$(ENABLE_MONO)" "y"
 	dh_installcligac -i
 endif
+endif
 	dh_compress -i -X.py -X.mk -X.sxd -X.xcd.sample
 	dh_installdeb -i
+ifneq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
 ifeq "$(ENABLE_MONO)" "y"
 	dh_makeclilibs -i
 	dh_clideps -i
+endif
 endif
 	dh_gencontrol -i $(DEBHELPER_OPTIONS) \
 		-Nlibreoffice$(VER)-report-builder \
@@ -3843,6 +3915,7 @@ endif
 		-V'basis-version=$(BASIS_VERSION)' \
 		-V'next-basis-version=$(NEXT_BASIS_VERSION)' \
 		-V'help-l10n-virtual-version=$(HELP_L10N_VIRTUAL_VERSION)' \
+		-V'l10n-common-depends=$(L10N_COMMON_DEPENDS)' \
 		-V'common-bsh-depends=$(COMMON_BSH_DEPENDS)' \
 		-V'java-common-depends=$(JAVA_COMMON_DEPENDS)' \
 		-V'java-common-java-depends=$(JAVA_COMMON_JAVA_DEPENDS)' \
@@ -3854,6 +3927,7 @@ endif
 		-V'ooo-binfilter-dep=$(OOO_BINFILTER_DEP)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-v$(BINARY_VERSION)
+ifneq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
 ifeq "$(ENABLE_MONO)" "y"
 	# although this version gets increased before every OOo release
 	# we need the +LibO anyway when we build milestones..
@@ -3886,6 +3960,8 @@ ifeq "$(ENABLE_REPORTDESIGN)" "y"
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep "<version" $(SOURCE_TREE)/reportbuilder/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/misc/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
 endif
+endif # "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
+
 	dh_md5sums -i -Xjavasettingsunopkginstall.xml
 	dh_builddeb -i $(DEBHELPER_OPTIONS) $(BUILDDEB_OPTIONS)
 
