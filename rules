@@ -104,7 +104,7 @@ endif
 #########
 # Default package configuration
 #
-OOO_ARCHS = alpha amd64 arm armel armhf hppa i386 ia64 mips mipsel powerpc powerpcspe ppc64 s390 s390x sparc kfreebsd-amd64 kfreebsd-i386
+OOO_ARCHS = alpha amd64 armel armhf hppa i386 ia64 mips mipsel powerpc powerpcspe ppc64 s390 s390x sparc kfreebsd-amd64 kfreebsd-i386
 PATCHSET=$(DIST)
 BUILD_DEPS=
 BUILD_PYUNO=y
@@ -334,72 +334,6 @@ CONFIGURE_FLAGS += --disable-access
 CONFIGURE_FLAGS += --with-alloc=$(ALLOC)
 
 #############
-# Distro-specific overrides
-
-# Debian
-ifeq "$(DIST)" "Debian"
-  # we don't need to build all languages and the thesaurus on the buildds;
-  # they do binary-only builds anyway
-  ifeq ($(ON_BUILDD),y)
-       BUILD_ONLY_EN_US=y
-  endif
-endif
-
-# Debian Lenny
-ifeq "$(LENNY_BACKPORT)" "y"
-  BUGS=mailto:debian-backports@lists.debian.org
-  USE_SYSTEM_LUCENE=n
-  USE_SYSTEM_ICU=n
-  MONO_MINVER= (>= 1.2.3)
-  MONO2=n
-  USE_SYSTEM_BOOST=n
-  USE_SYSTEM_MDDS=n
-  LPSOLVE_MIN_VERSION= (>= 5.5.0.10-10)
-  SUITESPARSE_MIN_VERSION= (>= 3.1.0)
-  USE_SYSTEM_JFREEREPORT=n
-  BUILD_KDE=y
-ifeq "$(BUILD_KDE)" "y"
-  ENABLE_KDEAB=y
-endif
-  KDE_VER=3
-  CURL_SECTYPE=openssl
-  HSQLDB_MINVER= (>> 1.8.0.9)
-ifneq (,$(filter ia64 mips% kfreebsd%, $(ARCH)))
-  JDK=java-gcj-compat-dev
-endif
-  DICT_DIR=/usr/share/myspell/dicts
-  HYPH_DIR=/usr/share/myspell/dicts
-  THES_DIR=/usr/share/myspell/dicts
-  MOZILLA=iceape
-  # only works with system-mysqlcppconn on lenny (the thing has a hardoced
-  # so.16). And mysql-connector-c++ is not in lenny.
-  ENABLE_MYSQLNATIVE=n
-  USE_SYSTEM_REDLAND=n
-  USE_SYSTEM_TEXTCAT_DATA=n
-  USE_SYSTEM_LIBWPD=n
-  USE_SYSTEM_LIBWPG=n
-  USE_SYSTEM_LIBWPS=n
-endif
-
-# Debian Squeeze
-ifeq "$(SQUEEZE_BACKPORT)" "y"
-  USE_SYSTEM_LIBWPD=n
-  USE_SYSTEM_LIBWPG=n
-  USE_SYSTEM_LIBWPS=n
-  USE_EXTERNAL_MYTHES=n
-  JUNIT_MIN_VER=
-endif
-
-# the archive only accepts bzip2 compressed members on 3.0 (quilt)
-ifeq "$(DEBSRC_VERSION)" "3.0"
-  USE_BZIP_COMPRESS=y
-  PRUNE_OOOBUILD=n
-else
-  USE_BZIP_COMPRESS=n
-  PRUNE_OOOBUILD=y
-endif
-
-#############
 # Architecture-specific changes
 
 LIBSUFFIX := $(shell grep LIBSUFFIX debian/scripts/vars.$(ARCH) | cut -d"=" -f2)
@@ -413,8 +347,8 @@ ifeq "$(ARCH)" "i386"
 endif
 
 ifeq "$(ENABLE_OPENGL)" "y"
-  # doesn't make that much sense on arm(el) and mips(el), does it? :)
-  OOO_OGLTRANS_ARCHS = $(filter-out arm% mips%, $(OOO_ARCHS))
+  # doesn't make that much sense on armel and mips(el), does it? :)
+  OOO_OGLTRANS_ARCHS = $(filter-out armel mips%, $(OOO_ARCHS))
   ifeq (,$(filter $(ARCH),$(OOO_OGLTRANS_ARCHS)))
        ENABLE_OPENGL=n
   endif
@@ -486,6 +420,73 @@ ifneq (,$(filter arm% mips% m68k, $(ARCH)))
 	BUILD_BINFILTERS=n
 endif
 OOO_BINFILTER_ARCHS:=$(filter-out arm% mips% m68k, $(OOO_ARCHS))
+
+#############
+# Distro-specific overrides
+
+# Debian
+ifeq "$(DIST)" "Debian"
+  # we don't need to build all languages and the thesaurus on the buildds;
+  # they do binary-only builds anyway
+  ifeq ($(ON_BUILDD),y)
+       BUILD_ONLY_EN_US=y
+  endif
+endif
+
+# Debian Lenny
+ifeq "$(LENNY_BACKPORT)" "y"
+  BUGS=mailto:debian-backports@lists.debian.org
+  USE_SYSTEM_LUCENE=n
+  USE_SYSTEM_ICU=n
+  MONO_MINVER= (>= 1.2.3)
+  MONO2=n
+  USE_SYSTEM_BOOST=n
+  USE_SYSTEM_MDDS=n
+  LPSOLVE_MIN_VERSION= (>= 5.5.0.10-10)
+  SUITESPARSE_MIN_VERSION= (>= 3.1.0)
+  USE_SYSTEM_JFREEREPORT=n
+  BUILD_KDE=y
+ifeq "$(BUILD_KDE)" "y"
+  ENABLE_KDEAB=y
+endif
+  KDE_VER=3
+  CURL_SECTYPE=openssl
+  HSQLDB_MINVER= (>> 1.8.0.9)
+ifneq (,$(filter ia64 mips% kfreebsd%, $(ARCH)))
+  JDK=java-gcj-compat-dev
+endif
+  DICT_DIR=/usr/share/myspell/dicts
+  HYPH_DIR=/usr/share/myspell/dicts
+  THES_DIR=/usr/share/myspell/dicts
+  MOZILLA=iceape
+  # only works with system-mysqlcppconn on lenny (the thing has a hardoced
+  # so.16). And mysql-connector-c++ is not in lenny.
+  ENABLE_MYSQLNATIVE=n
+  USE_SYSTEM_REDLAND=n
+  USE_SYSTEM_TEXTCAT_DATA=n
+  USE_SYSTEM_LIBWPD=n
+  USE_SYSTEM_LIBWPG=n
+  USE_SYSTEM_LIBWPS=n
+endif
+
+# Debian Squeeze
+ifeq "$(SQUEEZE_BACKPORT)" "y"
+  USE_SYSTEM_LIBWPD=n
+  USE_SYSTEM_LIBWPG=n
+  USE_SYSTEM_LIBWPS=n
+  USE_EXTERNAL_MYTHES=n
+  JUNIT_MIN_VER=
+endif
+
+# the archive only accepts bzip2 compressed members on 3.0 (quilt)
+ifeq "$(DEBSRC_VERSION)" "3.0"
+  USE_BZIP_COMPRESS=y
+  PRUNE_OOOBUILD=n
+else
+  USE_BZIP_COMPRESS=n
+  PRUNE_OOOBUILD=y
+endif
+
 
 ifeq "$(ARCH)-linux-gnu" "sparc-linux-gnu"
 	# use 32-bit compiler
