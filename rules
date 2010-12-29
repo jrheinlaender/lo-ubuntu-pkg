@@ -108,8 +108,7 @@ OOO_ARCHS = alpha amd64 armel armhf hppa i386 ia64 mips mipsel powerpc powerpcsp
 PATCHSET=$(DIST)
 BUILD_DEPS=
 BUILD_PYUNO=y
-USE_PYCENTRAL=y
-USE_PYSUPPORT=n
+PYTHON_HELPER=dh_pycentral
 # THIS IS ONLY FOR TESTING. When building against a specified pythonX.Y
 # this will work inside OOo but *not* from outside OOo unless the user
 # uses pythonX.Y directly (and the dh_pycentral-created dependencies allow
@@ -624,10 +623,11 @@ PYMINORPLUS1:=$(shell python -c "import sys; print sys.version_info[1]+1")
 PYTHON_SITE:=debian/python-uno/$(shell python -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
 
 ifeq "$(BUILD_PYUNO)" "y"
-  ifeq "$(USE_PYCENTRAL)" "y"
+  ifeq ($(PYTHON_HELPER),dh_python2)
+	BUILD_DEPS += , python (>= 2.6.6-3+squeeze4)
+  else ifeq ($(PYTHON_HELPER),dh_pycentral)
 	BUILD_DEPS += , python-central (>= 0.5)
-  endif
-  ifeq "$(USE_PYSUPPORT)" "y"
+  else ifeq ($(PYTHON_HELPER),dh_pysupport)
     ifeq "$(PYMAJOR).$(PYMINOR)" "2.6"
 	BUILD_DEPS += , python-support (>= 0.90.4)
     else
@@ -3399,19 +3399,19 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 ifeq "$(BUILD_JARS_NATIVE)" "y"
 	dh_nativejava -plibreoffice$(VER)-gcj -o
 endif
-ifeq "$(USE_PYCENTRAL)" "y"
+ifeq ($(PYTHON_HELPER),dh_python2)
+	dh_python2 --no-guessing-versions --no-guessing-deps
+else ifeq ($(PYTHON_HELPER),dh_pycentral)
 	dh_pycentral -ppython-uno
   ifeq "$(PYTHON_VERSION)" "current"
 	# fix up broken depends (should be like python (<< 2.6), python (>= 2.5)
 	# as it was the case before it broke somewhen
 	perl -pi -e 's/python, python-central/python (<< $(PYMAJOR).$(PYMINORPLUS1)), python (>= $(PYMAJOR).$(PYMINOR)), python-central/' debian/python-uno.substvars
   endif
-else
-  ifeq "$(USE_PYSUPPORT)" "y"
+else ifeq ($(PYTHON_HELPER),dh_pysupport)
 	dh_pysupport -ppython-uno -V $(PYMAJOR).$(PYMINOR)
-  else
+else
 	dh_python
-  endif
 endif
 	dh_lintian -s
 	dh_bugfiles -s -A
