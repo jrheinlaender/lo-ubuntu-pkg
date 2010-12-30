@@ -335,6 +335,13 @@ CONFIGURE_FLAGS += --with-alloc=$(ALLOC)
 #############
 # Architecture-specific changes
 
+# helper to generate no_archs macros (pass name of source macro)
+define gen_no_archs
+  _no_arch_macro = $(subst OOO_,OOO_NO_,$1)
+  _no_arch_tmp_$1 = $$(foreach _a,$$(filter-out $$(call $1),$(OOO_ARCHS)),!$$(_a))
+  $$(_no_arch_macro) = $$(if $$(_no_arch_tmp_$1),$$(_empty) [$$(_no_arch_tmp_$1)])
+endef
+
 LIBSUFFIX := $(shell grep LIBSUFFIX debian/scripts/vars.$(ARCH) | cut -d"=" -f2)
 PLATFORMID := $(shell grep PLATFORMID debian/scripts/vars.$(ARCH) | cut -d"=" -f2)
 
@@ -351,24 +358,29 @@ ifeq "$(ENABLE_OPENGL)" "y"
   ifeq (,$(filter $(ARCH),$(OOO_OGLTRANS_ARCHS)))
        ENABLE_OPENGL=n
   endif
+  $(eval $(call gen_no_archs, OOO_OGLTRANS_ARCHS))
 endif
 
 OOO_64BIT_ARCHS = $(filter alpha amd64 ia64 kfreebsd-amd64 ppc64 s390x, $(OOO_ARCHS))
 
 # Java...
 OOO_JAVA_ARCHS = $(OOO_ARCHS)
+$(eval $(call gen_no_archs, OOO_JAVA_ARCHS))
 
 # gcj does not work on ppc, so no need to build -gcj for it
 OOO_GCJ_ARCHS = $(filter-out powerpc powerpcspe ppc64, $(OOO_JAVA_ARCHS))
+$(eval $(call gen_no_archs, OOO_GCJ_ARCHS))
 
 OOO_GCJ_JDK_ARCHS := hppa ia64 kfreebsd-i386 kfreebsd-amd64 mips mipsel
 OOO_OPENJDK_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
+$(eval $(call gen_no_archs, OOO_OPENJDK_ARCHS))
 
 OOO_ARCH_DEP_EXTENSIONS_ARCHS := $(OOO_ARCHS)
 
-OOO_BASE_ARCHS := $(filter-out armel,$(OOO_ARCHS))
-OOO_NO_BASE_ARCHS := !armel
+OOO_BASE_ARCHS := $(filter-out armel,$(OOO_JAVA_ARCHS))
+$(eval $(call gen_no_archs, OOO_BASE_ARCHS))
 OOO_REPORTDESIGN_ARCHS := $(filter-out armel,$(OOO_JAVA_ARCHS))
+$(eval $(call gen_no_archs, OOO_REPORTDESIGN_ARCHS))
 
 ifneq (,$(findstring $(ARCH),$(OOO_NO_BASE_ARCHS)))
 	PACKAGE_BASE=n
@@ -507,6 +519,7 @@ endif
 # stuff like the xmlsecurity (which uses nss). For the plugin only,
 # change the OOO_NPSOPLUGIN_ARCHS
 OOO_MOZILLA_ARCHS = $(filter-out nothing, $(OOO_ARCHS))
+$(eval $(call gen_no_archs, OOO_MOZILLA_ARCHS))
 
 ifeq "$(USE_SOURCE_TARBALLS)" "n"
 	BUILD_DEPS += , git, rsync
@@ -536,7 +549,7 @@ ifeq "$(DEBSRC_VERSION)" "1.0"
 endif
 
 ifneq "$(OOO_OGLTRANS_ARCHS)" ""
-	BUILD_DEPS += , libgl1-mesa-dev [$(OOO_OGLTRANS_ARCHS)], libglu1-mesa-dev [$(OOO_OGLTRANS_ARCHS)]
+	BUILD_DEPS += , libgl1-mesa-dev$(OOO_NO_OGLTRANS_ARCHS), libglu1-mesa-dev$(OOO_NO_OGLTRANS_ARCHS)
 endif
 ifeq "$(ENABLE_OPENGL)" "y"
 	CONFIGURE_FLAGS += --enable-opengl --with-system-mesa-headers
@@ -559,7 +572,7 @@ endif
 
 ifeq "$(ENABLE_GRAPHITE)" "y"
   ifeq "$(USE_SYSTEM_GRAPHITE)" "y"
-	BUILD_DEPS += , libgraphite-dev [$(OOO_ARCHS)]
+	BUILD_DEPS += , libgraphite-dev
 	CONFIGURE_FLAGS += --with-system-graphite
     ifeq "$(USE_STLPORT)" "y"
 	ADDITIONAL_SECTIONS += SystemBitsWithSTLport
@@ -725,7 +738,7 @@ endif
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(JDK)" "default"
 	JAVA_HOME=/usr/lib/jvm/default-java
-	BUILD_DEPS += , default-jdk-builddep [$(OOO_JAVA_ARCHS)]
+	BUILD_DEPS += , default-jdk-builddep$(OOO_NO_JAVA_ARCHS)
   endif
   ifeq "$(JDK)" "java-gcj-compat"
 	JAVA_HOME=/usr/lib/jvm/java-gcj
@@ -735,7 +748,7 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
   ifeq "$(JDK)" "gcj-jdk"
 	JAVA_HOME=/usr/lib/jvm/java-gcj
-	BUILD_DEPS += , gcj-jdk [$(OOO_JAVA_ARCHS)]
+	BUILD_DEPS += , gcj-jdk$(OOO_NO_JAVA_ARCHS)
   endif
   ifeq "$(JDK)" "openjdk"
 	BUILD_DEPS += , openjdk-6-jdk [$(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))]
@@ -746,9 +759,9 @@ ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(BUILD_JARS_NATIVE)" "y"
 	CONFIGURE_FLAGS += --enable-gcjaot
     ifeq "$(LENNY_BACKPORT)" "y"
-	BUILD_DEPS += , gij [$(OOO_GCJ_ARCHS)], java-gcj-compat-dev (>= 1.0.76-7) [$(OOO_GCJ_ARCHS)], libgcj-bc [$(OOO_GCJ_ARCHS)]
+	BUILD_DEPS += , gij$(OOO_NO_GCJ_ARCHS), java-gcj-compat-dev (>= 1.0.76-7)$(OOO_NO_GCJ_ARCHS), libgcj-bc$(OOO_GCJ_ARCHS)
     else
-	BUILD_DEPS += , gcj-jdk [$(OOO_GCJ_ARCHS)], libgcj-common (>= 1:4.4.1) [$(OOO_GCJ_ARCHS)]
+	BUILD_DEPS += , gcj-jdk$(OOO_NO_GCJ_ARCHS), libgcj-common (>= 1:4.4.1)$(OOO_NO_GCJ_ARCHS)
     endif
   else
     ifneq "$(OOO_GCJ_JDK_ARCHS)" ""
@@ -756,9 +769,9 @@ ifeq "$(ENABLE_JAVA)" "y"
     endif
   endif
   ifeq "$(ENABLE_MEDIAWIKI)" "y"
-	BUILD_DEPS += , ant (>= 1.7.0) [$(OOO_JAVA_ARCHS)], ant-optional (>= 1.7.0) [$(OOO_JAVA_ARCHS)]
+	BUILD_DEPS += , ant (>= 1.7.0)$(OOO_NO_JAVA_ARCHS), ant-optional (>= 1.7.0)$(OOO_NO_JAVA_ARCHS)
   else
-	BUILD_DEPS += , ant (>= 1.6.5) [$(OOO_JAVA_ARCHS)]
+	BUILD_DEPS += , ant (>= 1.6.5)$(OOO_NO_JAVA_ARCHS)
   endif
 	GCJ_VERSION = $(shell basename `readlink $(JAVA_HOME)/bin/gcj` | sed -e s/gcj-//)
 	GCJ_JAWT_DEPENDS= $(shell dpkg -S /usr/lib/`readlink /usr/lib/libgcj_bc.so.1` | cut -d: -f1 | sed -e s/$$/-awt/)
@@ -783,15 +796,15 @@ export JAVA_HOME
 	JAVA_COMMON_DEPENDS_VERSION:= (>= $(BASE_VERSION)~)
   ifeq "$(USE_SYSTEM_SAXON)" "y"
 	CONFIGURE_FLAGS += --with-system-saxon --with-saxon-jar=/usr/share/java/saxonb.jar
-	BUILD_DEPS += , libsaxonb-java [$(OOO_JAVA_ARCHS)]
+	BUILD_DEPS += , libsaxonb-java$(OOO_NO_JAVA_ARCHS)
 	JAVA_COMMON_JAVA_DEPENDS+= , libsaxonb-java
   endif
   ifeq "$(PACKAGE_SDK)" "y"
     ifeq "$(DIST)" "Debian"
       ifeq "$(LENNY_BACKPORT)" "y"
-	BUILD_DEPS += , mingw32 [$(OOO_JAVA_ARCHS)]
+	BUILD_DEPS += , mingw32$(OOO_NO_JAVA_ARCHS)
       else
-	BUILD_DEPS += , gcc-mingw32 [$(OOO_JAVA_ARCHS)], mingw32-runtime [$(OOO_JAVA_ARCHS)]
+	BUILD_DEPS += , gcc-mingw32$(OOO_NO_JAVA_ARCHS), mingw32-runtime$(OOO_NO_JAVA_ARCHS)
       endif
 	  CONFIGURE_FLAGS += --enable-build-unowinreg
 	  CONFIGURE_FLAGS += --with-mingwin=i586-mingw32msvc-g++
@@ -800,7 +813,7 @@ export JAVA_HOME
   ifeq "$(ENABLE_MEDIAWIKI)" "y"
 	CONFIGURE_FLAGS += --enable-wiki-publisher
     ifeq "$(USE_SYSTEM_APACHE_COMMONS)" "y"
-	MEDIAWIKI_BUILD_DEPS += , libcommons-codec-java [$(OOO_JAVA_ARCHS)], libcommons-httpclient-java [$(OOO_JAVA_ARCHS)], libcommons-lang-java [$(OOO_JAVA_ARCHS)], libcommons-logging-java [$(OOO_JAVA_ARCHS)]
+	MEDIAWIKI_BUILD_DEPS += , libcommons-codec-java$(OOO_NO_JAVA_ARCHS), libcommons-httpclient-java$(OOO_NO_JAVA_ARCHS), libcommons-lang-java$(OOO_NO_JAVA_ARCHS), libcommons-logging-java$(OOO_NO_JAVA_ARCHS)
 	MEDIAWIKI_JAR_DEPENDS := , libcommons-codec-java, libcommons-httpclient-java, libcommons-lang-java, libcommons-logging-java
 	BUILD_DEPS += $(MEDIAWIKI_BUILD_DEPS)
 	CONFIGURE_FLAGS += --with-system-apache-commons --with-commons-codec-jar=/usr/share/java/commons-codec.jar --with-commons-lang-jar=/usr/share/java/commons-lang.jar --with-commons-httpclient-jar=/usr/share/java/commons-httpclient.jar --with-commons-logging-jar=/usr/share/java/commons-logging.jar
@@ -815,13 +828,13 @@ export JAVA_HOME
   ifeq "$(ENABLE_REPORTDESIGN)" "y"
 	# report-builder
     ifeq "$(USE_SYSTEM_JFREEREPORT)" "y"
-	REPORT_BUILDER_BUILD_DEPS += , libbase-java-openoffice.org [$(OOO_REPORTDESIGN_ARCHS)], libsac-java [$(OOO_REPORTDESIGN_ARCHS)], libxml-java-openoffice.org [$(OOO_REPORTDESIGN_ARCHS)], libflute-java-openoffice.org [$(OOO_REPORTDESIGN_ARCHS)], libpentaho-reporting-flow-engine-java-openoffice.org [$(OOO_REPORTDESIGN_ARCHS)], liblayout-java-openoffice.org [$(OOO_REPORTDESIGN_ARCHS)], libloader-java-openoffice.org [$(OOO_REPORTDESIGN_ARCHS)], libformula-java-openoffice.org [$(OOO_REPORTDESIGN_ARCHS)], librepository-java-openoffice.org [$(OOO_REPORTDESIGN_ARCHS)], libfonts-java-openoffice.org [$(OOO_REPORTDESIGN_ARCHS)], libserializer-java-openoffice.org [$(OOO_REPORTDESIGN_ARCHS)]
+	REPORT_BUILDER_BUILD_DEPS += , libbase-java-openoffice.org$(OOO_NO_REPORTDESIGN_ARCHS), libsac-java$(OOO_NO_REPORTDESIGN_ARCHS), libxml-java-openoffice.org$(OOO_NO_REPORTDESIGN_ARCHS), libflute-java-openoffice.org$(OOO_NO_REPORTDESIGN_ARCHS), libpentaho-reporting-flow-engine-java-openoffice.org$(OOO_NO_REPORTDESIGN_ARCHS), liblayout-java-openoffice.org$(OOO_NO_REPORTDESIGN_ARCHS), libloader-java-openoffice.org$(OOO_NO_REPORTDESIGN_ARCHS), libformula-java-openoffice.org$(OOO_NO_REPORTDESIGN_ARCHS), librepository-java-openoffice.org$(OOO_NO_REPORTDESIGN_ARCHS), libfonts-java-openoffice.org$(OOO_NO_REPORTDESIGN_ARCHS), libserializer-java-openoffice.org$(OOO_NO_REPORTDESIGN_ARCHS)
 	REPORT_BUILDER_JAR_DEPENDS := , libbase-java-openoffice.org, libsac-java, libxml-java-openoffice.org, libflute-java-openoffice.org, libpentaho-reporting-flow-engine-java-openoffice.org, liblayout-java-openoffice.org, libloader-java-openoffice.org, libformula-java-openoffice.org, librepository-java-openoffice.org, libfonts-java-openoffice.org, libserializer-java-openoffice.org
 	BUILD_DEPS += $(REPORT_BUILDER_BUILD_DEPS)
 	CONFIGURE_FLAGS += --with-system-jfreereport --with-libbase-jar=/usr/share/java/openoffice/libbase.jar --with-libxml-jar=/usr/share/java/openoffice/libxml.jar --with-flute-jar=/usr/share/java/openoffice/flute.jar --with-jfreereport-jar=/usr/share/java/openoffice/flow-engine.jar --with-liblayout-jar=/usr/share/java/openoffice/liblayout.jar --with-libloader-jar=/usr/share/java/openoffice/libloader.jar --with-libformula-jar=/usr/share/java/openoffice/libformula.jar --with-librepository-jar=/usr/share/java/openoffice/librepository.jar --with-libfonts-jar=/usr/share/java/openoffice/libfonts.jar --with-libserializer-jar=/usr/share/java/openoffice/libserializer.jar
     endif
     ifeq "$(USE_SYSTEM_APACHE_COMMONS)" "y"
-	REPORT_BUILDER_BUILD_DEPS += , libcommons-logging-java [$(OOO_JAVA_ARCHS)]
+	REPORT_BUILDER_BUILD_DEPS += , libcommons-logging-java$(OOO_NO_JAVA_ARCHS)
 	REPORT_BUILDER_JAR_DEPENDS += , libcommons-logging-java
 	CONFIGURE_FLAGS += --with-commons-logging-jar=/usr/share/java/commons-logging.jar
       ifeq "$(LENNY_BACKPORT)" "y"
@@ -842,16 +855,16 @@ endif
 ifneq "$(MOZILLA)" ""
   ifneq "$(OOO_MOZILLA_ARCHS)" ""
     ifeq "$(MOZILLA)" "xulrunner"
-	BUILD_DEPS+= , libxul-dev [$(OOO_MOZILLA_ARCHS)], libnss3-dev (>= 3.12.3) [$(OOO_MOZILLA_ARCHS)]
+	BUILD_DEPS+= , libxul-dev$(OOO_NO_MOZILLA_ARCHS), libnss3-dev (>= 3.12.3)$(OOO_NO_MOZILLA_ARCHS)
 	DBG_DBG_SUGGESTS+= , libnss3-1d-dbg, libnspr4-0d-dbg
     else
       ifeq "$(MOZILLA)" "libxul"
-	BUILD_DEPS+= , xulrunner-dev [$(OOO_MOZILLA_ARCHS)], libnss3-dev (>= 3.12.3) [$(OOO_MOZILLA_ARCHS)]
+	BUILD_DEPS+= , xulrunner-dev$(OOO_NO_MOZILLA_ARCHS), libnss3-dev (>= 3.12.3)$(OOO_NO_MOZILLA_ARCHS)
       else
         ifeq "$(MOZILLA)" "iceape"
-	BUILD_DEPS += , $(MOZILLA)-dev (>= 1.1.9-5) [$(OOO_MOZILLA_ARCHS)], libnss3-dev (>= 3.12.3) [$(OOO_MOZILLA_ARCHS)]
+	BUILD_DEPS += , $(MOZILLA)-dev (>= 1.1.9-5)$(OOO_NO_MOZILLA_ARCHS), libnss3-dev (>= 3.12.3)$(OOO_NO_MOZILLA_ARCHS)]
         else
-	BUILD_DEPS += , $(MOZILLA)-dev [$(OOO_MOZILLA_ARCHS)]
+	BUILD_DEPS += , $(MOZILLA)-dev$(OOO_NO_MOZILLA_ARCHS)
         endif
       endif
 	DBG_DBG_SUGGESTS+= , libnss3-1d-dbg, libnspr4-0d-dbg
@@ -1038,7 +1051,7 @@ else
   ifeq "$(ENABLE_KDEAB)" "y"
     ifeq "$(KDE_VER)" "4"
 	ADDITIONAL_SECTIONS += KDE4Experimental
-	BUILD_DEPS += , kdepimlibs$(shell expr $(KDE_VER) + 1)-dev [$(OOO_NO_BASE_ARCHS)]
+	BUILD_DEPS += , kdepimlibs$(shell expr $(KDE_VER) + 1)-dev$(OOO_NO_BASE_ARCHS)
     endif
   else
 	CONFIGURE_FLAGS+= --disable-kdeab
@@ -1054,7 +1067,7 @@ ifeq "$(ENABLE_MYSQLNATIVE)" "y"
   endif
   ifeq "$(USE_SYSTEM_MYSQLCPPCONN)" "y"
 	CONFIGURE_FLAGS += --with-system-mysql-cppconn
-	BUILD_DEPS += , libmysqlcppconn-dev $(MYSQLCPPCONN_MINVER) [$(OOO_ARCHS)]
+	BUILD_DEPS += , libmysqlcppconn-dev $(MYSQLCPPCONN_MINVER)
   endif
 endif
 
@@ -1068,7 +1081,7 @@ ifeq "$(ENABLE_EVO2)" "n"
 	CONFIGURE_FLAGS += --disable-evolution2
 	DEBHELPER_OPTIONS+= -Nlibreoffice$(VER)-evolution
 else
-	BUILD_DEPS += , libebook1.2-dev [$(OOO_NO_BASE_ARCHS)]
+	BUILD_DEPS += , libebook1.2-dev$(OOO_NO_BASE_ARCHS)
 endif
 
 ifeq "$(ENABLE_RANDR)" "y"
@@ -1094,20 +1107,20 @@ endif
 
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(USE_SYSTEM_LUCENE)" "y"
-	BUILD_DEPS += , liblucene2-java (>= 2.3.2) [$(OOO_JAVA_ARCHS)]
+	BUILD_DEPS += , liblucene2-java (>= 2.3.2)$(OOO_NO_JAVA_ARCHS)
 	LUCENE_DEPENDS = liblucene2-java (>= 2.3.2)
         # safety measure; e.g. lucene 2.9 index cannot be handled by lucene 2.4
         LUCENE_CONFLICTS = liblucene2-java (<< $(shell dpkg -l liblucene2-java | grep ^ii | awk '{ print $$3 }' | cut -d. -f1,2)~)
 	CONFIGURE_FLAGS += --with-system-lucene --with-lucene-core-jar=/usr/share/java/lucene-core.jar --with-lucene-analyzers-jar=/usr/share/java/lucene-analyzers.jar
   endif
   ifeq "$(USE_SYSTEM_HSQLDB)" "y"
-	BUILD_DEPS += , libhsqldb-java $(HSQLDB_MINVER) [$(OOO_JAVA_ARCHS)]
+	BUILD_DEPS += , libhsqldb-java $(HSQLDB_MINVER)$(OOO_NO_JAVA_ARCHS)
 	BASE_HSQLDB_DEPENDS = libhsqldb-java $(HSQLDB_MINVER), libhsqldb-java (<< $(HSQLDB_TOONEWVER)~)
 	CONFIGURE_FLAGS+= --with-system-hsqldb
 	JAVA_GCJ_DEPENDS += , libhsqldb-java-gcj
   endif
   ifeq "$(USE_SYSTEM_BSH)" "y"
-	BUILD_DEPS += , bsh (>= 2.0b4) [$(OOO_JAVA_ARCHS)]
+	BUILD_DEPS += , bsh (>= 2.0b4)$(OOO_NO_JAVA_ARCHS)
 	COMMON_BSH_DEPENDS = bsh (>= 2.0b4)
 	CONFIGURE_FLAGS+= --with-system-beanshell
 	JAVA_GCJ_DEPENDS += , bsh-gcj
