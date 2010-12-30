@@ -104,20 +104,11 @@ endif
 #########
 # Default package configuration
 #
-BUILD_AMD64=y
-BUILD_IA64=y
-BUILD_PPC64=y
-BUILD_S390X=y
-BUILD_SPARC=y
-BUILD_ARMEL=y
-BUILD_HPPA=y
-BUILD_ALPHA=y
-BUILD_KFREEBSD=y
+OOO_ARCHS = alpha amd64 armel armhf hppa i386 ia64 mips mipsel powerpc powerpcspe ppc64 s390 s390x sparc kfreebsd-amd64 kfreebsd-i386
 PATCHSET=$(DIST)
 BUILD_DEPS=
 BUILD_PYUNO=y
-USE_PYCENTRAL=y
-USE_PYSUPPORT=n
+PYTHON_HELPER=dh_pycentral
 # THIS IS ONLY FOR TESTING. When building against a specified pythonX.Y
 # this will work inside OOo but *not* from outside OOo unless the user
 # uses pythonX.Y directly (and the dh_pycentral-created dependencies allow
@@ -131,28 +122,15 @@ else
 export PYTHON=python$(PYTHON_VERSION)
 endif
 PACKAGE_TTF_OPENSYMBOL=y
-ifneq "$(ARCH)" "powerpc"
-  ifneq "$(ARCH)" "ppc64"
-    ifneq "$(ARCH)" "powerpcspe"
-      BUILD_JARS_NATIVE=y
-    endif
- endif
+ifeq (,$(filter $(ARCH), powerpc powerpcspe ppc64))
+  BUILD_JARS_NATIVE=y
 endif
 BUILD_BINFILTERS=y
 BUILD_ONLY_EN_US=n
 ENABLE_JAVA=y
 ifeq "$(ENABLE_JAVA)" "y"
   JDK=openjdk
-  ifeq "$(ARCH)" "ia64"
-    JDK=gcj-jdk
-  endif
-  ifneq (,$(findstring mips,$(ARCH)))
-    JDK=gcj-jdk
-  endif
-  ifneq (,$(findstring kfreebsd,$(ARCH)))
-    JDK=gcj-jdk
-  endif
-  ifeq "$(ARCH)" "hppa"
+  ifneq (,$(filter hppa ia64 mips% kfreebsd%, $(ARCH)))
     JDK=gcj-jdk
   endif
 endif
@@ -357,6 +335,94 @@ CONFIGURE_FLAGS += --disable-access
 CONFIGURE_FLAGS += --with-alloc=$(ALLOC)
 
 #############
+# Architecture-specific changes
+
+LIBSUFFIX := $(shell grep LIBSUFFIX debian/scripts/vars.$(ARCH) | cut -d"=" -f2)
+PLATFORMID := $(shell grep PLATFORMID debian/scripts/vars.$(ARCH) | cut -d"=" -f2)
+
+# ./configure defaults to STLport on i386 and we should keep it for
+# ABI-compatability
+OOO_STLPORT_ARCHS= i386
+ifeq "$(ARCH)" "i386"
+	USE_STLPORT=y
+endif
+
+ifeq "$(ENABLE_OPENGL)" "y"
+  # doesn't make that much sense on armel and mips(el), does it? :)
+  OOO_OGLTRANS_ARCHS = $(filter-out armel mips%, $(OOO_ARCHS))
+  ifeq (,$(filter $(ARCH),$(OOO_OGLTRANS_ARCHS)))
+       ENABLE_OPENGL=n
+  endif
+endif
+
+OOO_64BIT_ARCHS = $(filter alpha amd64 ia64 kfreebsd-amd64 ppc64 s390x, $(OOO_ARCHS))
+
+# Java...
+OOO_JAVA_ARCHS = $(OOO_ARCHS)
+
+# gcj does not work on ppc, so no need to build -gcj for it
+OOO_GCJ_ARCHS = $(filter-out powerpc powerpcspe ppc64, $(OOO_JAVA_ARCHS))
+
+OOO_GCJ_JDK_ARCHS := hppa ia64 kfreebsd-i386 kfreebsd-amd64 mips mipsel
+OOO_OPENJDK_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
+
+OOO_ARCH_DEP_EXTENSIONS_ARCHS := $(OOO_ARCHS)
+
+OOO_BASE_ARCHS := $(filter-out armel,$(OOO_ARCHS))
+OOO_NO_BASE_ARCHS := !armel
+OOO_REPORTDESIGN_ARCHS := $(filter-out armel,$(OOO_JAVA_ARCHS))
+
+ifneq (,$(findstring $(ARCH),$(OOO_NO_BASE_ARCHS)))
+	PACKAGE_BASE=n
+	ENABLE_SDBC_POSTGRESQL=n
+	ENABLE_MYSQLNATIVE=n
+	ENABLE_EVO2=n
+	ENABLE_KDEAB=n
+	ENABLE_REPORTDESIGN=n
+	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-base libreoffice$(VER)-base-core
+	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-evolution -Nlibreoffice$(VER)-kab
+	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-sdbc-postgresql -Nlibreoffice$(VER)-mysql-connector
+	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-report-builder-bin -Nlibreoffice$(VER)-report-builder
+endif
+
+ifeq (,$(findstring $(ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
+	ENABLE_MINIMIZER=n
+	ENABLE_PDFIMPORT=n
+	ENABLE_PRESENTER_CONSOLE=n
+	ENABLE_SDBC_POSTGRESQL=n
+	ENABLE_MYSQLNATIVE=n
+endif
+
+ifeq (,$(filter $(ARCH),$(OOO_JAVA_ARCHS)))
+	ENABLE_JAVA=n
+	ENABLE_REPORTDESIGN=n
+	ENABLE_MEDIAWIKI=n
+endif
+
+ifeq "$(ENABLE_MONO)" "y"
+# mono
+# ppc fails (#412967), arm(el), too
+OOO_MONO_ARCHS = $(filter amd64 i386 ia64 kfreebsd-amd64 kfreebsd-i386, $(OOO_ARCHS))
+ifeq (,$(filter $(ARCH),$(OOO_MONO_ARCHS)))
+       ENABLE_MONO=n
+endif
+else
+OOO_MONO_ARCHS=
+endif
+
+ifeq "$(PACKAGE_NPSOPLUGIN)" "y"
+OOO_NPSOPLUGIN_ARCHS = $(OOO_ARCHS)
+else
+OOO_NPSOPLUGIN_ARCHS=
+endif
+
+# builds long and is for legacy filters. probably not needed on {arm,mips}{,el}
+ifneq (,$(filter arm% mips% m68k, $(ARCH)))
+	BUILD_BINFILTERS=n
+endif
+OOO_BINFILTER_ARCHS:=$(filter-out arm% mips% m68k, $(OOO_ARCHS))
+
+#############
 # Distro-specific overrides
 
 # Debian
@@ -387,13 +453,7 @@ endif
   KDE_VER=3
   CURL_SECTYPE=openssl
   HSQLDB_MINVER= (>> 1.8.0.9)
-ifeq "$(ARCH)" "ia64"
-  JDK=java-gcj-compat-dev
-endif
-ifneq (,$(findstring mips,$(ARCH)))
-  JDK=java-gcj-compat-dev
-endif
-ifneq (,$(findstring kfreebsd,$(ARCH)))
+ifneq (,$(filter ia64 mips% kfreebsd%, $(ARCH)))
   JDK=java-gcj-compat-dev
 endif
   DICT_DIR=/usr/share/myspell/dicts
@@ -403,7 +463,6 @@ endif
   # only works with system-mysqlcppconn on lenny (the thing has a hardoced
   # so.16). And mysql-connector-c++ is not in lenny.
   ENABLE_MYSQLNATIVE=n
-  DEBSRC_VERSION=1.0
   USE_SYSTEM_REDLAND=n
   USE_SYSTEM_TEXTCAT_DATA=n
   USE_SYSTEM_LIBWPD=n
@@ -416,6 +475,8 @@ ifeq "$(SQUEEZE_BACKPORT)" "y"
   USE_SYSTEM_LIBWPD=n
   USE_SYSTEM_LIBWPG=n
   USE_SYSTEM_LIBWPS=n
+  USE_EXTERNAL_MYTHES=n
+  JUNIT_MIN_VER=
 endif
 
 # the archive only accepts bzip2 compressed members on 3.0 (quilt)
@@ -425,8 +486,6 @@ ifeq "$(DEBSRC_VERSION)" "3.0"
 else
   USE_BZIP_COMPRESS=n
   PRUNE_OOOBUILD=y
-  USE_EXTERNAL_MYTHES=n
-  JUNIT_MIN_VER=
 endif
 
 # Ubuntu
@@ -460,213 +519,6 @@ ifeq "$(L10N_SEPARATE_SOURCE)" "y"
   endif
 endif
 
-#############
-# Architecture-specific changes
-
-LIBSUFFIX := $(shell grep LIBSUFFIX debian/scripts/vars.$(ARCH) | cut -d"=" -f2)
-PLATFORMID := $(shell grep PLATFORMID debian/scripts/vars.$(ARCH) | cut -d"=" -f2)
-
-# ./configure defaults to STLport on i386 and we should keep it for
-# ABI-compatability
-OOO_STLPORT_ARCHS= i386
-ifeq "$(ARCH)" "i386"
-	USE_STLPORT=y
-endif
-
-ifeq "$(ENABLE_OPENGL)" "y"
-# doesn't make that much sense on arm(el) and mips(el), does it? :)
-OOO_OGLTRANS_ARCHS= i386 powerpc powerpcspe s390
-ifeq "$(BUILD_KFREEBSD)" "y"
-   OOO_OGLTRANS_ARCHS+= kfreebsd-i386
-endif
-ifeq "$(BUILD_AMD64)" "y"
-  OOO_OGLTRANS_ARCHS+= amd64
-  ifeq "$(BUILD_KFREEBSD)" "y"
-     OOO_OGLTRANS_ARCHS+= kfreebsd-amd64
-  endif
-endif
-ifeq "$(BUILD_IA64)" "y"
-  OOO_OGLTRANS_ARCHS+= ia64
-endif
-ifeq "$(BUILD_PPC64)" "y"
-  OOO_OGLTRANS_ARCHS+= ppc64
-endif
-ifeq "$(BUILD_S390X)" "y"
-  OOO_OGLTRANS_ARCHS+= s390x
-endif
-ifeq "$(BUILD_SPARC)" "y"
-  OOO_OGLTRANS_ARCHS+= sparc
-endif
-ifeq (,$(findstring $(ARCH),$(OOO_OGLTRANS_ARCHS)))
-       ENABLE_OPENGL=n
-endif
-else
-  OOO_OGLTRANS_ARCHS=
-endif
-
-OOO_ARCHS= i386 m68k mips mipsel powerpc powerpcspe s390
-ifeq "$(BUILD_KFREEBSD)" "y"
-   OOO_ARCHS += kfreebsd-i386
-endif
-ifeq "$(BUILD_ALPHA)" "y"
-  OOO_ARCHS += alpha
-  OOO_64BIT_ARCHS += alpha
-endif
-ifeq "$(BUILD_AMD64)" "y"
-  OOO_ARCHS += amd64
-  OOO_64BIT_ARCHS += amd64
-  ifeq "$(BUILD_KFREEBSD)" "y"
-    OOO_ARCHS += kfreebsd-amd64
-    OOO_64BIT_ARCHS += kfreebsd-amd64
-  endif
-endif
-ifeq "$(BUILD_ARMEL)" "y"
-  OOO_ARCHS += armel
-endif
-ifeq "$(BUILD_HPPA)" "y"
-  OOO_ARCHS += hppa
-endif
-ifeq "$(BUILD_IA64)" "y"
-  OOO_ARCHS += ia64
-  OOO_64BIT_ARCHS += ia64
-endif
-ifeq "$(BUILD_PPC64)" "y"
-  OOO_ARCHS += ppc64
-  OOO_64BIT_ARCHS += ppc64
-endif
-ifeq "$(BUILD_S390X)" "y"
-  OOO_ARCHS += s390x
-  OOO_64BIT_ARCHS += s390x
-endif
-ifeq "$(BUILD_SPARC)" "y"
-  OOO_ARCHS += sparc
-endif
-
-# Java...
-OOO_JAVA_ARCHS = i386 mips mipsel powerpc powerpcspe s390
-ifeq "$(BUILD_KFREEBSD)" "y"
-   OOO_JAVA_ARCHS+= kfreebsd-i386
-endif
-ifeq "$(BUILD_ALPHA)" "y"
-  OOO_JAVA_ARCHS+= alpha
-endif
-ifeq "$(BUILD_AMD64)" "y"
-  OOO_JAVA_ARCHS+= amd64
-  ifeq "$(BUILD_KFREEBSD)" "y"
-    OOO_JAVA_ARCHS+= kfreebsd-amd64
-  endif
-endif
-ifeq "$(BUILD_ARMEL)" "y"
-  OOO_JAVA_ARCHS+= armel
-endif
-ifeq "$(BUILD_HPPA)" "y"
-  OOO_JAVA_ARCHS+= hppa
-endif
-ifeq "$(BUILD_IA64)" "y"
-  OOO_JAVA_ARCHS+= ia64
-endif
-ifeq "$(BUILD_PPC64)" "y"
-  OOO_JAVA_ARCHS+= ppc64
-endif
-ifeq "$(BUILD_S390X)" "y"
-  OOO_JAVA_ARCHS+= s390x
-endif
-ifeq "$(BUILD_SPARC)" "y"
-  OOO_JAVA_ARCHS+= sparc
-endif
-
-# gcj does not work on ppc, so no need to build -gcj for it
-OOO_GCJ_ARCHS := $(filter-out ppc64,$(filter-out powerpcspe,$(filter-out powerpc,$(OOO_JAVA_ARCHS))))
-
-OOO_GCJ_JDK_ARCHS := hppa ia64 kfreebsd-i386 kfreebsd-amd64 mips mipsel
-OOO_OPENJDK_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
-
-OOO_ARCH_DEP_EXTENSIONS_ARCHS := $(OOO_ARCHS)
-
-OOO_BASE_ARCHS := $(filter-out armel,$(OOO_ARCHS))
-OOO_NO_BASE_ARCHS := !armel
-OOO_REPORTDESIGN_ARCHS := $(filter-out armel,$(OOO_JAVA_ARCHS))
-
-ifneq (,$(findstring $(ARCH),$(OOO_NO_BASE_ARCHS)))
-	PACKAGE_BASE=n
-	ENABLE_SDBC_POSTGRESQL=n
-	ENABLE_MYSQLNATIVE=n
-	ENABLE_EVO2=n
-	ENABLE_KDEAB=n
-	ENABLE_REPORTDESIGN=n
-	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-base libreoffice$(VER)-base-core
-	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-evolution -Nlibreoffice$(VER)-kab
-	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-sdbc-postgresql -Nlibreoffice$(VER)-mysql-connector
-	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-report-builder-bin -Nlibreoffice$(VER)-report-builder
-endif
-
-ifeq (,$(findstring $(ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
-	ENABLE_MINIMIZER=n
-	ENABLE_PDFIMPORT=n
-	ENABLE_PRESENTER_CONSOLE=n
-	ENABLE_SDBC_POSTGRESQL=n
-	ENABLE_MYSQLNATIVE=n
-endif
-
-ifeq (,$(findstring $(ARCH),$(OOO_JAVA_ARCHS)))
-	ENABLE_JAVA=n
-	ENABLE_REPORTDESIGN=n
-	ENABLE_MEDIAWIKI=n
-else
-	# extra step needed for arm, as the if matches the arm in armel..
-  ifeq "$(ARCH)" "arm"
-	ENABLE_JAVA=n
-	ENABLE_REPORTDESIGN=n
-	ENABLE_MEDIAWIKI=n
-  endif
-endif
-
-ifeq "$(ENABLE_MONO)" "y"
-# mono
-# ppc fails (#412967), arm(el), too
-OOO_MONO_ARCHS = i386
-ifeq "$(BUILD_KFREEBSD)" "y"
-   OOO_MONO_ARCHS+= kfreebsd-i386
-endif
-ifeq "$(BUILD_AMD64)" "y"
-  OOO_MONO_ARCHS += amd64
-  ifeq "$(BUILD_KFREEBSD)" "y"
-    OOO_MONO_ARCHS+= kfreebsd-amd64
-  endif
-endif
-ifeq "$(BUILD_IA64)" "y"
-  OOO_MONO_ARCHS += ia64
-endif
-#ifeq "$(BUILD_SPARC)" "y"
-#  OOO_MONO_ARCHS += sparc
-#endif
-ifeq (,$(findstring $(ARCH),$(OOO_MONO_ARCHS)))
-       ENABLE_MONO=n
-endif
-else
-OOO_MONO_ARCHS=
-endif
-
-ifeq "$(PACKAGE_NPSOPLUGIN)" "y"
-OOO_NPSOPLUGIN_ARCHS = $(OOO_ARCHS)
-else
-OOO_NPSOPLUGIN_ARCHS=
-endif
-
-# builds long and is for legacy filters. probably not needed on {arm,mips}{,el}
-ifneq (,$(findstring arm,$(ARCH)))
-	BUILD_BINFILTERS=n
-endif
-ifneq (,$(findstring mips,$(ARCH)))
-	BUILD_BINFILTERS=n
-endif
-ifneq (,$(findstring m68k,$(ARCH)))
-	BUILD_BINFILTERS=n
-endif
-OOO_BINFILTER_ARCHS:=$(filter-out arm,$(filter-out armel,$(OOO_ARCHS)))
-OOO_BINFILTER_ARCHS:=$(filter-out mips,$(filter-out mipsel,$(OOO_BINFILTER_ARCHS)))
-OOO_BINFILTER_ARCHS:=$(filter-out m68k,$(OOO_BINFILTER_ARCHS))
-
 ifeq "$(ARCH)-linux-gnu" "sparc-linux-gnu"
 	# use 32-bit compiler
 	CC_PREFIX=sparc-linux-gnu-
@@ -686,37 +538,7 @@ endif
 # Note that this does *NOT* only affect the mozilla plugin but also
 # stuff like the xmlsecurity (which uses nss). For the plugin only,
 # change the OOO_NPSOPLUGIN_ARCHS
-OOO_MOZILLA_ARCHS=i386 mips mipsel powerpc powerpcspe s390
-ifeq "$(BUILD_KFREEBSD)" "y"
-   OOO_MOZILLA_ARCHS += kfreebsd-i386
-endif
-ifeq "$(BUILD_ALPHA)" "y"
-	OOO_MOZILLA_ARCHS += alpha
-endif
-ifeq "$(BUILD_AMD64)" "y"
-	OOO_MOZILLA_ARCHS += amd64
-  ifeq "$(BUILD_KFREEBSD)" "y"
-	OOO_MOZILLA_ARCHS += kfreebsd-amd64
-  endif
-endif
-ifeq "$(BUILD_ARMEL)" "y"
-       OOO_MOZILLA_ARCHS += armel
-endif
-ifeq "$(BUILD_HPPA)" "y"
-	OOO_MOZILLA_ARCHS += hppa
-endif
-ifeq "$(BUILD_IA64)" "y"
-	OOO_MOZILLA_ARCHS += ia64
-endif
-ifeq "$(BUILD_PPC64)" "y"
-	OOO_MOZILLA_ARCHS += ppc64
-endif
-ifeq "$(BUILD_S390X)" "y"
-	OOO_MOZILLA_ARCHS += s390x
-endif
-ifeq "$(BUILD_SPARC)" "y"
-	OOO_MOZILLA_ARCHS += sparc
-endif
+OOO_MOZILLA_ARCHS = $(filter-out nothing, $(OOO_ARCHS))
 
 ifeq "$(USE_SOURCE_TARBALLS)" "n"
 	BUILD_DEPS += , git, rsync
@@ -749,7 +571,7 @@ ifneq "$(OOO_OGLTRANS_ARCHS)" ""
 	BUILD_DEPS += , libgl1-mesa-dev [$(OOO_OGLTRANS_ARCHS)], libglu1-mesa-dev [$(OOO_OGLTRANS_ARCHS)]
 endif
 ifeq "$(ENABLE_OPENGL)" "y"
-	CONFIGURE_FLAGS += --enable-opengl
+	CONFIGURE_FLAGS += --enable-opengl --with-system-mesa-headers
 endif
 
 ifneq "$(PACKAGE_SDK)" "y"
@@ -833,10 +655,11 @@ PYMINORPLUS1:=$(shell python -c "import sys; print sys.version_info[1]+1")
 PYTHON_SITE:=debian/python-uno/$(shell python -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
 
 ifeq "$(BUILD_PYUNO)" "y"
-  ifeq "$(USE_PYCENTRAL)" "y"
+  ifeq ($(PYTHON_HELPER),dh_python2)
+	BUILD_DEPS += , python (>= 2.6.6-3+squeeze4)
+  else ifeq ($(PYTHON_HELPER),dh_pycentral)
 	BUILD_DEPS += , python-central (>= 0.5)
-  endif
-  ifeq "$(USE_PYSUPPORT)" "y"
+  else ifeq ($(PYTHON_HELPER),dh_pysupport)
     ifeq "$(PYMAJOR).$(PYMINOR)" "2.6"
 	BUILD_DEPS += , python-support (>= 0.90.4)
     else
@@ -978,7 +801,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 #  ifneq (,$(GCJ_JAWT_DEPENDS))
 #	JAVA_RUNTIME_DEPENDS += | $(GCJ_JAWT_DEPENDS)
 #  endif
-  ifneq (,$(filter $(ARCH), alpha amd64 i386 m68k mips mipsel powerpc powerpcspe s390 sparc))
+  ifneq (,$(filter $(ARCH), $(OOO_OPENJDK_ARCHS)))
 	JAVA_RUNTIME_DEPENDS += | openjdk-6-jre
   endif
   ifneq (,$(filter $(ARCH), amd64 i386))
@@ -3726,19 +3549,19 @@ endif
 ifeq "$(BUILD_JARS_NATIVE)" "y"
 	dh_nativejava -plibreoffice$(VER)-gcj -o
 endif
-ifeq "$(USE_PYCENTRAL)" "y"
+ifeq ($(PYTHON_HELPER),dh_python2)
+	dh_python2 --no-guessing-versions --no-guessing-deps
+else ifeq ($(PYTHON_HELPER),dh_pycentral)
 	dh_pycentral -ppython-uno
   ifeq "$(PYTHON_VERSION)" "current"
 	# fix up broken depends (should be like python (<< 2.6), python (>= 2.5)
 	# as it was the case before it broke somewhen
 	perl -pi -e 's/python, python-central/python (<< $(PYMAJOR).$(PYMINORPLUS1)), python (>= $(PYMAJOR).$(PYMINOR)), python-central/' debian/python-uno.substvars
   endif
-else
-  ifeq "$(USE_PYSUPPORT)" "y"
+else ifeq ($(PYTHON_HELPER),dh_pysupport)
 	dh_pysupport -ppython-uno -V $(PYMAJOR).$(PYMINOR)
-  else
+else
 	dh_python
-  endif
 endif
 	dh_lintian -s
 	dh_bugfiles -s -A
