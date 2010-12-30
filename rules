@@ -110,6 +110,11 @@ endif
 OOO_ARCHS = alpha amd64 armel armhf hppa i386 ia64 mips mipsel powerpc powerpcspe ppc64 s390 s390x sparc kfreebsd-amd64 kfreebsd-i386
 PATCHSET=$(DIST)
 BUILD_DEPS=
+
+# These are components which can be built from internal copies, or used from the
+# distribution. See configure --help for valid values (--with-system-<value>).
+SYSTEM_STUFF = dicts
+
 BUILD_PYUNO=y
 PYTHON_HELPER=dh_pycentral
 # THIS IS ONLY FOR TESTING. When building against a specified pythonX.Y
@@ -144,17 +149,17 @@ ifeq "$(MONO2)" "y"
 else
   MONO_MINVER= (>= 1.2.3)
 endif
-USE_SYSTEM_HUNSPELL=y
+SYSTEM_STUFF += hunspell
 HUNSPELL_MIN_VER= (>= 1.1.5-2)
-SYSTEM_ALTLINUXHYPH=y
+SYSTEM_STUFF += altlinuxhyph
 USE_LIBHYPHEN=y
 LIBALTLINUXHYPH_MINVER= (>= 0.1.1-11)
 LIBHYPHEN_MINVER= (>= 2.4)
 USE_AGG=n
-SYSTEM_AGG=n
+# SYSTEM_STUFF += agg
 USE_STLPORT=n
 USE_SYSTEM_STLPORT=y
-USE_SYSTEM_BOOST=y
+SYSTEM_STUFF += boost
 BOOST_VERSION=default
 ifeq "$(BOOST_VERSION)" "default"
   BOOST_MINVER= (>= 1.38)
@@ -162,20 +167,18 @@ endif
 ifeq "$(BOOST_VERSION)" "1.39"
   BOOST_MINVER= (>= 1.39.0-2)
 endif
-USE_SYSTEM_MDDS=y
-USE_SYSTEM_VIGRA=y
+SYSTEM_STUFF += mdds
+SYSTEM_STUFF += vigra
 USE_EXTERNAL_CXXLIBS=y
-USE_SYSTEM_SABLOT=n
-USE_LIBXSLT=y
-USE_EXTERNAL_MYTHES=y
-USE_SYSTEM_ICU=y
+#SYSTEM_STUFF += sablot
+SYSTEM_STUFF += libxslt
+SYSTEM_STUFF += mythes
+SYSTEM_STUFF += icu
 ICU_MINVER= (>= 4.0)
-USE_SYSTEM_LIBWPD=y
-USE_SYSTEM_LIBWPG=y
-USE_SYSTEM_LIBWPS=y
-USE_SYSTEM_XMLSEC=n
+SYSTEM_STUFF += libwpd libwpg libwps
+#SYSTEM_STUFF += xmlsec
 BUILD_CAIROCANVAS=y
-USE_SYSTEM_CAIRO=y
+SYSTEM_STUFF += cairo
 CAIRO_FONTS_PATCH=y
 BUILD_KDE=y
 KDE_VER=4
@@ -198,25 +201,25 @@ ifeq "$(KDE_VER)" "4"
   endif
 endif  
 BUILD_DBG_PACKAGE=y
-USE_SYSTEM_BSH=y
-USE_SYSTEM_HSQLDB=y
+SYSTEM_STUFF += beanshell
+SYSTEM_STUFF += hsqldb
 HSQLDB_MINVER= (>> 1.8.0.10)
 HSQLDB_TOONEWVER=1.8.1
 # disabled because system-saxon breaks all kinds exports using XSLT transforms
 # (e.g. M$ Word/Excel 2003 XML, Mediawiki, XHTML, UOF, ...)
 # It does *NOT* fail with _plain_ saxon 9.0.0.8 built with OOos build.xml
 # for UOF, but still for e.g. M$.
-USE_SYSTEM_SAXON=n
-USE_SYSTEM_LUCENE=y
-USE_SYSTEM_LPSOLVE=y
+#SYSTEM_STUFF += saxon
+SYSTEM_STUFF += lucene
+SYSTEM_STUFF += lpsolve
 USE_SHARED_LPSOLVE=y
 LPSOLVE_MIN_VERSION= (>= 5.5.0.13-5+b1)
 USE_DBUS=y
 USE_GSTREAMER=y
-USE_SYSTEM_NEON=y
+SYSTEM_STUFF += neon
 NEON_SECTYPE=gnutls
 NEONSONR=27
-USE_SYSTEM_REDLAND=y
+SYSTEM_STUFF += redland
 USE_OOO_BUILD_DESKTOPS=n
 PACKAGE_SDK=y
 ifeq "$(ENABLE_JAVA)" "y"
@@ -253,14 +256,13 @@ MOZILLA=libxul
 ENABLE_LDAP=y
 USE_OPENLDAP=y
 ENABLE_OPENGL=y
-SYSTEM_OPENSSL=y
+SYSTEM_STUFF += openssl
 NEW_DPKG_SHLIBDEPS=y
 ifeq "$(ENABLE_JAVA)" "y"
   # can be reenabled after cws rptfix04
   ENABLE_REPORTDESIGN=y
-  USE_SYSTEM_JFREEREPORT=y
   ENABLE_MEDIAWIKI=y
-  USE_SYSTEM_APACHE_COMMONS=y
+  SYSTEM_STUFF += jfreereport apache-commons
 else
   ENABLE_REPORTDESIGN=n
   ENABLE_MEDIAWIKI=n
@@ -282,11 +284,11 @@ ifeq "$(BUILD_GTK)" "y"
 endif
 PACKAGE_BASE=y
 ENABLE_GRAPHITE=y
-USE_SYSTEM_GRAPHITE=y
+SYSTEM_STUFF += graphite
 ALLOC=system
 DEBSRC_VERSION=3.0
 USE_SYSTEM_TEXTCAT_DATA=y
-USE_SYSTEM_CPPUNIT=y
+SYSTEM_STUFF += cppunit
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with libreoffice2), we need to set this. Don't touch
@@ -296,8 +298,7 @@ DEFAULT_IMAGE=galaxy
 IMAGES:=$(DEFAULT_IMAGE) crystal hicontrast tango oxygen classic
 ENABLE_MYSQLNATIVE=y
 # cannot be disabled, unless you have a internal MySQL somewhere :-)
-USE_SYSTEM_MYSQLCLIENT=y
-USE_SYSTEM_MYSQLCPPCONN=y
+SYSTEM_STUFF += mysql mysql-cppconn
 MYSQLCPPCONN_MINVER= (>= 1.1.0~r791)
 DICT_DIR=/usr/share/hunspell
 HYPH_DIR=/usr/share/hyphen
@@ -318,7 +319,6 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
 		--with-drink=coffee \
 		--libdir=/usr/lib \
 		--host=$(DEB_HOST_GNU_TYPE) --build=$(DEB_BUILD_GNU_TYPE) \
-		--with-system-dicts \
 		--with-additional-sections="$(ADDITIONAL_SECTIONS)" \
 		--enable-broffice \
 		--with-extension-integration
@@ -450,15 +450,11 @@ endif
 # Debian Lenny
 ifeq "$(LENNY_BACKPORT)" "y"
   BUGS=mailto:debian-backports@lists.debian.org
-  USE_SYSTEM_LUCENE=n
-  USE_SYSTEM_ICU=n
+  SYSTEM_STUFF := $(filter-out boost icu jfreereport libwpd libwpg libwps lucene mdds redland, $(SYSTEM_STUFF))
   MONO_MINVER= (>= 1.2.3)
   MONO2=n
-  USE_SYSTEM_BOOST=n
-  USE_SYSTEM_MDDS=n
   LPSOLVE_MIN_VERSION= (>= 5.5.0.10-10)
   SUITESPARSE_MIN_VERSION= (>= 3.1.0)
-  USE_SYSTEM_JFREEREPORT=n
   BUILD_KDE=y
 ifeq "$(BUILD_KDE)" "y"
   ENABLE_KDEAB=y
@@ -476,19 +472,12 @@ endif
   # only works with system-mysqlcppconn on lenny (the thing has a hardoced
   # so.16). And mysql-connector-c++ is not in lenny.
   ENABLE_MYSQLNATIVE=n
-  USE_SYSTEM_REDLAND=n
   USE_SYSTEM_TEXTCAT_DATA=n
-  USE_SYSTEM_LIBWPD=n
-  USE_SYSTEM_LIBWPG=n
-  USE_SYSTEM_LIBWPS=n
 endif
 
 # Debian Squeeze
 ifeq "$(SQUEEZE_BACKPORT)" "y"
-  USE_SYSTEM_LIBWPD=n
-  USE_SYSTEM_LIBWPG=n
-  USE_SYSTEM_LIBWPS=n
-  USE_EXTERNAL_MYTHES=n
+  SYSTEM_STUFF := $(filter-out libwpd libwpg libwps mythes, $(SYSTEM_STUFF))
   JUNIT_MIN_VER=
 endif
 
@@ -501,6 +490,7 @@ else
   PRUNE_OOOBUILD=y
 endif
 
+CONFIGURE_FLAGS += $(foreach i, $(SYSTEM_STUFF),--with-system-$(i))
 
 CC_PREFIX:=$(shell gcc -dumpmachine)-
 
@@ -569,9 +559,8 @@ ifeq "$(ENABLE_PDFIMPORT)" "y"
 endif
 
 ifeq "$(ENABLE_GRAPHITE)" "y"
-  ifeq "$(USE_SYSTEM_GRAPHITE)" "y"
+  ifneq (,$(filter graphite, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libgraphite-dev
-	CONFIGURE_FLAGS += --with-system-graphite
     ifeq "$(USE_STLPORT)" "y"
 	ADDITIONAL_SECTIONS += SystemBitsWithSTLport
     endif
@@ -591,9 +580,8 @@ else
 	BUILD_DEPS += , libcurl3-$(CURL_SECTYPE)-dev
 endif
 
-ifeq "$(SYSTEM_OPENSSL)" "y"
+ifneq (,$(filter openssl, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libssl-dev
-	CONFIGURE_FLAGS += --with-system-openssl
 	DBG_DBG_SUGGESTS += , libssl$(shell readlink /usr/lib/libssl.so | cut -d"." -f3,4,5)-dbg
 endif
 
@@ -669,8 +657,7 @@ endif
 ifeq "$(RUN_TESTTOOL)" "y"
 	CONFIGURE_FLAGS += --enable-hids
 endif
-ifeq "$(USE_SYSTEM_CPPUNIT)" "y"
-	CONFIGURE_FLAGS += --with-system-cppunit
+ifneq (,$(filter cppunit, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libcppunit-dev (>= 1.12)
   ifeq "$(USE_STLPORT)" "y"
 	ADDITIONAL_SECTIONS += SystemBitsWithSTLport
@@ -792,7 +779,7 @@ export JAVA_HOME
 	CONFIGURE_FLAGS += --with-jdk-home=$(JAVA_HOME)
 	JAVA_COMMON_DEPENDS= , libreoffice$(VER)-java-common
 	JAVA_COMMON_DEPENDS_VERSION:= (>= $(BASE_VERSION)~)
-  ifeq "$(USE_SYSTEM_SAXON)" "y"
+  ifneq (,$(filter saxon, $(SYSTEM_STUFF)))
 	CONFIGURE_FLAGS += --with-system-saxon --with-saxon-jar=/usr/share/java/saxonb.jar
 	BUILD_DEPS += , libsaxonb-java$(OOO_NO_JAVA_ARCHS)
 	JAVA_COMMON_JAVA_DEPENDS+= , libsaxonb-java
@@ -810,11 +797,11 @@ export JAVA_HOME
   endif
   ifeq "$(ENABLE_MEDIAWIKI)" "y"
 	CONFIGURE_FLAGS += --enable-wiki-publisher
-    ifeq "$(USE_SYSTEM_APACHE_COMMONS)" "y"
+    ifneq (,$(filter apache-commons, $(SYSTEM_STUFF)))
 	MEDIAWIKI_BUILD_DEPS += , libcommons-codec-java$(OOO_NO_JAVA_ARCHS), libcommons-httpclient-java$(OOO_NO_JAVA_ARCHS), libcommons-lang-java$(OOO_NO_JAVA_ARCHS), libcommons-logging-java$(OOO_NO_JAVA_ARCHS)
 	MEDIAWIKI_JAR_DEPENDS := , libcommons-codec-java, libcommons-httpclient-java, libcommons-lang-java, libcommons-logging-java
 	BUILD_DEPS += $(MEDIAWIKI_BUILD_DEPS)
-	CONFIGURE_FLAGS += --with-system-apache-commons --with-commons-codec-jar=/usr/share/java/commons-codec.jar --with-commons-lang-jar=/usr/share/java/commons-lang.jar --with-commons-httpclient-jar=/usr/share/java/commons-httpclient.jar --with-commons-logging-jar=/usr/share/java/commons-logging.jar
+	CONFIGURE_FLAGS += --with-commons-codec-jar=/usr/share/java/commons-codec.jar --with-commons-lang-jar=/usr/share/java/commons-lang.jar --with-commons-httpclient-jar=/usr/share/java/commons-httpclient.jar --with-commons-logging-jar=/usr/share/java/commons-logging.jar
       ifeq "$(LENNY_BACKPORT)" "y"
 	CONFIGURE_FLAGS += --with-system-servlet-api --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Depends | cut -d"," -f2 | sed -e s/^\ //` | grep \.jar$$)
       else
@@ -825,13 +812,13 @@ export JAVA_HOME
   endif
   ifeq "$(ENABLE_REPORTDESIGN)" "y"
 	# report-builder
-    ifeq "$(USE_SYSTEM_JFREEREPORT)" "y"
+    ifneq (,$(filter jfreereport, $(SYSTEM_STUFF)))
 	REPORT_BUILDER_BUILD_DEPS += , libbase-java-openoffice.org$(OOO_NO_REPORTDESIGN_ARCHS), libsac-java$(OOO_NO_REPORTDESIGN_ARCHS), libxml-java-openoffice.org$(OOO_NO_REPORTDESIGN_ARCHS), libflute-java-openoffice.org$(OOO_NO_REPORTDESIGN_ARCHS), libpentaho-reporting-flow-engine-java-openoffice.org$(OOO_NO_REPORTDESIGN_ARCHS), liblayout-java-openoffice.org$(OOO_NO_REPORTDESIGN_ARCHS), libloader-java-openoffice.org$(OOO_NO_REPORTDESIGN_ARCHS), libformula-java-openoffice.org$(OOO_NO_REPORTDESIGN_ARCHS), librepository-java-openoffice.org$(OOO_NO_REPORTDESIGN_ARCHS), libfonts-java-openoffice.org$(OOO_NO_REPORTDESIGN_ARCHS), libserializer-java-openoffice.org$(OOO_NO_REPORTDESIGN_ARCHS)
 	REPORT_BUILDER_JAR_DEPENDS := , libbase-java-openoffice.org, libsac-java, libxml-java-openoffice.org, libflute-java-openoffice.org, libpentaho-reporting-flow-engine-java-openoffice.org, liblayout-java-openoffice.org, libloader-java-openoffice.org, libformula-java-openoffice.org, librepository-java-openoffice.org, libfonts-java-openoffice.org, libserializer-java-openoffice.org
 	BUILD_DEPS += $(REPORT_BUILDER_BUILD_DEPS)
-	CONFIGURE_FLAGS += --with-system-jfreereport --with-libbase-jar=/usr/share/java/openoffice/libbase.jar --with-libxml-jar=/usr/share/java/openoffice/libxml.jar --with-flute-jar=/usr/share/java/openoffice/flute.jar --with-jfreereport-jar=/usr/share/java/openoffice/flow-engine.jar --with-liblayout-jar=/usr/share/java/openoffice/liblayout.jar --with-libloader-jar=/usr/share/java/openoffice/libloader.jar --with-libformula-jar=/usr/share/java/openoffice/libformula.jar --with-librepository-jar=/usr/share/java/openoffice/librepository.jar --with-libfonts-jar=/usr/share/java/openoffice/libfonts.jar --with-libserializer-jar=/usr/share/java/openoffice/libserializer.jar
+	CONFIGURE_FLAGS += --with-libbase-jar=/usr/share/java/openoffice/libbase.jar --with-libxml-jar=/usr/share/java/openoffice/libxml.jar --with-flute-jar=/usr/share/java/openoffice/flute.jar --with-jfreereport-jar=/usr/share/java/openoffice/flow-engine.jar --with-liblayout-jar=/usr/share/java/openoffice/liblayout.jar --with-libloader-jar=/usr/share/java/openoffice/libloader.jar --with-libformula-jar=/usr/share/java/openoffice/libformula.jar --with-librepository-jar=/usr/share/java/openoffice/librepository.jar --with-libfonts-jar=/usr/share/java/openoffice/libfonts.jar --with-libserializer-jar=/usr/share/java/openoffice/libserializer.jar
     endif
-    ifeq "$(USE_SYSTEM_APACHE_COMMONS)" "y"
+    ifneq (,$(filter apache-commons, $(SYSTEM_STUFF)))
 	REPORT_BUILDER_BUILD_DEPS += , libcommons-logging-java$(OOO_NO_JAVA_ARCHS)
 	REPORT_BUILDER_JAR_DEPENDS += , libcommons-logging-java
 	CONFIGURE_FLAGS += --with-commons-logging-jar=/usr/share/java/commons-logging.jar
@@ -905,27 +892,24 @@ else
 	DEBHELPER_OPTIONS += -Nlibuno-cli-basetypes1.0-cil -Nlibuno-cli-uretypes1.0-cil -Nlibuno-cli-oootypes1.0-cil -Nlibuno-cli-cppuhelper1.0-cil -Nlibuno-cli-ure1.0-cil
 endif
 
-ifeq "$(USE_SYSTEM_HUNSPELL)" "y"
+ifneq (,$(filter hunspell, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libhunspell-dev $(HUNSPELL_MIN_VER)
-	CONFIGURE_FLAGS+= --with-system-hunspell
 endif
 	CONFIGURE_FLAGS += --with-external-dict-dir=$(DICT_DIR)
 
-ifeq "$(SYSTEM_ALTLINUXHYPH)" "y"
+ifneq (,$(filter altlinuxhyph, $(SYSTEM_STUFF)))
   ifeq "$(USE_LIBHYPHEN)" "y"
 	BUILD_DEPS += , libhyphen-dev $(LIBHYPHEN_MINVER)
   else
 	BUILD_DEPS += , libaltlinuxhyph-dev $(LIBALTLINUXHYPH_MINVER)
   endif
-	CONFIGURE_FLAGS += --with-system-altlinuxhyph
 endif
 	CONFIGURE_FLAGS += --with-external-hyph-dir=$(HYPH_DIR)
 
 ifeq "$(USE_AGG)" "y"
 	CONFIGURE_FLAGS+= --with-agg
-  ifeq "$(SYSTEM_AGG)" "y"
+  ifneq (,$(filter agg, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libagg-dev (>= 2.3-2)
-	CONFIGURE_FLAGS += --with-system-agg
   endif
 endif
 
@@ -945,7 +929,7 @@ else
   endif
 endif
 
-ifeq "$(USE_SYSTEM_BOOST)" "y"
+ifneq (,$(filter boost, $(SYSTEM_STUFF)))
   ifeq "$(BOOST_VERSION)" "1.34"
     ifeq "$(SYSTEM_GCC_VERSION)" "4.4"
 	BUILD_DEPS += , libboost-dev (>= 1.34.1-15)
@@ -961,67 +945,55 @@ ifeq "$(USE_SYSTEM_BOOST)" "y"
 	#BUILD_DEPS += , libboost-thread-dev, libboost-program-options-dev
     endif
   endif
-	CONFIGURE_FLAGS += --with-system-boost
 endif
 
-ifeq "$(USE_SYSTEM_MDDS)" "y"
+ifneq (,$(filter mdds, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libmdds-dev
-	CONFIGURE_FLAGS += --with-system-mdds
 endif
 
-ifeq "$(USE_SYSTEM_VIGRA)" "y"
+ifneq (,$(filter vigra, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libvigraimpex-dev
-	CONFIGURE_FLAGS += --with-system-vigra
 endif
 
 ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
-  ifeq "$(USE_SYSTEM_LIBWPD)" "y"
+  ifneq (,$(filter libwpd, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libwpd-dev (>= 0.9.0)
-	CONFIGURE_FLAGS+=  --with-system-libwpd
   endif
-  ifeq "$(USE_SYSTEM_SABLOT)" "y"
+  ifneq (,$(filter sablot, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libsablot0-dev (>= 1.0.2-4)
-	CONFIGURE_FLAGS += --with-system-sablot
   endif
-  ifeq "$(USE_EXTERNAL_MYTHES)" "y"
+  ifneq (,$(filter mythes, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libmythes-dev (>= 2:1.2)
-	CONFIGURE_FLAGS += --with-system-mythes
   endif
-  ifeq "$(USE_SYSTEM_LIBWPS)" "y"
+  ifneq (,$(filter libwps, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libwps-dev (>= 0.2.0)
-	CONFIGURE_FLAGS += --with-system-libwps
   endif
-  ifeq "$(USE_SYSTEM_LIBWPG)" "y"
+  ifneq (,$(filter libwpg, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libwpg-dev (>= 0.2.0)
-	CONFIGURE_FLAGS += --with-system-libwpg
   endif
 endif
 	CONFIGURE_FLAGS += --with-external-thes-dir=$(THES_DIR)
 
-ifeq "$(USE_SYSTEM_ICU)" "y"
+ifneq (,$(filter icu, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libicu-dev $(ICU_MINVER)
-	CONFIGURE_FLAGS += --with-system-icu
 endif
 
-ifeq "$(USE_LIBXSLT)" "y"
-	CONFIGURE_FLAGS += --with-system-libxslt
+ifneq (,$(filter libxslt, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libxslt1-dev
 	DBG_DBG_SUGGESTS+= , libxslt1-dbg
 endif
 
-ifeq "$(USE_SYSTEM_XMLSEC)" "y"
+ifneq (,$(filter xmlsec, $(SYSTEM_STUFF)))
   ifneq (,$(findstring xul,$(MOZILLA)))
 	BUILD_DEPS += , libxmlsec1-dev (>= 1.2.9-1.1), libxmlsec1-nss (>= 1.2.9-1.1), libxmlsec1-openssl (>= 1.2.9-1.1)
   else
 	BUILD_DEPS += , libxmlsec1-dev (>= 1.2.9), libxmlsec1-nss (>= 1.2.9), libxmlsec1-openssl (>= 1.2.9)
   endif
-	CONFIGURE_FLAGS += --with-system-xmlsec
 endif
 
 ifeq "$(BUILD_CAIROCANVAS)" "y"
-  ifeq "$(USE_SYSTEM_CAIRO)" "y"
+  ifneq (,$(filter cairo, $(SYSTEM_STUFF)))
 	BUILD_DEPS+= , libcairo2-dev
-	CONFIGURE_FLAGS+= --with-system-cairo
   endif
 else
 	CONFIGURE_FLAGS+= --disable-cairo
@@ -1059,12 +1031,10 @@ endif
 
 ifeq "$(ENABLE_MYSQLNATIVE)" "y"
 	CONFIGURE_FLAGS += --enable-mysql-connector
-  ifeq "$(USE_SYSTEM_MYSQLCLIENT)" "y"
-	CONFIGURE_FLAGS += --with-system-mysql
+  ifneq (,$(filter mysql, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libmysqlclient-dev
   endif
-  ifeq "$(USE_SYSTEM_MYSQLCPPCONN)" "y"
-	CONFIGURE_FLAGS += --with-system-mysql-cppconn
+  ifneq (,$(filter mysql-cppconn, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libmysqlcppconn-dev $(MYSQLCPPCONN_MINVER)
   endif
 endif
@@ -1104,35 +1074,32 @@ ifneq "$(BUILD_PYUNO)" "y"
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
-  ifeq "$(USE_SYSTEM_LUCENE)" "y"
+  ifneq (,$(filter lucene, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , liblucene2-java (>= 2.3.2)$(OOO_NO_JAVA_ARCHS)
 	LUCENE_DEPENDS = liblucene2-java (>= 2.3.2)
         # safety measure; e.g. lucene 2.9 index cannot be handled by lucene 2.4
         LUCENE_CONFLICTS = liblucene2-java (<< $(shell dpkg -l liblucene2-java | grep ^ii | awk '{ print $$3 }' | cut -d. -f1,2)~)
-	CONFIGURE_FLAGS += --with-system-lucene --with-lucene-core-jar=/usr/share/java/lucene-core.jar --with-lucene-analyzers-jar=/usr/share/java/lucene-analyzers.jar
+	CONFIGURE_FLAGS += --with-lucene-core-jar=/usr/share/java/lucene-core.jar --with-lucene-analyzers-jar=/usr/share/java/lucene-analyzers.jar
   endif
-  ifeq "$(USE_SYSTEM_HSQLDB)" "y"
+  ifneq (,$(filter hsqldb, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libhsqldb-java $(HSQLDB_MINVER)$(OOO_NO_JAVA_ARCHS)
 	BASE_HSQLDB_DEPENDS = libhsqldb-java $(HSQLDB_MINVER), libhsqldb-java (<< $(HSQLDB_TOONEWVER)~)
-	CONFIGURE_FLAGS+= --with-system-hsqldb
 	JAVA_GCJ_DEPENDS += , libhsqldb-java-gcj
   endif
-  ifeq "$(USE_SYSTEM_BSH)" "y"
+  ifneq (,$(filter beanshell, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , bsh (>= 2.0b4)$(OOO_NO_JAVA_ARCHS)
 	COMMON_BSH_DEPENDS = bsh (>= 2.0b4)
-	CONFIGURE_FLAGS+= --with-system-beanshell
 	JAVA_GCJ_DEPENDS += , bsh-gcj
   endif
 endif
 
-ifeq "$(USE_SYSTEM_LPSOLVE)" "y"
+ifneq (,$(filter lpsolve, $(SYSTEM_STUFF)))
   ifeq "$(USE_SHARED_LPSOLVE)" "y"
 	BUILD_DEPS += , liblpsolve55-dev $(LPSOLVE_MIN_VERSION), lp-solve $(LPSOLVE_MIN_VERSION)
 	LPSOLVE_DEP = lp-solve $(LPSOLVE_MIN_VERSION)
   else
 	BUILD_DEPS += , liblpsolve55-dev $(LPSOLVE_MIN_VERSION)
   endif
-	CONFIGURE_FLAGS += --with-system-lpsolve
   ifeq "$(USE_LIBSUITESPARSE)" "y"
 	DBG_DBG_SUGGESTS+= , libsuitesparse-dbg
 	BUILD_DEPS += , libsuitesparse-dev $(SUITESPARSE_MIN_VERSION)
@@ -1155,7 +1122,7 @@ else
 	CONFIGURE_FLAGS += --disable-gstreamer
 endif
 
-ifeq "$(USE_SYSTEM_NEON)" "y"
+ifneq (,$(filter neon, $(SYSTEM_STUFF)))
   ifneq "$(NEON_SECTYPE)" "openssl"
 	BUILD_DEPS += , libneon$(NEONSONR)-$(NEON_SECTYPE)-dev
 	DBG_DBG_SUGGESTS+= , libneon$(NEONSONR)-$(NEON_SECTYPE)-dbg
@@ -1163,16 +1130,14 @@ ifeq "$(USE_SYSTEM_NEON)" "y"
 	BUILD_DEPS += , libneon$(NEONSONR)-dev
 	DBG_DBG_SUGGESTS+= , libneon$(NEONSONR)-dbg
   endif
-	CONFIGURE_FLAGS += --with-system-neon
 endif
 
 ifeq "$(HELPISOS)" ""
 	CONFIGURE_FLAGS += --without-helppack-integration
 endif
 
-ifeq "$(USE_SYSTEM_REDLAND)" "y"
+ifneq (,$(filter redland, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , librdf0-dev (>= 1.0.8)
-	CONFIGURE_FLAGS += --with-system-redland
 	SHLIBS_OVERRIDE += -Xunordf
 endif
 
@@ -1746,7 +1711,7 @@ ifneq "$(LENNY_BACKPORT)" "y"
 	perl -pi -e "s/(Build-Conflicts: .*)/\1, base-files (= 5)/" debian/control
 endif
 
-ifeq "$(USE_SYSTEM_HSQLDB)" "y"
+ifneq (,$(filter hsqldb, $(SYSTEM_STUFF)))
 	perl -pi -e "s/(Build-Conflicts: .*)/\1, libhsqldb-java (>= $(HSQLDB_TOONEWVER)~)/" debian/control
 endif
 
@@ -3126,11 +3091,11 @@ endif
 
 ifeq "$(ENABLE_JAVA)" "y"
 	# symlink jars we use externally
-  ifeq "$(USE_SYSTEM_SAXON)" "y"
+  ifneq (,$(filter saxon, $(SYSTEM_STUFF)))
 	ln -sf /usr/share/java/saxonb.jar \
 		$(PKGDIR)-java-common/$(OODIR)/program/classes/saxon9.jar
   endif
-  ifeq "$(USE_SYSTEM_BSH)" "y"
+  ifneq (,$(filter beanshell, $(SYSTEM_STUFF)))
 	ln -sf /usr/share/java/bsh.jar \
 	        $(PKGDIR)-java-common/$(OODIR)/program/classes/bsh.jar
   endif
@@ -3457,7 +3422,7 @@ endif
 ifeq "$(BUILD_KFREEBSD)" "y"
 	cat debian/shlibs.override.libc >> debian/shlibs.local
 endif
-ifeq "$(USE_SYSTEM_ICU)" "n"
+ifneq (,$(filter icu, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.icu >> debian/shlibs.local
 endif
 ifeq "$(BUILD_KDE)" "y"
@@ -3479,7 +3444,7 @@ endif
 			-Lure -Luno-libs3 \
 			-ldebian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program:$(PKGDIR)-base/$(OODIR)/program \
 			$(SHLIBS_OVERRIDE)
-ifeq "$(USE_SYSTEM_REDLAND)" "y"
+ifneq (,$(filter redland, $(SYSTEM_STUFF)))
 	# dpkg-shlibdeps "in practice" always will look for this in
         # /usr/lib/openoffice/basisX.Y/program due to the RPATH and the
 	# dh_shlibdeps would fail. It's excluded, and we now need to do it
