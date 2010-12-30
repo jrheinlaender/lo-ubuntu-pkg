@@ -5,7 +5,6 @@ import sys, fileinput
 def splitlines():
     fields = ('Build-Depends', 'Build-Conflicts', 'Build-Depends-Indep', 'Depends', 'Replaces',
               'Provides', 'Conflicts', 'Recommends', 'Suggests')
-    fields = ('Build-Depends', 'Build-Conflicts', 'Build-Depends-Indep')
     for line in fileinput.input():
         line = line[:-1]
         field = None
@@ -47,10 +46,7 @@ def joinlines():
         print line
 
 def main():
-    if len(sys.argv) > 1 and sys.argv[1] in ('-s', '--split'):
-        del sys.argv[1]
-        splitlines()
-    else:
-        joinlines()
+    #splitlines()
+    joinlines()
 
 main()
