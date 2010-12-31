@@ -1,6 +1,6 @@
 #! /usr/bin/python
 
-import sys, fileinput
+import re, sys, fileinput
 
 def splitlines():
     fields = ('Build-Depends', 'Build-Conflicts', 'Build-Depends-Indep', 'Depends', 'Replaces',
@@ -33,7 +33,7 @@ def joinlines():
                 buffer = buffer + ' ' + line.strip()
                 continue
             else:
-                print buffer
+                print re.sub(r' *,', r',', buffer)
                 buffer = None
         field = None
         for f in fields:
