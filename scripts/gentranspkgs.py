@@ -16,8 +16,8 @@ def gen_transitonal_packages():
             f, v = line.split(':', 1)
             v = v.strip()
             if f == 'Package':
-                if v.startswith('libreoffice-'):
-                    n = v.replace('libreoffice-', 'openoffice.org-')
+                if v.startswith('libreoffice'):
+                    n = v.replace('libreoffice', 'openoffice.org')
                     p =  {'Depends': v}
                     pkgs[n] = p
                     skip = False
