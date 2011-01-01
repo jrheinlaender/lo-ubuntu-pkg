@@ -111,6 +111,8 @@ OOO_ARCHS = alpha amd64 armel armhf hppa i386 ia64 mips mipsel powerpc powerpcsp
 PATCHSET=$(DIST)
 BUILD_DEPS=
 
+OOO_TRANS_PKGS=n
+
 # These are components which can be built from internal copies, or used from the
 # distribution. See configure --help for valid values (--with-system-<value>).
 SYSTEM_STUFF = dicts
@@ -260,7 +262,6 @@ ENABLE_OPENGL=y
 SYSTEM_STUFF += openssl
 NEW_DPKG_SHLIBDEPS=y
 ifeq "$(ENABLE_JAVA)" "y"
-  # can be reenabled after cws rptfix04
   ENABLE_REPORTDESIGN=y
   ENABLE_MEDIAWIKI=y
   SYSTEM_STUFF += jfreereport apache-commons
@@ -504,7 +505,12 @@ ifeq "$(DIST)" "Ubuntu"
   CONFIGURE_FLAGS += --with-openldap
   CONFIGURE_FLAGS += --with-system-python
 
+  ifneq (,$(filter $(DISTREL),dapper hardy jaunty karmic lucid maverick))
+    SYSTEM_STUFF := $(filter-out libwpd libwpg libwps, $(SYSTEM_STUFF))
+  endif
+
   ifeq ($(DISTREL),natty)
+    OOO_TRANS_PKGS=y
     BUILD_KDE=n
     CONFIGURE_FLAGS += --disable-kde --disable-kde4
     # FIXME: smoketest fails, but we need the indep packages for the other archs
@@ -518,9 +524,18 @@ ifeq "$(DIST)" "Ubuntu"
       RUN_SMOKETEST=n
     endif
   endif
-  ifneq (,$(filter $(DISTREL),hardy lucid maverick))
-    SYSTEM_STUFF := $(filter-out libwpd libwpg libwps, $(SYSTEM_STUFF))
+
+  ifeq ($(DISTREL),lucid)
+    SYSTEM_STUFF := $(filter-out mdds mythes, $(SYSTEM_STUFF))
+    BOOST_VERSION=1.40
+    BOOST_MINVER=(>= 1.40.0)
+    USE_SYSTEM_TEXTCAT_DATA=n
+    CONFIGURE_FLAGS += --with-linker-hash-style=gnu
+    # LP: #696299
+    BUILD_KDE=n
+    CONFIGURE_FLAGS += --disable-kde --disable-kde4
   endif
+
 endif
 
 ifeq "$(L10N_SEPARATE_SOURCE)" "y"
@@ -1842,6 +1857,12 @@ endif
 
 ifneq "$(DICT_DIR)" "/usr/share/hunspell"
 	perl -pi -e 's/^Breaks:.*myspell.*\n//' debian/control
+endif
+
+ifeq "$(OOO_TRANS_PKGS)" "y"
+	python debian/scripts/gentranspkgs.py < debian/control > debian/control.ooo
+	cat debian/control.ooo >> debian/control
+	rm -f debian/control.ooo
 endif
 
 .DELETE_ON_ERROR: debian/control
@@ -3356,7 +3377,7 @@ ifeq "$(PACKAGE_SDK)" "y"
 		ln -s /$(OOSDKDIR)/index.html index.html
 endif
 
-ifeq "$(PACKAGE_REPORTDESIGN)" "y"
+ifeq "$(ENABLE_REPORTDESIGN)" "y"
   ifeq "$(ENABLE_JAVA)" "y"
 	# install this; we need to register this ourselves later in
 	# the maintainer scripts. This is intended upstream (*rpt* stuff
@@ -3792,6 +3813,7 @@ ifeq "$(USE_COMMON_DOCDIR)" "y"
 	  case "$$p" in \
 	    ttf-opensymbol) continue;; \
 	    *-l10n-in|*-l10n-za) target=libreoffice$(VER)-common;; \
+	    openoffice.org-l10n-*|openoffice.org-help-*) target=libreoffice$(VER)-l10n-common;; \
 	    *-help-*|*-l10n-*) continue;; \
 	    libreoffice$(VER)-common|libuno-cli-basetypes1.0-cil|ttf-opensymbol) continue;; \
 	    broffice) target=libreoffice;; \
