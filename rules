@@ -285,7 +285,6 @@ PACKAGE_BASE=y
 ENABLE_GRAPHITE=y
 SYSTEM_STUFF += graphite
 ALLOC=system
-DEBSRC_VERSION=3.0
 USE_SYSTEM_TEXTCAT_DATA=y
 SYSTEM_STUFF += cppunit
 
@@ -302,6 +301,8 @@ MYSQLCPPCONN_MINVER= (>= 1.1.0~r791)
 DICT_DIR=/usr/share/hunspell
 HYPH_DIR=/usr/share/hyphen
 THES_DIR=/usr/share/mythes
+
+USE_BZIP_COMPRESS=y
 
 # Default flags to pass to configure of ooo-build
 CONFIGURE_FLAGS= --disable-post-install-scripts \
@@ -482,15 +483,6 @@ ifeq "$(SQUEEZE_BACKPORT)" "y"
   JUNIT_MIN_VER=
 endif
 
-# the archive only accepts bzip2 compressed members on 3.0 (quilt)
-ifeq "$(DEBSRC_VERSION)" "3.0"
-  USE_BZIP_COMPRESS=y
-  PRUNE_OOOBUILD=n
-else
-  USE_BZIP_COMPRESS=n
-  PRUNE_OOOBUILD=y
-endif
-
 CONFIGURE_FLAGS += $(foreach i, $(SYSTEM_STUFF),--with-system-$(i))
 
 CC_PREFIX:=$(shell gcc -dumpmachine)-
@@ -519,22 +511,10 @@ ifeq "$(USE_BZIP_COMPRESS)" "y"
 	BUILDDEB_OPTIONS = -- -Zbzip2
 endif
 
-ifeq "$(DEBSRC_VERSION)" "3.0"
-  ifeq "$(LENNY_BACKPORT)" "y"
+ifeq "$(LENNY_BACKPORT)" "y"
 	BUILD_DEPS += , dpkg-dev (>= 1.14.27)
-  else
-	BUILD_DEPS += , dpkg-dev (>= 1.15.1)
-  endif
 else
-  ifeq "$(NEW_DPKG_SHLIBDEPS)" "y"
-	# new dpkg-dev whcih works - in contrast to 1.4.9 and .10 -
-	# without --ignore-missing-info
-	BUILD_DEPS += , dpkg-dev (>= 1.14.11)
-  endif
-endif
-
-ifeq "$(DEBSRC_VERSION)" "1.0"
-	BUILD_DEPS += , quilt
+	BUILD_DEPS += , dpkg-dev (>= 1.15.1)
 endif
 
 ifneq "$(OOO_OGLTRANS_ARCHS)" ""
@@ -1259,15 +1239,7 @@ clean-objectdirs: clean-instsetoo
 	dh_testdir
 	find $(SOURCE_TREE) -maxdepth 2 -name $(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT) -type d -exec rm -rf {} \;
 
-ifeq "$(DEBSRC_VERSION)" "1.0"
-include /usr/share/quilt/quilt.make
-endif
-
-ifeq "$(DEBSRC_VERSION)" "1.0"
-clean: unpatch
-else
 clean:
-endif
 	dh_testroot
 	dh_testdir
 
@@ -1280,43 +1252,6 @@ endif
 	if [ -r $(OOO_BUILD_TREE)/Makefile ]; then \
 	  $(MAKE) -C $(OOO_BUILD_TREE) distclean || true ;\
 	fi
-
-ifeq "$(PRUNE_OOOBUILD)" "y"
-	# prune upstream ooo-build files
-	set -e; \
-	cd $(OOO_BUILD_TREE) ;\
-	rm -rf \
-	 2005-10-23-huston.ppt \
-	 doc/class_diagram.odg \
-	 scratch/offapi-vba/constants/constant_types.rdb \
-	 src/*.ico \
-	 src/*.jpg \
-	 src/*.xcf \
-	 src/*_nld.* \
-	 src/Draft.jpg \
-	 src/file-bug*.png \
-	 src/open*.png \
-	 src/open{intro,about}*.bmp \
-	 src/eval/open{intro,about}*.bmp \
-	 src/easter/*.png \
-	 src/sg3.* \
-	 patches/test/*.tar \
-	 www/images/*.png \
-	 www/l10n/*.gif
-	 if [ -d $(OOO_BUILD_TREE)/test ]; then \
-		find $(OOO_BUILD_TREE)/test $(OOO_BUILD_TREE)/doc $(OOO_BUILD_TREE)/scratch -type f \
-			\( -name '*.123' -o -name '*.doc' -o -name '*.lwp' \
-			-o -name '*.odp' -o -name "*.ods" -o -name '*.odt' \
-			-o -name '*.png' -o -name '*.ppt' -o -name '*.sx?' \
-			-o -name '*.wb2' -o -name '*.WB2' -o -name '*.xls' \
-			-o -name '*.XLS' -o -name '*.xlsx' -o -name '*.xls.gz' \
-			-o -name '*.xls.bz2' \) \
-			-exec rm {} \; ;\
-	 fi
-	 find $(OOO_BUILD_TREE)/scratch $(OOO_BUILD_TREE)/src -type f \
-		\( -name '*.odg' -o -name '*.ods' -o -name '*.ott' \) \
-		-exec rm {} \;
-endif
 
 	# remove file with space in the name
 	rm -f $(OOO_BUILD_TREE)/test/macro/clock\ chart.xls
@@ -1345,115 +1280,6 @@ endif
 
 ifneq "$(OOO_L10N_DIR)" ""
 	rm -rf $(OOO_L10N_DIR)
-endif
-
-ifeq "$(DEBSRC_VERSION)" "1.0"
-	# uuencode upstream ooo-build binary files
-	set -e; \
-	cd $(OOO_BUILD_TREE) ; \
-	 for f in \
-	   desktop/*/*.png \
-	   doc/*.ods \
-	   doc/*.sxw \
-	   patches/test/*.tar \
-	   scratch/offapi-vba/constants/*.rdb \
-	   scratch/sc-vba/TestDocuments/*.xls \
-	   src/*.bmp \
-	   src/*.ico \
-	   src/*.jpg \
-	   src/*.odb \
-	   src/*.png \
-	   src/easter/*.png \
-	   src/layout/*.png \
-	   src/layout/default_images/res/commandimagelist/*.png \
-	   src/layout/ooo_custom_images/industrial/res/commandimagelist/*.png \
-	   src/layout/ooo_custom_images/tango/res/commandimagelist/*.png \
-	   src/icons/*.png \
-	   src/icons/tango/*.png \
-	   src/acor_ru-RU.dat \
-	   src/acor_sk-SK.dat \
-	   templates/*.ott \
-	   test/Lwp/*.lwp \
-	   test/Lwp/*.png \
-	   test/calc/*.xls \
-	   test/draw/*.odp \
-	   test/draw/*.ppt \
-	   test/draw/*.sxd \
-	   test/excel/*.xls \
-	   test/excel/*.xlsx \
-	   test/excel/*.xls.gz \
-	   test/excel/*.xls.bz2 \
-	   test/lotus/*.123 \
-	   test/macro/*.ods \
-	   test/macro/*.xls \
-	   test/macro/ConvertTests/*.xls \
-	   test/macro/vba_donated_docs/*.XLS \
-	   test/macro/vba_donated_docs/*.xls \
-	   test/qpro/*.png \
-	   test/qpro/*.WB2 \
-	   test/qpro/*.wb2 \
-	   test/qpro/*.xls \
-	   test/writer/*.odt \
-	   test/writer/*.sxw \
-	   desktop/mimetypes/16x16/*.png \
-	   desktop/mimetypes/22x22/*.png \
-	   desktop/mimetypes/24x24/*.png \
-	   desktop/mimetypes/32x32/*.png \
-	   desktop/mimetypes/48x48/*.png \
-	   www/images/*.png \
-	   www/l10n/*.gif \
-	   doc/class_diagram.odg \
-	   extensions/coooder/icons/image1_16.bmp \
-	   extensions/coooder/icons/image1_16h.bmp \
-	   extensions/coooder/icons/image1_26.bmp \
-	   extensions/coooder/icons/image1_26h.bmp \
-	   src/default_images/svx/res/doc_modified_no_14.png \
-	   src/default_images/svx/res/doc_modified_yes_14.png \
-	   src/default_images/sc/res/popup_select_current.png \
-	   src/default_images/sc/res/popup_unselect_current.png \
-	   ; do \
-	  if [ -s $$f ]; then \
-	   uuencode $$f $$f > $$f.uu.tmp && \
-	   ../debian/scripts/move-if-change $$f.uu.tmp $$f.uu; \
-	   touch -r $$f $$f.uu ; \
-	   rm -f $$f ; \
-	  fi ; \
-	 done
-
-	# uuencode add-on ooo-build binary files
-	set -e; \
-	cd $(OOO_BUILD_TREE) ; \
-	 for f in \
-	   src/*.bz2 \
-	   src/*.dll \
-	   src/*.gz \
-	   src/*.zip \
-	   ; do \
-	  if [ -s $$f ]; then \
-	   case "$$f" in src/$(TAG)*) continue ; esac ; \
-	   case "$$f" in src/OOo*_src*) continue ; esac; \
-	   uuencode $$f $$f > $$f.uu.tmp && \
-	   ../debian/scripts/move-if-change $$f.uu.tmp $$f.uu; \
-	   touch -r $$f $$f.uu ; \
-	   rm -f $$f ; \
-	  fi ; \
-	 done
-	set -e; \
-	for i in `cat debian/source/components | grep -v ^$(OOO_BUILD_TREE)` ; do \
-	cd $$i && \
-	 for f in \
-	   *.bz2 \
-	   *.gz \
-	   *.zip \
-	   ; do \
-	  if [ -s $$f ]; then \
-	   uuencode $$f $$f > $$f.uu.tmp && \
-	   ../debian/scripts/move-if-change $$f.uu.tmp $$f.uu; \
-	   touch -r $$f $$f.uu ; \
-	   rm -f $$f ; \
-	  fi ; done; \
-	 cd ..; \
-	 done
 endif
 
 	dh_clean
@@ -1505,11 +1331,6 @@ endif
 	rm -f $(OOO_BUILD_TREE)/download
 	rm -f $(OOO_BUILD_TREE)/distro-configs/*.conf
 	rm -f $(OOO_BUILD_TREE)/patches/apply.pl
-
-ifeq "$(DEBSRC_VERSION)" "1.0"
-	# default is 3.0 (quilt), so revert to 1.0 for lenny
-	echo "1.0" > debian/source/format
-endif
 
 	# left-over from ooo-pack-sources
 	rm -rf .releases
@@ -1769,11 +1590,7 @@ build-indep: $(STAMP_DIR)/build
 # make run the target over.
 
 configure: $(OOO_BUILD_TREE)/config.status
-ifeq "$(DEBSRC_VERSION)" "1.0"
-$(OOO_BUILD_TREE)/config.status: $(QUILT_STAMPFN) $(OOO_BUILD_TREE)/configure
-else
 $(OOO_BUILD_TREE)/config.status: $(OOO_BUILD_TREE)/configure
-endif
 	dh_testdir
 
 	# Make sure needed scripts are executable
@@ -1789,21 +1606,6 @@ endif
 	done
 
 	mkdir -p $(STAMP_DIR)
-
-ifneq "$(DEBSRC_VERSION)" "3.0"
-	# uudecode files, omit GSI files
-	set -e; \
-	for uu in \
-	  `find . -name *.uu` \
-	  ; do \
-	 case "$$uu" in $(OOO_BUILD_TREE)/src/GSI*) continue ; esac ; \
-	 orig="`echo "$$uu" |sed -e 's#.uu$$##'`" ;\
-	 if [ ! -s $$orig ]; then \
-	  uudecode -o $$orig $$uu ; \
-	  touch -r $$uu $$orig ; \
-	 fi ; \
-	done
-endif
 
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
 	cp -a sources/* $(OOO_BUILD_TREE)/src
@@ -3746,7 +3548,6 @@ get-orig-source:
 		rm -rf libreoffice-$(UPSTREAM_VERSION) && \
 		mv libreoffice_$(UPSTREAM_VERSION).orig-archive-$(OOO_BUILD_VERSION).tar.gz $(CURDIR)/.. && \
 		rm -rf $$TMPD
-ifeq "$(DEBSRC_VERSION)" "3.0"
 	if test -n "$$TMP"; then \
 		TMPD=`mktemp -d -p $$TMP`; \
 	else \
@@ -3760,8 +3561,6 @@ ifeq "$(DEBSRC_VERSION)" "3.0"
 		tar cfvz libreoffice_$(UPSTREAM_VERSION).orig-$$TARFILE_LOCATION.tar.gz $$TARFILE_LOCATION && \
 		mv libreoffice_$(UPSTREAM_VERSION).orig-$$TARFILE_LOCATION.tar.gz $(CURDIR)/.. && \
 		rm -rf $$TMPD
-endif
-ifeq "$(DEBSRC_VERSION)" "3.0"
 	# get ooo-build
 	if test -n "$$TMP"; then \
 		TMPD=`mktemp -d -p $$TMP`; \
@@ -3770,7 +3569,6 @@ ifeq "$(DEBSRC_VERSION)" "3.0"
 	fi && \
 	if [ ! -d $(OOO_BUILD_TREE) ]; then ./debian/rules get-ooo-build; fi
 	tar cfvz ../libreoffice_$(UPSTREAM_VERSION).orig-$(OOO_BUILD_TREE).tar.gz $(OOO_BUILD_TREE)
-endif
 
 # Download the latest sources needed for ooo-build. Note that is
 # might download more than actually needed here....
