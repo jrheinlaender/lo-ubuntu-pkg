@@ -78,7 +78,7 @@ export QUILT_OPTIONS="-p1 -F0"
 unexport LS_COLORS
 
 MWS=OOO330
-MILESTONE=m18
+MILESTONE=m19
 TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
 GIT_TAG=$(MWS)_$(MILESTONE)
 OOO_BUILD_BRANCH=libreoffice-3-3
@@ -92,7 +92,7 @@ SOURCE_TREE=$(OOO_BUILD_TREE)/build/libreoffice-$(OOO_BUILD_TARBALL_VERSION)
 STAMP_DIR=debian/stampdir
 TARFILE_LOCATION=$(CURDIR)/ext-sources
 export TARFILE_LOCATION
-USE_SOURCE_TARBALLS=y
+USE_SOURCE_TARBALLS=n
 
 ifeq "$(DISTREL)" "lenny"
  LENNY_BACKPORT=y
@@ -2081,6 +2081,15 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/install $(STAMP_DIR)/install-indep $(OOO_BU
 		rm -rf $(PKGDIR)-l10n-$$iso/$(OODIR)/help; \
 	done
 
+	# install technical.dic
+	for iso in $(LANGPACKISOS); do \
+		if [ "$$iso" = "en-US" ]; then continue; else \
+			mkdir -p $(PKGDIR)-l10n-`echo $$iso | tr A-Z a-z`/$(OODIR)/share/wordbook/$$iso; \
+			install -m644 $(SOURCE_TREE)/extras/source/wordbook/technical.dic \
+				$(PKGDIR)-l10n-`echo $$iso | tr A-Z a-z`/$(OODIR)/share/wordbook/$$iso/technical.dic; \
+		fi; \
+	done
+
 	# replace duplicate files in the langpacks with symlinks
 	TMP=`mktemp -q`; \
 		fdupes --quiet --recurse --sameline --size \
@@ -2105,6 +2114,7 @@ endif
 
 ifeq (pt-BR,$(findstring pt-BR,$(LANGPACKISOS)))
 	# move pt-BR ("BrOffice") splashs into -l10n-pt-br
+	mkdir -p $(PKGDIR)-l10n-pt-br/$(OOBRANDDIR)/program
 	mv $(PKGDIR)-common/$(OOBRANDDIR)/program/intro-pt_BR.png \
 		$(PKGDIR)-l10n-pt-br/$(OOBRANDDIR)/program/intro-pt_BR.png
 	mv $(PKGDIR)-common/$(OOBRANDDIR)/program/about-pt_BR.png \
@@ -3017,9 +3027,6 @@ ifeq "$(DIST)" "Debian"
 	install -m644 debian/templates/*.otp $(PKGDIR)-common/$(OODIR)/share/template/en-US/presnt/
 endif
 
-	# add "libreoffice" symlink
-	cd $(PKGDIR)-common/usr/bin && ln -s ooffice libreoffice$(VER)
-
 ifeq "$(PACKAGE_SDK)" "y"
 	# add symlinks for docs and examples
 	cd $(PKGDIR)-dev-doc/$(OOSDKDIR) && \
@@ -3149,6 +3156,15 @@ endif
 	install -m644 -D $(SOURCE_TREE)/more_fonts/fonts/fc_local.conf \
 		$(PKGDIR)-common/$(OODIR)/share/fonts/truetype/fc_local.conf
 
+	# FIXME: conffile madness.
+	# unless openoffice.org-common gets purged we would still have ooffice.sh
+	# there together with libreoffice.sh...
+	mv $(PKGDIR)-common/etc/bash_completion.d/libreoffice.sh \
+		$(PKGDIR)-common/etc/bash_completion.d/ooffice.sh
+
+	# register technical.dic
+	perl -pi -e 's/standard.dic;/standard.dic;technical.dic;/' $(PKGDIR)-common/$(OODIR)/share/registry/main.xcd
+
 	touch $@
 
 binary-arch: $(STAMP_DIR)/binary-arch
@@ -3166,12 +3182,11 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 		$(OOO_BUILD_TREE)/NEWS
 	dh_installdebconf -s
 	dh_installman -s
-	# fix manpage symlinks
 	for i in writer calc draw base math impress; do \
-		for i in `find $(PKGDIR)-$$i -type l -name "o*.1"`; do \
+		for i in `find $(PKGDIR)-$$i -type l -name "lo*.1"`; do \
 			mv $$i $$i.gz; \
-			if [ "`readlink $$i`" != "openoffice.1.gz" ]; then \
-				ln -sf openoffice.1.gz $$i.gz; \
+			if [ "`readlink $$i`" != "libreoffice.1.gz" ]; then \
+				ln -sf libreoffice.1.gz $$i.gz; \
 			fi; \
 		done; \
 	done
@@ -3390,11 +3405,12 @@ endif
 	dh_installdocs -i -A debian/README.Debian \
 		$(SOURCE_TREE)/instsetoo_native/util/LibreOffice/replace_file/*/en-US/README_en-US \
 		$(OOO_BUILD_TREE)/NEWS
+	# note libreoffice.1 is already installed into -common by libreoffice-builds package-ooo
 	dh_installman -i
-	for i in `find $(PKGDIR)-common -type l -name "o*.1"`; do \
+	for i in `find $(PKGDIR)-common -type l -name "lo*.1"`; do \
 		mv $$i $$i.gz; \
-		if [ "`readlink $$i`" != "openoffice.1.gz" ]; then \
-			ln -sf openoffice.1.gz $$i.gz; \
+		if [ "`readlink $$i`" != "libreoffice.1.gz" ]; then \
+			ln -sf libreoffice.1.gz $$i.gz; \
 		fi; \
 	done
 	dh_installchangelogs -i -k
