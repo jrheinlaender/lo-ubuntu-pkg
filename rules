@@ -8,7 +8,7 @@
 # Authors:
 # Chris Halls <halls@debian.org>
 # Rene Engelhard <rene@debian.org>
-# Copyright 2002-2009 Software in the Public Interest, Inc.
+# Copyright 2002-2011 Software in the Public Interest, Inc.
 # Portions Copyright 2010 Canonical Ltd. Author: Matthias Klose
 # Licensed under the GNU General Public License, version 2.  See the file
 # /usr/share/common-licenses/GPL or <http://www.gnu.org/copyleft/gpl.txt>.
@@ -78,15 +78,14 @@ export QUILT_OPTIONS="-p1 -F0"
 unexport LS_COLORS
 
 MWS=OOO330
-MILESTONE=m18
+MILESTONE=m19
 TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
 GIT_TAG=$(MWS)_$(MILESTONE)
 OOO_BUILD_BRANCH=libreoffice-3-3
-OOO_BUILD_VERSION=3.3.0.2
+OOO_BUILD_VERSION=3.3.0.3
 # in ooo-build releases the same as OOO_BUILD_VERSION
-#OOO_BUILD_TARBALL_VERSION=$(OOO_BUILD_VERSION)
-OOO_BUILD_TARBALL_VERSION=3.3.0.2
-OOO_BUILD_TAG=libreoffice-3.3.0.2
+OOO_BUILD_TARBALL_VERSION=$(OOO_BUILD_VERSION)
+OOO_BUILD_TAG=libreoffice-$(OOO_BUILD_TARBALL_VERSION)
 OOO_BUILD_TREE=libreoffice-build
 SOURCE_TREE=$(OOO_BUILD_TREE)/build/libreoffice-$(OOO_BUILD_TARBALL_VERSION)
 STAMP_DIR=debian/stampdir
@@ -288,7 +287,6 @@ PACKAGE_BASE=y
 ENABLE_GRAPHITE=y
 SYSTEM_STUFF += graphite
 ALLOC=system
-DEBSRC_VERSION=3.0
 USE_SYSTEM_TEXTCAT_DATA=y
 SYSTEM_STUFF += cppunit
 L10N_SEPARATE_SOURCE=n
@@ -306,6 +304,8 @@ MYSQLCPPCONN_MINVER= (>= 1.1.0~r791)
 DICT_DIR=/usr/share/hunspell
 HYPH_DIR=/usr/share/hyphen
 THES_DIR=/usr/share/mythes
+
+USE_BZIP_COMPRESS=y
 
 # Default flags to pass to configure of ooo-build
 CONFIGURE_FLAGS= --disable-post-install-scripts \
@@ -481,17 +481,9 @@ endif
 
 # Debian Squeeze
 ifeq "$(SQUEEZE_BACKPORT)" "y"
+  BUGS=mailto:debian-backports@lists.debian.org
   SYSTEM_STUFF := $(filter-out libwpd libwpg libwps mythes, $(SYSTEM_STUFF))
   JUNIT_MIN_VER=
-endif
-
-# the archive only accepts bzip2 compressed members on 3.0 (quilt)
-ifeq "$(DEBSRC_VERSION)" "3.0"
-  USE_BZIP_COMPRESS=y
-  PRUNE_OOOBUILD=n
-else
-  USE_BZIP_COMPRESS=n
-  PRUNE_OOOBUILD=y
 endif
 
 # Ubuntu
@@ -592,22 +584,10 @@ ifeq "$(USE_LZMA_COMPRESS)" "y"
        BUILDDEB_OPTIONS = -- -Zlzma
 endif
 
-ifeq "$(DEBSRC_VERSION)" "3.0"
-  ifeq "$(LENNY_BACKPORT)" "y"
+ifeq "$(LENNY_BACKPORT)" "y"
 	BUILD_DEPS += , dpkg-dev (>= 1.14.27)
-  else
-	BUILD_DEPS += , dpkg-dev (>= 1.15.1)
-  endif
 else
-  ifeq "$(NEW_DPKG_SHLIBDEPS)" "y"
-	# new dpkg-dev whcih works - in contrast to 1.4.9 and .10 -
-	# without --ignore-missing-info
-	BUILD_DEPS += , dpkg-dev (>= 1.14.11)
-  endif
-endif
-
-ifeq "$(DEBSRC_VERSION)" "1.0"
-	BUILD_DEPS += , quilt
+	BUILD_DEPS += , dpkg-dev (>= 1.15.1)
 endif
 
 ifneq "$(OOO_OGLTRANS_ARCHS)" ""
@@ -889,7 +869,7 @@ export JAVA_HOME
 	CONFIGURE_FLAGS += --with-system-servlet-api --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Depends | cut -d"," -f2 | sed -e s/^\ //` | grep \.jar$$)
       else
 	CONFIGURE_FLAGS += --with-system-servlet-api --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }'` | grep servlet-api.*\.jar$ | head -n 1)
-	BUILD_DEPS += , $(shell apt-cache show libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }')
+	BUILD_DEPS += , $(shell dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }')
       endif
     endif
   endif
@@ -908,8 +888,8 @@ export JAVA_HOME
       ifeq "$(LENNY_BACKPORT)" "y"
 	CONFIGURE_FLAGS += --with-system-servlet-api --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Depends | cut -d"," -f2 | sed -e s/^\ //` | grep \.jar$$)
       else
-	CONFIGURE_FLAGS += --with-system-servlet-api --with-servlet-api-jar=$(shell dpkg -L `dpkg -s show libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }'` | grep servlet-api.*\.jar$ | head -n 1)
-	BUILD_DEPS += , $(shell apt-cache show libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }')
+	CONFIGURE_FLAGS += --with-system-servlet-api --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }'` | grep servlet-api.*\.jar$ | head -n 1)
+	BUILD_DEPS += , $(shell dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }')
       endif
     endif
 	CONFIGURE_FLAGS += --enable-report-builder
@@ -1350,15 +1330,7 @@ clean-objectdirs: clean-instsetoo
 	dh_testdir
 	find $(SOURCE_TREE) -maxdepth 2 -name $(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT) -type d -exec rm -rf {} \;
 
-ifeq "$(DEBSRC_VERSION)" "1.0"
-include /usr/share/quilt/quilt.make
-endif
-
-ifeq "$(DEBSRC_VERSION)" "1.0"
-clean: unpatch
-else
 clean:
-endif
 	dh_testroot
 	dh_testdir
 
@@ -1371,43 +1343,6 @@ endif
 	if [ -r $(OOO_BUILD_TREE)/Makefile ]; then \
 	  $(MAKE) -C $(OOO_BUILD_TREE) distclean || true ;\
 	fi
-
-ifeq "$(PRUNE_OOOBUILD)" "y"
-	# prune upstream ooo-build files
-	set -e; \
-	cd $(OOO_BUILD_TREE) ;\
-	rm -rf \
-	 2005-10-23-huston.ppt \
-	 doc/class_diagram.odg \
-	 scratch/offapi-vba/constants/constant_types.rdb \
-	 src/*.ico \
-	 src/*.jpg \
-	 src/*.xcf \
-	 src/*_nld.* \
-	 src/Draft.jpg \
-	 src/file-bug*.png \
-	 src/open*.png \
-	 src/open{intro,about}*.bmp \
-	 src/eval/open{intro,about}*.bmp \
-	 src/easter/*.png \
-	 src/sg3.* \
-	 patches/test/*.tar \
-	 www/images/*.png \
-	 www/l10n/*.gif
-	 if [ -d $(OOO_BUILD_TREE)/test ]; then \
-		find $(OOO_BUILD_TREE)/test $(OOO_BUILD_TREE)/doc $(OOO_BUILD_TREE)/scratch -type f \
-			\( -name '*.123' -o -name '*.doc' -o -name '*.lwp' \
-			-o -name '*.odp' -o -name "*.ods" -o -name '*.odt' \
-			-o -name '*.png' -o -name '*.ppt' -o -name '*.sx?' \
-			-o -name '*.wb2' -o -name '*.WB2' -o -name '*.xls' \
-			-o -name '*.XLS' -o -name '*.xlsx' -o -name '*.xls.gz' \
-			-o -name '*.xls.bz2' \) \
-			-exec rm {} \; ;\
-	 fi
-	 find $(OOO_BUILD_TREE)/scratch $(OOO_BUILD_TREE)/src -type f \
-		\( -name '*.odg' -o -name '*.ods' -o -name '*.ott' \) \
-		-exec rm {} \;
-endif
 
 	# remove file with space in the name
 	rm -f $(OOO_BUILD_TREE)/test/macro/clock\ chart.xls
@@ -1452,115 +1387,6 @@ ifeq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
 	fi
 endif
 
-ifeq "$(DEBSRC_VERSION)" "1.0"
-	# uuencode upstream ooo-build binary files
-	set -e; \
-	cd $(OOO_BUILD_TREE) ; \
-	 for f in \
-	   desktop/*/*.png \
-	   doc/*.ods \
-	   doc/*.sxw \
-	   patches/test/*.tar \
-	   scratch/offapi-vba/constants/*.rdb \
-	   scratch/sc-vba/TestDocuments/*.xls \
-	   src/*.bmp \
-	   src/*.ico \
-	   src/*.jpg \
-	   src/*.odb \
-	   src/*.png \
-	   src/easter/*.png \
-	   src/layout/*.png \
-	   src/layout/default_images/res/commandimagelist/*.png \
-	   src/layout/ooo_custom_images/industrial/res/commandimagelist/*.png \
-	   src/layout/ooo_custom_images/tango/res/commandimagelist/*.png \
-	   src/icons/*.png \
-	   src/icons/tango/*.png \
-	   src/acor_ru-RU.dat \
-	   src/acor_sk-SK.dat \
-	   templates/*.ott \
-	   test/Lwp/*.lwp \
-	   test/Lwp/*.png \
-	   test/calc/*.xls \
-	   test/draw/*.odp \
-	   test/draw/*.ppt \
-	   test/draw/*.sxd \
-	   test/excel/*.xls \
-	   test/excel/*.xlsx \
-	   test/excel/*.xls.gz \
-	   test/excel/*.xls.bz2 \
-	   test/lotus/*.123 \
-	   test/macro/*.ods \
-	   test/macro/*.xls \
-	   test/macro/ConvertTests/*.xls \
-	   test/macro/vba_donated_docs/*.XLS \
-	   test/macro/vba_donated_docs/*.xls \
-	   test/qpro/*.png \
-	   test/qpro/*.WB2 \
-	   test/qpro/*.wb2 \
-	   test/qpro/*.xls \
-	   test/writer/*.odt \
-	   test/writer/*.sxw \
-	   desktop/mimetypes/16x16/*.png \
-	   desktop/mimetypes/22x22/*.png \
-	   desktop/mimetypes/24x24/*.png \
-	   desktop/mimetypes/32x32/*.png \
-	   desktop/mimetypes/48x48/*.png \
-	   www/images/*.png \
-	   www/l10n/*.gif \
-	   doc/class_diagram.odg \
-	   extensions/coooder/icons/image1_16.bmp \
-	   extensions/coooder/icons/image1_16h.bmp \
-	   extensions/coooder/icons/image1_26.bmp \
-	   extensions/coooder/icons/image1_26h.bmp \
-	   src/default_images/svx/res/doc_modified_no_14.png \
-	   src/default_images/svx/res/doc_modified_yes_14.png \
-	   src/default_images/sc/res/popup_select_current.png \
-	   src/default_images/sc/res/popup_unselect_current.png \
-	   ; do \
-	  if [ -s $$f ]; then \
-	   uuencode $$f $$f > $$f.uu.tmp && \
-	   ../debian/scripts/move-if-change $$f.uu.tmp $$f.uu; \
-	   touch -r $$f $$f.uu ; \
-	   rm -f $$f ; \
-	  fi ; \
-	 done
-
-	# uuencode add-on ooo-build binary files
-	set -e; \
-	cd $(OOO_BUILD_TREE) ; \
-	 for f in \
-	   src/*.bz2 \
-	   src/*.dll \
-	   src/*.gz \
-	   src/*.zip \
-	   ; do \
-	  if [ -s $$f ]; then \
-	   case "$$f" in src/$(TAG)*) continue ; esac ; \
-	   case "$$f" in src/OOo*_src*) continue ; esac; \
-	   uuencode $$f $$f > $$f.uu.tmp && \
-	   ../debian/scripts/move-if-change $$f.uu.tmp $$f.uu; \
-	   touch -r $$f $$f.uu ; \
-	   rm -f $$f ; \
-	  fi ; \
-	 done
-	set -e; \
-	for i in `cat debian/source/components | grep -v ^$(OOO_BUILD_TREE)` ; do \
-	cd $$i && \
-	 for f in \
-	   *.bz2 \
-	   *.gz \
-	   *.zip \
-	   ; do \
-	  if [ -s $$f ]; then \
-	   uuencode $$f $$f > $$f.uu.tmp && \
-	   ../debian/scripts/move-if-change $$f.uu.tmp $$f.uu; \
-	   touch -r $$f $$f.uu ; \
-	   rm -f $$f ; \
-	  fi ; done; \
-	 cd ..; \
-	 done
-endif
-
 	dh_clean
 
 	# Files created in debian directory
@@ -1590,7 +1416,7 @@ endif
 	done
 	rm -f debian/*.install debian/*.dirs
 	rm -f debian/catalog.xml
-	rm -f debian/libreoffice-dtd-officedocument1.0.xmlcatalogs
+	rm -f debian/openoffice.org-dtd-officedocument1.0.xmlcatalogs
 	rm -f download.list
 
 	rm -f $(OOO_BUILD_TREE)/src/libreoffice-$(OOO_BUILD_TARBAL_VERSION)*
@@ -1610,11 +1436,6 @@ endif
 	rm -f $(OOO_BUILD_TREE)/download
 	rm -f $(OOO_BUILD_TREE)/distro-configs/*.conf
 	rm -f $(OOO_BUILD_TREE)/patches/apply.pl
-
-ifeq "$(DEBSRC_VERSION)" "1.0"
-	# default is 3.0 (quilt), so revert to 1.0 for lenny
-	echo "1.0" > debian/source/format
-endif
 
 	# left-over from ooo-pack-sources
 	rm -rf .releases
@@ -1907,11 +1728,7 @@ build-indep: $(STAMP_DIR)/build
 # make run the target over.
 
 configure: $(OOO_BUILD_TREE)/config.status
-ifeq "$(DEBSRC_VERSION)" "1.0"
-$(OOO_BUILD_TREE)/config.status: $(QUILT_STAMPFN) $(OOO_BUILD_TREE)/configure
-else
 $(OOO_BUILD_TREE)/config.status: $(OOO_BUILD_TREE)/configure
-endif
 	dh_testdir
 
 	# Make sure needed scripts are executable
@@ -1933,21 +1750,6 @@ ifeq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
 	  cp -p libreoffice-build/distro-configs/UbuntuL10n.conf.in \
 	    libreoffice-build/distro-configs/UbuntuL10n.conf.in.saved; \
 	fi
-endif
-
-ifneq "$(DEBSRC_VERSION)" "3.0"
-	# uudecode files, omit GSI files
-	set -e; \
-	for uu in \
-	  `find . -name *.uu` \
-	  ; do \
-	 case "$$uu" in $(OOO_BUILD_TREE)/src/GSI*) continue ; esac ; \
-	 orig="`echo "$$uu" |sed -e 's#.uu$$##'`" ;\
-	 if [ ! -s $$orig ]; then \
-	  uudecode -o $$orig $$uu ; \
-	  touch -r $$uu $$orig ; \
-	 fi ; \
-	done
 endif
 
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
@@ -2433,6 +2235,14 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/install $(STAMP_DIR)/install-indep $(OOO_BU
 		rm -rf $(PKGDIR)-l10n-$$iso/$(OODIR)/help; \
 	done
 
+	# install technical.dic
+	for iso in $(LANGPACKISOS); do \
+		if [ "$$iso" = "en-US" ]; then pkg=common; else pkg=l10n-`echo $$iso | tr A-Z a-z`; fi; \
+		mkdir -p $(PKGDIR)-$$pkg/$(OODIR)/share/wordbook/$$iso; \
+		install -m644 $(SOURCE_TREE)/extras/source/wordbook/technical.dic \
+			$(PKGDIR)-$$pkg/$(OODIR)/share/wordbook/$$iso/technical.dic; \
+	done
+
 	# replace duplicate files in the langpacks with symlinks
 	TMP=`mktemp -q`; \
 		fdupes --quiet --recurse --sameline --size \
@@ -2472,6 +2282,7 @@ endif
 ifeq (pt-BR,$(findstring pt-BR,$(LANGPACKISOS)))
   ifeq "$(PKGSOURCE)" "libreoffice$(VER)"
 	# move pt-BR ("BrOffice") splashs into -l10n-pt-br
+	mkdir -p $(PKGDIR)-l10n-pt-br/$(OOBRANDDIR)/program
 	mv $(PKGDIR)-common/$(OOBRANDDIR)/program/intro-pt_BR.png \
 		$(PKGDIR)-l10n-pt-br/$(OOBRANDDIR)/program/intro-pt_BR.png
 	mv $(PKGDIR)-common/$(OOBRANDDIR)/program/about-pt_BR.png \
@@ -3027,7 +2838,7 @@ ifeq "$(ENABLE_MINIMIZER)" "y"
 	mkdir -p $(PKGDIR)-presentation-minimizer/$(OOBRANDDIR)/share/extensions
 	mv debian/tmp/$(OOBRANDDIR)/share/extensions/presentation-minimizer \
 		$(PKGDIR)-presentation-minimizer/$(OOBRANDDIR)/share/extensions
-	rm -f $(PKGDIR)-presentation-minimizer/$(OOBRANDDIR)/share/extensions/presentation-minimizer/LICENSE
+	rm -f $(PKGDIR)-presentation-minimizer/$(OOBRANDDIR)/share/extensions/presentation-minimizer/registration/LICENSE
 endif
 
 ifeq "$(ENABLE_PRESENTER_CONSOLE)" "y"
@@ -3049,7 +2860,7 @@ ifeq "$(ENABLE_MYSQLNATIVE)" "y"
 	mkdir -p $(PKGDIR)-mysql-connector/$(OOBRANDDIR)/share/extensions
 	mv debian/tmp/$(OOBRANDDIR)/share/extensions/mysql-connector-ooo \
 		$(PKGDIR)-mysql-connector/$(OOBRANDDIR)/share/extensions
-	rm -f $(PKGDIR)-mysql-connector/$(OOBRANDDIR)/share/extensions/mysql-connector-ooo/LICENSE
+	rm -f $(PKGDIR)-mysql-connector/$(OOBRANDDIR)/share/extensions/mysql-connector-ooo/registration/LICENSE
 endif
 
 ifeq "$(ENABLE_PDFIMPORT)" "y"
@@ -3057,7 +2868,7 @@ ifeq "$(ENABLE_PDFIMPORT)" "y"
 	mkdir -p $(PKGDIR)-pdfimport/$(OOBRANDDIR)/share/extensions
 	mv debian/tmp/$(OOBRANDDIR)/share/extensions/pdfimport \
 		$(PKGDIR)-pdfimport/$(OOBRANDDIR)/share/extensions
-	rm -f $(PKGDIR)-pdfimport/$(OOBRANDDIR)/share/extensions/pdfimport/LICENSE
+	rm -f $(PKGDIR)-pdfimport/$(OOBRANDDIR)/share/extensions/pdfimport/registration/LICENSE
 endif
 
 	# move services.rdb to /var/lib/openoffice
@@ -3236,6 +3047,8 @@ endif
 	for i in editpic poll savepic show webcast; do \
 		chmod 755 $(PKGDIR)-common/$(OODIR)/share/config/webcast/$$i.pl; \
 	done
+	chmod 644 $(PKGDIR)-common/$(OOBRANDDIR)/LICENSE.odt
+	chmod 644 $(PKGDIR)-common/$(OOBRANDDIR)/CREDITS.odt
 
 	rm -rf $(PKGDIR)-common/$(OOBRANDDIR)/LICENSE
 
@@ -3383,16 +3196,20 @@ endif
 #			$(PKGDIR)-style-$$p/$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config/; \
 #	done
 
-	rm -rf $(PKGDIR)-dtd-officedocument1.0
-	mkdir -p $(PKGDIR)-dtd-officedocument1.0/$(OODIR)/share/dtd
+	rm -rf debian/openoffice.org-dtd-officedocument1.0
+	mkdir -p debian/openoffice.org-dtd-officedocument1.0/$(shell echo $(OODIR) | sed -e s/libreoffice/openoffice/)/share/dtd
 	mv $(PKGDIR)-common/$(OODIR)/share/dtd/officedocument \
-		$(PKGDIR)-dtd-officedocument1.0/$(OODIR)/share/dtd
+		debian/openoffice.org-dtd-officedocument1.0/$(shell echo $(OODIR) | sed -e s/libreoffice/openoffice/)/share/dtd
 	cat debian/catalog.xml.in \
-		| sed -e "s,\@OOBASISDIR\@,$(OOBASISDIR)," \
-		> $(PKGDIR)-dtd-officedocument1.0/$(OODIR)/share/dtd/officedocument/1_0/catalog.xml
-	cat $(PKGDIR)-dtd-officedocument1.0.xmlcatalogs.in \
-		| sed -e "s,\@OOBASISDIR\@,$(OOBASISDIR)," \
-		> $(PKGDIR)-dtd-officedocument1.0.xmlcatalogs
+		| sed -e "s,\@OOBASISDIR\@,$(shell echo $(OOBASISDIR) | sed -e s/libreoffice/openoffice/)," \
+		> debian/openoffice.org-dtd-officedocument1.0/$(shell echo $(OODIR) | sed -e s/libreoffice/openoffice/)/share/dtd/officedocument/1_0/catalog.xml
+	cat debian/openoffice.org-dtd-officedocument1.0.xmlcatalogs.in \
+		| sed -e "s,\@OOBASISDIR\@,$(shell echo $(OOBASISDIR) | sed -e s/libreoffice/openoffice/)," \
+		> debian/openoffice.org-dtd-officedocument1.0.xmlcatalogs
+	# symlink, as it's in a openoffice.org-* package
+	cd debian/openoffice.org-dtd-officedocument1.0 && \
+		mkdir -p $(OODIR)/share/dtd && \
+		cd $(OODIR)/share/dtd && ln -s /$(shell echo $(OODIR) | sed -e s/libreoffice/openoffice/)/share/dtd/officedocument
 
 ifeq "$(DIST)" "Debian"
 	# install Debian presentation template
@@ -3405,9 +3222,6 @@ ifeq "$(DIST)" "Ubuntu"
 	mkdir -p $(PKGDIR)-common/$(OODIR)/share/template/en-US/presnt
 	install -m644 debian/ubuntu/*.otp $(PKGDIR)-common/$(OODIR)/share/template/en-US/presnt/
 endif
-
-	# add "libreoffice" symlink
-	cd $(PKGDIR)-common/usr/bin && ln -s ooffice libreoffice$(VER)
 
 ifeq "$(PACKAGE_SDK)" "y"
 	# add symlinks for docs and examples
@@ -3538,6 +3352,15 @@ endif
 	install -m644 -D $(SOURCE_TREE)/more_fonts/fonts/fc_local.conf \
 		$(PKGDIR)-common/$(OODIR)/share/fonts/truetype/fc_local.conf
 
+	# FIXME: conffile madness.
+	# unless openoffice.org-common gets purged we would still have ooffice.sh
+	# there together with libreoffice.sh...
+	mv $(PKGDIR)-common/etc/bash_completion.d/libreoffice.sh \
+		$(PKGDIR)-common/etc/bash_completion.d/ooffice.sh
+
+	# register technical.dic
+	perl -pi -e 's/standard.dic;/standard.dic;technical.dic;/' $(PKGDIR)-common/$(OODIR)/share/registry/main.xcd
+
 endif # ifneq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
 
 	touch $@
@@ -3569,12 +3392,11 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 	dh_installdocs -s -Nuno-libs3
 	dh_installdebconf -s
 	dh_installman -s
-	# fix manpage symlinks
 	for i in writer calc draw base math impress; do \
-		for i in `find $(PKGDIR)-$$i -type l -name "o*.1"`; do \
+		for i in `find $(PKGDIR)-$$i -type l -name "lo*.1"`; do \
 			mv $$i $$i.gz; \
-			if [ "`readlink $$i`" != "openoffice.1.gz" ]; then \
-				ln -sf openoffice.1.gz $$i.gz; \
+			if [ "`readlink $$i`" != "libreoffice.1.gz" ]; then \
+				ln -sf libreoffice.1.gz $$i.gz; \
 			fi; \
 		done; \
 	done
@@ -3815,11 +3637,12 @@ endif
 		$(SOURCE_TREE)/instsetoo_native/util/LibreOffice/replace_file/*/en-US/README_en-US \
 		$(OOO_BUILD_TREE)/NEWS
 	dh_installdocs -i -Nlibreoffice$(VER)-common
+	# note libreoffice.1 is already installed into -common by libreoffice-builds package-ooo
 	dh_installman -i
-	for i in `find $(PKGDIR)-common -type l -name "o*.1"`; do \
+	for i in `find $(PKGDIR)-common -type l -name "lo*.1"`; do \
 		mv $$i $$i.gz; \
-		if [ "`readlink $$i`" != "openoffice.1.gz" ]; then \
-			ln -sf openoffice.1.gz $$i.gz; \
+		if [ "`readlink $$i`" != "libreoffice.1.gz" ]; then \
+			ln -sf libreoffice.1.gz $$i.gz; \
 		fi; \
 	done
 	dh_installchangelogs -i -k
@@ -3906,7 +3729,8 @@ endif
 		-Nlibuno-cli-oootypes1.0-cil \
 		-Nlibuno-cli-cppuhelper1.0-cil \
 		-Nlibuno-cli-ure1.0-cil \
-		-Nttf-opensymbol -- \
+		-Nttf-opensymbol \
+		-Nopenoffice.org-dtd-officedocument1.0 -- \
 		-V'base-version=$(BASE_VERSION)' \
 		-V'basis-version=$(BASIS_VERSION)' \
 		-V'next-basis-version=$(NEXT_BASIS_VERSION)' \
@@ -3956,6 +3780,8 @@ ifeq "$(ENABLE_REPORTDESIGN)" "y"
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep "<version" $(SOURCE_TREE)/reportbuilder/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/misc/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
 endif
+	dh_gencontrol -popenoffice.org-dtd-officedocument1.0 -- \
+		-v$(shell echo `echo $(BINARY_VERSION) | cut -d: -f1` + 1 | bc):1.0+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
 endif # "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
 
 	dh_md5sums -i -Xjavasettingsunopkginstall.xml
@@ -4037,7 +3863,6 @@ get-orig-source:
 		rm -rf libreoffice-$(UPSTREAM_VERSION) && \
 		mv libreoffice_$(UPSTREAM_VERSION).orig-archive-$(OOO_BUILD_VERSION).tar.gz $(CURDIR)/.. && \
 		rm -rf $$TMPD
-ifeq "$(DEBSRC_VERSION)" "3.0"
 	if test -n "$$TMP"; then \
 		TMPD=`mktemp -d -p $$TMP`; \
 	else \
@@ -4051,8 +3876,6 @@ ifeq "$(DEBSRC_VERSION)" "3.0"
 		tar cfvz libreoffice_$(UPSTREAM_VERSION).orig-$$TARFILE_LOCATION.tar.gz $$TARFILE_LOCATION && \
 		mv libreoffice_$(UPSTREAM_VERSION).orig-$$TARFILE_LOCATION.tar.gz $(CURDIR)/.. && \
 		rm -rf $$TMPD
-endif
-ifeq "$(DEBSRC_VERSION)" "3.0"
 	# get ooo-build
 	if test -n "$$TMP"; then \
 		TMPD=`mktemp -d -p $$TMP`; \
@@ -4061,7 +3884,6 @@ ifeq "$(DEBSRC_VERSION)" "3.0"
 	fi && \
 	if [ ! -d $(OOO_BUILD_TREE) ]; then ./debian/rules get-ooo-build; fi
 	tar cfvz ../libreoffice_$(UPSTREAM_VERSION).orig-$(OOO_BUILD_TREE).tar.gz $(OOO_BUILD_TREE)
-endif
 
 # Download the latest sources needed for ooo-build. Note that is
 # might download more than actually needed here....
