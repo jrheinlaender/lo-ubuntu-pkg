@@ -1352,6 +1352,16 @@ debian/control: $(wildcard debian/control*in) $(OOO_BUILD_TREE)/bin/openoffice-x
 	    -e "s#@BUGS@#$(BUGS)#g" \
 	    < debian/control.in > debian/control
 
+ifeq "$(ENABLE_LDAP)" "y"
+	# build-depends might not be satified when running debian/rules control. prevent bad subsitition with
+	# nothing (libldap--)
+	if [ ! -f /usr/include/ldap_features.h ]; then \
+		echo "/usr/include/ldap_features.h not found. Is libldap2-dev installed?"; \
+		echo 'Needed for properly setting $$(LDAP_LIB). Stopping,'; \
+		exit 1; \
+	fi
+endif
+
 	for LNUM in $(filter-out en-US,$(LANGPACKISOS)) ; do \
 	    [ "$$LNUM" = en-US -a "$(PKGSOURCE)" = "libreoffice$(VER)-l10n" ] && continue; \
 	    LNAME=`$(OOO_BUILD_TREE)/bin/openoffice-xlate-lang -l $$LNUM | perl -e 'print ucfirst(<STDIN>);'`; \
