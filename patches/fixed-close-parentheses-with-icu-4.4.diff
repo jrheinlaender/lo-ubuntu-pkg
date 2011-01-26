@@ -1,0 +1,116 @@
+diff --git a/patches/dev300/apply b/patches/dev300/apply
+index 70f28fd..89ff428 100755
+--- libreoffice-3.3.0/libreoffice-build/patches/dev300/apply
++++ libreoffice-3.3.0/libreoffice-build/patches/dev300/apply
+@@ -1800,6 +1800,8 @@ goodies-eps-filter-unix.diff, n#200053, rodo
+ # internationalized ordinal suffix autocorrection. Needs ICU 4.2
+ svx-i18n-ordinal-autocorr.diff, i#20348, cbosdo
+
++fixed-close-parentheses-with-icu-4.4.diff
++
+ # hack to install the problematic gdocs_2.1.0.oxt; can be removed with new gdocs version
+ scp2_extensions-gdocs_2.1.0_modified_installation.diff, pmladek
+
+--- /dev/null	2011-01-25 18:07:07.612942750 +0100
++++ libreoffice-3.3.0/libreoffice-build/fixed-close-parentheses-with-icu-4.4.diff	2011-01-26 03:24:00.000000000 +0100
+@@ -0,0 +1,100 @@
++diff --git a/configure.in b/configure.in
++index 5fefd14..e02d016 100755
++--- configure.in
+++++ configure.in
++@@ -5314,18 +5314,21 @@ if test -n "$with_system_icu" -o -n "$with_system_libs" && \
++    if test -z "$SYSTEM_GENCMN"; then
++       AC_MSG_ERROR([\"gencmn\" not found in \$PATH, install the icu development tool \"gencmn"\])
++    fi
+++
+++   AC_PATH_PROG( ICUCONFIG, icu-config)
++    AC_MSG_CHECKING([ICU version])
++-      AC_TRY_RUN([
++-#include <unicode/uversion.h>
+++   ICU_VERSION=`$ICUCONFIG --version`
+++   ICU_MAJOR=`$ICUCONFIG --version | cut -d"." -f1`
+++   ICU_MINOR=`$ICUCONFIG --version | cut -d"." -f2`
+++   ICU_MICRO=`$ICUCONFIG --version | cut -d"." -f3`
++ 
++-int main(int argc, char **argv) {
++-      if(U_ICU_VERSION_MAJOR_NUM < 4)
++-        return 1;
++-      else
++-        return 0;
++-}
++-      ], [AC_MSG_RESULT(OK)], [AC_MSG_ERROR([not suitable, only >= 4.0 supported currently])])
++-      AC_LANG_POP([C++])
+++   if test "$ICU_MAJOR" -ge "4"; then
+++      AC_MSG_RESULT([OK])
+++   else
+++      AC_MSG_ERROR([not suitable, only >= 4.0 supported currently])
+++   fi
+++
+++    AC_LANG_POP([C++])
++ else
++     AC_MSG_RESULT([internal])
++     SYSTEM_ICU=NO
++@@ -5335,6 +5338,9 @@ AC_SUBST(SYSTEM_ICU)
++ AC_SUBST(SYSTEM_GENBRK)
++ AC_SUBST(SYSTEM_GENCCODE)
++ AC_SUBST(SYSTEM_GENCMN)
+++AC_SUBST(ICU_MAJOR)
+++AC_SUBST(ICU_MINOR)
+++AC_SUBST(ICU_MICRO)
++ 
++ dnl ===================================================================
++ dnl Graphite
++diff --git a/set_soenv.in b/set_soenv.in
++index 0533441..f48d5e3 100755
++--- set_soenv.in
+++++ set_soenv.in
++@@ -1906,6 +1906,9 @@ if ($SYSTEM_PYTHON eq "NO") {
++ ToFile( "HOME",              "@HOME@",             "e" );
++ }
++ ToFile( "SYSTEM_ICU",        "@SYSTEM_ICU@",       "e" );
+++ToFile( "ICU_MAJOR",         "@ICU_MAJOR@",        "e" );
+++ToFile( "ICU_MINOR",         "@ICU_MINOR@",        "e" );
+++ToFile( "ICU_MICRO",         "@ICU_MICRO@",        "e" );
++ ToFile( "SYSTEM_GENBRK",     "@SYSTEM_GENBRK@",    "e" );
++ ToFile( "SYSTEM_GENCCODE",   "@SYSTEM_GENCCODE@",  "e" );
++ ToFile( "SYSTEM_GENCMN",     "@SYSTEM_GENCMN@",    "e" );
++diff --git a/icu/icuversion.mk b/icu/icuversion.mk
++index eedf627..a170642 100755
++--- icu/icuversion.mk
+++++ icu/icuversion.mk
++@@ -25,9 +25,9 @@
++ #
++ #*************************************************************************
++ # major 
++-ICU_MAJOR=4
+++ICU_MAJOR*=4
++ # minor 
++-ICU_MINOR=0
+++ICU_MINOR*=0
++ # micro 
++-ICU_MICRO=1
+++ICU_MICRO*=1
++ 
++diff --git a/i18npool/source/breakiterator/makefile.mk b/i18npool/source/breakiterator/makefile.mk
++index f308812..fc6561c 100644
++--- i18npool/source/breakiterator/makefile.mk
+++++ i18npool/source/breakiterator/makefile.mk
++@@ -79,7 +79,17 @@ GENBRK:=$(AUGMENT_LIBRARY_PATH) $(SOLARBINDIR)$/genbrk
++ GENCCODE:=$(AUGMENT_LIBRARY_PATH) $(SOLARBINDIR)$/genccode
++ .ENDIF
++ 
++-$(MISC)$/%.brk : data/%.txt
+++.INCLUDE .IGNORE :  icuversion.mk
+++
+++$(MISC)$/%.txt : data/%.txt
+++# fdo#31271 ")" reclassified in more recent ICU/Unicode Standards
+++.IF "$(ICU_MAJOR)" >= "5" || ("$(ICU_MAJOR)" == "4" && "$(ICU_MINOR)" >= "4")
+++    $(SED) "s#\[:LineBreak =  Close_Punctuation:\]#\[\[:LineBreak =  Close_Punctuation:\] \[:LineBreak = Close_Parenthesis:\]\]#" $< > $@
+++.ELSE
+++    $(COPY) $< $@
+++.ENDIF
+++
+++$(MISC)$/%.brk : $(MISC)/%.txt
++     $(WRAPCMD) $(GENBRK) -r $< -o $(MISC)$/$*.brk
++ 
++ $(MISC)$/%_brk.c : $(MISC)$/%.brk
