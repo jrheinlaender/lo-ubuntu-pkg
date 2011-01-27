@@ -1478,6 +1478,16 @@ ifeq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
 	    >> debian/control < debian/control.l10n.in
 endif
 
+ifeq "$(ENABLE_LDAP)" "y"
+	# build-depends might not be satified when running debian/rules control. prevent bad subsitition with
+	# nothing (libldap--)
+	if [ ! -f /usr/include/ldap_features.h ]; then \
+		echo "/usr/include/ldap_features.h not found. Is libldap2-dev installed?"; \
+		echo 'Needed for properly setting $$(LDAP_LIB). Stopping,'; \
+		exit 1; \
+	fi
+endif
+
 	for LNUM in $(filter-out en-US,$(LANGPACKISOS)) ; do \
 	    [ "$$LNUM" = en-US -a "$(PKGSOURCE)" = "libreoffice$(VER)-l10n" ] && continue; \
 	    LNAME=`$(OOO_BUILD_TREE)/bin/openoffice-xlate-lang -l $$LNUM | perl -e 'print ucfirst(<STDIN>);'`; \
@@ -2588,13 +2598,20 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 		sed -e 's,Exec=$${UNIXBASISROOTNAME} \(.*\) %U,Exec=libreoffice$(VER) \1 %U,' \
 		    -e 's,Icon=$${WITHOUTDOTUNIXPRODUCTNAME},Icon=libreoffice,' \
 		    -e 's,Name=$${PRODUCTNAME} $${PRODUCTVERSION},Name=LibreOffice $(VER),' \
-		    -e 's,Comment=$${PRODUCTNAME} $${PRODUCTVERSION},Name=LibreOffice $(VER),' \
-		    -e 's,Name=$${PRODUCTNAME_BR} $${PRODUCTVERSION},Name=BrOffice $(VER),' \
+		    -e 's,Name\[pt_BR\]=$${PRODUCTNAME_BR} $${PRODUCTVERSION},Name[pt_BR]=BrOffice $(VER),' \
 		    -e 's/  / /' \
 		   < $$dirname/$$p.desktop \
 		   > $(PKGDIR)-$$p/usr/share/applications/libreoffice$(VER)-$$p.desktop || exit 1 ;\
 	done
-ifeq "$(BUILD_GTK)" "y"
+  ifeq (tr,$(findstring tr,$(LANGPACKISOS)))
+	sed -i 's,Comment\[tr\]=$${PRODUCTNAME} $${PRODUCTVERSION},Comment[tr]=LibreOffice $(VER),' \
+		$(PKGDIR)-calc/usr/share/applications/libreoffice$(VER)-calc.desktop
+  endif
+  ifeq (da,$(findstring da,$(LANGPACKISOS)))
+	sed -i 's,Comment\[da\]=$${PRODUCTNAME} $${PRODUCTVERSION},Comment[da]=LibreOffice $(VER),' \
+		$(PKGDIR)-writer/usr/share/applications/libreoffice$(VER)-writer.desktop
+  endif
+  ifeq "$(BUILD_GTK)" "y"
 	# qstart.desktop is different to the above. Should be handled by
 	# --with-unix-wrapper of ooo-build but that somehow doesn't work as
 	# expected. FIXME.
@@ -2603,7 +2620,7 @@ ifeq "$(BUILD_GTK)" "y"
 		-e "s,Name=LibreOffice $$PRODUCTVERSION,Name=LibreOffice $(VER)," \
 		-e "s/  / /" \
 		$(PKGDIR)-gtk/$(OOBRANDDIR)/share/xdg/qstart.desktop
-endif
+  endif
 	# we don't need the share/xdgs except qstart
 	for f in `find debian -name '*.desktop' | grep xdg | grep -v qstart`; do \
 		rm -f $$f; done
@@ -3360,12 +3377,6 @@ endif
 	# FIXME: Shouldn't this be in /etc/fonts/conf.d with a symlink here?
 	install -m644 -D $(SOURCE_TREE)/more_fonts/fonts/fc_local.conf \
 		$(PKGDIR)-common/$(OODIR)/share/fonts/truetype/fc_local.conf
-
-	# FIXME: conffile madness.
-	# unless openoffice.org-common gets purged we would still have ooffice.sh
-	# there together with libreoffice.sh...
-	mv $(PKGDIR)-common/etc/bash_completion.d/libreoffice.sh \
-		$(PKGDIR)-common/etc/bash_completion.d/ooffice.sh
 
 	# register technical.dic
 	perl -pi -e 's/standard.dic;/standard.dic;technical.dic;/' $(PKGDIR)-common/$(OODIR)/share/registry/main.xcd
