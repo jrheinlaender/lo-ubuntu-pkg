@@ -25,6 +25,13 @@ validate_extensions() {
 }
 
 sync_extensions() {
+  INSTDIR=`mktemp -d`
+  export PYTHONPATH="/@OOBASISDIR@/program"
+  if [ -L /usr/lib/libreoffice/basis-link ]; then
+	d=/var/lib/libreoffice/`readlink /usr/lib/libreoffice/basis-link`/
+  else
+	d=/usr/lib/libreoffice
+  fi
   if [ -e /usr/lib/libreoffice/share/prereg/bundled ] && readlink /usr/lib/libreoffice/share/prereg/bundled 2>&1 >/dev/null; then
     /usr/lib/libreoffice/program/unopkg sync -v --shared \
       "-env:BUNDLED_EXTENSIONS_USER=file:///usr/lib/libreoffice/share/prereg/bundled" \
