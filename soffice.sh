@@ -1,4 +1,4 @@
-# configuration file to set up some environment variables for OOo
+# configuration file to set up some environment variables for LibreOffice
 
 # File locking; possible values are:
 # - yes:  enable file locking unconditionally
