@@ -38,7 +38,7 @@ def gen_transitonal_packages():
             if f in ('Package', 'Depends', 'Description'):
                 continue
             print "%s: %s" % (f, v)
-        print "Depends: %s" % p['Depends']
+        print "Depends: %s, ${misc:Depends}" % p['Depends'] 
         print "Description: %s" % p['Description']
         print " This is a transitional package, replacing the OpenOffice.org packaging"
         print " with the LibreOffice packaging."
