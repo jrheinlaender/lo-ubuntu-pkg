@@ -50,6 +50,7 @@ SYSTEM_GCC_VERSION = $(shell gcc --version | sed -n '/^gcc/s/.*\(.\..\)\..$$/\1/
 
 # Debian buildds run as user `buildd', other are using /CurrentlyBuilding
 ON_BUILDD := $(shell [ "`whoami`" = buildd -o -f /CurrentlyBuilding ] && echo y || echo n)
+ON_BUILDD_VERBOSITY :=
 
 PKGDIR:=debian/libreoffice$(VER)
 OODIRNAME=libreoffice$(VER)
@@ -494,6 +495,7 @@ ifeq "$(DIST)" "Ubuntu"
   L10N_SEPARATE_SOURCE=y
   USE_COMMON_DOCDIR=y
   IMAGES += human
+  ON_BUILDD_VERBOSITY := true
   ifeq "$(PKGSOURCE)" "libreoffice$(VER)"
     BUILD_ONLY_EN_US=y
   endif
@@ -1889,11 +1891,14 @@ ifeq "$(BUILD_KDE)" "n"
 	fi
 endif
 
-ifeq ($(ON_BUILDD),y)
-	cd $(OOO_BUILD_TREE) ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE)
-else
-	cd $(OOO_BUILD_TREE) ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 VERBOSE=true ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE)
-endif
+	cd $(OOO_BUILD_TREE) ; \
+		PATH=$(BUILD_PATH) \
+		LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
+		DEFAULT_TO_ENGLISH_FOR_PACKING=1 \
+		VERBOSE=$(if $(filter y,$(ON_BUILDD)),$(ON_BUILDD_VERBOSITY),true) \
+		ARCH_FLAGS=$(ARCH_FLAGS) \
+		TMP=`mktemp -q -d` \
+		$(MAKE)
 
 	# apparently setting this here globally doesn't work, so hack around.
 	# If we don't do this we get loads of harmless, but log-bloating
