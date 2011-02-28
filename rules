@@ -50,6 +50,7 @@ SYSTEM_GCC_VERSION = $(shell gcc --version | sed -n '/^gcc/s/.*\(.\..\)\..$$/\1/
 
 # Debian buildds run as user `buildd', other are using /CurrentlyBuilding
 ON_BUILDD := $(shell [ "`whoami`" = buildd -o -f /CurrentlyBuilding ] && echo y || echo n)
+ON_BUILDD_VERBOSITY :=
 
 PKGDIR:=debian/libreoffice$(VER)
 OODIRNAME=libreoffice$(VER)
@@ -63,7 +64,7 @@ OODIR:=$(OOBASISDIR)
 # Figure out who's building this package.
 OOO_VENDOR:=The Document Foundation/Debian
 ifeq "$(DIST)" "Ubuntu"
-OOO_VENDOR=The Document Foundation, Debian and Ubuntu
+OOO_VENDOR:=The Document Foundation, Debian and Ubuntu
 endif
 export OOO_VENDOR
 
@@ -353,12 +354,19 @@ ifeq "$(ARCH)" "i386"
 	USE_STLPORT=y
 endif
 
+
 # ARM target
-ifeq "$(ARCH)" "armel"
+ifneq "$(DIST)" "Ubuntu"
+# lp#725763 and lp#726529
+# We dont use the arm optimzations patch on Natty
+# for >=3.4 the patch is already upstream
+# left here for now to document the intended change from debian
+  ifeq "$(ARCH)" "armel"
 	CONFIGURE_FLAGS += --with-arm-target=4
-endif
-ifeq "$(ARCH)" "armhf"
+  endif
+  ifeq "$(ARCH)" "armhf"
 	CONFIGURE_FLAGS += --with-arm-target=7
+  endif
 endif
 
 ifeq "$(ENABLE_OPENGL)" "y"
@@ -494,6 +502,7 @@ ifeq "$(DIST)" "Ubuntu"
   L10N_SEPARATE_SOURCE=y
   USE_COMMON_DOCDIR=y
   IMAGES += human
+  ON_BUILDD_VERBOSITY := true
   ifeq "$(PKGSOURCE)" "libreoffice$(VER)"
     BUILD_ONLY_EN_US=y
   endif
@@ -1467,14 +1476,6 @@ ifeq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
 	    >> debian/control < debian/control.l10n.in
 endif
 
-ifeq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
-	awk '{print} /^ *$$/ {exit}' debian/control > debian/control.l10n
-	mv debian/control.l10n debian/control
-
-	sed -e "s|libreofficeVER|libreoffice$(VER)|g" \
-	    >> debian/control < debian/control.l10n.in
-endif
-
 ifeq "$(ENABLE_LDAP)" "y"
 	# build-depends might not be satified when running debian/rules control. prevent bad subsitition with
 	# nothing (libldap--)
@@ -1889,11 +1890,14 @@ ifeq "$(BUILD_KDE)" "n"
 	fi
 endif
 
-ifeq ($(ON_BUILDD),y)
-	cd $(OOO_BUILD_TREE) ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE)
-else
-	cd $(OOO_BUILD_TREE) ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 VERBOSE=true ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE)
-endif
+	cd $(OOO_BUILD_TREE) ; \
+		PATH=$(BUILD_PATH) \
+		LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
+		DEFAULT_TO_ENGLISH_FOR_PACKING=1 \
+		VERBOSE=$(if $(filter y,$(ON_BUILDD)),$(ON_BUILDD_VERBOSITY),true) \
+		ARCH_FLAGS=$(ARCH_FLAGS) \
+		TMP=`mktemp -q -d` \
+		$(MAKE)
 
 	# apparently setting this here globally doesn't work, so hack around.
 	# If we don't do this we get loads of harmless, but log-bloating
