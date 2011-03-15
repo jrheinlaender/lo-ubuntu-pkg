@@ -737,7 +737,7 @@ export JAVA_HOME
 	OOO_OFFICEBEAN_DEP = libreoffice$(VER)-officebean
 else
 	CONFIGURE_FLAGS += --without-java
-	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-officebean -Nlibreoffice$(VER)-java-common -Nlibreoffice$(VER)-filter-mobiledev -Nlibreoffice$(VER)-gcj
+	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-officebean -Nlibreoffice$(VER)-java-common -Nlibreoffice$(VER)-filter-mobiledev -Nlibreoffice$(VER)-gcj -Nlibreoffice$(VER)-script-provider-bsh -Nlibreoffice$(VER)-script-provider-js
 endif
 
 ifneq "$(MOZILLA)" ""
@@ -967,7 +967,7 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
   ifneq (,$(filter beanshell, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , bsh (>= 2.0b4)$(OOO_NO_JAVA_ARCHS)
-	COMMON_BSH_DEPENDS = bsh (>= 2.0b4)
+	BSH_DEPENDS = bsh (>= 2.0b4)
 	JAVA_GCJ_DEPENDS += , bsh-gcj
   endif
 endif
@@ -2381,6 +2381,9 @@ ifeq "$(BUILD_PYUNO)" "y"
 	  echo 'PYTHONPATH=$$PYTHONHOME $$PYTHONHOME/site-packages $$PYTHONHOME/lib-dynload $$PYTHONHOME/lib-tk $$ORIGIN' \
 	) > debian/python-uno/$(OODIR)/program/pythonloader.unorc
 	chmod u-w debian/python-uno/$(OODIR)/program/pythonloader.unorc
+        mkdir -p debian/python-uno/$(OOBRANDDIR)/share/extensions
+        mv debian/tmp/$(OOBRANDDIR)/share/extensions/script-provider-for-python \
+                debian/python-uno/$(OOBRANDDIR)/share/extensions
 
 	mkdir -p debian/python-uno/usr/share/doc/python-uno
 	cp -r $(SOURCE_TREE)/pyuno/demo \
@@ -2812,14 +2815,9 @@ endif
 	  for x in *.png; do convert $$x `basename $$x .png`.xpm; done
 
 ifeq "$(ENABLE_JAVA)" "y"
-	# symlink jars we use externally
   ifneq (,$(filter saxon, $(SYSTEM_STUFF)))
 	ln -sf /usr/share/java/saxonb.jar \
 		$(PKGDIR)-java-common/$(OODIR)/program/classes/saxon9.jar
-  endif
-  ifneq (,$(filter beanshell, $(SYSTEM_STUFF)))
-	ln -sf /usr/share/java/bsh.jar \
-	        $(PKGDIR)-java-common/$(OODIR)/program/classes/bsh.jar
   endif
 endif
 	# remove extra license files
@@ -2946,6 +2944,31 @@ ifeq "$(PACKAGE_SDK)" "y"
 	# and the index
 	cd $(PKGDIR)-dev-doc/usr/share/doc/libreoffice-dev && \
 		ln -s /$(OOSDKDIR)/index.html index.html
+endif
+
+ifeq "$(ENABLE_JAVA)" "y"
+        rm -rf $(PKGDIR)-script-provider-bsh
+        mkdir -p $(PKGDIR)-script-provider-bsh/$(OOBRANDDIR)/share/extensions
+        mv debian/tmp/$(OOBRANDDIR)/share/extensions/script-provider-for-beanshell \
+                $(PKGDIR)-script-provider-bsh/$(OOBRANDDIR)/share/extensions
+  ifneq (,$(filter beanshell, $(SYSTEM_STUFF)))
+	ln -sf /usr/share/java/bsh.jar \
+	        $(PKGDIR)-script-provider-bsh/$(OODIR)/program/classes/bsh.jar
+  endif
+	mkdir -p $(PKGDIR)-script-provider-bsh/$(OOBRANDDIR)/share/Scripts
+	mv $(PKGDIR)-common/$(OODIR)/share/Scripts/beanshell \
+		$(PKGDIR)-script-provider-bsh/$(OODIR)/Scripts
+
+        rm -rf $(PKGDIR)-script-provider-js
+        mkdir -p $(PKGDIR)-script-provider-js/$(OOBRANDDIR)/share/extensions
+        mv debian/tmp/$(OOBRANDDIR)/share/extensions/script-provider-for-javascript \
+                $(PKGDIR)-script-provider-js/$(OOBRANDDIR)/share/extensions
+	mkdir -p $(PKGDIR)-script-provider-js/$(OODIR)/program/classes
+	mv $(PKGDIR)-java-common/$(OODIR)/program/classes/js.jar \
+		$(PKGDIR)-script-provider-js/$(OODIR)/program/classes
+	mkdir -p $(PKGDIR)-script-provider-js/$(OOBRANDDIR)/share/Scripts
+	mv $(PKGDIR)-common/$(OODIR)/share/Scripts/javascript \
+		$(PKGDIR)-script-provider-js/$(OODIR)/Scripts
 endif
 
 ifeq "$(ENABLE_REPORTDESIGN)" "y"
@@ -3333,7 +3356,7 @@ endif
 		-V'basis-version=$(BASIS_VERSION)' \
 		-V'next-basis-version=$(NEXT_BASIS_VERSION)' \
 		-V'help-l10n-virtual-version=$(HELP_L10N_VIRTUAL_VERSION)' \
-		-V'common-bsh-depends=$(COMMON_BSH_DEPENDS)' \
+		-V'bsh-depends=$(BSH_DEPENDS)' \
 		-V'java-common-depends=$(JAVA_COMMON_DEPENDS)' \
 		-V'java-common-java-depends=$(JAVA_COMMON_JAVA_DEPENDS)' \
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
