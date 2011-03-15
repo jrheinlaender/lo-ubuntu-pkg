@@ -150,8 +150,6 @@ LIBALTLINUXHYPH_MINVER= (>= 0.1.1-11)
 LIBHYPHEN_MINVER= (>= 2.4)
 USE_AGG=n
 # SYSTEM_STUFF += agg
-USE_STLPORT=n
-USE_SYSTEM_STLPORT=y
 SYSTEM_STUFF += boost
 BOOST_VERSION=default
 ifeq "$(BOOST_VERSION)" "default"
@@ -203,11 +201,7 @@ PACKAGE_SDK=y
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(JDK)" "openjdk"
     RUN_SMOKETEST=y
-    ifneq (,$(findstring $(ARCH),$(OOO_STLPORT_ARCHS)))
-      RUN_SUBSEQUENT_TESTS=y
-    else
-      RUN_SUBSEQUENT_TESTS=n
-    endif
+    RUN_SUBSEQUENT_TESTS=y
   else
     ifneq ($(ON_BUILDD),y)
       RUN_SMOKETEST=n
@@ -331,7 +325,7 @@ PLATFORMID := $(shell grep PLATFORMID debian/scripts/vars.$(ARCH) | cut -d"=" -f
 # ABI-compatability
 OOO_STLPORT_ARCHS= i386
 ifeq "$(ARCH)" "i386"
-	USE_STLPORT=y
+	LINK_TO_STLPORT=y
 endif
 
 ifeq "$(ENABLE_OPENGL)" "y"
@@ -488,9 +482,6 @@ endif
 ifeq "$(ENABLE_GRAPHITE)" "y"
   ifneq (,$(filter graphite, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libgraphite2-dev (>= 0.9.3)
-    ifeq "$(USE_STLPORT)" "y"
-	ADDITIONAL_SECTIONS += SystemBitsWithSTLport
-    endif
   endif
 else
 	CONFIGURE_FLAGS += --disable-graphite
@@ -590,9 +581,6 @@ ifeq "$(RUN_TESTTOOL)" "y"
 endif
 ifneq (,$(filter cppunit, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libcppunit-dev (>= 1.12)
-  ifeq "$(USE_STLPORT)" "y"
-	ADDITIONAL_SECTIONS += SystemBitsWithSTLport
-  endif
 endif
 ifeq "$(RUN_SUBSEQUENT_TESTS)" "y"
 	BUILD_DEPS += , tcsh
@@ -829,19 +817,8 @@ ifeq "$(USE_AGG)" "y"
 endif
 
 ifneq "$(OOO_STLPORT_ARCHS)" ""
-  ifeq "$(USE_SYSTEM_STLPORT)" "y"
 	LIBSTLPORT_MINVER= (>= 4.6.2-3)
 	BUILD_DEPS += , libstlport4.6-dev $(LIBSTLPORT_MINVER) [$(OOO_STLPORT_ARCHS)]
-	DEV_STL_DEPENDS=, libstlport4.6-dev $(LIBSTLPORT_MINVER) [$(OOO_STLPORT_ARCHS)]
-   endif
-endif
-ifneq "$(USE_STLPORT)" "y"
-	CONFIGURE_FLAGS += --without-stlport
-else
-        CONFIGURE_FLAGS += --with-stlport
-  ifeq "$(USE_SYSTEM_STLPORT)" "y"
-	CONFIGURE_FLAGS+= --with-stlport=$(CURDIR)/stlport
-  endif
 endif
 
 ifneq (,$(filter boost, $(SYSTEM_STUFF)))
@@ -1476,10 +1453,8 @@ ifneq (,$(filter hsqldb, $(SYSTEM_STUFF)))
 	perl -pi -e "s/(Build-Conflicts: .*)/\1, libhsqldb-java (>= $(HSQLDB_TOONEWVER)~)/" debian/control
 endif
 
-ifneq "$(USE_SYSTEM_STLPORT)" "y"
 	# at least here it crashes the build in some funny way.
 	perl -pi -e "s/(Build-Conflicts: .*)/\1, libstlport4.6-dev/" debian/control
-endif
 
 ifeq (4.4,$(SYSTEM_GCC_VERSION))
 	perl -pi -e 's/flex \|/flex (>= 2.5.25-7) |/' debian/control
@@ -1579,17 +1554,6 @@ ifeq "$(BUILD_KDE)" "y"
 	# to either Qt3 or Qt4s moc.
 	mkdir -p $(CURDIR)/debian/usr/bin
 	ln -sf /usr/bin/moc-qt4 $(CURDIR)/debian/usr/bin/moc
-endif
-
-ifeq "$(USE_STLPORT)" "y"
-  ifeq "$(USE_SYSTEM_STLPORT)" "y"
-	# stlport home
-	if [ ! -d stlport ]; then \
-		mkdir -p stlport; \
-		ln -sf /usr/include/stlport stlport/stlport; \
-		ln -sf /usr/lib stlport/lib; \
-	fi
-  endif
 endif
 
 ifneq "$(BUILD_ONLY_EN_US)" "y"
@@ -2451,12 +2415,6 @@ endif
 	rm -rf $(PKGDIR)-core/$(OOBRANDDIR)/ure
 
 ifeq "$(PACKAGE_SDK)" "y"
-  ifeq "$(USE_SYSTEM_STLPORT)" "y"
-	# when we use external stlport, we just can and should do a symlink
-	# for the SDK includes
-	cd $(PKGDIR)-dev/usr/include/$(OODIRNAME) && \
-		rm -rf stl && ln -s /usr/include/stlport stl
-  endif
   ifeq "$(ENABLE_JAVA)" "y"
 	# move SDK Java stuff into /usr/share/java
 	rm -f $(PKGDIR)-dev/$(OOSDKDIR)/classes
@@ -2526,12 +2484,10 @@ ifeq "$(INTERNAL_STDLIBS)" "y"
 	echo "libstdc++	$$LIBSTDCPP_SOVER" > debian/shlibs.override.stdlibs; \
 	echo "libgcc_s	$$LIBGCC_SOVER" >> debian/shlibs.override.stdlibs
 endif
-ifeq "$(USE_STLPORT)" "y"
-  ifeq "$(USE_SYSTEM_STLPORT)" "y"
+ifeq "$(LINK_TO_STLPORT)" "y"
 	rm -f debian/ure/$(OOUREDIR)/lib/libstlport*
 	ln -s `readlink -f /usr/lib/libstlport_gcc.so` \
 		debian/ure/$(OOUREDIR)/lib/libstlport_gcc.so
-  endif
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
@@ -3213,6 +3169,9 @@ ifeq "$(ENABLE_JAVA)" "y"
 			-ldebian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program:$(GCJ_JAWT_DIR) \
 			$(SHLIBS_OVERRIDE)
 endif
+ifeq "$(LINK_TO_STLPORT)" "y"
+        perl -pi -e 's/(shlibs.*$$)/$$1, $(shell cat /var/lib/dpkg/info/libstlport4.6*.shlibs | awk '{ print $$3,$$4,$$5 }')/' debian/ure.substvars
+endif
 ifeq "$(ENABLE_MONO)" "y"
 	dh_makeclilibs -s
 	dh_clideps -s
@@ -3229,7 +3188,6 @@ endif
 		-V"ure:Version=$(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`" \
 		-V'base-version=$(BASE_VERSION)' \
 		-V'help-l10n-virtual-version=$(HELP_L10N_VIRTUAL_VERSION)' \
-		-V'dev-stl-depends=$(DEV_STL_DEPENDS)' \
 		-V'base-hsqldb-depends=$(BASE_HSQLDB_DEPENDS)' \
 		-V'java-common-depends=$(JAVA_COMMON_DEPENDS) $(JAVA_COMMON_DEPENDS_VERSION)' \
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
