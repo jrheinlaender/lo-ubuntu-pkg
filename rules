@@ -93,10 +93,6 @@ TARFILE_LOCATION=$(CURDIR)/ext-sources
 export TARFILE_LOCATION
 USE_SOURCE_TARBALLS=y
 
-ifeq "$(DISTREL)" "lenny"
- LENNY_BACKPORT=y
-endif
-
 ifeq "$(DISTREL)" "squeeze"
  SQUEEZE_BACKPORT=y
 endif
@@ -191,11 +187,7 @@ ifeq "$(KDE_VER)" "3"
 endif
 ifeq "$(KDE_VER)" "4"
   QT_MINVER= (>= 4.5)
-  # somehow lenny-backport picks this up although
-  # KDE is 3...
-  ifneq "$(LENNY_BACKPORT)" "y"
-    KDELIBS_MINVER= (>= 4:4.3.4)
-  endif
+  KDELIBS_MINVER= (>= 4:4.3.4)
 endif  
 BUILD_DBG_PACKAGE=y
 SYSTEM_STUFF += beanshell
@@ -444,36 +436,6 @@ ifeq "$(DIST)" "Debian"
   endif
 endif
 
-# Debian Lenny
-ifeq "$(LENNY_BACKPORT)" "y"
-  BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out boost icu jfreereport libwpd libwpg libwps lucene mdds redland, $(SYSTEM_STUFF))
-  MONO_MINVER= (>= 1.2.3)
-  MONO2=n
-  LPSOLVE_MIN_VERSION= (>= 5.5.0.10-10)
-  SUITESPARSE_MIN_VERSION= (>= 3.1.0)
-  BUILD_KDE=y
-ifeq "$(BUILD_KDE)" "y"
-  ENABLE_KDEAB=y
-endif
-  KDE_VER=3
-  CURL_SECTYPE=openssl
-  HSQLDB_MINVER= (>> 1.8.0.9)
-ifneq (,$(filter ia64 mips% kfreebsd%, $(ARCH)))
-  JDK=java-gcj-compat-dev
-endif
-  DICT_DIR=/usr/share/myspell/dicts
-  HYPH_DIR=/usr/share/myspell/dicts
-  THES_DIR=/usr/share/myspell/dicts
-  MOZILLA=iceape
-  # only works with system-mysqlcppconn on lenny (the thing has a hardoced
-  # so.16). And mysql-connector-c++ is not in lenny.
-  ENABLE_MYSQLNATIVE=n
-  USE_SYSTEM_TEXTCAT_DATA=n
-  ENABLE_GCONF=n
-  PYTHON_HELPER=dh_pycentral
-endif
-
 # Debian Squeeze
 ifeq "$(SQUEEZE_BACKPORT)" "y"
   BUGS=mailto:debian-backports@lists.debian.org
@@ -509,11 +471,7 @@ ifeq "$(USE_BZIP_COMPRESS)" "y"
 	BUILDDEB_OPTIONS = -- -Zbzip2
 endif
 
-ifeq "$(LENNY_BACKPORT)" "y"
-	BUILD_DEPS += , dpkg-dev (>= 1.14.27)
-else
 	BUILD_DEPS += , dpkg-dev (>= 1.15.1)
-endif
 
 ifneq "$(OOO_OGLTRANS_ARCHS)" ""
 	BUILD_DEPS += , libgl1-mesa-dev$(OOO_NO_OGLTRANS_ARCHS), libglu1-mesa-dev$(OOO_NO_OGLTRANS_ARCHS)
@@ -722,11 +680,7 @@ ifeq "$(ENABLE_JAVA)" "y"
         TEST_JAVA_HOME=$(JAVA_HOME)
   ifeq "$(BUILD_JARS_NATIVE)" "y"
 	CONFIGURE_FLAGS += --enable-gcjaot
-    ifeq "$(LENNY_BACKPORT)" "y"
-	BUILD_DEPS += , default-jdk-builddep$(OOO_NO_GCJ_ARCHS), gij$(OOO_NO_GCJ_ARCHS), java-gcj-compat-dev (>= 1.0.76-7)$(OOO_NO_GCJ_ARCHS), libgcj-bc$(OOO_GCJ_ARCHS)
-    else
 	BUILD_DEPS += , gcj-native-helper$(OOO_NO_GCJ_ARCHS), libgcj-common (>= 1:4.4.1)$(OOO_NO_GCJ_ARCHS)
-    endif
   else
     ifneq "$(OOO_GCJ_JDK_ARCHS)" ""
 	BUILD_DEPS += , gcj-jdk [$(OOO_GCJ_JDK_ARCHS)]
@@ -765,13 +719,9 @@ export JAVA_HOME
   endif
   ifeq "$(PACKAGE_SDK)" "y"
     ifeq "$(DIST)" "Debian"
-      ifeq "$(LENNY_BACKPORT)" "y"
-	BUILD_DEPS += , mingw32$(OOO_NO_JAVA_ARCHS)
-      else
 	BUILD_DEPS += , gcc-mingw32$(OOO_NO_JAVA_ARCHS), mingw32-runtime$(OOO_NO_JAVA_ARCHS)
-      endif
-	  CONFIGURE_FLAGS += --enable-build-unowinreg
-	  CONFIGURE_FLAGS += --with-mingwin=i586-mingw32msvc-g++
+	CONFIGURE_FLAGS += --enable-build-unowinreg
+	CONFIGURE_FLAGS += --with-mingwin=i586-mingw32msvc-g++
     endif
   endif
   ifeq "$(ENABLE_MEDIAWIKI)" "y"
@@ -781,12 +731,8 @@ export JAVA_HOME
 	MEDIAWIKI_JAR_DEPENDS := , libcommons-codec-java, libcommons-httpclient-java, libcommons-lang-java, libcommons-logging-java
 	BUILD_DEPS += $(MEDIAWIKI_BUILD_DEPS)
 	CONFIGURE_FLAGS += --with-commons-codec-jar=/usr/share/java/commons-codec.jar --with-commons-lang-jar=/usr/share/java/commons-lang.jar --with-commons-httpclient-jar=/usr/share/java/commons-httpclient.jar --with-commons-logging-jar=/usr/share/java/commons-logging.jar
-      ifeq "$(LENNY_BACKPORT)" "y"
-	CONFIGURE_FLAGS += --with-system-servlet-api --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Depends | cut -d"," -f2 | sed -e s/^\ //` | grep \.jar$$)
-      else
 	CONFIGURE_FLAGS += --with-system-servlet-api --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }'` | grep servlet-api.*\.jar$ | head -n 1)
 	BUILD_DEPS += , $(shell dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }')
-      endif
     endif
   endif
   ifeq "$(ENABLE_REPORTDESIGN)" "y"
@@ -801,12 +747,8 @@ export JAVA_HOME
 	REPORT_BUILDER_BUILD_DEPS += , libcommons-logging-java$(OOO_NO_JAVA_ARCHS)
 	REPORT_BUILDER_JAR_DEPENDS += , libcommons-logging-java
 	CONFIGURE_FLAGS += --with-commons-logging-jar=/usr/share/java/commons-logging.jar
-      ifeq "$(LENNY_BACKPORT)" "y"
-	CONFIGURE_FLAGS += --with-system-servlet-api --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Depends | cut -d"," -f2 | sed -e s/^\ //` | grep \.jar$$)
-      else
 	CONFIGURE_FLAGS += --with-system-servlet-api --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }'` | grep servlet-api.*\.jar$ | head -n 1)
 	BUILD_DEPS += , $(shell dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }')
-      endif
     endif
 	CONFIGURE_FLAGS += --enable-report-builder
   endif
@@ -1543,11 +1485,8 @@ ifeq "$(ENABLE_GIO)" "y"
 	perl -pi -e 's/GNOME GIO/GIO/' debian/control
 endif
 
-ifneq "$(LENNY_BACKPORT)" "y"	
-	perl -pi -e "s/(Build-Conflicts: .*)/\1, base-files (= 5)/" debian/control
-endif
 ifneq "$(SQUEEZE_BACKPORT)" "y"	
-	perl -pi -e "s/(Build-Conflicts: .*)/\1, base-files (= 6.0)/" debian/control
+	perl -pi -e "s/(Build-Conflicts: .*)/\1, base-files (>= 6.0), base-files (<< 6.1~)/" debian/control
 endif
 
 ifneq (,$(filter hsqldb, $(SYSTEM_STUFF)))
@@ -3167,11 +3106,8 @@ ifeq "$(USE_SYSTEM_TEXTCAT_DATA)" "y"
 	done
 endif
 
-# we first need to find out whether it works on lenny, see issue 105172
-ifneq "$(LENNY_BACKPORT)" "y"
 	# enable session handling and recovery
 	perl -pi -e 's,<prop oor:name="DocumentStoreUIEnabled" oor:type="xs:boolean"><value>false</value></prop>,<prop oor:name="DocumentStoreUIEnabled" oor:type="xs:boolean"><value>true</value></prop>,' $(PKGDIR)-common/$(OODIR)/share/registry/main.xcd
-endif
 
 	# examples. move where they belong
 	mkdir -p $(PKGDIR)-common/usr/share/doc/libreoffice-common/examples
@@ -3248,9 +3184,6 @@ ifeq "$(BUILD_DBG_PACKAGE)" "y"
 	rm -f $(STAMP_DIR)/install-arch
 else
 	dh_strip -s
-endif
-ifeq "$(LENNY_BACKPORT)" "y"
-	dh_desktop -s
 endif
 	dh_icons -s
 ifeq "$(ENABLE_MONO)" "y"
@@ -3444,9 +3377,6 @@ endif
 	dh_lintian -i
 	dh_bugfiles -i -A
 	dh_fixperms -i
-ifeq "$(LENNY_BACKPORT)" "y"
-	dh_desktop -i
-endif
 	dh_icons -i
 	dh_installxmlcatalogs -i
 ifeq "$(ENABLE_MONO)" "y"
