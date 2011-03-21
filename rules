@@ -1807,9 +1807,6 @@ ifeq (sk,$(findstring sk,$(HELPISOS)))
 		$(PKGDIR)-help-sk/$(shell echo $(OOBASISDIR) | sed -e s/lib/share/)/help/sk
 endif
 
-	# add registered-components dir
-	mkdir -p $(PKGDIR)-core/$(OOBASISDIR)/registered-components
-
 ifeq "$(ENABLE_JAVA)" "y"
 	# move officebean.jar into -officebean (They will be moved out of -core
 	# in the install-arch target). Do the /usr/share move here already
@@ -1936,8 +1933,6 @@ $(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*Env*.sh) $(wildcard debia
 	      echo "" >> $$MAINTSCRIPT; \
 	      if egrep -q "(add|remove|validate|sync)_extension" $$MAINTSCRIPT.in; then \
 		 cat debian/shell-lib-extensions.sh >> $$MAINTSCRIPT; \
-	      elif grep -q services_rdb $$MAINTSCRIPT.in; then \
-		 cat debian/shell-lib-components.sh >> $$MAINTSCRIPT; \
 	      fi; \
 	      sed -n '/^#INCLUDE_SHELL_LIB#$$/,$$p' < $$MAINTSCRIPT.in | sed -e '/^#INCLUDE_SHELL_LIB#$$/d' >> $$MAINTSCRIPT; \
 	      perl -pi -e "s/\@LANGPACKISOS\@/$(LANGPACKISOS)/" $$MAINTSCRIPT; \
@@ -2080,22 +2075,18 @@ $(STAMP_DIR)/install-arch: $(STAMP_DIR)/install $(STAMP_NATIVE_JARS)
 	umask 022
 
 ifeq "$(ENABLE_EVO2)" "y"
-	debian/ure/$(OOBRANDDIR)/ure/bin/regcomp -revoke \
-		-r $(PKGDIR)-core/$(OODIR)/program/services.rdb \
-		-br $(PKGDIR)-core/$(OODIR)/program/services.rdb \
-		-c 'vnd.sun.star.expand:$$OOO_BASE_DIR/program/libevoab$(LIBSUFFIX).so'
+	mv $(PKGDIR)-core/$(OOBASISDIR)/program/evoab.component \
+		$(PKGDIR)-evolution/$(OOBASISDIR)/program
 endif
 ifeq "$(ENABLE_KDEAB)" "y"
-	debian/ure/$(OOBRANDDIR)/ure/bin/regcomp -revoke \
-		-r $(PKGDIR)-core/$(OODIR)/program/services.rdb \
-		-br $(PKGDIR)-core/$(OODIR)/program/services.rdb \
-		-c 'vnd.sun.star.expand:$$OOO_BASE_DIR/program/libkab1.so'
+	mv $(PKGDIR)-core/$(OOBASISDIR)/program/kab1.component \
+		$(PKGDIR)-evolution/$(OOBASISDIR)/program
 endif
 ifeq "$(BUILD_BINFILTERS)" "y"
-	debian/ure/$(OOBRANDDIR)/ure/bin/regcomp -revoke \
-		-r $(PKGDIR)-core/$(OODIR)/program/services.rdb \
-		-br $(PKGDIR)-core/$(OODIR)/program/services.rdb \
-		-c 'vnd.sun.star.expand:$$OOO_BASE_DIR/program/libbf_migratefilter$(LIBSUFFIX).so'
+	for i in bf_*.component bindet*.component; do
+		mv $(PKGDIR)-core/$(OOBASISDIR)/program/$$i \
+			$(PKGDIR)-filter-binfilter/$(OOBASISDIR)/program; \
+	done
 endif
 
 	# the regcomps above fail after done once, force install again
