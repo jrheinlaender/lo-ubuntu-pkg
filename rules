@@ -274,6 +274,7 @@ PACKAGE_BASE=y
 ENABLE_GRAPHITE=y
 SYSTEM_STUFF += graphite
 ALLOC=system
+SYSTEM_STUFF += textcat
 USE_SYSTEM_TEXTCAT_DATA=y
 SYSTEM_STUFF += cppunit
 
@@ -439,7 +440,7 @@ endif
 # Debian Squeeze
 ifeq "$(SQUEEZE_BACKPORT)" "y"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out libwpd libwpg libwps mythes, $(SYSTEM_STUFF))
+  SYSTEM_STUFF := $(filter-out libwpd libwpg libwps mythes libtextcat, $(SYSTEM_STUFF))
   JUNIT_MIN_VER=
 endif
 
@@ -506,9 +507,13 @@ else
 	CONFIGURE_FLAGS += --disable-graphite
 endif
 
+
+ifneq (,$(filter textcat, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libtextcat-dev (>= 2.2-8)
+	CONFIGURE_FLAGS += --with-system-libtextcat
+endif
 ifeq "$(USE_SYSTEM_TEXTCAT_DATA)" "y"
-	BUILD_DEPS_INDEP += , libtextcat-data-utf8
-	TEXTCAT_DATA_RECOMMENDS := libtextcat-data-utf8
+	CONFIGURE_FLAGS += --with-external-libtextcat-data=/usr/share/libtextcat/LM
 endif
 
 ifeq "$(USE_LIBCURL4)" "y"
@@ -3056,6 +3061,15 @@ endif
 				> debian/$$i.bug-script; \
 		fi ;\
 	done
+	# generate .links files from *.in	
+	for PKG in $(ARCH_INDEP_PACKAGES); do \
+	  LINKS=debian/$$PKG.links ; \
+	  if [ -e $$LINKS.in ]; then \
+	    sed -e "s/\@LIBSUFFIX\@/$(LIBSUFFIX)/g" \
+		-e "s#\@OOBASISDIR\@#$(OOBASISDIR)#g" \
+		< $$LINKS.in > $$LINKS ; \
+	  fi; \
+	done
 
 ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	# menu files from sysui
@@ -3097,14 +3111,6 @@ endif
 		$(PKGDIR)-common/$(shell echo $(OOBRANDDIR) | sed -e s/lib/share/)/basis-link
 	ln -s /$(OOUREDIR) \
 		$(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/ure-link
-
-ifeq "$(USE_SYSTEM_TEXTCAT_DATA)" "y"
-	# remove duplicated textcat data and replace with symlinks
-	cd $(PKGDIR)-common/$(OOBASISDIR)/share && \
-	for i in `fdupes -n -f -1 fingerprint/ /usr/share/libtextcat/LM`; do \
-		ln -sf /usr/share/libtextcat/LM/`basename $$i` fingerprint/`basename $$i`; \
-	done
-endif
 
 	# enable session handling and recovery
 	perl -pi -e 's,<prop oor:name="DocumentStoreUIEnabled" oor:type="xs:boolean"><value>false</value></prop>,<prop oor:name="DocumentStoreUIEnabled" oor:type="xs:boolean"><value>true</value></prop>,' $(PKGDIR)-common/$(OODIR)/share/registry/main.xcd
@@ -3408,7 +3414,6 @@ endif
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-V'lucene-depends=$(LUCENE_DEPENDS)' \
 		-V'lucene-conflicts=$(LUCENE_CONFLICTS)' \
-		-V'textcat-data-recommends=$(TEXTCAT_DATA_RECOMMENDS)' \
 		-V'Binary-Version=$(BINARY_VERSION)' \
 		-V'ooo-binfilter-dep=$(OOO_BINFILTER_DEP)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
