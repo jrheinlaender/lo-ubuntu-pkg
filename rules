@@ -174,21 +174,10 @@ BUILD_CAIROCANVAS=y
 SYSTEM_STUFF += cairo
 CAIRO_FONTS_PATCH=y
 BUILD_KDE=y
-KDE_VER=4
-ifeq "$(BUILD_KDE)" "y"
-  ifeq "$(KDE_VER)" "3"
-    ENABLE_KDEAB=y
-  else
-    ENABLE_KDEAB=n
-  endif
-endif
-ifeq "$(KDE_VER)" "3"
-  KDELIBS_MINVER= (>= 4:3.4.3-2)
-endif
-ifeq "$(KDE_VER)" "4"
-  QT_MINVER= (>= 4.5)
-  KDELIBS_MINVER= (>= 4:4.3.4)
-endif  
+# not ported to KDE 4
+ENABLE_KDEAB=n
+QT_MINVER= (>= 4.5)
+KDELIBS_MINVER= (>= 4:4.3.4)
 BUILD_DBG_PACKAGE=y
 SYSTEM_STUFF += beanshell
 SYSTEM_STUFF += hsqldb
@@ -930,25 +919,14 @@ ifeq "$(BUILD_KDE)" "n"
 	CONFIGURE_FLAGS-= --disable-kde4
 	CONFIGURE_FLAGS+= --with-images="$(IMAGES)"
 else
-  ifeq "$(KDE_VER)" "4"
 	CONFIGURE_FLAGS += --disable-kde
 	KDE_ICONSET_DEP=libreoffice$(VER)-style-oxygen
-  else
-	CONFIGURE_FLAGS += --disable-kde4
-	KDE_ICONSET_DEP=libreoffice$(VER)-style-crystal
-  endif
-	BUILD_DEPS += , kdelibs$(shell expr $(KDE_VER) + 1)-dev $(KDELIBS_MINVER)
-  ifeq "$(KDE_VER)" "4"
-	BUILD_DEPS += , libqt$(KDE_VER)-dev $(QT_MINVER)
-	DBG_DBG_SUGGESTS+= , kdelibs$(shell expr $(KDE_VER) + 1)-dbg, libqt$(KDE_VER)-dbg
-  else
-	DBG_DBG_SUGGESTS+= , kdelibs-dbg, qt-x11-free-dbg
-  endif
+	BUILD_DEPS += , kdelibs5-dev $(KDELIBS_MINVER)
+	BUILD_DEPS += , libqt4-dev $(QT_MINVER)
+	DBG_DBG_SUGGESTS+= , kdelibs5-dbg, libqt4-dbg
   ifeq "$(ENABLE_KDEAB)" "y"
-    ifeq "$(KDE_VER)" "4"
 	ADDITIONAL_SECTIONS += KDE4Experimental
-	BUILD_DEPS += , kdepimlibs$(shell expr $(KDE_VER) + 1)-dev$(OOO_NO_BASE_ARCHS)
-    endif
+	BUILD_DEPS += , kdepimlibs5-dev$(OOO_NO_BASE_ARCHS)
   else
 	CONFIGURE_FLAGS+= --disable-kdeab
   endif
@@ -1600,7 +1578,7 @@ ifeq "$(BUILD_KDE)" "y"
 	# be sure we use the right moc, it's an alternative and can point
 	# to either Qt3 or Qt4s moc.
 	mkdir -p $(CURDIR)/debian/usr/bin
-	ln -sf /usr/bin/moc-qt$(KDE_VER) $(CURDIR)/debian/usr/bin/moc
+	ln -sf /usr/bin/moc-qt4 $(CURDIR)/debian/usr/bin/moc
 endif
 
 ifeq "$(USE_STLPORT)" "y"
@@ -2196,10 +2174,6 @@ ifeq "$(BUILD_KDE)" "y"
 	for f in fps_kde*.uno.so libvclplug_kde*.so; do \
 	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-kde/$(OODIR)/program || exit 1 ;\
 	done
-  ifeq "$(KDE_VER)" "3"
-	mv $(PKGDIR)-core/$(OOBRANDDIR)/program/kdefilepicker \
-		$(PKGDIR)-kde/$(OOBRANDDIR)/program
-  endif
 
 	# install files for KDEs "create new" ...
 	mkdir -p $(PKGDIR)-kde/usr/share/templates/.source
@@ -3211,11 +3185,9 @@ ifneq (,$(filter icu, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.icu >> debian/shlibs.local
 endif
 ifeq "$(BUILD_KDE)" "y"
-  ifeq "$(KDE_VER)" "4"
 	if dpkg --compare-versions `dpkg -l kdelibs5-dev | grep ^ii | awk '{ print $$3 }'` le 4:4.4; then \
 		cat debian/shlibs.override.kde >> debian/shlibs.local; \
 	fi
-  endif
 endif
 ifeq "$(INTERNAL_STDLIBS)" "y"
 	cat debian/shlibs.override.stdlibs >> debian/shlibs.local
