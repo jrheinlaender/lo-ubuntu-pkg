@@ -83,8 +83,8 @@ MWS=OOO330
 MILESTONE=m19
 TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
 GIT_TAG=$(MWS)_$(MILESTONE)
-OOO_BUILD_BRANCH=libreoffice-3-3-1
-OOO_BUILD_VERSION=3.3.1.2
+OOO_BUILD_BRANCH=libreoffice-3-3-2
+OOO_BUILD_VERSION=3.3.2.2
 # in ooo-build releases the same as OOO_BUILD_VERSION
 OOO_BUILD_TARBALL_VERSION=$(OOO_BUILD_VERSION)
 OOO_BUILD_TAG=libreoffice-$(OOO_BUILD_TARBALL_VERSION)
@@ -94,10 +94,6 @@ STAMP_DIR=debian/stampdir
 TARFILE_LOCATION=$(CURDIR)/ext-sources
 export TARFILE_LOCATION
 USE_SOURCE_TARBALLS=y
-
-ifeq "$(DISTREL)" "lenny"
- LENNY_BACKPORT=y
-endif
 
 ifeq "$(DISTREL)" "squeeze"
  SQUEEZE_BACKPORT=y
@@ -115,7 +111,7 @@ BUILD_DEPS=
 SYSTEM_STUFF = dicts
 
 BUILD_PYUNO=y
-PYTHON_HELPER=dh_pycentral
+PYTHON_HELPER=dh_python2
 # THIS IS ONLY FOR TESTING. When building against a specified pythonX.Y
 # this will work inside OOo but *not* from outside OOo unless the user
 # uses pythonX.Y directly (and the dh_pycentral-created dependencies allow
@@ -193,11 +189,7 @@ ifeq "$(KDE_VER)" "3"
 endif
 ifeq "$(KDE_VER)" "4"
   QT_MINVER= (>= 4.5)
-  # somehow lenny-backport picks this up although
-  # KDE is 3...
-  ifneq "$(LENNY_BACKPORT)" "y"
-    KDELIBS_MINVER= (>= 4:4.3.4)
-  endif
+  KDELIBS_MINVER= (>= 4:4.3.4)
 endif  
 BUILD_DBG_PACKAGE=y
 SYSTEM_STUFF += beanshell
@@ -284,6 +276,7 @@ PACKAGE_BASE=y
 ENABLE_GRAPHITE=y
 SYSTEM_STUFF += graphite
 ALLOC=system
+SYSTEM_STUFF += textcat
 USE_SYSTEM_TEXTCAT_DATA=y
 SYSTEM_STUFF += cppunit
 
@@ -352,21 +345,6 @@ PLATFORMID := $(shell grep PLATFORMID debian/scripts/vars.$(ARCH) | cut -d"=" -f
 OOO_STLPORT_ARCHS= i386
 ifeq "$(ARCH)" "i386"
 	USE_STLPORT=y
-endif
-
-
-# ARM target
-ifneq "$(DIST)" "Ubuntu"
-# lp#725763 and lp#726529
-# We dont use the arm optimzations patch on Natty
-# for >=3.4 the patch is already upstream
-# left here for now to document the intended change from debian
-  ifeq "$(ARCH)" "armel"
-	CONFIGURE_FLAGS += --with-arm-target=4
-  endif
-  ifeq "$(ARCH)" "armhf"
-	CONFIGURE_FLAGS += --with-arm-target=7
-  endif
 endif
 
 ifeq "$(ENABLE_OPENGL)" "y"
@@ -461,39 +439,10 @@ ifeq "$(DIST)" "Debian"
   endif
 endif
 
-# Debian Lenny
-ifeq "$(LENNY_BACKPORT)" "y"
-  BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out boost icu jfreereport libwpd libwpg libwps lucene mdds redland, $(SYSTEM_STUFF))
-  MONO_MINVER= (>= 1.2.3)
-  MONO2=n
-  LPSOLVE_MIN_VERSION= (>= 5.5.0.10-10)
-  SUITESPARSE_MIN_VERSION= (>= 3.1.0)
-  BUILD_KDE=y
-ifeq "$(BUILD_KDE)" "y"
-  ENABLE_KDEAB=y
-endif
-  KDE_VER=3
-  CURL_SECTYPE=openssl
-  HSQLDB_MINVER= (>> 1.8.0.9)
-ifneq (,$(filter ia64 mips% kfreebsd%, $(ARCH)))
-  JDK=java-gcj-compat-dev
-endif
-  DICT_DIR=/usr/share/myspell/dicts
-  HYPH_DIR=/usr/share/myspell/dicts
-  THES_DIR=/usr/share/myspell/dicts
-  MOZILLA=iceape
-  # only works with system-mysqlcppconn on lenny (the thing has a hardoced
-  # so.16). And mysql-connector-c++ is not in lenny.
-  ENABLE_MYSQLNATIVE=n
-  USE_SYSTEM_TEXTCAT_DATA=n
-  ENABLE_GCONF=n
-endif
-
 # Debian Squeeze
 ifeq "$(SQUEEZE_BACKPORT)" "y"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out libwpd libwpg libwps mythes, $(SYSTEM_STUFF))
+  SYSTEM_STUFF := $(filter-out libwpd libwpg libwps mythes libtextcat, $(SYSTEM_STUFF))
   JUNIT_MIN_VER=
 endif
 
@@ -503,58 +452,29 @@ ifeq "$(DIST)" "Ubuntu"
   USE_COMMON_DOCDIR=y
   IMAGES += human
   ON_BUILDD_VERBOSITY := true
-  ifeq "$(PKGSOURCE)" "libreoffice$(VER)"
-    BUILD_ONLY_EN_US=y
-  endif
   PATCHSET=$(DIST)$(shell perl -e 'print ucfirst("$(DISTREL)");')
 
-  ifneq (,$(filter $(ARCH), armel))
-    USE_LZMA_COMPRESS=y
-  endif
+  USE_LZMA_COMPRESS=$(if $(filter-out armel,$(ARCH)),y,n)
 
   CONFIGURE_FLAGS += --with-openldap
   CONFIGURE_FLAGS += --with-system-python
 
-  ifneq (,$(filter $(DISTREL),dapper hardy jaunty karmic lucid maverick))
-    SYSTEM_STUFF := $(filter-out libwpd libwpg libwps, $(SYSTEM_STUFF))
-  endif
+  SYSTEM_STUFF := $(filter-out lucene, $(SYSTEM_STUFF))
 
-  # Build with -Os apart from ARM to avoid GCC register spill errors
-  ifneq (,$(filter $(DISTREL),lucid maverick))
+  # FIXME: smoketest fails, but we need the indep packages for the other archs
+  # disabling for all archs to get rid of epm dependency
+  #RUN_SMOKETEST=n
+  ifeq ($(DISTREL),maverick)
+    SYSTEM_STUFF := $(filter-out libwpd libwpg libwps textcat, $(SYSTEM_STUFF)) lucene
+    # Build with -Os apart from ARM to avoid GCC register spill errors
     ifneq (,$(filter $(ARCH), arm armel))
       export ICU_ARCH_FLAGS = -Os
     endif
-  endif
-
-  ifeq ($(DISTREL),natty)
-    SYSTEM_STUFF := $(filter-out lucene, $(SYSTEM_STUFF))
-    # FIXME: smoketest fails, but we need the indep packages for the other archs
-    # disabling for all archs to get rid of epm dependency
-    #ifneq (,$(filter $(ARCH),armel i386))
-      RUN_SMOKETEST=n
-    #endif
-  endif
-
-  ifeq ($(DISTREL),maverick)
     ifneq (,$(filter $(ARCH),armel i386))
       RUN_SMOKETEST=n
     endif
+    PYTHON_HELPER=dh_pycentral
   endif
-
-  ifeq ($(DISTREL),lucid)
-    SYSTEM_STUFF := $(filter-out mdds mythes, $(SYSTEM_STUFF))
-    BOOST_VERSION=1.40
-    BOOST_MINVER=(>= 1.40.0)
-    USE_SYSTEM_TEXTCAT_DATA=n
-    CONFIGURE_FLAGS += --with-linker-hash-style=gnu
-    # LP: #696299
-    BUILD_KDE=n
-    CONFIGURE_FLAGS += --disable-kde --disable-kde4
-    ifneq (,$(filter $(ARCH),armel))
-      RUN_SMOKETEST=n
-    endif
-  endif
-
 endif
 
 ifeq "$(L10N_SEPARATE_SOURCE)" "y"
@@ -599,11 +519,7 @@ ifeq "$(USE_LZMA_COMPRESS)" "y"
        BUILDDEB_OPTIONS = -- -Zlzma
 endif
 
-ifeq "$(LENNY_BACKPORT)" "y"
-	BUILD_DEPS += , dpkg-dev (>= 1.14.27)
-else
 	BUILD_DEPS += , dpkg-dev (>= 1.15.1)
-endif
 
 ifneq "$(OOO_OGLTRANS_ARCHS)" ""
 	BUILD_DEPS += , libgl1-mesa-dev$(OOO_NO_OGLTRANS_ARCHS), libglu1-mesa-dev$(OOO_NO_OGLTRANS_ARCHS)
@@ -638,9 +554,13 @@ else
 	CONFIGURE_FLAGS += --disable-graphite
 endif
 
+
+ifneq (,$(filter textcat, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libtextcat-dev (>= 2.2-8)
+	CONFIGURE_FLAGS += --with-system-libtextcat
+endif
 ifeq "$(USE_SYSTEM_TEXTCAT_DATA)" "y"
-	BUILD_DEPS_INDEP += , libtextcat-data-utf8
-	TEXTCAT_DATA_RECOMMENDS := libtextcat-data-utf8
+	CONFIGURE_FLAGS += --with-external-libtextcat-data=/usr/share/libtextcat/LM
 endif
 
 ifeq "$(USE_LIBCURL4)" "y"
@@ -818,11 +738,7 @@ ifeq "$(ENABLE_JAVA)" "y"
         TEST_JAVA_HOME=$(JAVA_HOME)
   ifeq "$(BUILD_JARS_NATIVE)" "y"
 	CONFIGURE_FLAGS += --enable-gcjaot
-    ifeq "$(LENNY_BACKPORT)" "y"
-	BUILD_DEPS += , default-jdk-builddep$(OOO_NO_GCJ_ARCHS), gij$(OOO_NO_GCJ_ARCHS), java-gcj-compat-dev (>= 1.0.76-7)$(OOO_NO_GCJ_ARCHS), libgcj-bc$(OOO_GCJ_ARCHS)
-    else
 	BUILD_DEPS += , gcj-native-helper$(OOO_NO_GCJ_ARCHS), libgcj-common (>= 1:4.4.1)$(OOO_NO_GCJ_ARCHS)
-    endif
   else
     ifneq "$(OOO_GCJ_JDK_ARCHS)" ""
 	BUILD_DEPS += , gcj-jdk [$(OOO_GCJ_JDK_ARCHS)]
@@ -861,13 +777,9 @@ export JAVA_HOME
   endif
   ifeq "$(PACKAGE_SDK)" "y"
     ifeq "$(DIST)" "Debian"
-      ifeq "$(LENNY_BACKPORT)" "y"
-	BUILD_DEPS += , mingw32$(OOO_NO_JAVA_ARCHS)
-      else
 	BUILD_DEPS += , gcc-mingw32$(OOO_NO_JAVA_ARCHS), mingw32-runtime$(OOO_NO_JAVA_ARCHS)
-      endif
-	  CONFIGURE_FLAGS += --enable-build-unowinreg
-	  CONFIGURE_FLAGS += --with-mingwin=i586-mingw32msvc-g++
+	CONFIGURE_FLAGS += --enable-build-unowinreg
+	CONFIGURE_FLAGS += --with-mingwin=i586-mingw32msvc-g++
     endif
   endif
   ifeq "$(ENABLE_MEDIAWIKI)" "y"
@@ -877,12 +789,8 @@ export JAVA_HOME
 	MEDIAWIKI_JAR_DEPENDS := , libcommons-codec-java, libcommons-httpclient-java, libcommons-lang-java, libcommons-logging-java
 	BUILD_DEPS += $(MEDIAWIKI_BUILD_DEPS)
 	CONFIGURE_FLAGS += --with-commons-codec-jar=/usr/share/java/commons-codec.jar --with-commons-lang-jar=/usr/share/java/commons-lang.jar --with-commons-httpclient-jar=/usr/share/java/commons-httpclient.jar --with-commons-logging-jar=/usr/share/java/commons-logging.jar
-      ifeq "$(LENNY_BACKPORT)" "y"
-	CONFIGURE_FLAGS += --with-system-servlet-api --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Depends | cut -d"," -f2 | sed -e s/^\ //` | grep \.jar$$)
-      else
 	CONFIGURE_FLAGS += --with-system-servlet-api --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }'` | grep servlet-api.*\.jar$ | head -n 1)
 	BUILD_DEPS += , $(shell dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }')
-      endif
     endif
   endif
   ifeq "$(ENABLE_REPORTDESIGN)" "y"
@@ -897,12 +805,8 @@ export JAVA_HOME
 	REPORT_BUILDER_BUILD_DEPS += , libcommons-logging-java$(OOO_NO_JAVA_ARCHS)
 	REPORT_BUILDER_JAR_DEPENDS += , libcommons-logging-java
 	CONFIGURE_FLAGS += --with-commons-logging-jar=/usr/share/java/commons-logging.jar
-      ifeq "$(LENNY_BACKPORT)" "y"
-	CONFIGURE_FLAGS += --with-system-servlet-api --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Depends | cut -d"," -f2 | sed -e s/^\ //` | grep \.jar$$)
-      else
 	CONFIGURE_FLAGS += --with-system-servlet-api --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }'` | grep servlet-api.*\.jar$ | head -n 1)
 	BUILD_DEPS += , $(shell dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }')
-      endif
     endif
 	CONFIGURE_FLAGS += --enable-report-builder
   endif
@@ -1681,11 +1585,8 @@ ifeq "$(ENABLE_GIO)" "y"
 	perl -pi -e 's/GNOME GIO/GIO/' debian/control
 endif
 
-ifneq "$(LENNY_BACKPORT)" "y"	
-	perl -pi -e "s/(Build-Conflicts: .*)/\1, base-files (= 5)/" debian/control
-endif
 ifneq "$(SQUEEZE_BACKPORT)" "y"	
-	perl -pi -e "s/(Build-Conflicts: .*)/\1, base-files (= 6.0)/" debian/control
+	perl -pi -e "s/(Build-Conflicts: .*)/\1, base-files (= 6.0), base-files (= 6.0squeeze1)/" debian/control
 endif
 
 ifneq (,$(filter hsqldb, $(SYSTEM_STUFF)))
@@ -2205,9 +2106,7 @@ $(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*Env*.sh) $(wildcard debia
 	        grep PLATFORMID debian/scripts/vars.$(ARCH) >> $$MAINTSCRIPT; \
 	      fi; \
 	      echo "" >> $$MAINTSCRIPT; \
-	      if grep -q conffile $$MAINTSCRIPT.in; then \
-		 cat debian/shell-lib-conffiles.sh >> $$MAINTSCRIPT; \
-	      elif egrep -q "(add|remove|validate|sync)_extension" $$MAINTSCRIPT.in; then \
+	      if egrep -q "(add|remove|validate|sync)_extension" $$MAINTSCRIPT.in; then \
 		 cat debian/shell-lib-extensions.sh >> $$MAINTSCRIPT; \
 	      elif grep -q services_rdb $$MAINTSCRIPT.in; then \
 		 cat debian/shell-lib-components.sh >> $$MAINTSCRIPT; \
@@ -3317,6 +3216,15 @@ endif
 				> debian/$$i.bug-script; \
 		fi ;\
 	done
+	# generate .links files from *.in	
+	for PKG in $(ARCH_INDEP_PACKAGES); do \
+	  LINKS=debian/$$PKG.links ; \
+	  if [ -e $$LINKS.in ]; then \
+	    sed -e "s/\@LIBSUFFIX\@/$(LIBSUFFIX)/g" \
+		-e "s#\@OOBASISDIR\@#$(OOBASISDIR)#g" \
+		< $$LINKS.in > $$LINKS ; \
+	  fi; \
+	done
 
 ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	# menu files from sysui
@@ -3359,19 +3267,8 @@ endif
 	ln -s /$(OOUREDIR) \
 		$(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/ure-link
 
-ifeq "$(USE_SYSTEM_TEXTCAT_DATA)" "y"
-	# remove duplicated textcat data and replace with symlinks
-	cd $(PKGDIR)-common/$(OOBASISDIR)/share && \
-	for i in `fdupes -n -f -1 fingerprint/ /usr/share/libtextcat/LM`; do \
-		ln -sf /usr/share/libtextcat/LM/`basename $$i` fingerprint/`basename $$i`; \
-	done
-endif
-
-# we first need to find out whether it works on lenny, see issue 105172
-ifneq "$(LENNY_BACKPORT)" "y"
 	# enable session handling and recovery
 	perl -pi -e 's,<prop oor:name="DocumentStoreUIEnabled" oor:type="xs:boolean"><value>false</value></prop>,<prop oor:name="DocumentStoreUIEnabled" oor:type="xs:boolean"><value>true</value></prop>,' $(PKGDIR)-common/$(OODIR)/share/registry/main.xcd
-endif
 
 	# examples. move where they belong
 	mkdir -p $(PKGDIR)-common/usr/share/doc/libreoffice-common/examples
@@ -3454,7 +3351,7 @@ ifeq "$(BUILD_JARS_NATIVE)" "y"
 	dh_nativejava -plibreoffice$(VER)-gcj -o
 endif
 ifeq ($(PYTHON_HELPER),dh_python2)
-	dh_python2 --no-guessing-versions --no-guessing-deps
+	dh_python2 -ppython-uno --no-guessing-versions --no-guessing-deps
 else ifeq ($(PYTHON_HELPER),dh_pycentral)
 	dh_pycentral -ppython-uno
   ifeq "$(PYTHON_VERSION)" "current"
@@ -3480,9 +3377,6 @@ ifeq "$(BUILD_DBG_PACKAGE)" "y"
 	rm -f $(STAMP_DIR)/install-arch
 else
 	dh_strip -s
-endif
-ifeq "$(LENNY_BACKPORT)" "y"
-	dh_desktop -s
 endif
 	dh_icons -s
 ifeq "$(ENABLE_MONO)" "y"
@@ -3735,9 +3629,6 @@ endif
 	dh_bugfiles -i -A
 	dh_link -i
 	dh_fixperms -i
-ifeq "$(LENNY_BACKPORT)" "y"
-	dh_desktop -i
-endif
 	dh_icons -i
 	dh_installxmlcatalogs -i
 ifneq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
@@ -3775,7 +3666,6 @@ endif
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-V'lucene-depends=$(LUCENE_DEPENDS)' \
 		-V'lucene-conflicts=$(LUCENE_CONFLICTS)' \
-		-V'textcat-data-recommends=$(TEXTCAT_DATA_RECOMMENDS)' \
 		-V'Binary-Version=$(BINARY_VERSION)' \
 		-V'ooo-binfilter-dep=$(OOO_BINFILTER_DEP)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
