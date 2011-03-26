@@ -452,9 +452,6 @@ ifeq "$(DIST)" "Ubuntu"
   USE_COMMON_DOCDIR=y
   IMAGES += human
   ON_BUILDD_VERBOSITY := true
-  ifeq "$(PKGSOURCE)" "libreoffice$(VER)"
-    BUILD_ONLY_EN_US=y
-  endif
   PATCHSET=$(DIST)$(shell perl -e 'print ucfirst("$(DISTREL)");')
 
   USE_LZMA_COMPRESS=$(if $(filter-out armel,$(ARCH)),y,n)
@@ -462,46 +459,11 @@ ifeq "$(DIST)" "Ubuntu"
   CONFIGURE_FLAGS += --with-openldap
   CONFIGURE_FLAGS += --with-system-python
 
-  ifneq (,$(filter $(DISTREL),dapper hardy jaunty karmic lucid maverick))
-    SYSTEM_STUFF := $(filter-out libwpd libwpg libwps, $(SYSTEM_STUFF))
-  endif
+  SYSTEM_STUFF := $(filter-out lucene, $(SYSTEM_STUFF))
 
-  # Build with -Os apart from ARM to avoid GCC register spill errors
-  ifneq (,$(filter $(DISTREL),lucid maverick))
-    ifneq (,$(filter $(ARCH), arm armel))
-      export ICU_ARCH_FLAGS = -Os
-    endif
-  endif
-
-  ifeq ($(DISTREL),natty)
-    SYSTEM_STUFF := $(filter-out lucene, $(SYSTEM_STUFF))
-    # FIXME: smoketest fails, but we need the indep packages for the other archs
-    # disabling for all archs to get rid of epm dependency
-    #ifneq (,$(filter $(ARCH),armel i386))
-      RUN_SMOKETEST=n
-    #endif
-  endif
-
-  ifeq ($(DISTREL),maverick)
-    ifneq (,$(filter $(ARCH),armel i386))
-      RUN_SMOKETEST=n
-    endif
-  endif
-
-  ifeq ($(DISTREL),lucid)
-    SYSTEM_STUFF := $(filter-out mdds mythes, $(SYSTEM_STUFF))
-    BOOST_VERSION=1.40
-    BOOST_MINVER=(>= 1.40.0)
-    USE_SYSTEM_TEXTCAT_DATA=n
-    CONFIGURE_FLAGS += --with-linker-hash-style=gnu
-    # LP: #696299
-    BUILD_KDE=n
-    CONFIGURE_FLAGS += --disable-kde --disable-kde4
-    ifneq (,$(filter $(ARCH),armel))
-      RUN_SMOKETEST=n
-    endif
-  endif
-
+  # FIXME: smoketest fails, but we need the indep packages for the other archs
+  # disabling for all archs to get rid of epm dependency
+  RUN_SMOKETEST=n
 endif
 
 ifeq "$(L10N_SEPARATE_SOURCE)" "y"
