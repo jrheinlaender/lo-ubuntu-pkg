@@ -437,12 +437,23 @@ CONFIGURE_FLAGS += $(foreach i, $(SYSTEM_STUFF),--with-system-$(i))
 
 CC_PREFIX:=$(shell gcc -dumpmachine)-
 
-ifeq (s390,$(findstring s390,$(OOO_ARCHS)))
-	BUILD_DEPS += , g++ (>> 4.3.0) [s390], gcc (>> 4.3.0) [s390]
-endif
-ifeq "$(SYSTEM_GCC_VERSION)" "4.4"
-  ifeq (armel,$(findstring armel,$(OOO_ARCHS)))
-	BUILD_DEPS += , g++-4.4 (>= 4.4.2-5) [armel]
+ifeq "$(GCC_VERSION)" ""
+  ifneq "$(OOO_GCJ_JDK_ARCHS)" ""
+GCJ_JDK_PACKAGE=$(shell dpkg -s gcj-jdk | grep Depends | sed -e 's/.*\(gcj-[0-9]\.[0-9]-jdk\).*/\1/')
+GCJ_JDK_VERSION=$(shell echo $(GCJ_JDK_PACKAGE) | cut -d- -f2)
+    ifneq "$(SYSTEM_GCC_VERSION)" "$(GCJ_JDK_VERSION)"
+        BUILD_DEPS += , gcc-$(GCJ_JDK_VERSION) [$(OOO_GCJ_JDK_ARCHS)], g++-$(GCJ_JDK_VERSION) [$(OOO_GCJ_JDK_ARCHS)]
+      ifeq ($(ARCH),$(findstring $(ARCH),$(OOO_GCJ_JDK_ARCHS)))
+	# sanity check. amd64 is in kfreebsd-amd64; same for i386
+        ifneq ($(ARCH),$(findstring $(ARCH),$(OOO_OPENJDK_ARCHS)))
+          GCC_VERSION := $(GCJ_JDK_VERSION)
+        else
+          GCC_VERSION := $(SYSTEM_GCC_VERSION)
+        endif
+      else
+	GCC_VERSION := $(SYSTEM_GCC_VERSION)
+      endif
+    endif
   endif
 endif
 
@@ -1111,7 +1122,9 @@ else
 	BUILD_DEPS += , gcc-snapshot
   else
 	BUILD_PATH = /usr/lib/jvm/java-gcj/bin:$(CURDIR)/debian/usr/bin:$$PATH
+    ifeq "$(GCJ_JDK_VERSION)" ""
 	BUILD_DEPS += , gcc-$(GCC_VERSION), g++-$(GCC_VERSION)
+    endif
   endif
 endif
 BUILD_PATH := $(CURDIR)/debian/usr/bin:$(BUILD_PATH)
