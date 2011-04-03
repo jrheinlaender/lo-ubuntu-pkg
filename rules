@@ -439,19 +439,21 @@ CC_PREFIX:=$(shell gcc -dumpmachine)-
 
 ifeq "$(GCC_VERSION)" ""
   ifneq "$(OOO_GCJ_JDK_ARCHS)" ""
-GCJ_JDK_PACKAGE=$(shell dpkg -s gcj-jdk | grep Depends | sed -e 's/.*\(gcj-[0-9]\.[0-9]-jdk\).*/\1/')
-GCJ_JDK_VERSION=$(shell echo $(GCJ_JDK_PACKAGE) | cut -d- -f2)
-    ifneq "$(SYSTEM_GCC_VERSION)" "$(GCJ_JDK_VERSION)"
+    ifeq ($(ARCH),$(findstring $(ARCH),$(OOO_GCJ_ARCHS)))
+	GCJ_JDK_PACKAGE=$(shell dpkg -s gcj-jdk | grep Depends | sed -e 's/.*\(gcj-[0-9]\.[0-9]-jdk\).*/\1/')
+	GCJ_JDK_VERSION=$(shell echo $(GCJ_JDK_PACKAGE) | cut -d- -f2)
+      ifneq "$(SYSTEM_GCC_VERSION)" "$(GCJ_JDK_VERSION)"
         BUILD_DEPS += , gcc-$(GCJ_JDK_VERSION) [$(OOO_GCJ_JDK_ARCHS)], g++-$(GCJ_JDK_VERSION) [$(OOO_GCJ_JDK_ARCHS)]
-      ifeq ($(ARCH),$(findstring $(ARCH),$(OOO_GCJ_JDK_ARCHS)))
+        ifeq ($(ARCH),$(findstring $(ARCH),$(OOO_GCJ_JDK_ARCHS)))
 	# sanity check. amd64 is in kfreebsd-amd64; same for i386
-        ifneq ($(ARCH),$(findstring $(ARCH),$(OOO_OPENJDK_ARCHS)))
+          ifneq ($(ARCH),$(findstring $(ARCH),$(OOO_OPENJDK_ARCHS)))
           GCC_VERSION := $(GCJ_JDK_VERSION)
-        else
+          else
           GCC_VERSION := $(SYSTEM_GCC_VERSION)
+          endif
+        else
+	  GCC_VERSION := $(SYSTEM_GCC_VERSION)
         endif
-      else
-	GCC_VERSION := $(SYSTEM_GCC_VERSION)
       endif
     endif
   endif
