@@ -243,7 +243,7 @@ ENABLE_MINIMIZER=y
 ENABLE_PRESENTER_CONSOLE=y
 ENABLE_PDFIMPORT=y
 BUILD_GTK=y
-ENABLE_EVO2=n
+ENABLE_EVO2=y
 ENABLE_GVFS=y
 ENABLE_GCONF=y
 # broken!
@@ -257,7 +257,7 @@ PACKAGE_BASE=y
 ENABLE_GRAPHITE=y
 SYSTEM_STUFF += graphite
 ALLOC=system
-SYSTEM_STUFF += textcat
+SYSTEM_STUFF += libtextcat
 USE_SYSTEM_TEXTCAT_DATA=y
 SYSTEM_STUFF += cppunit
 
@@ -423,7 +423,7 @@ endif
 # Debian Squeeze
 ifeq "$(SQUEEZE_BACKPORT)" "y"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out libwpd libwpg libwps mythes mdds textcat graphite, $(SYSTEM_STUFF))
+  SYSTEM_STUFF := $(filter-out libwpd libwpg libwps mythes mdds libtextcat graphite, $(SYSTEM_STUFF))
   JUNIT_MIN_VER=
 endif
 
@@ -431,12 +431,25 @@ CONFIGURE_FLAGS += $(foreach i, $(SYSTEM_STUFF),--with-system-$(i))
 
 CC_PREFIX:=$(shell gcc -dumpmachine)-
 
-ifeq (s390,$(findstring s390,$(OOO_ARCHS)))
-	BUILD_DEPS += , g++ (>> 4.3.0) [s390], gcc (>> 4.3.0) [s390]
-endif
-ifeq "$(SYSTEM_GCC_VERSION)" "4.4"
-  ifeq (armel,$(findstring armel,$(OOO_ARCHS)))
-	BUILD_DEPS += , g++-4.4 (>= 4.4.2-5) [armel]
+ifeq "$(GCC_VERSION)" ""
+  ifneq "$(OOO_GCJ_JDK_ARCHS)" ""
+    ifeq ($(ARCH),$(findstring $(ARCH),$(OOO_GCJ_ARCHS)))
+	GCJ_JDK_PACKAGE=$(shell dpkg -s gcj-jdk | grep Depends | sed -e 's/.*\(gcj-[0-9]\.[0-9]-jdk\).*/\1/')
+	GCJ_JDK_VERSION=$(shell echo $(GCJ_JDK_PACKAGE) | cut -d- -f2)
+      ifneq "$(SYSTEM_GCC_VERSION)" "$(GCJ_JDK_VERSION)"
+        BUILD_DEPS += , gcc-$(GCJ_JDK_VERSION) [$(OOO_GCJ_JDK_ARCHS)], g++-$(GCJ_JDK_VERSION) [$(OOO_GCJ_JDK_ARCHS)]
+        ifeq ($(ARCH),$(findstring $(ARCH),$(OOO_GCJ_JDK_ARCHS)))
+	# sanity check. amd64 is in kfreebsd-amd64; same for i386
+          ifneq ($(ARCH),$(findstring $(ARCH),$(OOO_OPENJDK_ARCHS)))
+          GCC_VERSION := $(GCJ_JDK_VERSION)
+          else
+          GCC_VERSION := $(SYSTEM_GCC_VERSION)
+          endif
+        else
+	  GCC_VERSION := $(SYSTEM_GCC_VERSION)
+        endif
+      endif
+    endif
   endif
 endif
 
@@ -488,12 +501,12 @@ else
 endif
 
 
-ifneq (,$(filter textcat, $(SYSTEM_STUFF)))
+ifneq (,$(filter libtextcat, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libtextcat-dev (>= 2.2-8)
-	CONFIGURE_FLAGS += --with-system-libtextcat
 endif
 ifeq "$(USE_SYSTEM_TEXTCAT_DATA)" "y"
 	CONFIGURE_FLAGS += --with-external-libtextcat-data=/usr/share/libtextcat/LM
+	TEXTCAT_DATA_RECOMMENDS := libtextcat-data (>= 2.2-9)
 endif
 
 ifeq "$(USE_LIBCURL4)" "y"
@@ -606,7 +619,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	# have gid_Module_Root.$iso
 	#ISOS=$(shell $(OOO_BUILD_TREE)/bin/openoffice-xlate-lang -i all')
 	ISOS:=en-US af ar as ast be-BY bg bn br bs ca cs cy da de dz el \
-	  en-GB en-ZA eo es et eu fa fi fr ga gl gu he hi hr hu id it ja \
+	  en-GB en-ZA eo es et eu fa fi fr ga gl gu he hi hr hu id is it ja \
 	  ka km ko ku lt lv mk mn ml mr nb ne nl nn nr ns oc om or \
 	  pa-IN pl pt pt-BR ro ru rw si sk sl sr ss st sv \
 	  ta te tg th tn tr ts ug uk uz ve vi xh zh-CN zh-TW zu
@@ -615,7 +628,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	  ja km ko nl om pl pt pt-BR ru sk sl sv zh-CN zh-TW
 	#LANGPACKISOS:=$(shell $(OOO_BUILD_TREE)/bin/openoffice-xlate-lang -i all')
 	LANGPACKISOS:=en-US af ar as ast be-BY bg bn br bs ca cs cy da de dz el \
-	  en-GB en-ZA eo es et eu fa fi fr ga gl gu he hi hr hu id it ja \
+	  en-GB en-ZA eo es et eu fa fi fr ga gl gu he hi hr hu id is it ja \
 	  ka km ko ku lt lv mk mn ml mr nb ne nl nn nr ns oc om or \
 	  pa-IN pl pt pt-BR ro ru rw si sk sl sr ss st sv \
 	  ta te tg th tn tr ts ug uk uz ve vi xh zh-CN zh-TW zu
@@ -1073,6 +1086,15 @@ ifeq "$(NUM_CPUS)" ""
 	NUM_CPUS := $(shell expr $(AVAIL_CPUS))
     endif
   endif
+else
+  ifneq "$(PARALLEL_BUILD)" "y"
+    # no more than 2, please. At least 6 seems to fail.
+    ifneq ($(NUM_CPUS),1)
+      ifneq ($(NUM_CPUS),2)
+	NUM_CPUS := 2
+      endif
+    endif
+  endif
 endif
 # disabled for now. needs fixed GNU make (#622644)
 #	CONFIGURE_FLAGS += --with-num-cpus=$(NUM_CPUS)
@@ -1090,7 +1112,9 @@ else
 	BUILD_DEPS += , gcc-snapshot
   else
 	BUILD_PATH = /usr/lib/jvm/java-gcj/bin:$(CURDIR)/debian/usr/bin:$$PATH
+    ifeq "$(GCJ_JDK_VERSION)" ""
 	BUILD_DEPS += , gcc-$(GCC_VERSION), g++-$(GCC_VERSION)
+    endif
   endif
 endif
 BUILD_PATH := $(CURDIR)/debian/usr/bin:$(BUILD_PATH)
@@ -1426,10 +1450,6 @@ endif
 	perl -pi -e "s,%OOO_GCJ_JDK_ARCHS%,$(OOO_GCJ_JDK_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_ARCH_DEP_EXTENSIONS_ARCHS%,$(OOO_ARCH_DEP_EXTENSIONS_ARCHS),g" debian/control
 
-ifeq (he,$(findstring he,$(LANGPACKISOS)))
-	perl -pi -e 's/libreoffice-help-he$$/libreoffice-help-he, libreoffice-ctl-he/' debian/control
-endif
-
 ifeq (sk,$(findstring sk,$(HELPISOS)))
 	perl -pi -e 's/(Depends:.*)libreoffice-l10n-sk(.*)$$/\1libreoffice-l10n-sk, libreoffice-help-cs\2/' debian/control
 endif
@@ -1548,13 +1568,6 @@ ifneq ($(GCC_VERSION),)
 	ln -sf /usr/lib/gcc-snapshot/bin/$(CC_PREFIX)gij $(CURDIR)/debian/usr/bin/gij
     endif
   endif
-endif
-
-ifeq "$(BUILD_KDE)" "y"
-	# be sure we use the right moc, it's an alternative and can point
-	# to either Qt3 or Qt4s moc.
-	mkdir -p $(CURDIR)/debian/usr/bin
-	ln -sf /usr/bin/moc-qt4 $(CURDIR)/debian/usr/bin/moc
 endif
 
 ifneq "$(BUILD_ONLY_EN_US)" "y"
@@ -2025,6 +2038,11 @@ else
 	# remove them, unneeded and would gerate file conflicts
 	rm -f $(PKGDIR)-common/$(OOBRANDDIR)/program/intro-pt_BR.png
 	rm -f $(PKGDIR)-common/$(OOBRANDDIR)/program/about-pt_BR.png
+endif
+
+ifeq (he,$(findstring he,$(LANGPACKISOS)))
+	perl -pi -e 's#<prop oor:name="CTLSequenceChecking"><value>true</value></prop>#<prop oor:name="CTLSequenceChecking"><value>false</value></prop>#' $(PKGDIR)-l10n-he/$(OOBASISDIR)/share/registry/ctl_he.xcd
+	perl -pi -e 's#</oor:component-data>#<node oor:name="General"><prop oor:name="DefaultLocale_CTL"><value>he-IL</value></prop></node></oor:component-data>#' $(PKGDIR)-l10n-he/$(OOBASISDIR)/share/registry/ctl_he.xcd
 endif
 
 	touch $@
@@ -3025,6 +3043,10 @@ endif
 	  fi; \
 	done
 
+ifeq "$(USE_SYSTEM_TEXTCAT_DATA)" "y"
+	echo "usr/share/libtextcat/LM $(OOBASISDIR)/share/fingerprint" >> debian/libreoffice-common.links
+endif
+
 ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	# menu files from sysui
 	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/misc/libreoffice >/dev/null; pwd`" ;\
@@ -3363,6 +3385,7 @@ endif
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-V'lucene-depends=$(LUCENE_DEPENDS)' \
 		-V'lucene-conflicts=$(LUCENE_CONFLICTS)' \
+		-V'textcat-data-recommends=$(TEXTCAT_DATA_RECOMMENDS)' \
 		-V'Binary-Version=$(BINARY_VERSION)' \
 		-V'ooo-binfilter-dep=$(OOO_BINFILTER_DEP)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
