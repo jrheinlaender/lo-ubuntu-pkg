@@ -452,9 +452,6 @@ ifeq "$(DIST)" "Ubuntu"
   USE_COMMON_DOCDIR=y
   IMAGES += human
   ON_BUILDD_VERBOSITY := true
-  ifeq "$(PKGSOURCE)" "libreoffice$(VER)"
-    BUILD_ONLY_EN_US=y
-  endif
   PATCHSET=$(DIST)$(shell perl -e 'print ucfirst("$(DISTREL)");')
 
   USE_LZMA_COMPRESS=$(if $(filter-out armel,$(ARCH)),y,n)
@@ -462,46 +459,11 @@ ifeq "$(DIST)" "Ubuntu"
   CONFIGURE_FLAGS += --with-openldap
   CONFIGURE_FLAGS += --with-system-python
 
-  ifneq (,$(filter $(DISTREL),dapper hardy jaunty karmic lucid maverick))
-    SYSTEM_STUFF := $(filter-out libwpd libwpg libwps, $(SYSTEM_STUFF))
-  endif
+  SYSTEM_STUFF := $(filter-out lucene, $(SYSTEM_STUFF))
 
-  # Build with -Os apart from ARM to avoid GCC register spill errors
-  ifneq (,$(filter $(DISTREL),lucid maverick))
-    ifneq (,$(filter $(ARCH), arm armel))
-      export ICU_ARCH_FLAGS = -Os
-    endif
-  endif
-
-  ifeq ($(DISTREL),natty)
-    SYSTEM_STUFF := $(filter-out lucene, $(SYSTEM_STUFF))
-    # FIXME: smoketest fails, but we need the indep packages for the other archs
-    # disabling for all archs to get rid of epm dependency
-    #ifneq (,$(filter $(ARCH),armel i386))
-      RUN_SMOKETEST=n
-    #endif
-  endif
-
-  ifeq ($(DISTREL),maverick)
-    ifneq (,$(filter $(ARCH),armel i386))
-      RUN_SMOKETEST=n
-    endif
-  endif
-
-  ifeq ($(DISTREL),lucid)
-    SYSTEM_STUFF := $(filter-out mdds mythes, $(SYSTEM_STUFF))
-    BOOST_VERSION=1.40
-    BOOST_MINVER=(>= 1.40.0)
-    USE_SYSTEM_TEXTCAT_DATA=n
-    CONFIGURE_FLAGS += --with-linker-hash-style=gnu
-    # LP: #696299
-    BUILD_KDE=n
-    CONFIGURE_FLAGS += --disable-kde --disable-kde4
-    ifneq (,$(filter $(ARCH),armel))
-      RUN_SMOKETEST=n
-    endif
-  endif
-
+  # FIXME: smoketest fails, but we need the indep packages for the other archs
+  # disabling for all archs to get rid of epm dependency
+  RUN_SMOKETEST=n
 endif
 
 ifeq "$(L10N_SEPARATE_SOURCE)" "y"
@@ -705,7 +667,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	# have gid_Module_Root.$iso
 	#ISOS=$(shell $(OOO_BUILD_TREE)/bin/openoffice-xlate-lang -i all')
 	ISOS:=en-US af ar as ast be-BY bg bn br bs ca cs cy da de dz el \
-	  en-GB en-ZA eo es et eu fa fi fr ga gl gu he hi hr hu id it ja \
+	  en-GB en-ZA eo es et eu fa fi fr ga gl gu he hi hr hu id is it ja \
 	  ka km ko ku lt lv mk mn ml mr nb ne nl nn nr ns oc om or \
 	  pa-IN pl pt pt-BR ro ru rw si sk sl sr ss st sv \
 	  ta te tg th tn tr ts ug uk uz ve vi xh zh-CN zh-TW zu
@@ -714,7 +676,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	  ja km ko nl om pl pt pt-BR ru sk sl sv zh-CN zh-TW
 	#LANGPACKISOS:=$(shell $(OOO_BUILD_TREE)/bin/openoffice-xlate-lang -i all')
 	LANGPACKISOS:=en-US af ar as ast be-BY bg bn br bs ca cs cy da de dz el \
-	  en-GB en-ZA eo es et eu fa fi fr ga gl gu he hi hr hu id it ja \
+	  en-GB en-ZA eo es et eu fa fi fr ga gl gu he hi hr hu id is it ja \
 	  ka km ko ku lt lv mk mn ml mr nb ne nl nn nr ns oc om or \
 	  pa-IN pl pt pt-BR ro ru rw si sk sl sr ss st sv \
 	  ta te tg th tn tr ts ug uk uz ve vi xh zh-CN zh-TW zu
@@ -850,7 +812,7 @@ ifneq "$(MOZILLA)" ""
 	DBG_DBG_SUGGESTS+= , libnss3-1d-dbg, libnspr4-0d-dbg
     else
       ifeq "$(MOZILLA)" "libxul"
-	BUILD_DEPS+= , xulrunner-dev$(OOO_NO_MOZILLA_ARCHS), libnss3-dev (>= 3.12.3)$(OOO_NO_MOZILLA_ARCHS)
+	BUILD_DEPS+= , xulrunner-dev$(OOO_NO_MOZILLA_ARCHS) | firefox-dev$(OOO_NO_MOZILLA_ARCHS), libnss3-dev (>= 3.12.3)$(OOO_NO_MOZILLA_ARCHS)
       else
         ifeq "$(MOZILLA)" "iceape"
 	BUILD_DEPS += , $(MOZILLA)-dev (>= 1.1.9-5)$(OOO_NO_MOZILLA_ARCHS), libnss3-dev (>= 3.12.3)$(OOO_NO_MOZILLA_ARCHS)]
@@ -3001,6 +2963,8 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	   	-e 's/  / /' \
 	  	< $$dirname/javafilter.desktop \
 	  	> $(PKGDIR)-filter-mobiledev/usr/share/applications/libreoffice$(VER)-javafilter.desktop || exit 1
+	# hack for lp#732412
+	rm $(PKGDIR)-filter-mobiledev/usr/share/applications/libreoffice$(VER)-javafilter.desktop
 endif
 endif
 
@@ -3248,6 +3212,7 @@ endif
 	  if [ -e $$LINKS.in ]; then \
 	    sed -e "s/\@LIBSUFFIX\@/$(LIBSUFFIX)/g" \
 		-e "s#\@OOBASISDIR\@#$(OOBASISDIR)#g" \
+		$(if $(filter textcat,$(SYSTEM_STUFF)),,-e "s#^/usr/share/libtextcat/LM.*$$##") \
 		< $$LINKS.in > $$LINKS ; \
 	  fi; \
 	done
