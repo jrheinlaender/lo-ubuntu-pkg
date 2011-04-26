@@ -1,0 +1,60 @@
+Index: libreoffice-3.3.2/libreoffice-build/patches/dev300/apply
+===================================================================
+--- libreoffice-3.3.2.orig/libreoffice-build/patches/dev300/apply	2011-04-26 11:45:52.645409871 +0200
++++ libreoffice-3.3.2/libreoffice-build/patches/dev300/apply	2011-04-26 11:46:15.645409868 +0200
+@@ -2380,3 +2380,6 @@
+ 
+ [ UbuntuOnly ]
+ lp720716.diff
++
++[ UbuntuOnly ]
++lp746375.diff
+--- /dev/null	2011-04-26 09:25:32.995411000 +0200
++++ libreoffice-3.3.2/libreoffice-build/patches/dev300/lp746375.diff	2011-04-26 11:39:39.085409921 +0200
+@@ -0,0 +1,46 @@
++From df71bb6970dc95a963ef2ea52f1f93f5f50325ed Mon Sep 17 00:00:00 2001
++From: Caolán McNamara <caolanm@redhat.com>
++Date: Wed, 13 Apr 2011 11:23:40 +0000
++Subject: Related: lp#746375 ensure a deterministic shutdown order for globals
++
++---
++diff --git a/vcl/unx/gtk/a11y/atkutil.cxx b/vcl/unx/gtk/a11y/atkutil.cxx
++index 68bb949..97e44e7 100644
++--- vcl/unx/gtk/a11y/atkutil.cxx
+++++ vcl/unx/gtk/a11y/atkutil.cxx
++@@ -66,7 +66,14 @@
++ 
++ using namespace ::com::sun::star;
++ 
++-static uno::WeakReference< accessibility::XAccessible > xNextFocusObject;
+++namespace
+++{
+++    struct theNextFocusObject :
+++        public rtl::Static< uno::WeakReference< accessibility::XAccessible >, theNextFocusObject>
+++    {
+++    };
+++}
+++
++ static guint focus_notify_handler = 0;
++ 
++ /*****************************************************************************/
++@@ -80,7 +87,7 @@ atk_wrapper_focus_idle_handler (gpointer data)
++ 
++     focus_notify_handler = 0;
++ 
++-    uno::Reference< accessibility::XAccessible > xAccessible = xNextFocusObject;
+++    uno::Reference< accessibility::XAccessible > xAccessible = theNextFocusObject::get();
++     if( xAccessible.get() == reinterpret_cast < accessibility::XAccessible * > (data) )
++     {
++         AtkObject *atk_obj = xAccessible.is() ? atk_object_wrapper_ref( xAccessible ) : NULL;
++@@ -135,7 +142,7 @@ atk_wrapper_focus_tracker_notify_when_idle( const uno::Reference< accessibility:
++     if( focus_notify_handler )
++         g_source_remove(focus_notify_handler);
++ 
++-    xNextFocusObject = xAccessible;
+++    theNextFocusObject::get() = xAccessible;
++ 
++     focus_notify_handler = g_idle_add (atk_wrapper_focus_idle_handler, xAccessible.get());
++ }
++--
++cgit v0.8.3-6-g21f6
