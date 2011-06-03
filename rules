@@ -1729,10 +1729,18 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/build
 	# somehow in the installer LD_LIBRARY_PATH doesn't contain
 	# /usr/lib/libfakeroot anymore, causiong loads of ERROR:'s from
 	# ld.so. Set LD_PRELOAD to the full path here manually.
-	cd $(OOO_BUILD_TREE)/; PATH=$(BUILD_PATH) \
+	cd $(SOURCE_TREE)/; \
+		 . $(CURDIR)/$(SOURCE_TREE)/*Env*.sh; \
+		 PATH=$(BUILD_PATH) \
 		 LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(BUILD_LD_LIBRARY_PATH)" \
 		 LD_PRELOAD=/usr/lib/libfakeroot/libfakeroot-$(shell update-alternatives --query fakeroot | grep Value: | cut -d"-" -f2).so \
-		 DESTDIR=$(CURDIR)/debian/tmp $(MAKE) install
+		 DESTDIR=$(CURDIR)/debian/tmp \
+		 solenv/bin/ooinstall /$(OOBRANDDIR)
+	# FIXME: Move here so that we don't rely on libreoffice-build here.
+	# Would also obsolete disable-ooinstall-in-package-ooo.diff
+	cd $(OOO_BUILD_TREE)/bin; \
+		export OODESTDIR=$(CURDIR)/debian/tmp; \
+		./package-ooo
 
 	# prepare install/dir files for dh
 	for i in `cd $(CURDIR)/debian/tmp/pkg; ls -1 | xargs`; do \
