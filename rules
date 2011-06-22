@@ -126,7 +126,7 @@ PACKAGE_TTF_OPENSYMBOL=y
 ifeq (,$(filter $(ARCH), powerpc powerpcspe ppc64))
   BUILD_JARS_NATIVE=y
 endif
-BUILD_BINFILTERS=n
+BUILD_BINFILTERS=y
 BUILD_ONLY_EN_US=y
 ENABLE_JAVA=y
 ifeq "$(ENABLE_JAVA)" "y"
@@ -247,7 +247,7 @@ ENABLE_MINIMIZER=y
 ENABLE_PRESENTER_CONSOLE=y
 ENABLE_PDFIMPORT=y
 BUILD_GTK=y
-ENABLE_EVO2=n
+ENABLE_EVO2=y
 ENABLE_GVFS=y
 ENABLE_GCONF=y
 # broken!
@@ -1847,9 +1847,6 @@ ifeq (sk,$(findstring sk,$(HELPISOS)))
 		$(PKGDIR)-help-sk/$(shell echo $(OOBASISDIR) | sed -e s/lib/share/)/help/sk
 endif
 
-	# add registered-components dir
-	mkdir -p $(PKGDIR)-core/$(OOBASISDIR)/registered-components
-
 ifeq "$(ENABLE_JAVA)" "y"
 	# move officebean.jar into -officebean (They will be moved out of -core
 	# in the install-arch target). Do the /usr/share move here already
@@ -1979,7 +1976,8 @@ $(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*Env*.sh) $(wildcard debia
 	      echo "" >> $$MAINTSCRIPT; \
 	      if egrep -q "(add|remove|validate|sync)_extension" $$MAINTSCRIPT.in; then \
 		 cat debian/shell-lib-extensions.sh >> $$MAINTSCRIPT; \
-	      elif grep -q services_rdb $$MAINTSCRIPT.in; then \
+	      fi; \
+	      if grep -q services_rdb $$MAINTSCRIPT.in; then \
 		 cat debian/shell-lib-components.sh >> $$MAINTSCRIPT; \
 	      fi; \
 	      sed -n '/^#INCLUDE_SHELL_LIB#$$/,$$p' < $$MAINTSCRIPT.in | sed -e '/^#INCLUDE_SHELL_LIB#$$/d' >> $$MAINTSCRIPT; \
@@ -2196,6 +2194,9 @@ ifeq "$(ENABLE_KDEAB)" "y"
 	for f in libkab*so; do \
 	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-kab/$(OODIR)/program || exit 1 ;\
 	done
+        mkdir -p $(PKGDIR)-kab/$(OODIR)/registered-components
+        install -m644 $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$UPD/$$OUTPATH$$PROEXT)/xml/kab1.component \
+                $(PKGDIR)-kab/$(OODIR)/registered-components/kab1.component
 endif
 
 	# move the GNOME stuff which are *not* in gid_Module_Optional_Gnome
@@ -2234,6 +2235,17 @@ endif
 ifeq "$(ENABLE_EVO2)" "y"
 	mkdir -p -m755 $(PKGDIR)-evolution/$(OODIR)/program
 	mv $(PKGDIR)-core/$(OODIR)/program/libevoab*.so $(PKGDIR)-evolution/$(OODIR)/program
+	mkdir -p $(PKGDIR)-evolution/$(OODIR)/registered-components
+	install -m644 $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$UPD/$$OUTPATH$$PROEXT)/xml/evoab.component \
+		$(PKGDIR)-evolution/$(OODIR)/registered-components/evoab.component
+endif
+
+ifeq "$(BUILD_BINFILTERS)" "y"
+	mkdir -p $(PKGDIR)-filter-binfilter/$(OODIR)/registered-components
+	for i in bf_migratefilter bindet; do \
+		install -m644 $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$UPD/$$OUTPATH$$PROEXT)/xml/$$i.component \
+                $(PKGDIR)-filter-binfilter/$(OODIR)/registered-components/$$i.component; \
+	done
 endif
 
 ifeq "$(PACKAGE_NPSOPLUGIN)" "y"
@@ -2612,10 +2624,12 @@ ifeq "$(ENABLE_PDFIMPORT)" "y"
 	rm -f $(PKGDIR)-pdfimport/$(OOBRANDDIR)/share/extensions/pdfimport/registration/LICENSE
 endif
 
-	# move services.rdb to /var/lib/openoffice
-	mkdir -p $(PKGDIR)-core/var/lib/$(OODIRNAME)/basis$(OOVER)/program
+	# move "default" services.rdb to a hidden file
 	mv $(PKGDIR)-core/usr/lib/$(OODIRNAME)/basis$(OOVER)/program/services.rdb \
-		$(PKGDIR)-core/var/lib/$(OODIRNAME)/basis$(OOVER)/program/services.rdb
+		$(PKGDIR)-core/usr/lib/$(OODIRNAME)/basis$(OOVER)/program/.services.rdb
+	# create dir for services.rdb which is read. like when we merged
+ 	# additional/optional components
+	mkdir -p $(PKGDIR)-core/var/lib/$(OODIRNAME)/basis$(OOVER)/program
 	ln -s /var/lib/$(OODIRNAME)/basis$(OOVER)/program/services.rdb \
 		$(PKGDIR)-core/usr/lib/$(OODIRNAME)/basis$(OOVER)/program/services.rdb
 
@@ -3277,7 +3291,7 @@ endif
 	dh_gencontrol -pure -pure-dbg -puno-libs3 -puno-libs3-dbg -- \
 		-V"ure:Version=`echo $(BINARY_VERSION) | cut -d: -f2`" \
 		-v"`echo $(BINARY_VERSION) | cut -d: -f2`"
-	dh_md5sums -s -X$(shell echo $(OOBASISDIR) | sed -e s/usr/var/)/program/services.rdb
+	dh_md5sums -s
 	dh_builddeb -s $(DEBHELPER_OPTIONS) $(BUILDDEB_OPTIONS)
 
 	touch $@
