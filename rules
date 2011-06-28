@@ -719,7 +719,6 @@ export JAVA_HOME
   ifneq (,$(filter saxon, $(SYSTEM_STUFF)))
 	CONFIGURE_FLAGS += --with-system-saxon --with-saxon-jar=/usr/share/java/saxonb.jar
 	BUILD_DEPS += , libsaxonb-java$(OOO_NO_JAVA_ARCHS)
-	JAVA_COMMON_JAVA_DEPENDS+= , libsaxonb-java
   endif
   ifeq "$(PACKAGE_SDK)" "y"
     ifeq "$(DIST)" "Debian"
@@ -3248,6 +3247,11 @@ ifeq "$(ENABLE_MONO)" "y"
 	dh_makeclilibs -s
 	dh_clideps -s
 endif
+ifeq "$(ENABLE_JAVA)" "y"
+	jh_depends -s -Xlibreoffice$(VER)-gcj
+	perl -pi -e "s/libhsqldb-java/libhsqldb-java $(HSQLDB_MINVER), libhsqldb-java (<< $(HSQLDB_TOONEWVER)~)/" \,
+		debian/libreoffice$(VER)-base.substvars
+endif
 # This switch to dh_shlibdeps reduces the 'libXXX not found' warnings but
 # causes ldd crashes sometimes when used with fakeroot:
 #          -l $(PKGDIR)-core/$(OPENOFFICEDIR)/program
@@ -3391,6 +3395,11 @@ ifeq "$(ENABLE_MONO)" "y"
 	dh_makeclilibs -i
 	dh_clideps -i
 endif
+ifeq "$(ENABLE_JAVA)" "y"
+	# the help recommends lucene. this is enough. no need for a hard depend in
+        # -common, IMHO
+	jh_depends -i -Xbsh -Xlibreoffice$(VER)-gcj -Xliblucene2-java
+endif
 	dh_gencontrol -i $(DEBHELPER_OPTIONS) \
 		-Nlibreoffice$(VER)-report-builder \
 		-Nlibreoffice$(VER)-wiki-publisher \
@@ -3407,7 +3416,6 @@ endif
 		-V'help-l10n-virtual-version=$(HELP_L10N_VIRTUAL_VERSION)' \
 		-V'bsh-depends=$(BSH_DEPENDS)' \
 		-V'java-common-depends=$(JAVA_COMMON_DEPENDS)' \
-		-V'java-common-java-depends=$(JAVA_COMMON_JAVA_DEPENDS)' \
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-V'lucene-depends=$(LUCENE_DEPENDS)' \
 		-V'lucene-conflicts=$(LUCENE_CONFLICTS)' \
