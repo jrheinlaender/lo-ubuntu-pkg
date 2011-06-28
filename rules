@@ -31,6 +31,7 @@ OOVER:=3.4
 BASIS_VERSION:=$(OOVER)
 NEXT_OOVER:=$(shell echo "$(OOVER) + 0.1" | bc)
 NEXT_BASIS_VERSION:=$(NEXT_OOVER)
+NEXT_BASE_VERSION:=1:$(NEXT_OOVER)
 
 ARCH_INDEP_PACKAGES := $(shell dh_listpackages -i)
 ARCH_DEP_PACKAGES := $(shell dh_listpackages -s)
@@ -49,6 +50,7 @@ SYSTEM_GCC_VERSION = $(shell gcc --version | sed -n '/^gcc/s/.*\(.\..\)\..$$/\1/
 
 # Debian buildds run as user `buildd', other are using /CurrentlyBuilding
 ON_BUILDD := $(shell [ "`whoami`" = buildd -o -f /CurrentlyBuilding ] && echo y || echo n)
+ON_BUILDD_VERBOSITY :=
 
 PKGDIR:=debian/libreoffice$(VER)
 OODIRNAME=libreoffice$(VER)
@@ -62,7 +64,7 @@ OODIR:=$(OOBASISDIR)
 # Figure out who's building this package.
 OOO_VENDOR:=The Document Foundation/Debian
 ifeq "$(DIST)" "Ubuntu"
-OOO_VENDOR=The Document Foundation, Debian and Ubuntu
+OOO_VENDOR:=The Document Foundation, Debian and Ubuntu
 endif
 export OOO_VENDOR
 
@@ -428,6 +430,40 @@ ifeq "$(SQUEEZE_BACKPORT)" "y"
   JUNIT_MIN_VER=
 endif
 
+# Ubuntu
+ifeq "$(DIST)" "Ubuntu"
+  L10N_SEPARATE_SOURCE=y
+  USE_COMMON_DOCDIR=y
+  IMAGES += human
+  ON_BUILDD_VERBOSITY := true
+  PATCHSET=$(DIST)$(shell perl -e 'print ucfirst("$(DISTREL)");')
+
+  USE_LZMA_COMPRESS=$(if $(filter-out armel,$(ARCH)),y,n)
+
+  CONFIGURE_FLAGS += --with-openldap
+  CONFIGURE_FLAGS += --with-system-python
+
+  SYSTEM_STUFF := $(filter-out lucene, $(SYSTEM_STUFF))
+
+  # FIXME: smoketest fails, but we need the indep packages for the other archs
+  # disabling for all archs to get rid of epm dependency
+  RUN_SMOKETEST=n
+  # enable building of sdbc_postgresql on natty even though it is broken, because we
+  # otherwise get a NBS
+  ifeq ($(DISTREL),natty)
+    ENABLE_SDBC_POSTGRESQL=y
+  endif
+endif
+
+ifeq "$(L10N_SEPARATE_SOURCE)" "y"
+  ifeq "$(PKGSOURCE)" "libreoffice$(VER)"
+    BUILD_ONLY_EN_US=y
+  else
+    L10N_COMMON_DEPENDS = libreoffice$(VER)-l10n-common
+    export NO_PKG_MANGLE=go-away
+  endif
+endif
+
 CONFIGURE_FLAGS += $(foreach i, $(SYSTEM_STUFF),--with-system-$(i))
 
 CC_PREFIX:=$(shell gcc -dumpmachine)-
@@ -467,6 +503,11 @@ endif
 ifeq "$(USE_BZIP_COMPRESS)" "y"
 	DPKG_DEPENDS = dpkg (>= 1.10.24)
 	BUILDDEB_OPTIONS = -- -Zbzip2
+endif
+
+ifeq "$(USE_LZMA_COMPRESS)" "y"
+       DPKG_DEPENDS = dpkg (>= 1.14.12ubuntu3)
+       BUILDDEB_OPTIONS = -- -Zlzma
 endif
 
 	BUILD_DEPS += , dpkg-dev (>= 1.15.1)
@@ -580,7 +621,9 @@ endif
 
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(BUILD_JARS_NATIVE)" "y"
+    ifneq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
 	STAMP_NATIVE_JARS = $(STAMP_DIR)/native-jars
+    endif
     ifeq "$(NEW_DPKG_SHLIBDEPS)" "n"
 	BUILD_DEPS += , dpkg-dev (>= 1.13.19)
     endif
@@ -641,6 +684,10 @@ else
 	LANGPACKISOS=en-US
 endif
 BUILD_ISOS = $(ISOS)
+
+ifeq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
+	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-help-en-us
+endif
 
 ifneq "$(BUILD_ONLY_EN_US)" "y"
   ifneq "$(BUILD_ISOS)" "en-US"
@@ -769,7 +816,7 @@ ifneq "$(MOZILLA)" ""
 	DBG_DBG_SUGGESTS+= , libnss3-1d-dbg, libnspr4-0d-dbg
     else
       ifeq "$(MOZILLA)" "libxul"
-	BUILD_DEPS+= , xulrunner-dev$(OOO_NO_MOZILLA_ARCHS), libnss3-dev (>= 3.12.3)$(OOO_NO_MOZILLA_ARCHS)
+	BUILD_DEPS+= , xulrunner-dev$(OOO_NO_MOZILLA_ARCHS) | firefox-dev$(OOO_NO_MOZILLA_ARCHS), libnss3-dev (>= 3.12.3)$(OOO_NO_MOZILLA_ARCHS)
       else
         ifeq "$(MOZILLA)" "iceape"
 	BUILD_DEPS += , $(MOZILLA)-dev (>= 1.1.9-5)$(OOO_NO_MOZILLA_ARCHS), libnss3-dev (>= 3.12.3)$(OOO_NO_MOZILLA_ARCHS)]
@@ -1167,6 +1214,15 @@ clean-debdir:
 	dh_testdir
 	rm -f debian/*.postinst debian/*.postrm debian/*.preinst debian/*.prerm debian/*.triggers
 	rm -f $(STAMP_DIR)/setup
+ifeq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
+	rm -rf debian/ttf-opensymbol \
+		debian/libreoffice$(VER)-common \
+		debian/libreoffice$(VER)-dev-doc \
+		debian/libreoffice$(VER)-java-common \
+		debian/libreoffice$(VER)-l10n-en-us \
+		debian/libreoffice$(VER)-core \
+		debian/libuno-cli-basetypes1.0-cil
+endif
 	dh_clean
 
 # Clean compilation results, but leave solver (about 600Mb in addition to instsetoo)
@@ -1215,6 +1271,20 @@ clean:
 
 ifneq "$(OOO_L10N_DIR)" ""
 	rm -rf $(OOO_L10N_DIR)
+endif
+
+ifeq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
+	rm -rf debian/ttf-opensymbol \
+		debian/libreoffice$(VER)-common \
+		debian/libreoffice$(VER)-dev-doc \
+		debian/libreoffice$(VER)-java-common \
+		debian/libreoffice$(VER)-l10n-en-us \
+		debian/libreoffice$(VER)-core \
+		debian/libuno-cli-basetypes1.0-cil
+	if [ -f libreoffice-build/distro-configs/UbuntuL10n.conf.in.saved ]; then \
+	  mv libreoffice-build/distro-configs/UbuntuL10n.conf.in.saved \
+	    libreoffice-build/distro-configs/UbuntuL10n.conf.in; \
+	fi
 endif
 
 	dh_clean
@@ -1288,6 +1358,14 @@ debian/control: $(wildcard debian/control*in) $(OOO_BUILD_TREE)/bin/openoffice-x
 	    -e "s#@BUGS@#$(BUGS)#g" \
 	    < debian/control.in > debian/control
 
+ifeq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
+	awk '{print} /^ *$$/ {exit}' debian/control > debian/control.l10n
+	mv debian/control.l10n debian/control
+
+	sed -e "s|libreofficeVER|libreoffice$(VER)|g" \
+	    >> debian/control < debian/control.l10n.in
+endif
+
 ifeq "$(ENABLE_LDAP)" "y"
 	# build-depends might not be satified when running debian/rules control. prevent bad subsitition with
 	# nothing (libldap--)
@@ -1351,10 +1429,19 @@ endif
 			LOCALES_DEPENDS="locales | belocs-locales-data | locales-all" \
 			;; \
 	    esac; \
+	    L10N_COMMON=; \
+	    if [ "$(USE_COMMON_DOCDIR)" = y ]; then \
+		case "$$LCODE" in \
+		   en-us) ;; \
+		   *) L10N_COMMON='libreofficeVER-l10n-common (>= $${base-version}), '; \
+		esac; \
+		LOCALES_DEPENDS="libreoffice$(VER)-common (>= \$${base-version}) | language-support-translations-$$CCODE, libreoffice$(VER)-common (<< 1:\$${next-basis-version}~) | language-support-translations-$$CCODE"; \
+	    fi; \
 	    sed -e "s|@LNAME@|$$LNAME|g" -e "s|@LCODE@|$$LCODE|g" \
 		-e "s|@CCODE@|$$CCODE|g" \
 	        -e "s|@FONT_SUGGESTS@|$$FONT_SUGGESTS|g" \
-	        -e "s:@LOCALES_DEPENDS@:$$LOCALES_DEPENDS:g" \
+	        -e "s;@LOCALES_DEPENDS@;$$LOCALES_DEPENDS;g" \
+	        -e "s:@L10N_COMMON@:$$L10N_COMMON:g" \
 			-e "s|libreofficeVER|libreoffice$(VER)|g" \
 		-e "s|@LDAP_LIB@|$(LDAP_LIB)|g" \
 	        >> debian/control < debian/control.lang.in; \
@@ -1376,6 +1463,7 @@ ifneq "$(HELPISOS)" ""
 	perl -pi -e 's|(Depends: libreoffice$(VER)-writer, libreoffice$(VER)-l10n-en-us)|\1, ttf-devanagari-fonts|' \
 		debian/control
 endif
+ifeq "$(PKGSOURCE)" "libreoffice$(VER)"
 	sed -e "s|libreofficeVER|libreoffice$(VER)|g" \
 		>> debian/control < debian/control.ure.in
 ifeq "$(ENABLE_JAVA)" "y"
@@ -1455,6 +1543,7 @@ ifeq "$(ENABLE_KDEAB)" "y"
 	sed -e "s|libreofficeVER|libreoffice$(VER)|g" \
 		>> debian/control < debian/control.kab.in
 endif
+endif # ifeq "$(PKGSOURCE)" "libreoffice$(VER)"
 
 	perl -pi -e "s,%OOO_ARCHS%,$(OOO_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_BASE_ARCHS%,$(OOO_BASE_ARCHS),g" debian/control
@@ -1561,6 +1650,13 @@ $(OOO_BUILD_TREE)/config.status: $(OOO_BUILD_TREE)/configure
 
 	mkdir -p $(STAMP_DIR)
 
+ifeq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
+	if [ ! -f libreoffice-build/distro-configs/UbuntuL10n.conf.in.saved ]; then \
+	  cp -p libreoffice-build/distro-configs/UbuntuL10n.conf.in \
+	    libreoffice-build/distro-configs/UbuntuL10n.conf.in.saved; \
+	fi
+endif
+
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
 	cp -a sources/* $(OOO_BUILD_TREE)/src
 endif
@@ -1664,11 +1760,14 @@ ifeq "$(BUILD_KDE)" "n"
 	fi
 endif
 
-ifeq ($(ON_BUILDD),y)
-	cd $(OOO_BUILD_TREE) ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build
-else
-	cd $(OOO_BUILD_TREE) ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 VERBOSE=true ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build
-endif
+	cd $(OOO_BUILD_TREE) ; \
+		PATH=$(BUILD_PATH) \
+		LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
+		DEFAULT_TO_ENGLISH_FOR_PACKING=1 \
+		VERBOSE=$(if $(filter y,$(ON_BUILDD)),$(ON_BUILDD_VERBOSITY),true) \
+		ARCH_FLAGS=$(ARCH_FLAGS) \
+		TMP=`mktemp -q -d` \
+		$(MAKE)
 
 	# apparently setting this here globally doesn't work, so hack around.
 	# If we don't do this we get loads of harmless, but log-bloating
@@ -1828,7 +1927,11 @@ endif
 	rm -rf debian/tmp/pkg/libreoffice-qa-tools
 
 	dh_installdirs -A
+ifeq "$(PKGSOURCE)" "libreoffice$(VER)"
 	dh_install -A --sourcedir=debian/tmp/pkg --fail-missing
+else
+	dh_install -A --sourcedir=debian/tmp/pkg
+endif
 
 	rm -rf debian/tmp/pkg
 
@@ -1848,6 +1951,7 @@ ifeq (sk,$(findstring sk,$(HELPISOS)))
 		$(PKGDIR)-help-sk/$(shell echo $(OOBASISDIR) | sed -e s/lib/share/)/help/sk
 endif
 
+ifeq "$(PKGSOURCE)" "libreoffice$(VER)"
 ifeq "$(ENABLE_JAVA)" "y"
 	# move officebean.jar into -officebean (They will be moved out of -core
 	# in the install-arch target). Do the /usr/share move here already
@@ -1951,6 +2055,7 @@ endif
 	# but the link is in -common so we need to do it here.
 	cd $(PKGDIR)-common/$(OOBASISDIR) && \
 		rm ure-link && ln -sf /$(OOUREDIR) ure-link
+endif # ifeq "$(PKGSOURCE)" "libreoffice$(VER)"
 
 ifeq "$(ENABLE_EVO2)" "y"
 	mkdir -p $(PKGDIR)-evolution/$(OODIR)/presets/database
@@ -1972,6 +2077,9 @@ $(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*Env*.sh) $(wildcard debia
 
 	# generate maintainer scripts from *.in
 	for PKG in $(PACKAGES); do \
+	  if [ "$(DIST)" = Ubuntu ]; then \
+	    case $$PKG in *l10n-*|*help-*) continue; esac; \
+	  fi; \
 	  for FILE in postinst postrm preinst prerm triggers; do \
 	    MAINTSCRIPT=debian/$$PKG.$$FILE ; \
 	    if [ -e $$MAINTSCRIPT.in ]; then \
@@ -2061,13 +2169,35 @@ ifeq "$(DIST)" "Debian"
 	done
 endif
 
+ifeq "$(DIST)" "Ubuntu"
+	# install Ubuntu templates
+	otps=`cd debian/ubuntu; echo *.otp`; \
+	for iso in $(LANGPACKISOS); do \
+	  [ "$$iso" = "en-US" ] && continue; \
+	  pkgiso=`echo $$iso | tr \[:upper:\] \[:lower:\]`; \
+	  mkdir -p $(PKGDIR)-l10n-$$pkgiso/$(OODIR)/share/template/$$iso/presnt; \
+	  for otp in $$otps; do \
+	    ln -sf ../../en-US/presnt/$$otp \
+	    $(PKGDIR)-l10n-$$pkgiso/$(OODIR)/share/template/$$iso/presnt/$$odt; \
+	  done; \
+	done
+endif
+
 ifeq (pt-BR,$(findstring pt-BR,$(LANGPACKISOS)))
+  ifeq "$(PKGSOURCE)" "libreoffice$(VER)"
 	# move pt-BR ("BrOffice") splashs into -l10n-pt-br
 	mkdir -p $(PKGDIR)-l10n-pt-br/$(OOBRANDDIR)/program
 	mv $(PKGDIR)-common/$(OOBRANDDIR)/program/intro-pt_BR.png \
 		$(PKGDIR)-l10n-pt-br/$(OOBRANDDIR)/program/intro-pt_BR.png
 	mv $(PKGDIR)-common/$(OOBRANDDIR)/program/about-pt_BR.png \
 		$(PKGDIR)-l10n-pt-br/$(OOBRANDDIR)/program/about-pt_BR.png
+  else
+	# FIXME: -common is not installed
+	cp build/default_images/brand/intro-pt_BR.png \
+		$(PKGDIR)-l10n-pt-br/$(OOBRANDDIR)/program/intro-pt_BR.png
+	cp build/default_images/brand/about-pt_BR.png \
+		$(PKGDIR)-l10n-pt-br/$(OOBRANDDIR)/program/about-pt_BR.png
+  endif
 else
 	# remove them, unneeded and would gerate file conflicts
 	rm -f $(PKGDIR)-common/$(OOBRANDDIR)/program/intro-pt_BR.png
@@ -2130,6 +2260,8 @@ $(STAMP_DIR)/install-arch: $(STAMP_DIR)/install $(STAMP_NATIVE_JARS)
 	dh_testdir
 	dh_testroot
 	umask 022
+
+ifneq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
 
 	# move the URE to /usr/lib/ure
 	mv debian/ure/$(OOBRANDDIR)/ure debian/ure/usr/lib
@@ -2547,12 +2679,21 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
 endif
 
+ifeq "$(USE_COMMON_DOCDIR)" "y"
+	# install some docs (docdir of the uno-libs3 package). 
+	mkdir -p $(PKGDIR)-base/usr/share/doc/uno-libs3
+	cp $(OOO_BUILD_TREE)/doc/using-mysql-databases.txt \
+	  $(PKGDIR)-base/usr/share/doc/uno-libs3
+	cp $(OOO_BUILD_TREE)/doc/data-from-remote-mysql-server.txt \
+	  $(PKGDIR)-base/usr/share/doc/uno-libs3
+else
 	# install some docs.
 	mkdir -p $(PKGDIR)-base/usr/share/doc/libreoffice$(VER)-base
 	cp $(OOO_BUILD_TREE)/doc/using-mysql-databases.txt \
 		$(PKGDIR)-base/usr/share/doc/libreoffice$(VER)-base
 	cp $(OOO_BUILD_TREE)/doc/data-from-remote-mysql-server.txt \
 		$(PKGDIR)-base/usr/share/doc/libreoffice$(VER)-base
+endif
 
 ifeq "$(PACKAGE_SDK)" "y"
   ifeq "$(ENABLE_JAVA)" "y"
@@ -2658,6 +2799,7 @@ endif
 	  fi; \
 	done
 
+endif # ifneq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
 
 	touch $@
 
@@ -2670,6 +2812,7 @@ $(STAMP_DIR)/install-indep: $(STAMP_DIR)/install
 	dh_testdir
 	dh_testroot
 
+ifneq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
 	perl -pi -e 's,/bin,/usr/bin,' \
 		 debian/libreoffice$(VER)-emailmerge/$(OODIR)/program/mailmerge.py
 
@@ -2802,6 +2945,8 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	   	-e 's/  / /' \
 	  	< $$dirname/javafilter.desktop \
 	  	> $(PKGDIR)-filter-mobiledev/usr/share/applications/libreoffice$(VER)-javafilter.desktop || exit 1
+	# hack for lp#732412
+	rm $(PKGDIR)-filter-mobiledev/usr/share/applications/libreoffice$(VER)-javafilter.desktop
 endif
 endif
 
@@ -2972,6 +3117,12 @@ ifeq "$(DIST)" "Debian"
 	install -m644 debian/templates/*.otp $(PKGDIR)-common/$(OODIR)/share/template/en-US/presnt/
 endif
 
+ifeq "$(DIST)" "Ubuntu"
+	# install Ubuntu templates
+	mkdir -p $(PKGDIR)-common/$(OODIR)/share/template/en-US/presnt
+	install -m644 debian/ubuntu/*.otp $(PKGDIR)-common/$(OODIR)/share/template/en-US/presnt/
+endif
+
 ifeq "$(PACKAGE_SDK)" "y"
 	# add symlinks for docs and examples
 	cd $(PKGDIR)-dev-doc/$(OOSDKDIR) && \
@@ -3059,6 +3210,7 @@ endif
 	  if [ -e $$LINKS.in ]; then \
 	    sed -e "s/\@LIBSUFFIX\@/$(LIBSUFFIX)/g" \
 		-e "s#\@OOBASISDIR\@#$(OOBASISDIR)#g" \
+		$(if $(filter textcat,$(SYSTEM_STUFF)),,-e "s#^/usr/share/libtextcat/LM.*$$##") \
 		< $$LINKS.in > $$LINKS ; \
 	  fi; \
 	done
@@ -3125,7 +3277,20 @@ endif
 	# register technical.dic
 	perl -pi -e 's/standard.dic;/standard.dic;technical.dic;/' $(PKGDIR)-common/$(OODIR)/share/registry/main.xcd
 
+endif # ifneq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
+
 	touch $@
+
+ifeq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
+# Simplified packaging, langpacks only
+
+binary-arch: $(STAMP_DIR)/binary-arch
+$(STAMP_DIR)/binary-arch:
+	: # nothing to do
+	touch $(STAMP_DIR)/install-arch
+	touch $@
+
+else
 
 binary-arch: $(STAMP_DIR)/binary-arch
 $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/maintscripts
@@ -3137,9 +3302,10 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 	  rm -rf debian/$$pkg/DEBIAN;\
 	done
 
-	dh_installdocs -s -A debian/README.Debian \
+	dh_installdocs -puno-libs3 debian/README.Debian \
 		$(SOURCE_TREE)/instsetoo_native/util/LibreOffice/replace_file/*/en-US/README_en-US \
 		$(OOO_BUILD_TREE)/NEWS
+	dh_installdocs -s -Nuno-libs3
 	dh_installdebconf -s
 	dh_installman -s
 	for i in writer calc draw base math impress; do \
@@ -3151,6 +3317,24 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 		done; \
 	done
 	dh_installchangelogs -s -k
+ifeq "$(USE_COMMON_DOCDIR)" "y"
+	# arch dependent packages (with docdir symlinks)
+	for p in $$(dh_listpackages -s); do \
+	  case "$$p" in \
+	    uno-libs3) continue;; \
+	    *) target=uno-libs3;; \
+	  esac; \
+	  rm -f debian/$$p/usr/share/doc/$$p/{changelog.Debian,copyright,README.Debian}; \
+	  for i in debian/$$p/usr/share/doc/$$p/*; do \
+	    mkdir -p debian/$$p/usr/share/doc/$$target; \
+	    mv $$i debian/$$p/usr/share/doc/$$target/; \
+	  done; \
+	  rmdir debian/$$p/usr/share/doc/$$p; \
+	  ln -sf $$target debian/$$p/usr/share/doc/$$p; \
+	  sed "s/@PKGNAME@/$$p/g;s/@PKGTARGET@/$$target/g" \
+	    debian/deppackage.postinst.in >> debian/$$p.postinst; \
+	done
+endif
 	dh_installmime -s
 	dh_installmenu -s
 ifeq "$(BUILD_JARS_NATIVE)" "y"
@@ -3250,6 +3434,9 @@ endif
 		-Nlibreoffice$(VER)-mysql-connector -- \
 		-V"ure:Version=$(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }')" \
 		-V'base-version=$(BASE_VERSION)' \
+		-V'next-base-version=$(NEXT_BASE_VERSION)' \
+		-V'basis-version=$(BASIS_VERSION)' \
+		-V'next-basis-version=$(NEXT_BASIS_VERSION)' \
 		-V'help-l10n-virtual-version=$(HELP_L10N_VIRTUAL_VERSION)' \
 		-V'base-hsqldb-depends=$(BASE_HSQLDB_DEPENDS)' \
 		-V'java-common-depends=$(JAVA_COMMON_DEPENDS) $(JAVA_COMMON_DEPENDS_VERSION)' \
@@ -3302,6 +3489,7 @@ endif
 	dh_builddeb -s $(DEBHELPER_OPTIONS) $(BUILDDEB_OPTIONS)
 
 	touch $@
+endif # binary-arch for openoffice.org source
 
 binary-indep: $(GSI_EXPORT_STAMP) $(STAMP_DIR)/binary-indep
 $(STAMP_DIR)/binary-indep: $(STAMP_DIR)/install-indep debian/control $(STAMP_DIR)/maintscripts $(STAMP_DIR)/langpacks
@@ -3323,6 +3511,7 @@ endif
 	  rm -rf debian/$$pkg/DEBIAN;\
 	done
 
+ifneq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
 ifeq "$(PACKAGE_SDK)" "y"
 	. $(SOURCE_TREE)/solenv/inc/udkversion.mk && \
 	for i in common cpp java; do \
@@ -3354,9 +3543,11 @@ ifeq "$(PACKAGE_SDK)" "y"
 	# But fix it..
 	perl -pi -e 's,html/,html /,g' debian/libreoffice-dev-doc.doc-base.udk-common-ref
 endif
-	dh_installdocs -i -A debian/README.Debian \
+endif
+	dh_installdocs -plibreoffice$(VER)-common debian/README.Debian \
 		$(SOURCE_TREE)/instsetoo_native/util/LibreOffice/replace_file/*/en-US/README_en-US \
 		$(OOO_BUILD_TREE)/NEWS
+	dh_installdocs -i -Nlibreoffice$(VER)-common
 	# note libreoffice.1 is already installed into -common by libreoffice-builds package-ooo
 	dh_installman -i
 	for i in `find $(PKGDIR)-common -type l -name "lo*.1"`; do \
@@ -3366,6 +3557,58 @@ endif
 		fi; \
 	done
 	dh_installchangelogs -i -k
+ifeq "$(USE_COMMON_DOCDIR)" "y"
+  ifneq "" "$(findstring openoffice.org$(VER)-common, $(PACKAGES))"
+	mkdir -p $(PKGDIR)-common/usr/share/doc/libreoffice$(VER)-common
+	install -m644 debian/README.Debian debian/copyright \
+	  $(PKGDIR)-common/usr/share/doc/libreoffice$(VER)-common/
+    ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
+	dh_installdocs -pttf-opensymbol
+	dh_installchangelogs -pttf-opensymbol
+    endif
+  endif
+	# l10 & help packages (with docdir symlinks)
+	for PKG in \
+	  $(HELP_PACKAGES) $(LANG_PACKAGES); \
+	do \
+	  case $$PKG in \
+	    *-l10n-in|*-l10n-za) continue;; \
+	    *-l10n-en-us) target=libreoffice$(VER)-common;; \
+	    *-help-en-us) target=libreoffice$(VER)-common;; \
+	    *) target=libreoffice$(VER)-l10n-common; \
+	  esac; \
+	  rm -rf debian/$$PKG/usr/share/doc/$$PKG; \
+	  mkdir -p debian/$$PKG/usr/share/doc; \
+	  ln -sf $$target debian/$$PKG/usr/share/doc/$$PKG; \
+	  rm -f debian/$$PKG.p*; \
+	  rm -f debian/$$PKG/usr/share/doc/$$target/copyright; \
+	  rm -f debian/$$PKG/usr/share/doc/$$target/changelog.Debian*; \
+	  sed "s/@PKGNAME@/$$PKG/g;s/@PKGTARGET@/$$target/g" \
+	    debian/deppackage.postinst.in > debian/$$PKG.postinst; \
+	done
+	# indep packages (with docdir symlinks)
+	for p in $$(dh_listpackages -i); do \
+	  case "$$p" in \
+	    ttf-opensymbol) continue;; \
+	    *-l10n-in|*-l10n-za) target=libreoffice$(VER)-common;; \
+	    openoffice.org-l10n-*|openoffice.org-help-*) target=libreoffice$(VER)-l10n-common;; \
+	    *-help-*|*-l10n-*) continue;; \
+	    libreoffice$(VER)-common|libuno-cli-basetypes1.0-cil|ttf-opensymbol) continue;; \
+	    broffice) target=libreoffice;; \
+	    *-cil)    target=libuno-cli-basetypes1.0-cil;; \
+	    *)        target=libreoffice$(VER)-common;; \
+	  esac; \
+	  rm -f debian/$$p/usr/share/doc/$$p/{changelog.Debian,copyright,README.Debian}; \
+	  for i in debian/$$p/usr/share/doc/$$p/*; do \
+	    mkdir -p debian/$$p/usr/share/doc/$$target; \
+	    mv $$i debian/$$p/usr/share/doc/$$target/; \
+	  done; \
+	  rmdir debian/$$p/usr/share/doc/$$p; \
+	  ln -sf $$target debian/$$p/usr/share/doc/$$p; \
+	  sed "s/@PKGNAME@/$$p/g;s/@PKGTARGET@/$$target/g" \
+	    debian/deppackage.postinst.in >> debian/$$p.postinst; \
+	done
+endif
 	dh_installmime -i
 	dh_lintian -i
 	dh_bugfiles -i -A
@@ -3373,14 +3616,18 @@ endif
 	dh_fixperms -i
 	dh_icons -i
 	dh_installxmlcatalogs -i
+ifneq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
 ifeq "$(ENABLE_MONO)" "y"
 	dh_installcligac -i
 endif
+endif
 	dh_compress -i -X.py -X.mk -X.sxd -X.xcd.sample
 	dh_installdeb -i
+ifneq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
 ifeq "$(ENABLE_MONO)" "y"
 	dh_makeclilibs -i
 	dh_clideps -i
+endif
 endif
 	dh_gencontrol -i $(DEBHELPER_OPTIONS) \
 		-Nlibreoffice$(VER)-report-builder \
@@ -3393,9 +3640,11 @@ endif
 		-Nttf-opensymbol \
 		-Nopenoffice.org-dtd-officedocument1.0 -- \
 		-V'base-version=$(BASE_VERSION)' \
+		-V'next-base-version=$(NEXT_BASE_VERSION)' \
 		-V'basis-version=$(BASIS_VERSION)' \
 		-V'next-basis-version=$(NEXT_BASIS_VERSION)' \
 		-V'help-l10n-virtual-version=$(HELP_L10N_VIRTUAL_VERSION)' \
+		-V'l10n-common-depends=$(L10N_COMMON_DEPENDS)' \
 		-V'bsh-depends=$(BSH_DEPENDS)' \
 		-V'java-common-depends=$(JAVA_COMMON_DEPENDS)' \
 		-V'java-common-java-depends=$(JAVA_COMMON_JAVA_DEPENDS)' \
@@ -3407,6 +3656,7 @@ endif
 		-V'ooo-binfilter-dep=$(OOO_BINFILTER_DEP)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-v$(BINARY_VERSION)
+ifneq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
 ifeq "$(ENABLE_MONO)" "y"
 	# although this version gets increased before every OOo release
 	# we need the +LibO anyway when we build milestones..
@@ -3441,6 +3691,8 @@ ifeq "$(ENABLE_REPORTDESIGN)" "y"
 endif
 	dh_gencontrol -popenoffice.org-dtd-officedocument1.0 -- \
 		-v$(shell echo `echo $(BINARY_VERSION) | cut -d: -f1` + 1 | bc):1.0+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
+endif # "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
+
 	dh_md5sums -i -Xjavasettingsunopkginstall.xml
 	dh_builddeb -i $(DEBHELPER_OPTIONS) $(BUILDDEB_OPTIONS)
 
