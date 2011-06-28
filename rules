@@ -131,7 +131,7 @@ BUILD_ONLY_EN_US=y
 ENABLE_JAVA=y
 ifeq "$(ENABLE_JAVA)" "y"
   JDK=openjdk
-  ifneq (,$(filter hppa ia64 mips% kfreebsd%, $(ARCH)))
+  ifneq (,$(filter hppa ia64 kfreebsd%, $(ARCH)))
     JDK=gcj-jdk
   endif
 endif
@@ -177,6 +177,9 @@ ENABLE_KDEAB=n
 QT_MINVER= (>= 4.5)
 KDELIBS_MINVER= (>= 4:4.3.4)
 BUILD_DBG_PACKAGE=y
+# NOTE: If you change this while gcj/ant multiarch combo is still broken
+# you need to disable bsh scripting engine completely (see disable-rhino.diff)
+# See http://lists.debian.org/debian-java/2011/06/msg00108.html and replies
 SYSTEM_STUFF += beanshell
 SYSTEM_STUFF += hsqldb
 HSQLDB_MINVER= (>> 1.8.0.10)
@@ -238,6 +241,7 @@ else
   ENABLE_REPORTDESIGN=n
   ENABLE_MEDIAWIKI=n
 endif
+# NOTE: if enabling this, disable debian/patches/disable-sdbc-postgresql.diff!
 ENABLE_SDBC_POSTGRESQL=n
 ENABLE_MINIMIZER=y
 ENABLE_PRESENTER_CONSOLE=y
@@ -348,7 +352,7 @@ $(eval $(call gen_no_archs, OOO_JAVA_ARCHS))
 OOO_GCJ_ARCHS = $(filter-out powerpc powerpcspe ppc64, $(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs, OOO_GCJ_ARCHS))
 
-OOO_GCJ_JDK_ARCHS := hppa ia64 kfreebsd-i386 kfreebsd-amd64 mips mipsel
+OOO_GCJ_JDK_ARCHS := hppa ia64 kfreebsd-i386 kfreebsd-amd64
 OOO_OPENJDK_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs, OOO_OPENJDK_ARCHS))
 
@@ -951,6 +955,11 @@ ifeq "$(ENABLE_EVO2)" "n"
 	CONFIGURE_FLAGS += --disable-evolution2
 else
 	BUILD_DEPS += , libebook1.2-dev$(OOO_NO_BASE_ARCHS)
+endif
+
+ifeq "$(ENABLE_SDBC_POSTGRESQL)" "y"
+	BUILD_DEPS += , libpq-dev
+	ADDITIONAL_SECTIONS += PostgreSQL
 endif
 
 ifeq "$(ENABLE_RANDR)" "y"
