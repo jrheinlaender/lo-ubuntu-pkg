@@ -109,6 +109,9 @@ BUILD_DEPS=
 SYSTEM_STUFF = dicts
 
 BUILD_PYUNO=y
+ifeq "$(BUILD_PYUNO)" "y"
+  ENABLE_SCRIPT_PROVIDER_PYTHON=y
+endif
 PYTHON_HELPER=dh_python2
 # THIS IS ONLY FOR TESTING. When building against a specified pythonX.Y
 # this will work inside OOo but *not* from outside OOo unless the user
@@ -242,6 +245,11 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
   ENABLE_MEDIAWIKI=y
   SYSTEM_STUFF += apache-commons
+  # if you change these, add something like disable-rhino.diff and/or remove it as long
+  # as we have the gcj/ant multiarch braekage. See
+  # http://lists.debian.org/debian-java/2011/06/msg00108.html and replies
+  ENABLE_SCRIPT_PROVIDER_BSH=y
+  ENABLE_SCRIPT_PROVIDER_JS=n
 else
   ENABLE_REPORTDESIGN=n
   ENABLE_MEDIAWIKI=n
@@ -985,7 +993,9 @@ ifneq "$(BUILD_PYUNO)" "y"
 	DEBHELPER_OPTIONS+= -Npython-uno
 	CONFIGURE_FLAGS += --disable-python
 else
+  ifeq "$(ENABLE_SCRIPT_PROVIDER_PYTHON)" "y"
         CONFIGURE_FLAGS += --enable-ext-scripting-python
+  endif
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
@@ -1001,13 +1011,21 @@ ifeq "$(ENABLE_JAVA)" "y"
 	BASE_HSQLDB_DEPENDS = libhsqldb-java $(HSQLDB_MINVER), libhsqldb-java (<< $(HSQLDB_TOONEWVER)~)
 	JAVA_GCJ_DEPENDS += , libhsqldb-java-gcj
   endif
-  ifneq (,$(filter beanshell, $(SYSTEM_STUFF)))
+  ifeq "$(ENABLE_SCRIPT_PROVIDER_BSH)" "y"
+    ifneq (,$(filter beanshell, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , bsh (>= 2.0b4)$(OOO_NO_JAVA_ARCHS)
 	BSH_DEPENDS = bsh (>= 2.0b4)
 	JAVA_GCJ_DEPENDS += , bsh-gcj
+    endif
 	CONFIGURE_FLAGS += --enable-ext-scripting-beanshell
+  else
+ 	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-script-provider-bsh
   endif
+  ifeq "$(ENABLE_SCRIPT_PROVIDER_JS)" "y"
 	CONFIGURE_FLAGS += --enable-ext-scripting-javascript	
+  else
+	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-script-provider-js
+  endif
 endif
 
 ifneq (,$(filter lpsolve, $(SYSTEM_STUFF)))
@@ -2436,9 +2454,11 @@ ifeq "$(BUILD_PYUNO)" "y"
 	  echo 'PYTHONPATH=$$PYTHONHOME $$PYTHONHOME/site-packages $$PYTHONHOME/lib-dynload $$PYTHONHOME/lib-tk $$ORIGIN' \
 	) > debian/python-uno/$(OODIR)/program/pythonloader.unorc
 	chmod u-w debian/python-uno/$(OODIR)/program/pythonloader.unorc
+  ifeq "$(ENABLE_SCRIPT_PROVIDER_PYTHON)" "y"
 	mkdir -p debian/python-uno/$(OOBRANDDIR)/share/extensions
 	mv debian/tmp/$(OOBRANDDIR)/share/extensions/script-provider-for-python \
 		debian/python-uno/$(OOBRANDDIR)/share/extensions
+  endif
 
 	mkdir -p debian/python-uno/usr/share/doc/python-uno
 	cp -r $(SOURCE_TREE)/pyuno/demo \
@@ -3002,18 +3022,21 @@ ifeq "$(PACKAGE_SDK)" "y"
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
+  ifeq "$(ENABLE_SCRIPT_PROVIDER_BSH)" "y"
 	rm -rf $(PKGDIR)-script-provider-bsh
 	mkdir -p $(PKGDIR)-script-provider-bsh/$(OOBRANDDIR)/share/extensions
 	mv debian/tmp/$(OOBRANDDIR)/share/extensions/script-provider-for-beanshell \
 	$(PKGDIR)-script-provider-bsh/$(OOBRANDDIR)/share/extensions
-  ifneq (,$(filter beanshell, $(SYSTEM_STUFF)))
+    ifneq (,$(filter beanshell, $(SYSTEM_STUFF)))
 	ln -sf /usr/share/java/bsh.jar \
 	        $(PKGDIR)-script-provider-bsh/$(OOBRANDDIR)/share/extensions/script-provider-for-beanshell/bsh.jar
-  endif
+    endif
 	mkdir -p $(PKGDIR)-script-provider-bsh/$(OODIR)/share/Scripts
 	mv $(PKGDIR)-common/$(OODIR)/share/Scripts/beanshell \
 		$(PKGDIR)-script-provider-bsh/$(OODIR)/share/Scripts
+  endif
 
+  ifeq "$(ENABLE_SCRIPT_PROVIDER_JS)" "y"
 	rm -rf $(PKGDIR)-script-provider-js
 	mkdir -p $(PKGDIR)-script-provider-js/$(OOBRANDDIR)/share/extensions
 	mv debian/tmp/$(OOBRANDDIR)/share/extensions/script-provider-for-javascript \
@@ -3021,6 +3044,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 	mkdir -p $(PKGDIR)-script-provider-js/$(OODIR)/share/Scripts
 	mv $(PKGDIR)-common/$(OODIR)/share/Scripts/javascript \
 		$(PKGDIR)-script-provider-js/$(OODIR)/share/Scripts
+  endif
 endif
 
 ifeq "$(ENABLE_REPORTDESIGN)" "y"
