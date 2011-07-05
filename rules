@@ -83,8 +83,8 @@ MWS=OOO330
 MILESTONE=m19
 TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
 GIT_TAG=$(MWS)_$(MILESTONE)
-OOO_BUILD_BRANCH=libreoffice-3-3-2
-OOO_BUILD_VERSION=3.3.2.2
+OOO_BUILD_BRANCH=libreoffice-3-3-3
+OOO_BUILD_VERSION=3.3.3.1
 # in ooo-build releases the same as OOO_BUILD_VERSION
 OOO_BUILD_TARBALL_VERSION=$(OOO_BUILD_VERSION)
 OOO_BUILD_TAG=libreoffice-$(OOO_BUILD_TARBALL_VERSION)
@@ -176,21 +176,10 @@ BUILD_CAIROCANVAS=y
 SYSTEM_STUFF += cairo
 CAIRO_FONTS_PATCH=y
 BUILD_KDE=y
-KDE_VER=4
-ifeq "$(BUILD_KDE)" "y"
-  ifeq "$(KDE_VER)" "3"
-    ENABLE_KDEAB=y
-  else
-    ENABLE_KDEAB=n
-  endif
-endif
-ifeq "$(KDE_VER)" "3"
-  KDELIBS_MINVER= (>= 4:3.4.3-2)
-endif
-ifeq "$(KDE_VER)" "4"
-  QT_MINVER= (>= 4.5)
-  KDELIBS_MINVER= (>= 4:4.3.4)
-endif  
+# not ported to KDE 4
+ENABLE_KDEAB=n
+QT_MINVER= (>= 4.5)
+KDELIBS_MINVER= (>= 4:4.3.4)
 BUILD_DBG_PACKAGE=y
 SYSTEM_STUFF += beanshell
 SYSTEM_STUFF += hsqldb
@@ -215,7 +204,11 @@ USE_OOO_BUILD_DESKTOPS=n
 PACKAGE_SDK=y
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(JDK)" "openjdk"
-    RUN_SMOKETEST=y
+    ifneq "$(ARCH)" "sparc"
+      RUN_SMOKETEST=y
+    else
+      RUN_SMOKETEST=n
+    endif
     ifneq (,$(findstring $(ARCH),$(OOO_STLPORT_ARCHS)))
       RUN_SUBSEQUENT_TESTS=y
     else
@@ -257,12 +250,12 @@ else
   ENABLE_REPORTDESIGN=n
   ENABLE_MEDIAWIKI=n
 endif
-ENABLE_SDBC_POSTGRESQL=y
+ENABLE_SDBC_POSTGRESQL=n
 ENABLE_MINIMIZER=y
 ENABLE_PRESENTER_CONSOLE=y
 ENABLE_PDFIMPORT=y
 BUILD_GTK=y
-ENABLE_EVO2=n
+ENABLE_EVO2=y
 ENABLE_GVFS=y
 ENABLE_GCONF=y
 # broken!
@@ -276,7 +269,7 @@ PACKAGE_BASE=y
 ENABLE_GRAPHITE=y
 SYSTEM_STUFF += graphite
 ALLOC=system
-SYSTEM_STUFF += textcat
+SYSTEM_STUFF += libtextcat
 USE_SYSTEM_TEXTCAT_DATA=y
 SYSTEM_STUFF += cppunit
 
@@ -464,6 +457,11 @@ ifeq "$(DIST)" "Ubuntu"
   # FIXME: smoketest fails, but we need the indep packages for the other archs
   # disabling for all archs to get rid of epm dependency
   RUN_SMOKETEST=n
+  # enable building of sdbc_postgresql on natty even though it is broken, because we
+  # otherwise get a NBS
+  ifeq ($(DISTREL),natty)
+    ENABLE_SDBC_POSTGRESQL=y
+  endif
 endif
 
 ifeq "$(L10N_SEPARATE_SOURCE)" "y"
@@ -479,12 +477,25 @@ CONFIGURE_FLAGS += $(foreach i, $(SYSTEM_STUFF),--with-system-$(i))
 
 CC_PREFIX:=$(shell gcc -dumpmachine)-
 
-ifeq (s390,$(findstring s390,$(OOO_ARCHS)))
-	BUILD_DEPS += , g++ (>> 4.3.0) [s390], gcc (>> 4.3.0) [s390]
-endif
-ifeq "$(SYSTEM_GCC_VERSION)" "4.4"
-  ifeq (armel,$(findstring armel,$(OOO_ARCHS)))
-	BUILD_DEPS += , g++-4.4 (>= 4.4.2-5) [armel]
+ifeq "$(GCC_VERSION)" ""
+  ifneq "$(OOO_GCJ_JDK_ARCHS)" ""
+    ifeq ($(ARCH),$(findstring $(ARCH),$(OOO_GCJ_ARCHS)))
+	GCJ_JDK_PACKAGE=$(shell dpkg -s gcj-jdk | grep Depends | sed -e 's/.*\(gcj-[0-9]\.[0-9]-jdk\).*/\1/')
+	GCJ_JDK_VERSION=$(shell echo $(GCJ_JDK_PACKAGE) | cut -d- -f2)
+      ifneq "$(SYSTEM_GCC_VERSION)" "$(GCJ_JDK_VERSION)"
+        BUILD_DEPS += , gcc-$(GCJ_JDK_VERSION) [$(OOO_GCJ_JDK_ARCHS)], g++-$(GCJ_JDK_VERSION) [$(OOO_GCJ_JDK_ARCHS)]
+        ifeq ($(ARCH),$(findstring $(ARCH),$(OOO_GCJ_JDK_ARCHS)))
+	# sanity check. amd64 is in kfreebsd-amd64; same for i386
+          ifneq ($(ARCH),$(findstring $(ARCH),$(OOO_OPENJDK_ARCHS)))
+          GCC_VERSION := $(GCJ_JDK_VERSION)
+          else
+          GCC_VERSION := $(SYSTEM_GCC_VERSION)
+          endif
+        else
+	  GCC_VERSION := $(SYSTEM_GCC_VERSION)
+        endif
+      endif
+    endif
   endif
 endif
 
@@ -544,12 +555,12 @@ else
 endif
 
 
-ifneq (,$(filter textcat, $(SYSTEM_STUFF)))
+ifneq (,$(filter libtextcat, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libtextcat-dev (>= 2.2-8)
-	CONFIGURE_FLAGS += --with-system-libtextcat
 endif
 ifeq "$(USE_SYSTEM_TEXTCAT_DATA)" "y"
 	CONFIGURE_FLAGS += --with-external-libtextcat-data=/usr/share/libtextcat/LM
+	TEXTCAT_DATA_RECOMMENDS := libtextcat-data (>= 2.2-9)
 endif
 
 ifeq "$(USE_LIBCURL4)" "y"
@@ -739,7 +750,11 @@ ifeq "$(ENABLE_JAVA)" "y"
 	BUILD_DEPS += , ant (>= 1.6.5)$(OOO_NO_JAVA_ARCHS)
   endif
 	GCJ_VERSION = $(shell basename `readlink $(JAVA_HOME)/bin/gcj` | sed -e s/gcj-//)
+ifeq "$(SQUEEZE_BACKPORT)" "y"
 	GCJ_JAWT_DEPENDS= $(shell dpkg -S /usr/lib/`readlink /usr/lib/libgcj_bc.so.1` | cut -d: -f1 | sed -e s/$$/-awt/)
+else
+	GCJ_JAWT_DEPENDS= $(shell dpkg -S /usr/lib/`dpkg-architecture -qDEB_HOST_MULTIARCH`/gcj-$(GCJ_JDK_VERSION)-*/libgcj_bc.so.1 | cut -d: -f1 | sed -e s/$$/-awt/)
+endif
 	DBG_DBG_SUGGESTS+= , $(shell echo $(GCJ_AWT_DEPENDS) | sed -e s/awt/dbg/)
 	JAVA_RUNTIME_DEPENDS = default-jre | gcj-jre | java-gcj-compat
 #  ifneq (,$(GCJ_JAWT_DEPENDS))
@@ -800,6 +815,7 @@ export JAVA_HOME
 	CONFIGURE_FLAGS += --enable-report-builder
   endif
 	OOO_OFFICEBEAN_DEP = libreoffice$(VER)-officebean
+	BUILD_DEPS += , javahelper
 else
 	CONFIGURE_FLAGS += --without-java
 	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-officebean -Nlibreoffice$(VER)-java-common -Nlibreoffice$(VER)-filter-mobiledev -Nlibreoffice$(VER)-gcj
@@ -972,25 +988,14 @@ ifeq "$(BUILD_KDE)" "n"
 	CONFIGURE_FLAGS-= --disable-kde4
 	CONFIGURE_FLAGS+= --with-images="$(IMAGES)"
 else
-  ifeq "$(KDE_VER)" "4"
 	CONFIGURE_FLAGS += --disable-kde
 	KDE_ICONSET_DEP=libreoffice$(VER)-style-oxygen
-  else
-	CONFIGURE_FLAGS += --disable-kde4
-	KDE_ICONSET_DEP=libreoffice$(VER)-style-crystal
-  endif
-	BUILD_DEPS += , kdelibs$(shell expr $(KDE_VER) + 1)-dev $(KDELIBS_MINVER)
-  ifeq "$(KDE_VER)" "4"
-	BUILD_DEPS += , libqt$(KDE_VER)-dev $(QT_MINVER)
-	DBG_DBG_SUGGESTS+= , kdelibs$(shell expr $(KDE_VER) + 1)-dbg, libqt$(KDE_VER)-dbg
-  else
-	DBG_DBG_SUGGESTS+= , kdelibs-dbg, qt-x11-free-dbg
-  endif
+	BUILD_DEPS += , kdelibs5-dev $(KDELIBS_MINVER)
+	BUILD_DEPS += , libqt4-dev $(QT_MINVER)
+	DBG_DBG_SUGGESTS+= , kdelibs5-dbg, libqt4-dbg
   ifeq "$(ENABLE_KDEAB)" "y"
-    ifeq "$(KDE_VER)" "4"
 	ADDITIONAL_SECTIONS += KDE4Experimental
-	BUILD_DEPS += , kdepimlibs$(shell expr $(KDE_VER) + 1)-dev$(OOO_NO_BASE_ARCHS)
-    endif
+	BUILD_DEPS += , kdepimlibs5-dev$(OOO_NO_BASE_ARCHS)
   else
 	CONFIGURE_FLAGS+= --disable-kdeab
   endif
@@ -1160,6 +1165,15 @@ ifeq "$(NUM_CPUS)" ""
 	NUM_CPUS := $(shell expr $(AVAIL_CPUS))
     endif
   endif
+else
+  ifneq "$(PARALLEL_BUILD)" "y"
+    # no more than 2, please. At least 6 seems to fail.
+    ifneq ($(NUM_CPUS),1)
+      ifneq ($(NUM_CPUS),2)
+	NUM_CPUS := 2
+      endif
+    endif
+  endif
 endif
 	CONFIGURE_FLAGS += --with-num-cpus=$(NUM_CPUS)
 	# breaks. At least with 2
@@ -1176,7 +1190,9 @@ else
 	BUILD_DEPS += , gcc-snapshot
   else
 	BUILD_PATH = /usr/lib/jvm/java-gcj/bin:$(CURDIR)/debian/usr/bin:$$PATH
+    ifeq "$(GCJ_JDK_VERSION)" ""
 	BUILD_DEPS += , gcc-$(GCC_VERSION), g++-$(GCC_VERSION)
+    endif
   endif
 endif
 BUILD_PATH := $(CURDIR)/debian/usr/bin:$(BUILD_PATH)
@@ -1424,6 +1440,9 @@ endif
 		as|or|nr) \
 			LOCALES_DEPENDS="locales (>= 2.3.6.ds1-1) | locales-all (>= 2.3.6.ds1-1)" \
 			;; \
+		sw) \
+			LOCALES_DEPENDS="locales (>= 2.13-5) | locales-all (>= 2.13-5)" \
+			;; \
 		*) \
 			LOCALES_DEPENDS="locales | belocs-locales-data | locales-all" \
 			;; \
@@ -1553,10 +1572,6 @@ endif # ifeq "$(PKGSOURCE)" "libreoffice$(VER)"
 	perl -pi -e "s,%OOO_GCJ_JDK_ARCHS%,$(OOO_GCJ_JDK_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_ARCH_DEP_EXTENSIONS_ARCHS%,$(OOO_ARCH_DEP_EXTENSIONS_ARCHS),g" debian/control
 
-ifeq (he,$(findstring he,$(LANGPACKISOS)))
-	perl -pi -e 's/libreoffice-help-he$$/libreoffice-help-he, libreoffice-ctl-he/' debian/control
-endif
-
 ifeq (sk,$(findstring sk,$(HELPISOS)))
 	perl -pi -e 's/(Depends:.*)libreoffice-l10n-sk(.*)$$/\1libreoffice-l10n-sk, libreoffice-help-cs\2/' debian/control
 endif
@@ -1684,13 +1699,6 @@ ifneq ($(GCC_VERSION),)
 	ln -sf /usr/lib/gcc-snapshot/bin/$(CC_PREFIX)gij $(CURDIR)/debian/usr/bin/gij
     endif
   endif
-endif
-
-ifeq "$(BUILD_KDE)" "y"
-	# be sure we use the right moc, it's an alternative and can point
-	# to either Qt3 or Qt4s moc.
-	mkdir -p $(CURDIR)/debian/usr/bin
-	ln -sf /usr/bin/moc-qt$(KDE_VER) $(CURDIR)/debian/usr/bin/moc
 endif
 
 ifeq "$(USE_STLPORT)" "y"
@@ -1972,7 +1980,10 @@ ifeq "$(ENABLE_JAVA)" "y"
 	mkdir -p $(PKGDIR)-core/$(shell echo $(OOBASISDIR) | sed -e s/lib/share/)/program/classes; \
 	mv $(PKGDIR)-common/$(OODIR)/program/classes/officebean.jar \
 		$(PKGDIR)-core/$(shell echo $(OOBASISDIR) | sed -e s/lib/share/)/program/classes
-
+	# fix the classpath
+	jh_classpath --classpath="ridl.jar unoil.jar jurt.jar juh.jar" \
+		$(PKGDIR)-core/$(shell echo $(OOBASISDIR) | sed -e s/lib/share/)/program/classes/officebean.jar
+	
   ifeq "$(PACKAGE_BASE)" "y"
 	# move sdbc_hsqldb.jar into -base (do the move
 	# to /usr/share/java here directly, we do it for the "rest"
@@ -2067,6 +2078,12 @@ endif
 	cd $(PKGDIR)-common/$(OOBASISDIR) && \
 		rm ure-link && ln -sf /$(OOUREDIR) ure-link
 endif # ifeq "$(PKGSOURCE)" "libreoffice$(VER)"
+
+ifeq "$(ENABLE_EVO2)" "y"
+	mkdir -p $(PKGDIR)-evolution/$(OODIR)/presets/database
+	mv $(PKGDIR)-common/$(OODIR)/presets/database/evolocal.odb \
+		$(PKGDIR)-evolution/$(OODIR)/presets/database
+endif
 
 	find debian/tmp ! -perm -200 | xargs -r chmod u+w
 
@@ -2208,6 +2225,10 @@ else
 	rm -f $(PKGDIR)-common/$(OOBRANDDIR)/program/about-pt_BR.png
 endif
 
+ifeq (he,$(findstring he,$(LANGPACKISOS)))
+	perl -pi -e 's#<prop oor:name="CTLSequenceChecking"><value>true</value></prop>#<prop oor:name="CTLSequenceChecking"><value>false</value></prop>#' $(PKGDIR)-l10n-he/$(OOBASISDIR)/share/registry/ctl_he.xcd
+endif
+
 	touch $@
 
 native-jars: $(STAMP_NATIVE_JARS)
@@ -2280,6 +2301,10 @@ ifeq "$(BUILD_BINFILTERS)" "y"
 		-r $(PKGDIR)-core/$(OODIR)/program/services.rdb \
 		-br $(PKGDIR)-core/$(OODIR)/program/services.rdb \
 		-c 'vnd.sun.star.expand:$$OOO_BASE_DIR/program/libbf_migratefilter$(LIBSUFFIX).so'
+	debian/ure/$(OOBRANDDIR)/ure/bin/regcomp -revoke \
+		-r $(PKGDIR)-core/$(OODIR)/program/services.rdb \
+		-br $(PKGDIR)-core/$(OODIR)/program/services.rdb \
+		-c 'vnd.sun.star.expand:$$OOO_BASE_DIR/program/libbindet$(LIBSUFFIX).so'
 endif
 
 	# the regcomps above fail after done once, force install again
@@ -2322,10 +2347,6 @@ ifeq "$(BUILD_KDE)" "y"
 	for f in fps_kde*.uno.so libvclplug_kde*.so; do \
 	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-kde/$(OODIR)/program || exit 1 ;\
 	done
-  ifeq "$(KDE_VER)" "3"
-	mv $(PKGDIR)-core/$(OOBRANDDIR)/program/kdefilepicker \
-		$(PKGDIR)-kde/$(OOBRANDDIR)/program
-  endif
 
 	# install files for KDEs "create new" ...
 	mkdir -p $(PKGDIR)-kde/usr/share/templates/.source
@@ -2453,12 +2474,12 @@ endif
 	mv $(PKGDIR)-calc/$(OODIR)/program/libcalc*so \
 		$(PKGDIR)-base/$(OODIR)/program; \
 
-	# move vba stuff into -calc, they are calc-only and linked to
-	# libsc*
-	for i in libvbaobj vbaevents; do \
-		mv $(PKGDIR)-core/$(OODIR)/program/$$i*uno.so \
-			$(PKGDIR)-calc/$(OODIR)/program; \
-	done
+	# linked (amongst others) to libsc*
+	mv $(PKGDIR)-core/$(OODIR)/program/libvbaobj*uno.so \
+			$(PKGDIR)-calc/$(OODIR)/program
+	# linked (amongst others) to libsw*
+	mv $(PKGDIR)-core/$(OODIR)/program/libvbaswobj*uno.so \
+			$(PKGDIR)-writer/$(OODIR)/program
 
 ifeq "$(ENABLE_JAVA)" "y"
   ifneq (,$(filter hsqldb, $(SYSTEM_STUFF)))
@@ -3217,6 +3238,10 @@ endif
 	  fi; \
 	done
 
+ifeq "$(USE_SYSTEM_TEXTCAT_DATA)" "y"
+	echo "usr/share/libtextcat/LM $(OOBASISDIR)/share/fingerprint" >> debian/libreoffice-common.links
+endif
+
 ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	# menu files from sysui
 	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/misc/libreoffice >/dev/null; pwd`" ;\
@@ -3388,13 +3413,6 @@ endif
 ifneq (,$(filter icu, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.icu >> debian/shlibs.local
 endif
-ifeq "$(BUILD_KDE)" "y"
-  ifeq "$(KDE_VER)" "4"
-	if dpkg --compare-versions `dpkg -l kdelibs5-dev | grep ^ii | awk '{ print $$3 }'` le 4:4.4; then \
-		cat debian/shlibs.override.kde >> debian/shlibs.local; \
-	fi
-  endif
-endif
 ifeq "$(INTERNAL_STDLIBS)" "y"
 	cat debian/shlibs.override.stdlibs >> debian/shlibs.local
 endif
@@ -3405,7 +3423,7 @@ endif
 	LD_LIBRARY_PATH="/usr/lib/libfakeroot:debian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program:$(PKGDIR)-base-core/$(OODIR)/program:$(PKGDIR)-base/$(OODIR)/program:$(PKGDIR)-writer/$(OODIR)/program" \
 		dh_shlibdeps -s -Nlibreoffice$(VER)-officebean \
 			-Lure -Luno-libs3 \
-			-ldebian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program:$(PKGDIR)-base/$(OODIR)/program \
+			-ldebian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program:$(PKGDIR)-base/$(OODIR)/program:$(shell dirname $(shell dpkg -L `echo $(GCJ_JAWT_DEPENDS) | sed -e s/-awt//` | grep _bc)) \
 			$(SHLIBS_OVERRIDE)
 ifneq (,$(filter redland, $(SYSTEM_STUFF)))
 	# dpkg-shlibdeps "in practice" always will look for this in
@@ -3657,6 +3675,7 @@ endif
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-V'lucene-depends=$(LUCENE_DEPENDS)' \
 		-V'lucene-conflicts=$(LUCENE_CONFLICTS)' \
+		-V'textcat-data-recommends=$(TEXTCAT_DATA_RECOMMENDS)' \
 		-V'Binary-Version=$(BINARY_VERSION)' \
 		-V'ooo-binfilter-dep=$(OOO_BINFILTER_DEP)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
