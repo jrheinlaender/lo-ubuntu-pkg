@@ -83,8 +83,8 @@ MWS=OOO340
 MILESTONE=m1
 TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
 GIT_TAG=$(MWS)_$(MILESTONE)
-OOO_BUILD_BRANCH=libreoffice-3-4-0
-OOO_BUILD_VERSION=3.4.0.2
+OOO_BUILD_BRANCH=libreoffice-3-4-1
+OOO_BUILD_VERSION=3.4.1.3
 # in ooo-build releases the same as OOO_BUILD_VERSION
 OOO_BUILD_TARBALL_VERSION=$(OOO_BUILD_VERSION)
 OOO_BUILD_TAG=libreoffice-$(OOO_BUILD_TARBALL_VERSION)
@@ -111,6 +111,9 @@ BUILD_DEPS=
 SYSTEM_STUFF = dicts
 
 BUILD_PYUNO=y
+ifeq "$(BUILD_PYUNO)" "y"
+  ENABLE_SCRIPT_PROVIDER_PYTHON=y
+endif
 PYTHON_HELPER=dh_python2
 # THIS IS ONLY FOR TESTING. When building against a specified pythonX.Y
 # this will work inside OOo but *not* from outside OOo unless the user
@@ -128,16 +131,18 @@ PACKAGE_TTF_OPENSYMBOL=y
 ifeq (,$(filter $(ARCH), powerpc powerpcspe ppc64))
   BUILD_JARS_NATIVE=y
 endif
-BUILD_BINFILTERS=n
-BUILD_ONLY_EN_US=y
+BUILD_BINFILTERS=y
+BUILD_ONLY_EN_US=n
 ENABLE_JAVA=y
 ifeq "$(ENABLE_JAVA)" "y"
   JDK=openjdk
-  ifneq (,$(filter hppa ia64 mips% kfreebsd%, $(ARCH)))
+  ifneq (,$(filter hppa ia64 kfreebsd%, $(ARCH)))
     JDK=gcj-jdk
   endif
 endif
-ENABLE_MONO=n
+# see http://bugs.debian.org/610817
+JAVAHELPER_MIN_VERSION= (>= 0.35)
+ENABLE_MONO=y
 MONO2=y
 ifeq "$(MONO2)" "y"
   MONO_MINVER= (>= 2.4.2.3)
@@ -179,6 +184,9 @@ ENABLE_KDEAB=n
 QT_MINVER= (>= 4.5)
 KDELIBS_MINVER= (>= 4:4.3.4)
 BUILD_DBG_PACKAGE=y
+# NOTE: If you change this while gcj/ant multiarch combo is still broken
+# you need to disable bsh scripting engine completely (see disable-rhino.diff)
+# See http://lists.debian.org/debian-java/2011/06/msg00108.html and replies
 SYSTEM_STUFF += beanshell
 SYSTEM_STUFF += hsqldb
 HSQLDB_MINVER= (>> 1.8.0.10)
@@ -233,13 +241,24 @@ ENABLE_OPENGL=y
 SYSTEM_STUFF += openssl
 NEW_DPKG_SHLIBDEPS=y
 ifeq "$(ENABLE_JAVA)" "y"
-  ENABLE_REPORTDESIGN=y
+  ifeq (,$(findstring $(ARCH),$(OOO_GCJ_JDK_ARCHS)))
+    ENABLE_REPORTDESIGN=y
+    SYSTEM_STUFF += jfreereport
+  else
+    ENABLE_REPORTDESIGN=n
+  endif
   ENABLE_MEDIAWIKI=y
-  SYSTEM_STUFF += jfreereport apache-commons
+  SYSTEM_STUFF += apache-commons
+  # if you change these, add something like disable-rhino.diff and/or remove it as long
+  # as we have the gcj/ant multiarch braekage. See
+  # http://lists.debian.org/debian-java/2011/06/msg00108.html and replies
+  ENABLE_SCRIPT_PROVIDER_BSH=y
+  ENABLE_SCRIPT_PROVIDER_JS=n
 else
   ENABLE_REPORTDESIGN=n
   ENABLE_MEDIAWIKI=n
 endif
+# NOTE: if enabling this, disable debian/patches/disable-sdbc-postgresql.diff!
 ENABLE_SDBC_POSTGRESQL=n
 ENABLE_MINIMIZER=y
 ENABLE_PRESENTER_CONSOLE=y
@@ -350,7 +369,7 @@ $(eval $(call gen_no_archs, OOO_JAVA_ARCHS))
 OOO_GCJ_ARCHS = $(filter-out powerpc powerpcspe ppc64, $(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs, OOO_GCJ_ARCHS))
 
-OOO_GCJ_JDK_ARCHS := hppa ia64 kfreebsd-i386 kfreebsd-amd64 mips mipsel
+OOO_GCJ_JDK_ARCHS := hppa ia64 kfreebsd-i386 kfreebsd-amd64
 OOO_OPENJDK_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs, OOO_OPENJDK_ARCHS))
 
@@ -593,6 +612,9 @@ endif
 # Small symbols?
 ifeq "$(SMALL_SYMBOLS)" "y"
 	CONFIGURE_FLAGS += --enable-symbols=SMALL
+	CFLAGS := $(shell echo $(CFLAGS) | sed -e "s/-g/-g1/")
+	CXXFLAGS := $(shell echo $(CXXFLAGS) | sed -e "s/-g/-g1/")
+export CFLAGS CXXFLAGS
 else
 	CONFIGURE_FLAGS += --enable-symbols
 endif
@@ -670,18 +692,18 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	# one to that gid_Module_Root always is english and the other langpacks
 	# have gid_Module_Root.$iso
 	#ISOS=$(shell $(OOO_BUILD_TREE)/bin/openoffice-xlate-lang -i all')
-	ISOS:=en-US af ar as ast be-BY bg bn br bs ca cs cy da de dz el \
+	ISOS:=en-US af ar as ast be bg bn br bs ca cs cy da de dz el \
 	  en-GB en-ZA eo es et eu fa fi fr ga gl gu he hi hr hu id is it ja \
-	  ka km ko ku lt lv mk mn ml mr nb ne nl nn nr ns oc om or \
+	  ka km ko ku lt lv mk mn ml mr nb ne nl nn nr nso oc om or \
 	  pa-IN pl pt pt-BR ro ru rw si sk sl sr ss st sv \
 	  ta te tg th tn tr ts ug uk uz ve vi xh zh-CN zh-TW zu
 	#HELPISOS:=$(shell $(OOO_BUILD_TREE)/bin/openoffice-xlate-lang -i all') 
 	HELPISOS:=en-US ca cs da de dz el en-GB es et eu fi fr gl hi hu it \
 	  ja km ko nl om pl pt pt-BR ru sk sl sv zh-CN zh-TW
 	#LANGPACKISOS:=$(shell $(OOO_BUILD_TREE)/bin/openoffice-xlate-lang -i all')
-	LANGPACKISOS:=en-US af ar as ast be-BY bg bn br bs ca cs cy da de dz el \
+	LANGPACKISOS:=en-US af ar as ast be bg bn br bs ca cs cy da de dz el \
 	  en-GB en-ZA eo es et eu fa fi fr ga gl gu he hi hr hu id is it ja \
-	  ka km ko ku lt lv mk mn ml mr nb ne nl nn nr ns oc om or \
+	  ka km ko ku lt lv mk mn ml mr nb ne nl nn nr nso oc om or \
 	  pa-IN pl pt pt-BR ro ru rw si sk sl sr ss st sv \
 	  ta te tg th tn tr ts ug uk uz ve vi xh zh-CN zh-TW zu
   endif
@@ -769,7 +791,6 @@ export JAVA_HOME
   ifneq (,$(filter saxon, $(SYSTEM_STUFF)))
 	CONFIGURE_FLAGS += --with-system-saxon --with-saxon-jar=/usr/share/java/saxonb.jar
 	BUILD_DEPS += , libsaxonb-java$(OOO_NO_JAVA_ARCHS)
-	JAVA_COMMON_JAVA_DEPENDS+= , libsaxonb-java
   endif
   ifeq "$(PACKAGE_SDK)" "y"
     ifeq "$(DIST)" "Debian"
@@ -810,7 +831,7 @@ export MINGWSTRIP = i586-mingw32msvc-strip
 	CONFIGURE_FLAGS += --enable-ext-report-builder
   endif
 	OOO_OFFICEBEAN_DEP = libreoffice$(VER)-officebean
-	BUILD_DEPS += , javahelper
+	BUILD_DEPS += , javahelper $(JAVAHELPER_MIN_VERSION)
 else
 	CONFIGURE_FLAGS += --without-java
 	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-officebean -Nlibreoffice$(VER)-java-common -Nlibreoffice$(VER)-filter-mobiledev -Nlibreoffice$(VER)-gcj -Nlibreoffice$(VER)-script-provider-bsh -Nlibreoffice$(VER)-script-provider-js
@@ -1005,6 +1026,11 @@ else
 	BUILD_DEPS += , libebook1.2-dev$(OOO_NO_BASE_ARCHS)
 endif
 
+ifeq "$(ENABLE_SDBC_POSTGRESQL)" "y"
+	BUILD_DEPS += , libpq-dev
+	ADDITIONAL_SECTIONS += PostgreSQL
+endif
+
 ifeq "$(ENABLE_RANDR)" "y"
 	BUILD_DEPS += , libxrandr-dev
 else
@@ -1024,7 +1050,9 @@ ifneq "$(BUILD_PYUNO)" "y"
 	DEBHELPER_OPTIONS+= -Npython-uno
 	CONFIGURE_FLAGS += --disable-python
 else
+  ifeq "$(ENABLE_SCRIPT_PROVIDER_PYTHON)" "y"
         CONFIGURE_FLAGS += --enable-ext-scripting-python
+  endif
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
@@ -1040,13 +1068,21 @@ ifeq "$(ENABLE_JAVA)" "y"
 	BASE_HSQLDB_DEPENDS = libhsqldb-java $(HSQLDB_MINVER), libhsqldb-java (<< $(HSQLDB_TOONEWVER)~)
 	JAVA_GCJ_DEPENDS += , libhsqldb-java-gcj
   endif
-  ifneq (,$(filter beanshell, $(SYSTEM_STUFF)))
+  ifeq "$(ENABLE_SCRIPT_PROVIDER_BSH)" "y"
+    ifneq (,$(filter beanshell, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , bsh (>= 2.0b4)$(OOO_NO_JAVA_ARCHS)
 	BSH_DEPENDS = bsh (>= 2.0b4)
 	JAVA_GCJ_DEPENDS += , bsh-gcj
+    endif
 	CONFIGURE_FLAGS += --enable-ext-scripting-beanshell
+  else
+ 	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-script-provider-bsh
   endif
+  ifeq "$(ENABLE_SCRIPT_PROVIDER_JS)" "y"
 	CONFIGURE_FLAGS += --enable-ext-scripting-javascript	
+  else
+	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-script-provider-js
+  endif
 endif
 
 ifneq (,$(filter lpsolve, $(SYSTEM_STUFF)))
@@ -1128,6 +1164,11 @@ endif
 
 ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 	BUILD_DEPS_INDEP += , fontforge
+endif
+
+ifeq "$(BUILD_ONLY_EN_US)" "n"
+	CONFIGURE_FLAGS += --with-system-translate-toolkit
+	BUILD_DEPS_INDEP += , translate-toolkit
 endif
 
 # Use compiler cache?  Include ccache in DEB_BUILD_OPTIONS for much faster rebuild times
@@ -2552,9 +2593,11 @@ ifeq "$(BUILD_PYUNO)" "y"
 	  echo 'PYTHONPATH=$$PYTHONHOME $$PYTHONHOME/site-packages $$PYTHONHOME/lib-dynload $$PYTHONHOME/lib-tk $$ORIGIN' \
 	) > debian/python-uno/$(OODIR)/program/pythonloader.unorc
 	chmod u-w debian/python-uno/$(OODIR)/program/pythonloader.unorc
+  ifeq "$(ENABLE_SCRIPT_PROVIDER_PYTHON)" "y"
 	mkdir -p debian/python-uno/$(OOBRANDDIR)/share/extensions
 	mv debian/tmp/$(OOBRANDDIR)/share/extensions/script-provider-for-python \
 		debian/python-uno/$(OOBRANDDIR)/share/extensions
+  endif
 
 	mkdir -p debian/python-uno/usr/share/doc/python-uno
 	cp -r $(SOURCE_TREE)/pyuno/demo \
@@ -3137,18 +3180,21 @@ ifeq "$(PACKAGE_SDK)" "y"
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
+  ifeq "$(ENABLE_SCRIPT_PROVIDER_BSH)" "y"
 	rm -rf $(PKGDIR)-script-provider-bsh
 	mkdir -p $(PKGDIR)-script-provider-bsh/$(OOBRANDDIR)/share/extensions
 	mv debian/tmp/$(OOBRANDDIR)/share/extensions/script-provider-for-beanshell \
 	$(PKGDIR)-script-provider-bsh/$(OOBRANDDIR)/share/extensions
-  ifneq (,$(filter beanshell, $(SYSTEM_STUFF)))
+    ifneq (,$(filter beanshell, $(SYSTEM_STUFF)))
 	ln -sf /usr/share/java/bsh.jar \
 	        $(PKGDIR)-script-provider-bsh/$(OOBRANDDIR)/share/extensions/script-provider-for-beanshell/bsh.jar
-  endif
+    endif
 	mkdir -p $(PKGDIR)-script-provider-bsh/$(OODIR)/share/Scripts
 	mv $(PKGDIR)-common/$(OODIR)/share/Scripts/beanshell \
 		$(PKGDIR)-script-provider-bsh/$(OODIR)/share/Scripts
+  endif
 
+  ifeq "$(ENABLE_SCRIPT_PROVIDER_JS)" "y"
 	rm -rf $(PKGDIR)-script-provider-js
 	mkdir -p $(PKGDIR)-script-provider-js/$(OOBRANDDIR)/share/extensions
 	mv debian/tmp/$(OOBRANDDIR)/share/extensions/script-provider-for-javascript \
@@ -3156,6 +3202,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 	mkdir -p $(PKGDIR)-script-provider-js/$(OODIR)/share/Scripts
 	mv $(PKGDIR)-common/$(OODIR)/share/Scripts/javascript \
 		$(PKGDIR)-script-provider-js/$(OODIR)/share/Scripts
+  endif
 endif
 
 ifeq "$(ENABLE_REPORTDESIGN)" "y"
@@ -3420,6 +3467,18 @@ ifeq "$(ENABLE_MONO)" "y"
 	dh_makeclilibs -s
 	dh_clideps -s
 endif
+ifeq "$(ENABLE_JAVA)" "y"
+	jh_depends -a -Xlibreoffice$(VER)-gcj -Xure
+  ifeq "$(PACKAGE_BASE)" "y"
+	perl -pi -e "s/libhsqldb-java/$(BASE_HSQLDB_DEPENDS)/" \
+		debian/libreoffice$(VER)-base.substvars
+  endif
+	# jh_depends adds ure (${source:Version}) entries. They are overly strict
+	# and do not fit anyway given ure has a different versioning scheme. Excluded
+	# above, readd here  unversioned
+	perl -pi -e 's/^(java:Depends.*$$)/\1, ure/' \
+		debian/libreoffice$(VER)-officebean.substvars
+endif
 # This switch to dh_shlibdeps reduces the 'libXXX not found' warnings but
 # causes ldd crashes sometimes when used with fakeroot:
 #          -l $(PKGDIR)-core/$(OPENOFFICEDIR)/program
@@ -3625,6 +3684,11 @@ ifeq "$(ENABLE_MONO)" "y"
 	dh_makeclilibs -i
 	dh_clideps -i
 endif
+ifeq "$(ENABLE_JAVA)" "y"
+	# the help recommends lucene. this is enough. no need for a hard depend in
+        # -common, IMHO
+	jh_depends -i -Xlibreoffice$(VER)-gcj -Xliblucene2-java
+endif
 endif
 	dh_gencontrol -i $(DEBHELPER_OPTIONS) \
 		-Nlibreoffice$(VER)-report-builder \
@@ -3644,7 +3708,6 @@ endif
 		-V'l10n-common-depends=$(L10N_COMMON_DEPENDS)' \
 		-V'bsh-depends=$(BSH_DEPENDS)' \
 		-V'java-common-depends=$(JAVA_COMMON_DEPENDS)' \
-		-V'java-common-java-depends=$(JAVA_COMMON_JAVA_DEPENDS)' \
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-V'lucene-depends=$(LUCENE_DEPENDS)' \
 		-V'lucene-conflicts=$(LUCENE_CONFLICTS)' \
