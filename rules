@@ -31,7 +31,6 @@ OOVER:=3.4
 BASIS_VERSION:=$(OOVER)
 NEXT_OOVER:=$(shell echo "$(OOVER) + 0.1" | bc)
 NEXT_BASIS_VERSION:=$(NEXT_OOVER)
-NEXT_BASE_VERSION:=1:$(NEXT_OOVER)
 
 ARCH_INDEP_PACKAGES := $(shell dh_listpackages -i)
 ARCH_DEP_PACKAGES := $(shell dh_listpackages -s)
@@ -140,8 +139,7 @@ ifeq "$(ENABLE_JAVA)" "y"
     JDK=gcj-jdk
   endif
 endif
-# see http://bugs.debian.org/610817
-JAVAHELPER_MIN_VERSION= (>= 0.35)
+JAVAHELPER_MIN_VERSION= (>= 0.37)
 ENABLE_MONO=n
 MONO2=y
 ifeq "$(MONO2)" "y"
@@ -211,7 +209,7 @@ PACKAGE_SDK=y
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(JDK)" "openjdk"
     RUN_SMOKETEST=n
-    RUN_SUBSEQUENT_TESTS=y
+    RUN_SUBSEQUENT_TESTS=n
   else
     ifneq ($(ON_BUILDD),y)
       RUN_SMOKETEST=n
@@ -455,16 +453,35 @@ ifeq "$(DIST)" "Ubuntu"
   USE_COMMON_DOCDIR=y
   IMAGES += human
   ON_BUILDD_VERBOSITY := true
-  PATCHSET=$(DIST)$(shell perl -e 'print ucfirst("$(DISTREL)");')
+  PATCHSET=Ubuntu
 
   USE_LZMA_COMPRESS=$(if $(filter-out armel,$(ARCH)),y,n)
 
-  CONFIGURE_FLAGS += --with-openldap
-  CONFIGURE_FLAGS += --with-system-python
+  # migrated flags from the old libreoffice-build/distro-config dir
+  CONFIGURE_FLAGS +=  \
+    --enable-gnome-vfs \
+    --enable-symbols \
+    --with-linker-hash-style=gnu \
+    --with-openldap \
+    --with-system-curl \
+    --with-system-db \
+    --with-system-expat \
+    --with-system-odbc \
+    --with-system-python \
+    --with-system-sane \
+    --with-system-xrender-headers \
+    --with-vendor=\"Ubuntu\" \
+    --without-myspell-dicts \
 
   SYSTEM_STUFF := $(filter-out lucene, $(SYSTEM_STUFF))
   SYSTEM_STUFF := $(filter-out graphite, $(SYSTEM_STUFF))
 
+  # FIXME: fails to produce fps_kde*.uno.so for packaging
+  BUILD_KDE=n
+  # FIXME: fails to produce libevoab*.so for packaging
+  ENABLE_EVO2=n
+  PACKAGE_TTF_OPENSYMBOL=n
+    
   # FIXME: smoketest fails, but we need the indep packages for the other archs
   # disabling for all archs to get rid of epm dependency
   RUN_SMOKETEST=n
@@ -473,14 +490,6 @@ ifeq "$(DIST)" "Ubuntu"
   ifeq ($(DISTREL),natty)
     ENABLE_SDBC_POSTGRESQL=y
   endif
-  # FIXME: disable kde for now
-  BUILD_KDE=n
-  # FIXME: disable evo for now
-  ENABLE_EVO2=n
-  # FIXME: disable opensymbol for now
-  PACKAGE_TTF_OPENSYMBOL=n
-  # FIXME: breaks with to high debug level 11
-  RUN_SUBSEQUENT_TESTS =n
 endif
 
 ifeq "$(L10N_SEPARATE_SOURCE)" "y"
@@ -1361,6 +1370,7 @@ endif
 
 	rm -f $(OOO_BUILD_TREE)/src/libreoffice-$(OOO_BUILD_TARBAL_VERSION)*
 	rm -f $(OOO_BUILD_TREE)/src/GSI*
+	rm -f $(OOO_BUILD_TREE)/src/*.log
 
 	for i in ext-sources-$(OOO_BUILD_TREE)/*; do \
 		rm -f $(OOO_BUILD_TREE)/src/`basename $$i`; \
@@ -1376,6 +1386,11 @@ endif
 	rm -f $(OOO_BUILD_TREE)/download
 	rm -f $(OOO_BUILD_TREE)/distro-configs/*.conf
 	rm -f $(OOO_BUILD_TREE)/patches/apply.pl
+	find $(OOO_BUILD_TREE) -name "Makefile" | xargs rm -f
+	rm -f $(OOO_BUILD_TREE)/intltool-extract \
+		$(OOO_BUILD_TREE)/intltool-merge \
+		$(OOO_BUILD_TREE)/intltool-update
+	rm -f $(OOO_BUILD_TREE)/scratch/place
 
 	# left-over from ooo-pack-sources
 	rm -rf .releases
@@ -2599,6 +2614,7 @@ ifeq "$(BUILD_PYUNO)" "y"
 	mkdir -p debian/python-uno/$(OOBRANDDIR)/share/extensions
 	mv debian/tmp/$(OOBRANDDIR)/share/extensions/script-provider-for-python \
 		debian/python-uno/$(OOBRANDDIR)/share/extensions
+	rm -f $debian/python-uno/$(OOBRANDDIR)/share/extensions/script-provider-for-python/registration/LICENSE
   endif
 
 	mkdir -p debian/python-uno/usr/share/doc/python-uno
@@ -3186,7 +3202,8 @@ ifeq "$(ENABLE_JAVA)" "y"
 	rm -rf $(PKGDIR)-script-provider-bsh
 	mkdir -p $(PKGDIR)-script-provider-bsh/$(OOBRANDDIR)/share/extensions
 	mv debian/tmp/$(OOBRANDDIR)/share/extensions/script-provider-for-beanshell \
-	$(PKGDIR)-script-provider-bsh/$(OOBRANDDIR)/share/extensions
+		$(PKGDIR)-script-provider-bsh/$(OOBRANDDIR)/share/extensions
+	rm -f $(PKGDIR)-script-provider-bsh/$(OOBRANDDIR)/share/extensions/script-provider-for-beanshell/registration/LICENSE
     ifneq (,$(filter beanshell, $(SYSTEM_STUFF)))
 	ln -sf /usr/share/java/bsh.jar \
 	        $(PKGDIR)-script-provider-bsh/$(OOBRANDDIR)/share/extensions/script-provider-for-beanshell/bsh.jar
@@ -3470,7 +3487,7 @@ ifeq "$(ENABLE_MONO)" "y"
 	dh_clideps -s
 endif
 ifeq "$(ENABLE_JAVA)" "y"
-	jh_depends -a -Xlibreoffice$(VER)-gcj -Xure
+	jh_depends -s -Xlibreoffice$(VER)-gcj -Xure
   ifeq "$(PACKAGE_BASE)" "y"
 	perl -pi -e "s/libhsqldb-java/$(BASE_HSQLDB_DEPENDS)/" \
 		debian/libreoffice$(VER)-base.substvars
@@ -3492,7 +3509,6 @@ endif
 		-Nlibreoffice$(VER)-mysql-connector -- \
 		-V"ure:Version=$(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }')" \
 		-V'base-version=$(BASE_VERSION)' \
-		-V'next-base-version=$(NEXT_BASE_VERSION)' \
 		-V'basis-version=$(BASIS_VERSION)' \
 		-V'next-basis-version=$(NEXT_BASIS_VERSION)' \
 		-V'help-l10n-virtual-version=$(HELP_L10N_VIRTUAL_VERSION)' \
@@ -3703,7 +3719,6 @@ endif
 		-Nttf-opensymbol \
 		-Nopenoffice.org-dtd-officedocument1.0 -- \
 		-V'base-version=$(BASE_VERSION)' \
-		-V'next-base-version=$(NEXT_BASE_VERSION)' \
 		-V'basis-version=$(BASIS_VERSION)' \
 		-V'next-basis-version=$(NEXT_BASIS_VERSION)' \
 		-V'help-l10n-virtual-version=$(HELP_L10N_VIRTUAL_VERSION)' \
