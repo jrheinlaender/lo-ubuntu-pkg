@@ -18,7 +18,8 @@ done
 if [ -n "$dep" ]; then
 	echo $dep
 else
-	echo "Cannot find libebook dependency. None of the following libs found:"	echo $libs
+	echo "Cannot find libebook dependency. None of the following libs found:"
+	echo $libs
 	exit 1
 fi
 
