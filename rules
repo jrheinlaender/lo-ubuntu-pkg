@@ -48,7 +48,7 @@ SHELL:=/bin/bash
 SYSTEM_GCC_VERSION = $(shell gcc --version | sed -n '/^gcc/s/.*\(.\..\)\..$$/\1/p')
 
 # Debian buildds run as user `buildd', other are using /CurrentlyBuilding
-ON_BUILDD := $(shell [ "`whoami`" = buildd -o -f /CurrentlyBuilding ] && echo y || echo n)
+ON_BUILDD := $(shell [ "`whoami`" = buildd -o -f /CurrentlyBuilding -o "`echo $(CURDIR) | cut -d- -f1`" = "/build/buildd" ] && echo y || echo n)
 ON_BUILDD_VERBOSITY :=
 
 PKGDIR:=debian/libreoffice$(VER)
@@ -206,6 +206,7 @@ NEONSONR=27
 SYSTEM_STUFF += redland
 USE_OOO_BUILD_DESKTOPS=n
 PACKAGE_SDK=y
+# FIXME: subsequenttests breaks with to high debug level 11
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(JDK)" "openjdk"
     RUN_SMOKETEST=n
@@ -274,7 +275,7 @@ ifeq "$(BUILD_GTK)" "y"
 endif
 PACKAGE_BASE=y
 ENABLE_GRAPHITE=y
-SYSTEM_STUFF += graphite
+#SYSTEM_STUFF += graphite
 ALLOC=system
 SYSTEM_STUFF += libtextcat
 USE_SYSTEM_TEXTCAT_DATA=y
@@ -354,29 +355,29 @@ ifeq "$(ENABLE_OPENGL)" "y"
   ifeq (,$(filter $(ARCH),$(OOO_OGLTRANS_ARCHS)))
        ENABLE_OPENGL=n
   endif
-  $(eval $(call gen_no_archs, OOO_OGLTRANS_ARCHS))
+  $(eval $(call gen_no_archs,OOO_OGLTRANS_ARCHS))
 endif
 
 OOO_64BIT_ARCHS = $(filter alpha amd64 ia64 kfreebsd-amd64 ppc64 s390x, $(OOO_ARCHS))
 
 # Java...
 OOO_JAVA_ARCHS = $(OOO_ARCHS)
-$(eval $(call gen_no_archs, OOO_JAVA_ARCHS))
+$(eval $(call gen_no_archs,OOO_JAVA_ARCHS))
 
 # gcj does not work on ppc, so no need to build -gcj for it
 OOO_GCJ_ARCHS = $(filter-out powerpc powerpcspe ppc64, $(OOO_JAVA_ARCHS))
-$(eval $(call gen_no_archs, OOO_GCJ_ARCHS))
+$(eval $(call gen_no_archs,OOO_GCJ_ARCHS))
 
 OOO_GCJ_JDK_ARCHS := hppa ia64 kfreebsd-i386 kfreebsd-amd64
 OOO_OPENJDK_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
-$(eval $(call gen_no_archs, OOO_OPENJDK_ARCHS))
+$(eval $(call gen_no_archs,OOO_OPENJDK_ARCHS))
 
 OOO_ARCH_DEP_EXTENSIONS_ARCHS := $(OOO_ARCHS)
 
 OOO_BASE_ARCHS := $(filter-out armel,$(OOO_JAVA_ARCHS))
-$(eval $(call gen_no_archs, OOO_BASE_ARCHS))
+$(eval $(call gen_no_archs,OOO_BASE_ARCHS))
 OOO_REPORTDESIGN_ARCHS := $(filter-out armel,$(OOO_JAVA_ARCHS))
-$(eval $(call gen_no_archs, OOO_REPORTDESIGN_ARCHS))
+$(eval $(call gen_no_archs,OOO_REPORTDESIGN_ARCHS))
 
 ifneq (,$(findstring $(ARCH),$(OOO_NO_BASE_ARCHS)))
 	PACKAGE_BASE=n
@@ -445,6 +446,7 @@ ifeq "$(SQUEEZE_BACKPORT)" "y"
   BUGS=mailto:debian-backports@lists.debian.org
   SYSTEM_STUFF := $(filter-out libwpd libwpg libwps mythes mdds libtextcat graphite, $(SYSTEM_STUFF))
   JUNIT_MIN_VER=
+  PARALLEL_BUILD=n
 endif
 
 # Ubuntu
@@ -527,7 +529,7 @@ endif
 # stuff like the xmlsecurity (which uses nss). For the plugin only,
 # change the OOO_NPSOPLUGIN_ARCHS
 OOO_MOZILLA_ARCHS = $(filter-out nothing, $(OOO_ARCHS))
-$(eval $(call gen_no_archs, OOO_MOZILLA_ARCHS))
+$(eval $(call gen_no_archs,OOO_MOZILLA_ARCHS))
 
 ifeq "$(USE_SOURCE_TARBALLS)" "n"
 	BUILD_DEPS += , git, rsync
@@ -549,7 +551,9 @@ ifneq "$(OOO_OGLTRANS_ARCHS)" ""
 	BUILD_DEPS += , libgl1-mesa-dev$(OOO_NO_OGLTRANS_ARCHS), libglu1-mesa-dev$(OOO_NO_OGLTRANS_ARCHS)
 endif
 ifeq "$(ENABLE_OPENGL)" "y"
-	CONFIGURE_FLAGS += --enable-opengl --with-system-mesa-headers
+	CONFIGURE_FLAGS += --with-system-mesa-headers
+else
+	CONFIGURE_FLAGS += --disable-opengl
 endif
 
 ifneq "$(PACKAGE_SDK)" "y"
@@ -920,8 +924,11 @@ ifeq "$(USE_AGG)" "y"
 endif
 
 ifneq "$(OOO_STLPORT_ARCHS)" ""
+  ifeq "$(LINK_TO_STLPORT)" "y"
 	LIBSTLPORT_MINVER= (>= 4.6.2-3)
 	BUILD_DEPS += , libstlport4.6-dev $(LIBSTLPORT_MINVER) [$(OOO_STLPORT_ARCHS)]
+	CONFIGURE_FLAGS += --without-stlport
+  endif
 endif
 
 ifneq (,$(filter boost, $(SYSTEM_STUFF)))
@@ -1174,7 +1181,7 @@ ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 	BUILD_DEPS_INDEP += , fontforge
 endif
 
-ifeq "$(BUILD_ONLY_EN_US)" "n"
+ifneq "$(ISOS)" "en-US"
 	CONFIGURE_FLAGS += --with-system-translate-toolkit
 	BUILD_DEPS_INDEP += , translate-toolkit
 endif
@@ -1198,6 +1205,8 @@ ifeq "$(NUM_CPUS)" ""
     ifneq ($(AVAIL_CPUS),1)
 	NUM_CPUS := $(shell expr $(AVAIL_CPUS))
     endif
+	# http://bugs.debian.org/622644
+	BUILD_DEPS += , make (>= 3.82)
   endif
 endif
 # disabled for now. needs fixed GNU make (#622644)
@@ -1633,9 +1642,6 @@ endif
 ifneq (,$(filter hsqldb, $(SYSTEM_STUFF)))
 	perl -pi -e "s/(Build-Conflicts: .*)/\1, libhsqldb-java (>= $(HSQLDB_TOONEWVER)~)/" debian/control
 endif
-
-	# at least here it crashes the build in some funny way.
-	perl -pi -e "s/(Build-Conflicts: .*)/\1, libstlport4.6-dev/" debian/control
 
 ifeq (4.4,$(SYSTEM_GCC_VERSION))
 	perl -pi -e 's/flex \|/flex (>= 2.5.25-7) |/' debian/control
@@ -2993,7 +2999,7 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	# menu files from sysui
 	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare >/dev/null; pwd`" ;\
 	mkdir -p -m755 $(PKGDIR)-filter-mobiledev/usr/share/applications ;\
-	sed -e 's,Exec=ooffice \(.*\) %U,Exec=libreoffice$(VER) \1 %U,' \
+	sed -e 's,Exec=$${UNIXBASISROOTNAME} \(.*\) %U,Exec=libreoffice$(VER) \1 %U,' \
 		-e 's,Icon=$${WITHOUTDOTUNIXPRODUCTNAME},Icon=libreoffice,' \
 	   	-e 's,Name=$${PRODUCTNAME} $${PRODUCTVERSION},Name=LibreOffice $(VER),' \
 	   	-e 's,Name\[pt_BR\]=$${PRODUCTNAME_BR} $${PRODUCTVERSION},Name[pt_BR]=BrOffice $(VER),' \
@@ -3477,14 +3483,14 @@ ifeq "$(ENABLE_JAVA)" "y"
 			$(SHLIBS_OVERRIDE)
 endif
 ifeq "$(LINK_TO_STLPORT)" "y"
-        perl -pi -e 's/(shlibs.*$$)/$$1, $(shell cat /var/lib/dpkg/info/libstlport4.6*.shlibs | awk '{ print $$3,$$4,$$5 }')/' debian/ure.substvars
+	perl -pi -e 's/(shlibs.*$$)/$$1, $(shell cat /var/lib/dpkg/info/libstlport4.6*.shlibs | awk '{ print $$3,$$4,$$5 }')/' debian/ure.substvars
 endif
 ifeq "$(ENABLE_MONO)" "y"
 	dh_makeclilibs -s
 	dh_clideps -s
 endif
 ifeq "$(ENABLE_JAVA)" "y"
-	jh_depends -s -Xlibreoffice$(VER)-gcj -Xure
+	jh_depends -s -Xlibreoffice$(VER)-gcj -Xlibreoffice$(VER)-dbg -Xure
   ifeq "$(PACKAGE_BASE)" "y"
 	perl -pi -e "s/libhsqldb-java/$(BASE_HSQLDB_DEPENDS)/" \
 		debian/libreoffice$(VER)-base.substvars
@@ -3702,7 +3708,7 @@ endif
 ifeq "$(ENABLE_JAVA)" "y"
 	# the help recommends lucene. this is enough. no need for a hard depend in
         # -common, IMHO
-	jh_depends -i -Xlibreoffice$(VER)-gcj -Xliblucene2-java
+	jh_depends -i -Xlibreoffice$(VER)-gcj -Xlibreoffice$(VER)-dbg -Xliblucene2-java
 endif
 endif
 	dh_gencontrol -i $(DEBHELPER_OPTIONS) \
