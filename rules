@@ -1749,6 +1749,14 @@ endif
 		PATH=$(BUILD_PATH) DPKG="dpkg" PKGFORMAT="deb" NO_PKG_MANGLE=go-away \
 		../solenv/bin/build.pl && ../solenv/bin/deliver.pl
 
+ifeq "$(PACKAGE_SDK)" "y"
+	# build gengal...
+	cd $(SOURCE_TREE)/svx/source/gengal; \
+		. $(CURDIR)/$(SOURCE_TREE)/*Env*.sh; \
+		PATH=$(BUILD_PATH) \
+		dmake
+endif
+
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 	$(CURDIR)/debian/rules test
 endif
@@ -1981,18 +1989,6 @@ ifeq "$(BUILD_GTK)" "y"
 	mv $(PKGDIR)-common/$(OODIR)/share/registry/gnome.xcd \
 		$(PKGDIR)-gnome/$(OODIR)/share/registry
 endif
-
-#ifeq "$(PACKAGE_SDK)" "y"
-#	# move gengal stuff into -dev
-#	mkdir -p $(PKGDIR)-dev/$(OODIR)/program
-#	mv $(PKGDIR)-core/$(OODIR)/program/gengal* \
-#		$(PKGDIR)-dev/$(OODIR)/program
-#	mv $(PKGDIR)-common/$(OODIR)/program/gengal  \
-#		$(PKGDIR)-dev/$(OODIR)/program
-#else
-#	rm -f $(PKGDIR)-core/$(OODIR)/program/gengal*
-#	rm -f $(PKGDIR)-common/$(OODIR)/program/gengal
-#endif
 
 ifeq "$(PACKAGE_SDK)" "y"
 	# move SDK documentation into own package
@@ -2708,6 +2704,15 @@ endif
 	ln -s /var/lib/$(OODIRNAME)/basis$(OOVER)/program/services.rdb \
 		$(PKGDIR)-core/usr/lib/$(OODIRNAME)/basis$(OOVER)/program/services.rdb
 
+ifeq "$(PACKAGE_SDK)" "y"
+	# install gengal stuff into -dev
+	mkdir -p $(PKGDIR)-dev/$(OODIR)/program
+	install -m755 $(SOURCE_TREE)/svx/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/bin/gengal \
+		$(PKGDIR)-dev/$(OODIR)/program/gengal
+	install -m755 $(SOURCE_TREE)/svx/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/bin/gengal.bin \
+		$(PKGDIR)-dev/$(OODIR)/program/gengal.bin
+endif
+
 	for i in $(ARCH_DEP_PACKAGES); do \
 		if [ -e debian/$$i.bug-script.in ]; then \
 			cat debian/$$i.bug-script.in \
@@ -3152,11 +3157,6 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	perl -pi -e "s/Icon=openofficeorg.*-extension/Icon=application-vnd.openofficeorg.extension.png/" $(PKGDIR)-common/usr/share/mimelnk/application/vnd.openofficeorg.extension.desktop
 endif
 
-#ifeq "$(PACKAGE_SDK)" "y"
-#	# fix permission
-#	chmod 644 $(PKGDIR)-common/$(OODIR)/program/gengalrc
-#endif
-
 	# install extension shell lib for use by extensions not from here
 	install -D -m644 debian/shell-lib-extensions.sh \
 		$(PKGDIR)-common/usr/share/$(OODIRNAME)/shell-lib-extensions.sh
@@ -3198,6 +3198,12 @@ endif
 	# register technical.dic
 	perl -pi -e 's/standard.dic;/standard.dic;technical.dic;/' $(PKGDIR)-common/$(OODIR)/share/registry/main.xcd
 
+ifeq "$(PACKAGE_SDK)" "y"
+	# install gengal stuff into -dev
+	mkdir -p $(PKGDIR)-dev/$(OODIR)/program
+	install -m644 $(SOURCE_TREE)/svx/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/bin/gengalrc \
+		$(PKGDIR)-common/$(OODIR)/program/gengalrc
+endif
 	touch $@
 
 binary-arch: $(STAMP_DIR)/binary-arch
