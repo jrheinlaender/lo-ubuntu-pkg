@@ -290,8 +290,6 @@ DICT_DIR=/usr/share/hunspell
 HYPH_DIR=/usr/share/hyphen
 THES_DIR=/usr/share/mythes
 
-USE_BZIP_COMPRESS=y
-
 # Default flags to pass to configure of ooo-build
 CONFIGURE_FLAGS= --disable-post-install-scripts \
                  --with-tag=$(TAG) \
@@ -487,12 +485,7 @@ ifeq "$(USE_SOURCE_TARBALLS)" "n"
 	BUILD_DEPS += , git, rsync
 endif
 
-ifeq "$(USE_BZIP_COMPRESS)" "y"
-	DPKG_DEPENDS = dpkg (>= 1.10.24)
 	BUILDDEB_OPTIONS = -- -Zbzip2
-endif
-
-	BUILD_DEPS += , dpkg-dev (>= 1.15.1)
 
 ifneq "$(OOO_OGLTRANS_ARCHS)" ""
 	BUILD_DEPS += , libgl1-mesa-dev$(OOO_NO_OGLTRANS_ARCHS), libglu1-mesa-dev$(OOO_NO_OGLTRANS_ARCHS)
@@ -563,9 +556,10 @@ ifneq "$(BUILD_DBG_PACKAGE)" "y"
 	# build with small symbols anyway
 	SMALL_SYMBOLS = y
 else
-  # -g gives a far too big deb (>400M, ca. 1GB I-S)
   ifeq (debug,$(findstring debug,$(DEB_BUILD_OPTIONS)))
 	SMALL_SYMBOLS = n
+	# reduces -dbg size from 760M to ~320M
+        USE_XZ_COMPRESS = y
   else
 	SMALL_SYMBOLS = y
   endif
@@ -588,6 +582,15 @@ endif
 
 ifeq (noopt,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
 	ARCH_FLAGS += -O0
+endif
+
+ifeq "$(USE_XZ_COMPRESS)" "y"
+	# used only for -dbg yet, so disabled and done manually
+	# in binary-arch
+	#BUILDDEB_OPTIONS = -- -Zxz
+	BUILD_DEPS += , dpkg-dev (>= 1.15.6)
+else
+	BUILD_DEPS += , dpkg-dev (>= 1.15.1)
 endif
 
 # Build python depends from current python version
@@ -3390,7 +3393,12 @@ endif
 		-V"ure:Version=`echo $(BINARY_VERSION) | cut -d: -f2`" \
 		-v"`echo $(BINARY_VERSION) | cut -d: -f2`"
 	dh_md5sums -s
+ifeq "$(USE_XZ_COMPRESS)" "y"
+	dh_builddeb -plibreoffice$(VER)-dbg -s $(DEBHELPER_OPTIONS) $(filter-out -Zbzip2,$(BUILDDEB_OPTIONS)) -Zxz
+	dh_builddeb -Nlibreoffice$(VER)-dbg -s $(DEBHELPER_OPTIONS) $(BUILDDEB_OPTIONS)
+else
 	dh_builddeb -s $(DEBHELPER_OPTIONS) $(BUILDDEB_OPTIONS)
+endif
 
 	touch $@
 
