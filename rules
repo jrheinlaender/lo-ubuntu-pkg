@@ -49,6 +49,7 @@ SYSTEM_GCC_VERSION = $(shell gcc --version | sed -n '/^gcc/s/.*\(.\..\)\..$$/\1/
 
 # Debian buildds run as user `buildd', other are using /CurrentlyBuilding
 ON_BUILDD := $(shell [ "`whoami`" = buildd -o -f /CurrentlyBuilding -o "`echo $(CURDIR) | cut -d- -f1`" = "/build/buildd" ] && echo y || echo n)
+ON_BUILDD := $(shell if [ "`whoami`" = buildd -o -f /CurrentlyBuilding ] || echo $(CURDIR) | grep -q \/build\/buildd; then echo y; else echo n; fi)
 ON_BUILDD_VERBOSITY :=
 
 PKGDIR:=debian/libreoffice$(VER)
@@ -240,12 +241,8 @@ ENABLE_OPENGL=y
 SYSTEM_STUFF += openssl
 NEW_DPKG_SHLIBDEPS=y
 ifeq "$(ENABLE_JAVA)" "y"
-  ifeq (,$(findstring $(ARCH),$(OOO_GCJ_JDK_ARCHS)))
-    ENABLE_REPORTDESIGN=y
-    SYSTEM_STUFF += jfreereport
-  else
-    ENABLE_REPORTDESIGN=n
-  endif
+  ENABLE_REPORTDESIGN=y
+  SYSTEM_STUFF += jfreereport
   ENABLE_MEDIAWIKI=y
   SYSTEM_STUFF += apache-commons
   # if you change these, add something like disable-rhino.diff and/or remove it as long
@@ -404,6 +401,13 @@ ifeq (,$(filter $(ARCH),$(OOO_JAVA_ARCHS)))
 	ENABLE_JAVA=n
 	ENABLE_REPORTDESIGN=n
 	ENABLE_MEDIAWIKI=n
+endif
+
+ifeq ($(ARCH),$(findstring $(ARCH),$(OOO_GCJ_JDK_ARCHS)))
+  ifneq ($(ARCH),$(findstring $(ARCH),$(OOO_OPENJDK_ARCHS)))
+	ENABLE_REPORTDESIGN=n
+	SYSTEM_STUFF := $(filter-out jfreereport, $(SYSTEM_STUFF))
+  endif
 endif
 
 ifeq "$(ENABLE_MONO)" "y"
@@ -924,11 +928,9 @@ ifeq "$(USE_AGG)" "y"
 endif
 
 ifneq "$(OOO_STLPORT_ARCHS)" ""
-  ifeq "$(LINK_TO_STLPORT)" "y"
 	LIBSTLPORT_MINVER= (>= 4.6.2-3)
 	BUILD_DEPS += , libstlport4.6-dev $(LIBSTLPORT_MINVER) [$(OOO_STLPORT_ARCHS)]
 	CONFIGURE_FLAGS += --without-stlport
-  endif
 endif
 
 ifneq (,$(filter boost, $(SYSTEM_STUFF)))
