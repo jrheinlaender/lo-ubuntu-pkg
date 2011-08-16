@@ -1411,8 +1411,7 @@ endif
 control: debian/control
 debian/control: $(wildcard debian/control*in) $(OOO_BUILD_TREE)/bin/openoffice-xlate-lang  debian/rules
 	chmod 755 $(OOO_BUILD_TREE)/bin/openoffice-xlate-lang
-	sed -e "s#libreofficeVER#libreoffice$(VER)#g" \
-	    -e "s#libreofficeVER#libreoffice$(VER)#g" \
+	sed -e "s#libreofficeVER#$(PKGSOURCE)#g" \
 	    -e "s#%$(DIST)=\([^%]*\)%#, \1#g#" \
 	    -e "s#%[A-Za-z]*=[^%]*%##g#" \
 	    -e "s#%BUILD_DEPS%#$(strip $(BUILD_DEPS))#g" \
@@ -1440,7 +1439,6 @@ ifeq "$(ENABLE_LDAP)" "y"
 endif
 
 	for LNUM in $(filter-out en-US,$(LANGPACKISOS)) ; do \
-	    [ "$$LNUM" = en-US -a "$(PKGSOURCE)" = "libreoffice$(VER)-l10n" ] && continue; \
 	    LNAME=`$(OOO_BUILD_TREE)/bin/openoffice-xlate-lang -l $$LNUM | perl -e 'print ucfirst(<STDIN>);'`; \
 	    LCODE=`$(OOO_BUILD_TREE)/bin/openoffice-xlate-lang -i $$LNUM | tr A-Z a-z`; \
 	    CCODE=`echo $$LCODE | sed 's/-.*//'`; \
@@ -1500,14 +1498,16 @@ endif
 		esac; \
 		LOCALES_DEPENDS="libreoffice$(VER)-common (>= \$${base-version}) | language-support-translations-$$CCODE, libreoffice$(VER)-common (<< 1:\$${next-basis-version}~) | language-support-translations-$$CCODE"; \
 	    fi; \
-	    sed -e "s|@LNAME@|$$LNAME|g" -e "s|@LCODE@|$$LCODE|g" \
-		-e "s|@CCODE@|$$CCODE|g" \
-	        -e "s|@FONT_SUGGESTS@|$$FONT_SUGGESTS|g" \
-	        -e "s:@LOCALES_DEPENDS@:$$LOCALES_DEPENDS:g" \
-	        -e "s:@L10N_COMMON@:$$L10N_COMMON:g" \
-			-e "s|libreofficeVER|libreoffice$(VER)|g" \
-		-e "s|@LDAP_LIB@|$(LDAP_LIB)|g" \
-	        >> debian/control < debian/control.lang.in; \
+		sed \
+			-e "s#@LNAME@#$$LNAME#g" \
+			-e "s#@LCODE@#$$LCODE#g" \
+			-e "s#@CCODE@#$$CCODE#g" \
+			-e "s#@FONT_SUGGESTS@#$$FONT_SUGGESTS#g" \
+			-e "s#@LOCALES_DEPENDS@#$$LOCALES_DEPENDS#g" \
+			-e "s#@L10N_COMMON@#$$L10N_COMMON#g" \
+			-e "s#libreofficeVER#libreoffice$(VER)#g" \
+			-e "s#@LDAP_LIB@#$(LDAP_LIB)#g" \
+			>> debian/control < debian/control.lang.in; \
 	done
 
 ifneq "$(HELPISOS)" ""
