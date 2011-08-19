@@ -1,9 +1,67 @@
 --- /dev/null	2011-08-03 18:17:49.619073942 +0200
 +++ libreoffice-3.4.2/libreoffice-build/patches/hotfixes/make-gengal-work-again.diff	2011-08-12 20:45:59.000000000 +0200
-@@ -0,0 +1,319 @@
-+--- svx/source/gengal/gengal.sh.old	2011-08-04 14:29:39.000000000 +0200
-++++ svx/source/gengal/gengal.sh	2011-08-04 20:00:34.000000000 +0200
-+@@ -0,0 +1,103 @@
+@@ -0,0 +1,162 @@
++--- svx/source/gengal/makefile.mk-old	2011-08-12 20:08:29.000000000 +0200
+++++ svx/source/gengal/makefile.mk	2011-08-12 20:09:00.000000000 +0200
++@@ -37,7 +37,6 @@
++ # --- Settings -----------------------------------------------------
++ 
++ .INCLUDE :  settings.mk
++-.INCLUDE :  $(PRJ)$/util$/makefile.pmk
++ 
++ # --- Files --------------------------------------------------------
++ 
++@@ -45,6 +44,8 @@
++ 
++ OBJFILES=	$(OBJ)$/gengal.obj
++ 
+++CFLAGS += -I$(PRJ)/inc/svx
+++
++ .IF "$(GUI)"=="WNT" || "$(GUI)"=="OS2"
++ APP1TARGET= $(TARGET)
++ .ELSE			# .IF "$(GUI)"=="WNT" || "$(GUI)"=="OS2"
++--- svx/source/gengal/gengal.cxx-old	2011-08-12 20:12:31.000000000 +0200
+++++ svx/source/gengal/gengal.cxx	2011-08-12 20:14:09.000000000 +0200
++@@ -101,7 +101,7 @@
++ static void createTheme( rtl::OUString aThemeName,
++                          rtl::OUString aGalleryURL,
++                          rtl::OUString aDestDir,
++-                         UINT32 nNumFrom,
+++                         sal_uInt32 nNumFrom,
++                          FileNameList &rFiles )
++ {
++     Gallery * pGallery( createGallery( aGalleryURL ) );
++@@ -279,10 +279,10 @@
++     bool bHelp = false;
++     rtl::OUString aPath, aDestDir;
++     rtl::OUString aName(RTL_CONSTASCII_USTRINGPARAM("Default name"));
++-    UINT32 nNumFrom = 0;
+++    sal_uInt32 nNumFrom = 0;
++     FileNameList aFiles;
++ 
++-    for( USHORT i = 0; i < GetCommandLineParamCount(); i++ )
+++    for( short i = 0; i < GetCommandLineParamCount(); i++ )
++     {
++         rtl::OUString aParam = GetCommandLineParam( i );
++ 
++--- /dev/null	2011-08-03 18:17:49.619073942 +0200
+++++ svx/source/gengal/gengalrc.in	2011-08-12 20:16:21.000000000 +0200
++@@ -0,0 +1,12 @@
+++OOO_INSTALL_PREFIX_URL=file://${OOO_INSTALL_PREFIX}
+++OOO_BASIS_URL=${OOO_INSTALL_PREFIX_URL}/basis-link
+++OOO_BASIS_BIN_URL=${OOO_BASIS_URL}/program
+++OOO_URE_URL=${OOO_BASIS_URL}/ure-link
+++#
+++#CFG_INIFILE=${OOO_BASIS_BIN_URL}/configmgrrc
+++#BaseInstallation=${OOO_BASIS_URL}
+++BRAND_BASE_DIR=${OOO_INSTALL_PREFIX_URL}
+++OOO_BASE_DIR=${OOO_BASIS_URL}
+++#
+++UNO_TYPES=${OOO_URE_URL}/share/misc/types.rdb ${OOO_BASIS_BIN_URL}/offapi.rdb
+++UNO_SERVICES=${OOO_URE_URL}/share/misc/services.rdb ${OOO_BASIS_BIN_URL}/services.rdb
++--- /dev/null	2011-08-03 18:17:49.619073942 +0200
+++++ svx/source/gengal/gengal.sh	2011-08-12 20:16:25.000000000 +0200
++@@ -0,0 +1,101 @@
 ++#!/bin/sh
 ++#*************************************************************************
 ++#
@@ -66,26 +124,24 @@
 ++
 ++# set search path for shared libraries
 ++sd_platform=`uname -s`
-++sd_prog1="$sd_prog/../basis-link/program"
-++sd_prog2="$sd_prog/../basis-link/ure-link/lib"
 ++case $sd_platform in
 ++  AIX)
-++    LIBPATH=${sd_prog1}:${sd_prog2}${LIBPATH+:${LIBPATH}}
+++    LIBPATH=${sd_prog}${LIBPATH+:${LIBPATH}}
 ++    export LIBPATH
 ++    ;;
 ++
 ++  Darwin)
-++    DYLD_LIBRARY_PATH=${sd_prog1}:${sd_prog2}${DYLD_LIBRARY_PATH:+:${DYLD_LIBRARY_PATH}}
+++    DYLD_LIBRARY_PATH=${sd_prog}${DYLD_LIBRARY_PATH:+:${DYLD_LIBRARY_PATH}}
 ++    export DYLD_LIBRARY_PATH
 ++    ;;
 ++
 ++  HP-UX)
-++    SHLIB_PATH=${sd_prog1}:${sd_prog2}:/usr/openwin/lib${SHLIB_PATH:+:${SHLIB_PATH}}
+++    SHLIB_PATH=${sd_prog}:/usr/openwin/lib${SHLIB_PATH:+:${SHLIB_PATH}}
 ++    export SHLIB_PATH
 ++    ;;
 ++
 ++  *)
-++    LD_LIBRARY_PATH=${sd_prog1}:${sd_prog2}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+++    LD_LIBRARY_PATH=${sd_prog}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
 ++    export LD_LIBRARY_PATH
 ++    ;;
 ++esac
@@ -107,216 +163,3 @@
 ++
 ++# execute binary
 ++exec "$sd_prog/$sd_binary" "$@"
-+--- svx/source/gengal/gengalrc.in.old	2011-08-04 14:29:39.000000000 +0200
-++++ svx/source/gengal/gengalrc.in	2011-08-04 17:16:04.000000000 +0200
-+@@ -0,0 +1,12 @@
-++OOO_INSTALL_PREFIX_URL=file://${OOO_INSTALL_PREFIX}
-++OOO_BASIS_URL=${OOO_INSTALL_PREFIX_URL}/basis-link
-++OOO_BASIS_BIN_URL=${OOO_BASIS_URL}/program
-++OOO_URE_URL=${OOO_BASIS_URL}/ure-link
-++#
-++#CFG_INIFILE=${OOO_BASIS_BIN_URL}/configmgrrc
-++#BaseInstallation=${OOO_BASIS_URL}
-++BRAND_BASE_DIR=${OOO_INSTALL_PREFIX_URL}
-++OOO_BASE_DIR=${OOO_BASIS_URL}
-++#
-++UNO_TYPES=${OOO_URE_URL}/share/misc/types.rdb ${OOO_BASIS_BIN_URL}/offapi.rdb
-++UNO_SERVICES=${OOO_URE_URL}/share/misc/services.rdb ${OOO_BASIS_BIN_URL}/services.rdb
-+--- svx/source/gengal/gengal.cxx.old	2011-05-19 12:27:42.000000000 +0200
-++++ svx/source/gengal/gengal.cxx	2011-08-04 17:16:04.000000000 +0200
-+@@ -68,7 +68,7 @@
-+ #include <osl/process.h>
-+ #include <rtl/bootstrap.hxx>
-+ 
-+-#include <galtheme.hxx>
-++#include <svx/galtheme.hxx>
-+ #include <svx/gallery1.hxx>
-+ 
-+ using namespace ::com::sun::star::uno;
-+@@ -101,7 +101,7 @@ void disposeGallery( Gallery* pGallery )
-+ static void createTheme( rtl::OUString aThemeName,
-+                          rtl::OUString aGalleryURL,
-+                          rtl::OUString aDestDir,
-+-                         UINT32 nNumFrom,
-++                         sal_uInt32 nNumFrom,
-+                          FileNameList &rFiles )
-+ {
-+     Gallery * pGallery( createGallery( aGalleryURL ) );
-+@@ -279,10 +279,10 @@ int GalApp::Main()
-+     bool bHelp = false;
-+     rtl::OUString aPath, aDestDir;
-+     rtl::OUString aName(RTL_CONSTASCII_USTRINGPARAM("Default name"));
-+-    UINT32 nNumFrom = 0;
-++    sal_uInt32 nNumFrom = 0;
-+     FileNameList aFiles;
-+ 
-+-    for( USHORT i = 0; i < GetCommandLineParamCount(); i++ )
-++    for( sal_uInt16 i = 0; i < GetCommandLineParamCount(); i++ )
-+     {
-+         rtl::OUString aParam = GetCommandLineParam( i );
-+ 
-+--- svx/Module_svx.mk.old	2011-05-19 12:27:42.000000000 +0200
-++++ svx/Module_svx.mk	2011-08-04 17:38:49.000000000 +0200
-+@@ -37,6 +37,8 @@ $(eval $(call gb_Module_add_targets,svx,
-+     AllLangResTarget_textconversiondlgs \
-+     Package_inc \
-+     Package_sdi \
-++    Package_gengal \
-++    Executable_gengal.bin \
-+ ))
-+ 
-+ $(eval $(call gb_Module_add_subsequentcheck_targets,svx,\
-+--- svx/Executable_gengal.bin.mk.old	2011-08-04 14:29:39.000000000 +0200
-++++ svx/Executable_gengal.bin.mk	2011-08-04 17:38:02.000000000 +0200
-+@@ -0,0 +1,78 @@
-++#*************************************************************************
-++#
-++# DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
-++# 
-++# Copyright 2000, 2010 Oracle and/or its affiliates.
-++#
-++# OpenOffice.org - a multi-platform office productivity suite
-++#
-++# This file is part of OpenOffice.org.
-++#
-++# OpenOffice.org is free software: you can redistribute it and/or modify
-++# it under the terms of the GNU Lesser General Public License version 3
-++# only, as published by the Free Software Foundation.
-++#
-++# OpenOffice.org is distributed in the hope that it will be useful,
-++# but WITHOUT ANY WARRANTY; without even the implied warranty of
-++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.	See the
-++# GNU Lesser General Public License version 3 for more details
-++# (a copy is included in the LICENSE file that accompanied this code).
-++#
-++# You should have received a copy of the GNU Lesser General Public License
-++# version 3 along with OpenOffice.org.	If not, see
-++# <http://www.openoffice.org/license.html>
-++# for a copy of the LGPLv3 License.
-++#
-++#*************************************************************************
-++
-++$(eval $(call gb_Executable_Executable,gengal.bin))
-++
-++$(eval $(call gb_Executable_set_include,gengal.bin,\
-++    $$(INCLUDE) \
-++    -I$(SRCDIR)/svx/inc/ \
-++    -I$(SRCDIR)/svx/inc/pch \
-++    -I$(OUTDIR)/inc/offuh \
-++))
-++
-++$(eval $(call gb_Executable_set_cxxflags,gengal.bin,\
-++    $$(CXXFLAGS) \
-++))
-++
-++$(eval $(call gb_Executable_add_linked_libs,gengal.bin,\
-++    sal \
-++    tl \
-++    svl \
-++    comphelper \
-++    cppu \
-++    cppuhelper \
-++    vcl \
-++    ucbhelper \
-++    svxcore \
-++))
-++
-++$(eval $(call gb_Executable_add_exception_objects,gengal.bin,\
-++    svx/source/gengal/gengal \
-++))
-++
-++$(eval $(call gb_Executable_add_linked_static_libs,gengal.bin,\
-++    vclmain \
-++))
-++
-++ifeq ($(OS),WNT)
-++$(eval $(call gb_Executable_add_linked_libs,gengal.bin,\
-++    kernel32 \
-++    msvcrt \
-++    oldnames \
-++    user32 \
-++    uwinapi \
-++))
-++endif
-++
-++ifeq ($(OS),LINUX)
-++$(eval $(call gb_Executable_add_linked_libs,gengal.bin,\
-++    dl \
-++    pthread \
-++))
-++endif
-++
-++# vim: set noet sw=4 ts=4:
-+--- svx/Package_gengal.mk.old	2011-08-04 17:36:37.000000000 +0200
-++++ svx/Package_gengal.mk	2011-08-04 17:38:29.000000000 +0200
-+@@ -0,0 +1,32 @@
-++#*************************************************************************
-++#
-++# DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
-++# 
-++# Copyright 2000, 2011 Oracle and/or its affiliates.
-++#
-++# OpenOffice.org - a multi-platform office productivity suite
-++#
-++# This file is part of OpenOffice.org.
-++#
-++# OpenOffice.org is free software: you can redistribute it and/or modify
-++# it under the terms of the GNU Lesser General Public License version 3
-++# only, as published by the Free Software Foundation.
-++#
-++# OpenOffice.org is distributed in the hope that it will be useful,
-++# but WITHOUT ANY WARRANTY; without even the implied warranty of
-++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-++# GNU Lesser General Public License version 3 for more details
-++# (a copy is included in the LICENSE file that accompanied this code).
-++#
-++# You should have received a copy of the GNU Lesser General Public License
-++# version 3 along with OpenOffice.org.  If not, see
-++# <http://www.openoffice.org/license.html>
-++# for a copy of the LGPLv3 License.
-++#
-++#*************************************************************************
-++
-++$(eval $(call gb_Package_Package,svx_gengal,$(SRCDIR)/svx/source/gengal))
-++$(eval $(call gb_Package_add_file,svx_gengal,bin/gengalrc,gengalrc.in))
-++$(eval $(call gb_Package_add_file,svx_gengal,bin/gengal,gengal.sh))
-++
-++# vim: set noet ts=4 sw=4:
-+--- scp2/source/ooo/file_ooo.scp.old	2011-08-04 13:43:31.000000000 +0200
-++++ scp2/source/ooo/file_ooo.scp	2011-08-04 20:04:29.000000000 +0200
-+@@ -135,6 +135,35 @@ End
-+ #endif
-+ #endif
-+ 
-++File gid_File_Bin_Gengal
-++    BIN_FILE_BODY;
-++    Dir = gid_Brand_Dir_Program;
-++    Styles = (PACKED);
-++  #ifdef UNX
-++    Name = "gengal.bin";
-++  #else
-++    Name = "gengal.exe";
-++  #endif
-++End
-++
-++#ifdef UNX
-++
-++File gid_File_Script_Gengal
-++    BIN_FILE_BODY;
-++    Dir = gid_Brand_Dir_Program;
-++    Styles = (PACKED);
-++    Name = "gengal";
-++End
-++
-++#endif
-++
-++File gid_File_Profile_Gengal
-++    BIN_FILE_BODY;
-++    Dir = gid_Brand_Dir_Program;
-++    Styles = (PACKED);
-++    Name = PROFILENAME(gengal);
-++End
-++
-+ #if !defined(WITHOUT_MOZILLA) && defined(UNX) && !defined(QUARTZ)
-+ 
-+ File gid_File_Bin_Pluginapp
