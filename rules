@@ -83,8 +83,8 @@ MWS=OOO340
 MILESTONE=m1
 TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
 GIT_TAG=$(MWS)_$(MILESTONE)
-OOO_BUILD_BRANCH=libreoffice-3-4-1
-OOO_BUILD_VERSION=3.4.1.3
+OOO_BUILD_BRANCH=libreoffice-3-4-2
+OOO_BUILD_VERSION=3.4.2.3
 # in ooo-build releases the same as OOO_BUILD_VERSION
 OOO_BUILD_TARBALL_VERSION=$(OOO_BUILD_VERSION)
 OOO_BUILD_TAG=libreoffice-$(OOO_BUILD_TARBALL_VERSION)
@@ -136,7 +136,7 @@ BUILD_ONLY_EN_US=n
 ENABLE_JAVA=y
 ifeq "$(ENABLE_JAVA)" "y"
   JDK=openjdk
-  ifneq (,$(filter hppa ia64 kfreebsd%, $(ARCH)))
+  ifneq (,$(filter hppa ia64 kfreebsd% mipsel, $(ARCH)))
     JDK=gcj-jdk
   endif
 endif
@@ -254,8 +254,7 @@ else
   ENABLE_REPORTDESIGN=n
   ENABLE_MEDIAWIKI=n
 endif
-# NOTE: if enabling this, disable debian/patches/disable-sdbc-postgresql.diff!
-ENABLE_SDBC_POSTGRESQL=n
+ENABLE_SDBC_POSTGRESQL=y
 ENABLE_MINIMIZER=y
 ENABLE_PRESENTER_CONSOLE=y
 ENABLE_PDFIMPORT=y
@@ -272,7 +271,7 @@ ifeq "$(BUILD_GTK)" "y"
 endif
 PACKAGE_BASE=y
 ENABLE_GRAPHITE=y
-#SYSTEM_STUFF += graphite
+SYSTEM_STUFF += graphite
 ALLOC=system
 SYSTEM_STUFF += libtextcat
 USE_SYSTEM_TEXTCAT_DATA=y
@@ -291,8 +290,6 @@ MYSQLCPPCONN_MINVER= (>= 1.1.0~r791)
 DICT_DIR=/usr/share/hunspell
 HYPH_DIR=/usr/share/hyphen
 THES_DIR=/usr/share/mythes
-
-USE_BZIP_COMPRESS=y
 
 # Default flags to pass to configure of ooo-build
 CONFIGURE_FLAGS= --disable-post-install-scripts \
@@ -365,7 +362,7 @@ $(eval $(call gen_no_archs,OOO_JAVA_ARCHS))
 OOO_GCJ_ARCHS = $(filter-out powerpc powerpcspe ppc64, $(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs,OOO_GCJ_ARCHS))
 
-OOO_GCJ_JDK_ARCHS := hppa ia64 kfreebsd-i386 kfreebsd-amd64
+OOO_GCJ_JDK_ARCHS := hppa ia64 kfreebsd-i386 kfreebsd-amd64 mipsel
 OOO_OPENJDK_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs,OOO_OPENJDK_ARCHS))
 
@@ -460,6 +457,7 @@ ifeq "$(DIST)" "Ubuntu"
   IMAGES += human
   ON_BUILDD_VERBOSITY := true
   PATCHSET=Ubuntu
+  ENABLE_LOMENUBAR:=n # lp#725250 MIR lo-menubar
 
   USE_LZMA_COMPRESS=$(if $(filter-out armel,$(ARCH)),y,n)
 
@@ -483,11 +481,16 @@ ifeq "$(DIST)" "Ubuntu"
   SYSTEM_STUFF := $(filter-out lucene, $(SYSTEM_STUFF))
   SYSTEM_STUFF := $(filter-out graphite, $(SYSTEM_STUFF))
 
+  ifeq ($(ENABLE_LOMENUBAR),y)
+    CONFIGURE_FLAGS += --enable-lomenubar
+  endif
   # FIXME: smoketest fails, but we need the indep packages for the other archs
   # disabling for all archs to get rid of epm dependency
   RUN_SMOKETEST=n
+  # sdbc is still broken here
   # enable building of sdbc_postgresql on natty even though it is broken, because we
   # otherwise get a NBS
+  ENABLE_SDBC_POSTGRESQL=n
   ifeq ($(DISTREL),natty)
     ENABLE_SDBC_POSTGRESQL=y
   endif
@@ -515,7 +518,7 @@ ifeq "$(GCC_VERSION)" ""
       ifneq "$(SYSTEM_GCC_VERSION)" "$(GCJ_JDK_VERSION)"
         BUILD_DEPS += , gcc-$(GCJ_JDK_VERSION) [$(OOO_GCJ_JDK_ARCHS)], g++-$(GCJ_JDK_VERSION) [$(OOO_GCJ_JDK_ARCHS)]
         ifeq ($(ARCH),$(findstring $(ARCH),$(OOO_GCJ_JDK_ARCHS)))
-	# sanity check. amd64 is in kfreebsd-amd64; same for i386
+	# sanity check. amd64 is in kfreebsd-amd64; same for i386 and mips
           ifneq ($(ARCH),$(findstring $(ARCH),$(OOO_OPENJDK_ARCHS)))
           GCC_VERSION := $(GCJ_JDK_VERSION)
           else
@@ -539,10 +542,7 @@ ifeq "$(USE_SOURCE_TARBALLS)" "n"
 	BUILD_DEPS += , git, rsync
 endif
 
-ifeq "$(USE_BZIP_COMPRESS)" "y"
-	DPKG_DEPENDS = dpkg (>= 1.10.24)
 	BUILDDEB_OPTIONS = -- -Zbzip2
-endif
 
 ifeq "$(USE_LZMA_COMPRESS)" "y"
        DPKG_DEPENDS = dpkg (>= 1.14.12ubuntu3)
@@ -575,9 +575,19 @@ ifeq "$(ENABLE_PDFIMPORT)" "y"
 	BUILD_DEPS += , libpoppler-dev (>= 0.8.0)
 endif
 
+# fails their tests
+ifeq "$(ARCH)" "armel"
+ENABLE_GRAPHITE=n
+SYSTEM_STUFF := $(filter-out graphite, $(SYSTEM_STUFF))
+endif
+ifeq "$(ARCH)" "sparc"
+ENABLE_GRAPHITE=n
+SYSTEM_STUFF := $(filter-out graphite, $(SYSTEM_STUFF))
+endif
+
 ifeq "$(ENABLE_GRAPHITE)" "y"
   ifneq (,$(filter graphite, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libgraphite2-dev (>= 0.9.3)
+	BUILD_DEPS += , libgraphite2-dev (>= 0.9.3) [!armel !sparc]
   endif
 else
 	CONFIGURE_FLAGS += --disable-graphite
@@ -610,9 +620,10 @@ ifneq "$(BUILD_DBG_PACKAGE)" "y"
 	# build with small symbols anyway
 	SMALL_SYMBOLS = y
 else
-  # -g gives a far too big deb (>400M, ca. 1GB I-S)
   ifeq (debug,$(findstring debug,$(DEB_BUILD_OPTIONS)))
 	SMALL_SYMBOLS = n
+	# reduces -dbg size from 760M to ~320M
+        USE_XZ_COMPRESS = y
   else
 	SMALL_SYMBOLS = y
   endif
@@ -635,6 +646,15 @@ endif
 
 ifeq (noopt,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
 	ARCH_FLAGS += -O0
+endif
+
+ifeq "$(USE_XZ_COMPRESS)" "y"
+	# used only for -dbg yet, so disabled and done manually
+	# in binary-arch
+	#BUILDDEB_OPTIONS = -- -Zxz
+	BUILD_DEPS += , dpkg-dev (>= 1.15.6)
+else
+	BUILD_DEPS += , dpkg-dev (>= 1.15.1)
 endif
 
 # Build python depends from current python version
@@ -1844,6 +1864,14 @@ endif
 		PATH=$(BUILD_PATH) DPKG="dpkg" PKGFORMAT="deb" NO_PKG_MANGLE=go-away \
 		../solenv/bin/build.pl && ../solenv/bin/deliver.pl
 
+ifeq "$(PACKAGE_SDK)" "y"
+	# build gengal...
+	cd $(SOURCE_TREE)/svx/source/gengal; \
+		. $(CURDIR)/$(SOURCE_TREE)/*Env*.sh; \
+		PATH=$(BUILD_PATH) \
+		dmake
+endif
+
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 	$(CURDIR)/debian/rules test
 endif
@@ -2081,18 +2109,6 @@ ifeq "$(BUILD_GTK)" "y"
 	mv $(PKGDIR)-common/$(OODIR)/share/registry/gnome.xcd \
 		$(PKGDIR)-gnome/$(OODIR)/share/registry
 endif
-
-#ifeq "$(PACKAGE_SDK)" "y"
-#	# move gengal stuff into -dev
-#	mkdir -p $(PKGDIR)-dev/$(OODIR)/program
-#	mv $(PKGDIR)-core/$(OODIR)/program/gengal* \
-#		$(PKGDIR)-dev/$(OODIR)/program
-#	mv $(PKGDIR)-common/$(OODIR)/program/gengal  \
-#		$(PKGDIR)-dev/$(OODIR)/program
-#else
-#	rm -f $(PKGDIR)-core/$(OODIR)/program/gengal*
-#	rm -f $(PKGDIR)-common/$(OODIR)/program/gengal
-#endif
 
 ifeq "$(PACKAGE_SDK)" "y"
 	# move SDK documentation into own package
@@ -2845,6 +2861,15 @@ endif
 	ln -s /var/lib/$(OODIRNAME)/basis$(OOVER)/program/services.rdb \
 		$(PKGDIR)-core/usr/lib/$(OODIRNAME)/basis$(OOVER)/program/services.rdb
 
+ifeq "$(PACKAGE_SDK)" "y"
+	# install gengal stuff into -dev
+	mkdir -p $(PKGDIR)-dev/$(OODIR)/program
+	install -m755 $(SOURCE_TREE)/svx/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/bin/gengal \
+		$(PKGDIR)-dev/$(OODIR)/program/gengal
+	install -m755 $(SOURCE_TREE)/svx/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/bin/gengal.bin \
+		$(PKGDIR)-dev/$(OODIR)/program/gengal.bin
+endif
+
 	for i in $(ARCH_DEP_PACKAGES); do \
 		if [ -e debian/$$i.bug-script.in ]; then \
 			cat debian/$$i.bug-script.in \
@@ -3300,11 +3325,6 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	perl -pi -e "s/Icon=openofficeorg.*-extension/Icon=application-vnd.openofficeorg.extension.png/" $(PKGDIR)-common/usr/share/mimelnk/application/vnd.openofficeorg.extension.desktop
 endif
 
-#ifeq "$(PACKAGE_SDK)" "y"
-#	# fix permission
-#	chmod 644 $(PKGDIR)-common/$(OODIR)/program/gengalrc
-#endif
-
 	# install extension shell lib for use by extensions not from here
 	install -D -m644 debian/shell-lib-extensions.sh \
 		$(PKGDIR)-common/usr/share/$(OODIRNAME)/shell-lib-extensions.sh
@@ -3345,6 +3365,13 @@ endif
 
 	# register technical.dic
 	perl -pi -e 's/standard.dic;/standard.dic;technical.dic;/' $(PKGDIR)-common/$(OODIR)/share/registry/main.xcd
+
+ifeq "$(PACKAGE_SDK)" "y"
+	# install gengal stuff into -dev
+	mkdir -p $(PKGDIR)-dev/$(OODIR)/program
+	install -m644 $(SOURCE_TREE)/svx/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/bin/gengalrc \
+		$(PKGDIR)-common/$(OODIR)/program/gengalrc
+endif
 
 endif # ifneq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
 
@@ -3566,7 +3593,12 @@ endif
 		-V"ure:Version=`echo $(BINARY_VERSION) | cut -d: -f2`" \
 		-v"`echo $(BINARY_VERSION) | cut -d: -f2`"
 	dh_md5sums -s
+ifeq "$(USE_XZ_COMPRESS)" "y"
+	dh_builddeb -plibreoffice$(VER)-dbg -s $(DEBHELPER_OPTIONS) $(filter-out -Zbzip2,$(BUILDDEB_OPTIONS)) -Zxz
+	dh_builddeb -Nlibreoffice$(VER)-dbg -s $(DEBHELPER_OPTIONS) $(BUILDDEB_OPTIONS)
+else
 	dh_builddeb -s $(DEBHELPER_OPTIONS) $(BUILDDEB_OPTIONS)
+endif
 
 	touch $@
 endif # binary-arch for openoffice.org source
