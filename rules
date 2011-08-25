@@ -292,7 +292,7 @@ HYPH_DIR=/usr/share/hyphen
 THES_DIR=/usr/share/mythes
 
 # Default flags to pass to configure of ooo-build
-CONFIGURE_FLAGS= --disable-post-install-scripts \
+CONFIGURE_FLAGS:= --disable-post-install-scripts \
                  --with-tag=$(TAG) \
                 --with-distro=$(PATCHSET) \
 		--with-vendor='$(OOO_VENDOR)' \
@@ -481,6 +481,10 @@ ifeq "$(DIST)" "Ubuntu"
   SYSTEM_STUFF := $(filter-out lucene, $(SYSTEM_STUFF))
   SYSTEM_STUFF := $(filter-out graphite, $(SYSTEM_STUFF))
 
+  ifeq ($(ARCH),armel)
+    INTERNAL_STDLIBS=y
+  endif
+
   # FIXME: smoketest fails, but we need the indep packages for the other archs
   # disabling for all archs to get rid of epm dependency
   RUN_SMOKETEST=n
@@ -570,6 +574,11 @@ endif
 ifeq "$(ENABLE_PDFIMPORT)" "y"
 	CONFIGURE_FLAGS += --enable-ext-pdfimport
 	BUILD_DEPS += , libpoppler-dev (>= 0.8.0)
+endif
+
+ifeq "$(INTERNAL_STDLIBS)" "y"
+    CONFIGURE_FLAGS:=$(patsubst --with-system-stdlibs,--without-system-stdlibs,$(CONFIGURE_FLAGS))
+    SYSTEM_STUFF := $(filter-out stdlibs,$(SYSTEM_STUFF))
 endif
 
 # fails their tests
@@ -2725,18 +2734,6 @@ ifeq "$(PACKAGE_SDK)" "y"
 
 endif
 
-ifeq "$(INTERNAL_STDLIBS)" "y"
-	# we have to do this manually; specifying --without-system-stdlibs
-	# won't work because the odering of the configure arguments...
-	LIBSTDCPP=`readlink `PATH=$(BUILD_PATH) g++ --print-file-name=libstdc++.so``; \
-	LIBGCC=`readlink `PATH=$(BUILD_PATH) gcc --print-file-name=libgcc_s.so``; \
-	LIBSTDCPP_SOVER=`echo $$LIBSTDCPP | sed -e 's/.*\.//'`; \
-	LIBGCC_SOVER=`echo $$LIBGCC | sed -e 's/.*\.//'`; \
-	cp $$LIBSTDCPP debian/ure/$(OOUREDIR)/lib; \
-	cp $$LIBGCC debian/ure/$(OOUREDIR)/lib; \
-	echo "libstdc++	$$LIBSTDCPP_SOVER" > debian/shlibs.override.stdlibs; \
-	echo "libgcc_s	$$LIBGCC_SOVER" >> debian/shlibs.override.stdlibs
-endif
 ifeq "$(LINK_TO_STLPORT)" "y"
 	rm -f debian/ure/$(OOUREDIR)/lib/libstlport*
 	ln -s `readlink -f /usr/lib/libstlport_gcc.so` \
