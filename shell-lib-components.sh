@@ -40,3 +40,25 @@ register_to_services_rdb() {
   rdb="`echo /@OOBASISDIR@/program | sed -e s/usr/var/`/services.rdb"
   /usr/lib/ure/bin/regcomp -register -r $rdb -br $rdb -c file://$1
 }
+
+update_services_rdb() {
+	if [ -f /@OOBASISDIR@/program/.services.rdb ]; then
+		echo "Updating services.rdb..."
+		rdb="`echo /@OOBASISDIR@/program | sed -e s/usr/var/`/services.rdb"
+		if [ -d /@OOBASISDIR@/registered-components ]; then
+			cat /@OOBASISDIR@/program/.services.rdb \
+				| sed -e "s#</components>##" \
+				> $rdb
+			for c in /@OOBASISDIR@/registered-components/*.component; do \
+				tail -n 1 $c \
+				| sed -e 's#<component xmlns="http://openoffice.org/2010/uno-components"#<component#'\
+				>> $rdb; \
+			done
+			perl -pi -e "s/\n//" $rdb
+			sed -i 's#$#</components>#' $rdb
+		else
+			cp /@OOBASISDIR@/program/.services.rdb $rdb
+		fi
+		echo "done."
+	fi
+}

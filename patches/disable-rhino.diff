@@ -1,11 +1,11 @@
 --- /dev/null	2011-06-27 18:29:01.643585831 +0000
 +++ libreoffice-3.4.0/libreoffice-build/patches/dev300/disable-rhino.diff	2011-06-28 11:09:55.000000000 +0000
-@@ -0,0 +1,901 @@
+@@ -0,0 +1,857 @@
 +--- scripting/prj/build.lst-old	2011-06-27 20:07:54.000000000 +0000
 ++++ scripting/prj/build.lst	2011-06-27 20:06:28.000000000 +0000
 +@@ -1,4 +1,4 @@
-+-tc	scripting	:	filter oovbaapi vbahelper bridges rdbmaker vcl xmlscript basic sfx2 rhino BSH:beanshell javaunohelper NULL
-++tc	scripting	:	filter oovbaapi vbahelper bridges rdbmaker vcl xmlscript basic sfx2 BSH:beanshell javaunohelper NULL
++-tc	scripting	:	filter oovbaapi vbahelper bridges rdbmaker vcl xmlscript basic sfx2 rhino BSH:beanshell javaunohelper LIBXSLT:libxslt NULL
+++tc	scripting	:	filter oovbaapi vbahelper bridges rdbmaker vcl xmlscript basic sfx2 BSH:beanshell javaunohelper LIBXSLT:libxslt NULL
 + tc	scripting									usr1	-	all	tc1_mkout NULL
 + tc	scripting\inc								nmake	-	all	tc1_inc NULL
 + tc	scripting\source\provider				nmake	-	all	tc1_scriptingprovider tc1_inc NULL
@@ -53,7 +53,7 @@
 +diff -urN scripting-old//java/com/sun/star/script/framework/provider/javascript/ScriptEditorForJavaScript.java scripting/java/com/sun/star/script/framework/provider/javascript/ScriptEditorForJavaScript.java
 +--- scripting-old//java/com/sun/star/script/framework/provider/javascript/ScriptEditorForJavaScript.java	2011-06-28 08:26:37.000000000 +0000
 ++++ scripting/java/com/sun/star/script/framework/provider/javascript/ScriptEditorForJavaScript.java	1970-01-01 00:00:00.000000000 +0000
-+@@ -1,376 +0,0 @@
++@@ -1,351 +0,0 @@
 +-/*************************************************************************
 +- *
 +- * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
@@ -92,6 +92,7 @@
 +-import com.sun.star.script.provider.XScriptContext;
 +-import com.sun.star.script.framework.container.ScriptMetaData;
 +-import com.sun.star.script.framework.provider.ScriptEditor;
++-import com.sun.star.script.framework.provider.SwingInvocation;
 +-import com.sun.star.script.framework.log.LogUtils;
 +-
 +-import java.io.InputStream;
@@ -101,7 +102,6 @@
 +-import java.util.Map;
 +-import java.util.HashMap;
 +-
-+-import javax.swing.SwingUtilities;
 +-import java.awt.event.WindowAdapter;
 +-import java.awt.event.WindowEvent;
 +-
@@ -173,7 +173,9 @@
 +-     */
 +-    public static ScriptEditorForJavaScript getEditor(URL url)
 +-    {
-+-        return (ScriptEditorForJavaScript)BEING_EDITED.get(url);
++-        synchronized (BEING_EDITED) {
++-            return (ScriptEditorForJavaScript)BEING_EDITED.get(url);
++-        }
 +-    }
 +-
 +-    /**
@@ -243,31 +245,25 @@
 +-                sUrl += "/";
 +-            }
 +-            sUrl +=  entry.getLanguageName();
-+-            URL url = entry.getSourceURL();
-+-
-+-            // check if there is already an editing session for this script
-+-            //if (BEING_EDITED.containsKey(url))
-+-            if ( rhinoWindow != null  )
-+-            {
-+-                ScriptEditorForJavaScript editor =
-+-                    (ScriptEditorForJavaScript) BEING_EDITED.get(url);
-+-                if ( editor == null )
-+-                {
-+-                    editor = new ScriptEditorForJavaScript( context, url );
-+-                    editor.edit( context, entry );
-+-                }
-+-                else
-+-                {
-+-                    rhinoWindow.showScriptWindow( url );
-+-                }
-+-            }
-+-            else
-+-            {
-+-                ScriptEditorForJavaScript editor =
-+-                    new ScriptEditorForJavaScript( context, url );
-+-                
-+-            }
-+-            rhinoWindow.toFront();
++-            final URL url = entry.getSourceURL();
++-            SwingInvocation.invoke(
++-                new Runnable() {
++-                    public void run() {
++-                        synchronized (BEING_EDITED) {
++-                            ScriptEditorForJavaScript editor =
++-                                (ScriptEditorForJavaScript) BEING_EDITED.get(
++-                                    url);
++-                            if (editor == null) {
++-                                editor = new ScriptEditorForJavaScript(
++-                                    context, url);
++-                                BEING_EDITED.put(url, editor);
++-                            }
++-                        }
++-                        assert rhinoWindow != null;
++-                        rhinoWindow.showScriptWindow(url);
++-                        rhinoWindow.toFront();
++-                    }
++-                });
 +-        }
 +-        catch ( IOException e )
 +-        {
@@ -290,11 +286,6 @@
 +-
 +-
 +-        this.scriptURL = url;
-+-        synchronized( ScriptEditorForJavaScript.class )
-+-        {
-+-            BEING_EDITED.put(url, this);
-+-        }
-+-
 +-    }
 +-
 +-    /**
@@ -310,7 +301,7 @@
 +-    }
 +-
 +-    /**
-+-     *  Indicates the line where error occured 
++-     *  Indicates the line where error occurred 
 +-     *
 +-     */
 +-    public void indicateErrorLine( int lineNum )
@@ -330,13 +321,9 @@
 +-                }
 +-                
 +-                final Main sdb = new Main("Rhino JavaScript Debugger");
-+-                swingInvoke(new Runnable() {
-+-                    public void run() {
-+-                        sdb.pack();
-+-                        sdb.setSize(640, 640);
-+-                        sdb.setVisible(true);
-+-                    }
-+-                    });
++-                sdb.pack();
++-                sdb.setSize(640, 640);
++-                sdb.setVisible(true);
 +-                sdb.setExitAction(new Runnable() {
 +-                    public void run() {
 +-                        sdb.clearAllBreakpoints();
@@ -357,18 +344,6 @@
 +-                });
 +-                this.rhinoWindow = sdb;
 +-            }
-+-        } catch (Exception exc) {
-+-            LogUtils.DEBUG( LogUtils.getTrace( exc ) );
-+-        }
-+-    }
-+-
-+-    private static void swingInvoke(Runnable f) {
-+-        if (SwingUtilities.isEventDispatchThread()) {
-+-            f.run();
-+-            return;
-+-        }
-+-        try {
-+-            SwingUtilities.invokeAndWait(f);
 +-        } catch (Exception exc) {
 +-            LogUtils.DEBUG( LogUtils.getTrace( exc ) );
 +-        }
@@ -870,25 +845,6 @@
 +diff -urN scp2-old//source/ooo/file_ooo.scp scp2/source/ooo/file_ooo.scp
 +--- scp2-old//source/ooo/file_ooo.scp	2011-06-28 08:32:41.000000000 +0000
 ++++ scp2/source/ooo/file_ooo.scp	2011-06-28 08:33:19.000000000 +0000
-+@@ -453,10 +453,6 @@
-+ #endif
-+ 
-+ #ifdef SOLAR_JAVA
-+-STD_JAR_FILE( gid_File_Jar_Js, js )
-+-#endif
-+-
-+-#ifdef SOLAR_JAVA
-+ 
-+ #ifndef MACOSX
-+ 
-+@@ -503,7 +499,6 @@
-+ UNO_JAR_FILE( gid_File_Jar_Scriptframework, ScriptFramework )
-+ UNO_JAR_FILE( gid_File_Jar_Scriptproviderforbeanshell, ScriptProviderForBeanShell )
-+ UNO_JAR_FILE( gid_File_Jar_Scriptproviderforjava, ScriptProviderForJava )
-+-UNO_JAR_FILE( gid_File_Jar_Scriptproviderforjavascript, ScriptProviderForJavaScript )
-+ #endif
-+ 
-+ #ifdef SOLAR_JAVA
 +@@ -1261,12 +1256,6 @@
 + End
 + #endif
@@ -904,9 +860,10 @@
 +     TXT_FILE_BODY;
 --- libreoffice-3.4.0/libreoffice-build/patches/dev300/apply-old	2011-06-28 11:17:59.000000000 +0000
 +++ libreoffice-3.4.0/libreoffice-build/patches/dev300/apply	2011-06-28 11:18:15.000000000 +0000
-@@ -2390,3 +2390,5 @@
- [ Gcc46 ]
- gcc4.6.0.diff
- 
+@@ -1415,3 +1415,6 @@
+ sd_effects_styles.diff, pixie
+ symbols-20-august.diff, i#11167, jopsen
+ vEdit-13-August.diff, jopsen
++
 +[ TemporaryHacks ]
 +disable-rhino.diff
