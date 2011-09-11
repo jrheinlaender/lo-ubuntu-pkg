@@ -1243,7 +1243,7 @@ clean-debdir:
 # Clean compilation results, but leave solver (about 600Mb in addition to instsetoo)
 clean-objectdirs: clean-instsetoo
 	dh_testdir
-	find $(SOURCE_TREE) -maxdepth 2 -name $(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT) -type d -exec rm -rf {} \;
+	find $(SOURCE_TREE) -maxdepth 2 -name $(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT) -type d -exec rm -rf {} \;
 
 clean:
 	dh_testroot
@@ -1754,7 +1754,7 @@ endif
 	# DPKG is only set on with-EPM build what we don't do and the menu stuff
 	# is only built wenn DPKG is set.. Same with PKGFORMAT.
 	cd $(SOURCE_TREE)/sysui; \
-		. $(CURDIR)/$(SOURCE_TREE)/*Env*.sh; \
+		. $(CURDIR)/$(SOURCE_TREE)/Env.Host.sh; \
 		PATH=$(BUILD_PATH) DPKG="dpkg" PKGFORMAT="deb" NO_PKG_MANGLE=go-away \
 		../solenv/bin/build.pl && ../solenv/bin/deliver.pl
 
@@ -1774,9 +1774,9 @@ endif
 
 test: 
 	# some test library needed for the tests...
-	if [ ! -f $(SOURCE_TREE)/test/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/lib/libtest.so ]; then \
+	if [ ! -f $(SOURCE_TREE)/test/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/lib/libtest.so ]; then \
 		cd $(SOURCE_TREE)/test && \
-			. $(CURDIR)/$(SOURCE_TREE)/*Env*.sh; \
+			. $(CURDIR)/$(SOURCE_TREE)/Env.Host.sh; \
 			export PATH=$(BUILD_PATH); \
 			../solenv/bin/build.pl; \
 			../solenv/bin/deliver.pl; \
@@ -1784,9 +1784,9 @@ test:
 ifeq "$(RUN_SMOKETEST)" "y"
 	# sigh. the new smoketest needs a archive/install/en-US/OOo_*_install_*.tar.gz
 	# build it.
-	if [ ! -d $(SOURCE_TREE)/instsetoo_native/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/OpenOffice/archive/install/en-US ]; then \
+	if [ ! -d $(SOURCE_TREE)/instsetoo_native/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/OpenOffice/archive/install/en-US ]; then \
 		cd $(SOURCE_TREE)/instsetoo_native/util && \
-			. $(CURDIR)/$(SOURCE_TREE)/*Env*.sh; \
+			. $(CURDIR)/$(SOURCE_TREE)/Env.Host.sh; \
 			export PATH=$(BUILD_PATH); \
 			EPM=yes PKGFORMAT=archive WITH_LANG="en-US" dmake openoffice; \
 	fi
@@ -1796,7 +1796,7 @@ ifeq "$(ARCH)" "armel"
 		patch -p1 < $(CURDIR)/debian/smoketest/patches/smoketest-disable-db-insert-delete-seek-tests.diff
 endif
 	cd $(SOURCE_TREE)/smoketestoo_native && \
-		. $(CURDIR)/$(SOURCE_TREE)/*Env*.sh; \
+		. $(CURDIR)/$(SOURCE_TREE)/Env.Host.sh; \
 		export PATH=$(BUILD_PATH); \
 		export TMPDIR=$(CURDIR)/debian/smoketest; \
 		export JAVA_HOME=$(TEST_JAVA_HOME); \
@@ -1814,7 +1814,7 @@ endif
 ifeq "$(RUN_SUBSEQUENT_TESTS)" "y"
 	cd $(SOURCE_TREE) && \
 		export PATH=$(BUILD_PATH); \
-		. $(CURDIR)/$(SOURCE_TREE)/*Env*.sh; \
+		. $(CURDIR)/$(SOURCE_TREE)/Env.Host.sh; \
 		chmod 755 solenv/bin/subsequenttests && \
 		solenv/bin/subsequenttests
 endif
@@ -1837,7 +1837,7 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/build
 	# /usr/lib/libfakeroot anymore, causiong loads of ERROR:'s from
 	# ld.so. Set LD_PRELOAD to the full path here manually.
 	cd $(SOURCE_TREE)/; \
-		 . $(CURDIR)/$(SOURCE_TREE)/*Env*.sh; \
+		 . $(CURDIR)/$(SOURCE_TREE)/Env.Host.sh; \
 		 PATH=$(BUILD_PATH) \
 		 LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(BUILD_LD_LIBRARY_PATH)" \
 		 LD_PRELOAD=/usr/lib/libfakeroot/libfakeroot-$(shell update-alternatives --query fakeroot | grep Value: | cut -d"-" -f2).so \
@@ -2035,7 +2035,7 @@ endif
 #
 # Generate maintainer scripts
 maintscripts: $(STAMP_DIR)/maintscripts
-$(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*Env*.sh) $(wildcard debian/*.preinst.in) $(wildcard debian/*.postinst.in) $(wildcard debian/*.prerm.in) $(wildcard debian/*.postrm.in) debian/scripts/vars.$(ARCH) debian/control
+$(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*.sh) $(wildcard debian/*.preinst.in) $(wildcard debian/*.postinst.in) $(wildcard debian/*.prerm.in) $(wildcard debian/*.postrm.in) debian/scripts/vars.$(ARCH) debian/control
 	dh_testdir
 
 	rm -f debian/*.{pre,post}{inst,rm}
@@ -2272,7 +2272,7 @@ ifeq "$(ENABLE_KDEAB)" "y"
 	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-kab/$(OODIR)/program || exit 1 ;\
 	done
         mkdir -p $(PKGDIR)-kab/$(OODIR)/registered-components
-        install -m644 $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$UPD/$$OUTPATH$$PROEXT)/xml/kab1.component \
+        install -m644 $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$UPD/$$OUTPATH$$PROEXT)/xml/kab1.component \
                 $(PKGDIR)-kab/$(OODIR)/registered-components/kab1.component
 endif
 
@@ -2313,14 +2313,14 @@ ifeq "$(ENABLE_EVO2)" "y"
 	mkdir -p -m755 $(PKGDIR)-evolution/$(OODIR)/program
 	mv $(PKGDIR)-core/$(OODIR)/program/libevoab*.so $(PKGDIR)-evolution/$(OODIR)/program
 	mkdir -p $(PKGDIR)-evolution/$(OODIR)/registered-components
-	install -m644 $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$UPD/$$OUTPATH$$PROEXT)/xml/evoab.component \
+	install -m644 $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$UPD/$$OUTPATH$$PROEXT)/xml/evoab.component \
 		$(PKGDIR)-evolution/$(OODIR)/registered-components/evoab.component
 endif
 
 ifeq "$(BUILD_BINFILTERS)" "y"
 	mkdir -p $(PKGDIR)-filter-binfilter/$(OODIR)/registered-components
 	for i in bf_migratefilter bindet; do \
-		install -m644 $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$UPD/$$OUTPATH$$PROEXT)/xml/$$i.component \
+		install -m644 $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$UPD/$$OUTPATH$$PROEXT)/xml/$$i.component \
                 $(PKGDIR)-filter-binfilter/$(OODIR)/registered-components/$$i.component; \
 	done
 endif
@@ -2410,7 +2410,7 @@ endif
 
 ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	# menu files from sysui
-	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare >/dev/null; pwd`" ;\
+	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare >/dev/null; pwd`" ;\
 	for p in writer calc impress draw math base; do \
 		mkdir -p -m755 $(PKGDIR)-$$p/usr/share/applications ;\
 		sed -e 's,Exec=$${UNIXBASISROOTNAME} \(.*\) %U,Exec=libreoffice$(VER) \1 %U,' \
@@ -2574,7 +2574,7 @@ ifeq "$(PACKAGE_SDK)" "y"
 
 	# install gsicheck into -dev
 	mkdir -p $(PKGDIR)-dev/$(OODIR)/program
-	install -m755 $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$UPD/$$OUTPATH$$PROEXT)/bin/gsicheck \
+	install -m755 $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$UPD/$$OUTPATH$$PROEXT)/bin/gsicheck \
 		$(PKGDIR)-dev/$(OODIR)/program/gsicheck.bin
 	( \
 	  echo '#! /bin/sh'; \
@@ -2631,7 +2631,7 @@ ifeq "$(PACKAGE_SDK)" "y"
   ifeq "$(ENABLE_JAVA)" "y"
 	# install the UNO Java sources for e.g. eclipse
 	mkdir -p $(CURDIR)/$(PKGDIR)-dev/usr/share/java
-	cd $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/bin && \
+	cd $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/bin && \
 		for i in juh jurt jut ridl unoloader; do \
 			cp $${i}_src.zip \
 			  $(CURDIR)/$(PKGDIR)-dev/usr/share/java; \
@@ -2685,7 +2685,7 @@ ifeq "$(ENABLE_SDBC_POSTGRESQL)" "y"
 	rm -rf $(PKGDIR)-sdbc-postgresql
 	mkdir -p $(PKGDIR)-sdbc-postgresql/$(OOBRANDDIR)/share/extensions/postgresql-sdbc-$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g)
 	cd $(PKGDIR)-sdbc-postgresql/$(OOBRANDDIR)/share/extensions/postgresql-sdbc-$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g) && \
-		unzip $(CURDIR)/$(SOURCE_TREE)/connectivity/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/lib/postgresql-sdbc-$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g).oxt 
+		unzip $(CURDIR)/$(SOURCE_TREE)/connectivity/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/lib/postgresql-sdbc-$(shell grep ^PQ_SDBC_M $(SOURCE_TREE)/connectivity/source/drivers/postgresql/makefile.mk | cut -d"=" -f2 | xargs | sed -e s/\ /\./g).oxt 
 endif
 
 ifeq "$(ENABLE_MYSQLNATIVE)" "y"
@@ -2764,7 +2764,7 @@ endif
 	rm -f $(PKGDIR)-common/$(OODIR)/program/oo_product.bmp
 
 	# Extract and install icons
-	cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/bin/desktop-integration && dpkg --extract libreoffice$(OOVER)-debian-menus_*_all.deb . && cd usr/share/icons && \
+	cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/bin/desktop-integration && dpkg --extract libreoffice$(OOVER)-debian-menus_*_all.deb . && cd usr/share/icons && \
 	rm -rf gnome locolor && \
 	for d in `find -type d`; do \
 	  install -d -m755 $(CURDIR)/$(PKGDIR)-common/usr/share/icons/$$d || exit 1 ;\
@@ -2775,7 +2775,7 @@ endif
 
 ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	# menu files from sysui
-	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare >/dev/null; pwd`" ;\
+	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare >/dev/null; pwd`" ;\
 	mkdir -p -m755 $(PKGDIR)-common/usr/share/applications ;\
 	sed -e 's,Exec=$${UNIXBASISROOTNAME} %U,Exec=libreoffice$(VER) %U,' \
 	    -e 's,Icon=$${WITHOUTDOTUNIXPRODUCTNAME},Icon=libreoffice,' \
@@ -2793,7 +2793,7 @@ endif
 	# install .applications, .keys, .mime and openoffice.org.xml for
 	# shared-mime-info
 	mkdir -p $(PKGDIR)-common/usr/share/application-registry && \
-	cat $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/misc/libreoffice/openoffice.applications \
+	cat $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/misc/libreoffice/openoffice.applications \
 		| sed -e s/OFFICENAME/ooffice/g \
 		| sed -e s/\%PRODUCTNAME/LibreOffice/g \
 		> $(PKGDIR)-common/usr/share/application-registry/openoffice.applications
@@ -2802,10 +2802,10 @@ endif
 	install -m644 $(SOURCE_TREE)/sysui/desktop/mimetypes/openoffice.mime \
 		$(PKGDIR)-common/usr/share/mime-info && \
 	rm -f $(PKGDIR)-common/usr/share/mime-info/openoffice.keys; \
-	for i in $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/misc/libreoffice/*.keys; do \
+	for i in $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/misc/libreoffice/*.keys; do \
 		cat $$i >> $(PKGDIR)-common/usr/share/mime-info/openoffice.keys; \
 	done
-	install -m644 $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/misc/libreoffice/openoffice.org.xml \
+	install -m644 $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/misc/libreoffice/openoffice.org.xml \
 		$(PKGDIR)-common/usr/share/mime/packages
 
 	mkdir -p $(PKGDIR)-common/usr/share/applications
@@ -2837,7 +2837,7 @@ ifeq "$(PACKAGE_SDK)" "y"
         # fix links
 	cd $(PKGDIR)-dev-doc/usr/share/doc/libreoffice-dev/docs/java/ref && \
 	for i in `find . -type f | xargs`; do \
-		perl -pi -e 's,file:$(CURDIR)/$(OOO_BUILD_TREE)/build/$(TAG)/odk/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/bin/odkcommon/docs/common/ref/,,g' $$i; \
+		perl -pi -e 's,file:$(CURDIR)/$(OOO_BUILD_TREE)/build/$(TAG)/odk/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/bin/odkcommon/docs/common/ref/,,g' $$i; \
 	done
   endif
 endif
@@ -2875,7 +2875,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 	done
 ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	# menu files from sysui
-	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare >/dev/null; pwd`" ;\
+	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare >/dev/null; pwd`" ;\
 	mkdir -p -m755 $(PKGDIR)-filter-mobiledev/usr/share/applications ;\
 	sed -e 's,Exec=$${UNIXBASISROOTNAME} \(.*\) %U,Exec=libreoffice$(VER) \1 %U,' \
 		-e 's,Icon=$${WITHOUTDOTUNIXPRODUCTNAME},Icon=libreoffice,' \
@@ -3156,7 +3156,7 @@ endif
 
 ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	# menu files from sysui
-	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/misc/libreoffice >/dev/null; pwd`" ;\
+	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/misc/libreoffice >/dev/null; pwd`" ;\
 	mkdir -p -m755 $(PKGDIR)-common/usr/share/mimelnk/application ;\
 	sed -e 's,Comment=Extension,Comment=LibreOffice $(VER) Extension,' \
 	    -e 's,Icon=openofficeorg[0123456789]-extension,Icon=application-vnd.openofficeorg.extension.png,' \
@@ -3395,7 +3395,7 @@ ifeq "$(PACKAGE_BASE)" "y"
   endif
   ifeq "$(ENABLE_MYSQLNATIVE)" "y"
 	dh_gencontrol -plibreoffice$(VER)-mysql-connector -- \
-		-v$(shell grep "<version" $(SOURCE_TREE)/mysqlc/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/misc/description.xml | perl -pi -e 's,<version value=\"(.*)\" />,\1,; s/^\s+//; s/\s+$$//')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
+		-v$(shell grep "<version" $(SOURCE_TREE)/mysqlc/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/misc/description.xml | perl -pi -e 's,<version value=\"(.*)\" />,\1,; s/^\s+//; s/\s+$$//')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
   endif
 endif
 endif
@@ -3550,7 +3550,7 @@ ifeq "$(ENABLE_REPORTDESIGN)" "y"
 		-V'base-version=$(BASE_VERSION)' \
 		-V'report-builder-jar-depends=$(REPORT_BUILDER_JAR_DEPENDS)' \
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
-		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep "<version" $(SOURCE_TREE)/reportbuilder/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/misc/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
+		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep "<version" $(SOURCE_TREE)/reportbuilder/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/misc/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
 endif
 	dh_gencontrol -popenoffice.org-dtd-officedocument1.0 -- \
 		-v$(shell echo `echo $(BINARY_VERSION) | cut -d: -f1` + 1 | bc):1.0+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
