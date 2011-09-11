@@ -624,10 +624,6 @@ PYMAJOR:=$(shell python -c "import sys; print sys.version_info[0]")
 PYMINOR:=$(shell python -c "import sys; print sys.version_info[1]")
 PYMINORPLUS1:=$(shell python -c "import sys; print sys.version_info[1]+1")
 PYTHON_SITE:=debian/python-uno/$(shell python -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
-PYMAJOR:=$(shell python -c "import sys; print sys.version_info[0]")
-PYMINOR:=$(shell python -c "import sys; print sys.version_info[1]")
-PYMINORPLUS1:=$(shell python -c "import sys; print sys.version_info[1]+1")
-PYTHON_SITE:=debian/python-uno/$(shell python -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
 PY3MAJOR:=$(shell python3 -c "import sys; print sys.version_info[0]")
 PY3MINOR:=$(shell python3 -c "import sys; print sys.version_info[1]")
 PY3MINORPLUS1:=$(shell python3 -c "import sys; print sys.version_info[1]+1")
@@ -2556,11 +2552,31 @@ ifeq "$(BUILD_PYUNO)" "y"
 	  echo 'PYTHONPATH=$$PYTHONHOME $$PYTHONHOME/site-packages $$PYTHONHOME/lib-dynload $$PYTHONHOME/lib-tk $$ORIGIN' \
 	) > debian/python-uno/$(OODIR)/program/pythonloader.unorc
 	chmod u-w debian/python-uno/$(OODIR)/program/pythonloader.unorc
+  ifeq "$(ENABLE_PYTHON3)" "y"
+	install -d $(PYTHON3_SITE)
+	cp $(PYTHON_SITE)/uno.py \
+		$(PYTHON3_SITE)
+	cp $(PYTHON_SITE)/unohelper.py \
+		$(PYTHON3_SITE)
+	cat debian/python-uno/$(OODIR)/program/pythonloader.unorc \
+		sed -e "s/$(PYMAJOR).$(PYMINOR)/$(PY3MAJOR).$(PY3MINOR)/" \
+		> debian/python3-uno/$(OODIR)/program/pythonloader.unorc
+	for i in pyuno.so pythonloader.uno.so libpyuno.so; do \
+		install -m644 $(SOURCE_TREE)/pyuno/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/lib/$$i \
+			debian/python3-uno/$(OODIR)/$$i; \
+	done
+  endif
   ifeq "$(ENABLE_SCRIPT_PROVIDER_PYTHON)" "y"
 	mkdir -p debian/python-uno/$(OOBRANDDIR)/share/extensions
 	mv debian/tmp/$(OOBRANDDIR)/share/extensions/script-provider-for-python \
 		debian/python-uno/$(OOBRANDDIR)/share/extensions
 	rm -f $debian/python-uno/$(OOBRANDDIR)/share/extensions/script-provider-for-python/registration/LICENSE
+    ifeq "$(ENABLE_PYTHON3)" "y"
+	mkdir -p debian/python3-uno/$(OOBRANDDIR)/share/extensions
+	mv debian/tmp/$(OOBRANDDIR)/share/extensions/script-provider-for-python \
+		debian/python3-uno/$(OOBRANDDIR)/share/extensions
+	rm -f $debian/python3-uno/$(OOBRANDDIR)/share/extensions/script-provider-for-python/registration/LICENSE
+    endif
   endif
 
 	mkdir -p debian/python-uno/usr/share/doc/python-uno
@@ -2571,6 +2587,16 @@ ifeq "$(BUILD_PYUNO)" "y"
 	done
 	cd debian/python-uno/usr/share/doc/python-uno && \
 		find . -type d -name "CVS" | xargs -r rm -rf
+  ifeq "$(ENABLE_PYTHON3)" "y"
+	mkdir -p debian/python3-uno/usr/share/doc/python3-uno
+	cp -r $(SOURCE_TREE)/pyuno/demo \
+	  debian/python3-uno/usr/share/doc/python3-uno; \
+	for i in $(SOURCE_TREE)/pyuno/doc/*; do \
+		cp $$i debian/python3-uno/usr/share/doc/python3-uno; \
+	done
+	cd debian/python3-uno/usr/share/doc/python3-uno && \
+		find . -type d -name "CVS" | xargs -r rm -rf
+  endif
 endif
 
 ifeq "$(ENABLE_MONO)" "y"
