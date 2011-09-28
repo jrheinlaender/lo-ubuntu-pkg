@@ -15,16 +15,13 @@
 ################################################################################
 
 vafilt = $(subst $(2)=,,$(filter $(2)=%,$(1)))
-CHANGELOG_VARS := $(shell dpkg-parsechangelog | \
-        sed -n 's/ /_/g;/^[^_]/s/^\([^:]*\):_\(.*\)/\1=\2/p')
-PKGSOURCE := $(call vafilt,$(CHANGELOG_VARS),Source)
-SOURCE_VERSION:=$(shell head -1 debian/changelog | cut -d\( -f2 | cut -d\) -f1)
-UPSTREAM_VERSION:=$(shell echo "$(SOURCE_VERSION)"| cut -d: -f2 | cut -d- -f1)
-BASE_VERSION:=$(shell echo $(SOURCE_VERSION) | cut -d: -f1):$(UPSTREAM_VERSION)
-BINARY_VERSION=$(SOURCE_VERSION)
+
+include /usr/share/dpkg/pkg-info.mk
+BASE_VERSION:=$(shell echo $(DEB_VERSION) | cut -d: -f1):$(DEB_VERSION_UPSTREAM)
+BINARY_VERSION=$(DEB_VERSION)
 #BINARY_VERSION=1:2.4.0-$(shell dpkg-parsechangelog  | grep urgency \
 	| awk '{print $$2}' | sed -e s/"("// -e s/")"// | cut -d"-" -f2)
-#HELP_L10N_VIRTUAL_VERSION:=$(shell echo $(UPSTREAM_VERSION) | cut -d: -f2 | tr [~] [\\-])
+#HELP_L10N_VIRTUAL_VERSION:=$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d: -f2 | tr [~] [\\-])
 HELP_L10N_VIRTUAL_VERSION:=3.4
 #VER:=3
 OOVER:=3.4
@@ -36,13 +33,9 @@ ARCH_INDEP_PACKAGES := $(shell dh_listpackages -i)
 ARCH_DEP_PACKAGES := $(shell dh_listpackages -s)
 PACKAGES := $(ARCH_INDEP_PACKAGES) $(ARCH_DEP_PACKAGES)
 
-DPKG_VARS := $(shell dpkg-architecture)
-OS := $(call vafilt,$(DPKG_VARS),DEB_HOST_ARCH_OS)
-ARCH := $(call vafilt,$(DPKG_VARS),DEB_HOST_ARCH)
-DIST := $(shell if [ -x /usr/bin/dpkg-vendor ]; then dpkg-vendor --query Vendor; else lsb_release -is; fi)
+include /usr/share/dpkg/architecture.mk
+include /usr/share/dpkg/vendor.mk
 DISTREL := $(shell lsb_release -cs)
-DEB_HOST_GNU_TYPE   ?= $(call vafilt,$(DPKG_VARS),DEB_HOST_GNU_TYPE)
-DEB_BUILD_GNU_TYPE  ?= $(call vafilt,$(DPKG_VARS),DEB_BUILD_GNU_TYPE)
 SHELL:=/bin/bash
 
 SYSTEM_GCC_VERSION = $(shell gcc --version | sed -n '/^gcc/s/.*\(.\..\)\..$$/\1/p')
@@ -61,7 +54,7 @@ OODIR:=$(OOBASISDIR)
 
 # Figure out who's building this package.
 OOO_VENDOR:=The Document Foundation/Debian
-ifeq "$(DIST)" "Ubuntu"
+ifeq "$(DEB_VENDOR)" "Ubuntu"
 OOO_VENDOR=The Document Foundation, Debian and Ubuntu
 endif
 export OOO_VENDOR
@@ -101,7 +94,7 @@ endif
 # Default package configuration
 #
 OOO_ARCHS = alpha amd64 armel armhf hppa i386 ia64 mips mipsel powerpc powerpcspe ppc64 s390 s390x sparc kfreebsd-amd64 kfreebsd-i386
-PATCHSET=$(DIST)
+PATCHSET=$(DEB_VENDOR)
 BUILD_DEPS=
 
 # These are components which can be built from internal copies, or used from the
@@ -141,7 +134,7 @@ BUILD_ONLY_EN_US=n
 ENABLE_JAVA=y
 ifeq "$(ENABLE_JAVA)" "y"
   JDK=openjdk
-  ifneq (,$(filter hppa ia64 kfreebsd%, $(ARCH)))
+  ifneq (,$(filter hppa ia64 kfreebsd%, $(DEB_HOST_ARCH)))
     JDK=gcj-jdk
   endif
 endif
@@ -203,7 +196,7 @@ ifeq "$(ENABLE_JAVA)" "y"
   # for UOF, but still for e.g. M$.
   #SYSTEM_STUFF += saxon
   SYSTEM_STUFF += lucene
-  ifeq (,$(filter $(ARCH), powerpc powerpcspe ppc64))
+  ifeq (,$(filter $(DEB_HOST_ARCH), powerpc powerpcspe ppc64))
     BUILD_JARS_NATIVE=y
   endif
 endif
@@ -314,7 +307,7 @@ CONFIGURE_FLAGS= --disable-post-install-scripts \
                 --with-installed-ooo-dirname=$(OODIRNAME) \
                 --prefix=/usr --mandir=/usr/share/man \
                 --with-docdir=/usr/share/doc/libreoffice \
-                --with-build-version="tag $(OOO_BUILD_TAG), $(DIST) package $(BINARY_VERSION)" \
+                --with-build-version="tag $(OOO_BUILD_TAG), $(DEB_VENDOR) package $(BINARY_VERSION)" \
                 --disable-strip \
                 --enable-lockdown \
 		--with-drink=coffee \
@@ -347,19 +340,19 @@ define gen_no_archs
   $$(_no_arch_macro) = $$(if $$(_no_arch_tmp_$1),$$(_empty) [$$(_no_arch_tmp_$1)])
 endef
 
-PLATFORMID := $(shell grep PLATFORMID debian/scripts/vars.$(ARCH) | cut -d"=" -f2)
+PLATFORMID := $(shell grep PLATFORMID debian/scripts/vars.$(DEB_HOST_ARCH) | cut -d"=" -f2)
 
 # ./configure defaults to STLport on i386 and we should keep it for
 # ABI-compatability
 OOO_STLPORT_ARCHS= i386
-ifeq "$(ARCH)" "i386"
+ifeq "$(DEB_HOST_ARCH)" "i386"
 	LINK_TO_STLPORT=y
 endif
 
 ifeq "$(ENABLE_OPENGL)" "y"
   # doesn't make that much sense on armel and mips(el), does it? :)
   OOO_OGLTRANS_ARCHS = $(filter-out armel mips%, $(OOO_ARCHS))
-  ifeq (,$(filter $(ARCH),$(OOO_OGLTRANS_ARCHS)))
+  ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_OGLTRANS_ARCHS)))
        ENABLE_OPENGL=n
   endif
   $(eval $(call gen_no_archs,OOO_OGLTRANS_ARCHS))
@@ -386,7 +379,7 @@ $(eval $(call gen_no_archs,OOO_BASE_ARCHS))
 OOO_REPORTDESIGN_ARCHS := $(filter-out armel,$(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs,OOO_REPORTDESIGN_ARCHS))
 
-ifneq (,$(findstring $(ARCH),$(OOO_NO_BASE_ARCHS)))
+ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
 	PACKAGE_BASE=n
 	ENABLE_SDBC_POSTGRESQL=n
 	ENABLE_MYSQLNATIVE=n
@@ -399,7 +392,7 @@ ifneq (,$(findstring $(ARCH),$(OOO_NO_BASE_ARCHS)))
 	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-report-builder-bin -Nlibreoffice$(VER)-report-builder
 endif
 
-ifeq (,$(findstring $(ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
+ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
 	ENABLE_MINIMIZER=n
 	ENABLE_PDFIMPORT=n
 	ENABLE_PRESENTER_CONSOLE=n
@@ -407,14 +400,14 @@ ifeq (,$(findstring $(ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
 	ENABLE_MYSQLNATIVE=n
 endif
 
-ifeq (,$(filter $(ARCH),$(OOO_JAVA_ARCHS)))
+ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_JAVA_ARCHS)))
 	ENABLE_JAVA=n
 	ENABLE_REPORTDESIGN=n
 	ENABLE_MEDIAWIKI=n
 endif
 
-ifeq ($(ARCH),$(findstring $(ARCH),$(OOO_GCJ_JDK_ARCHS)))
-  ifneq ($(ARCH),$(findstring $(ARCH),$(OOO_OPENJDK_ARCHS)))
+ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_GCJ_JDK_ARCHS)))
+  ifneq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_OPENJDK_ARCHS)))
 	ENABLE_REPORTDESIGN=n
 	SYSTEM_STUFF := $(filter-out jfreereport, $(SYSTEM_STUFF))
   endif
@@ -424,7 +417,7 @@ ifeq "$(ENABLE_MONO)" "y"
 # mono
 # ppc fails (#412967), arm(el), too
 OOO_MONO_ARCHS = $(filter amd64 i386 ia64 kfreebsd-amd64 kfreebsd-i386, $(OOO_ARCHS))
-ifeq (,$(filter $(ARCH),$(OOO_MONO_ARCHS)))
+ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_MONO_ARCHS)))
        ENABLE_MONO=n
 endif
 else
@@ -438,7 +431,7 @@ OOO_NPSOPLUGIN_ARCHS=
 endif
 
 # builds long and is for legacy filters. probably not needed on {arm,mips}{,el}
-ifneq (,$(filter arm% mips% m68k, $(ARCH)))
+ifneq (,$(filter arm% mips% m68k, $(DEB_HOST_ARCH)))
 	BUILD_BINFILTERS=n
 endif
 OOO_BINFILTER_ARCHS:=$(filter-out arm% mips% m68k, $(OOO_ARCHS))
@@ -447,7 +440,7 @@ OOO_BINFILTER_ARCHS:=$(filter-out arm% mips% m68k, $(OOO_ARCHS))
 # Distro-specific overrides
 
 # Debian
-ifeq "$(DIST)" "Debian"
+ifeq "$(DEB_VENDOR)" "Debian"
   # we don't need to build all languages and the thesaurus on the buildds;
   # they do binary-only builds anyway
   ifeq ($(ON_BUILDD),y)
@@ -469,14 +462,14 @@ CC_PREFIX:=$(shell gcc -dumpmachine)-
 
 ifeq "$(GCC_VERSION)" ""
   ifneq "$(OOO_GCJ_JDK_ARCHS)" ""
-    ifeq ($(ARCH),$(findstring $(ARCH),$(OOO_GCJ_ARCHS)))
+    ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_GCJ_ARCHS)))
 	GCJ_JDK_PACKAGE=$(shell dpkg -s gcj-jdk | grep Depends | sed -e 's/.*\(gcj-[0-9]\.[0-9]-jdk\).*/\1/')
 	GCJ_JDK_VERSION=$(shell echo $(GCJ_JDK_PACKAGE) | cut -d- -f2)
       ifneq "$(SYSTEM_GCC_VERSION)" "$(GCJ_JDK_VERSION)"
         BUILD_DEPS += , gcc-$(GCJ_JDK_VERSION) [$(OOO_GCJ_JDK_ARCHS)], g++-$(GCJ_JDK_VERSION) [$(OOO_GCJ_JDK_ARCHS)]
-        ifeq ($(ARCH),$(findstring $(ARCH),$(OOO_GCJ_JDK_ARCHS)))
+        ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_GCJ_JDK_ARCHS)))
 	# sanity check. amd64 is in kfreebsd-amd64; same for i386 and mips
-          ifneq ($(ARCH),$(findstring $(ARCH),$(OOO_OPENJDK_ARCHS)))
+          ifneq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_OPENJDK_ARCHS)))
           GCC_VERSION := $(GCJ_JDK_VERSION)
           else
           GCC_VERSION := $(SYSTEM_GCC_VERSION)
@@ -526,11 +519,11 @@ ifeq "$(ENABLE_PDFIMPORT)" "y"
 endif
 
 # fails their tests
-ifeq "$(ARCH)" "armel"
+ifeq "$(DEB_HOST_ARCH)" "armel"
 ENABLE_GRAPHITE=n
 SYSTEM_STUFF := $(filter-out graphite, $(SYSTEM_STUFF))
 endif
-ifeq "$(ARCH)" "sparc"
+ifeq "$(DEB_HOST_ARCH)" "sparc"
 ENABLE_GRAPHITE=n
 SYSTEM_STUFF := $(filter-out graphite, $(SYSTEM_STUFF))
 endif
@@ -609,15 +602,6 @@ ifeq (noopt,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
 	ARCH_FLAGS += -O0
 endif
 
-ifeq "$(USE_XZ_COMPRESS)" "y"
-	# used only for -dbg yet, so disabled and done manually
-	# in binary-arch
-	#BUILDDEB_OPTIONS = -- -Zxz
-	BUILD_DEPS += , dpkg-dev (>= 1.15.6)
-else
-	BUILD_DEPS += , dpkg-dev (>= 1.15.1)
-endif
-
 # Build python depends from current python version
 PYMAJOR:=$(shell python -c "import sys; print sys.version_info[0]")
 PYMINOR:=$(shell python -c "import sys; print sys.version_info[1]")
@@ -652,9 +636,6 @@ endif
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(BUILD_JARS_NATIVE)" "y"
 	STAMP_NATIVE_JARS = $(STAMP_DIR)/native-jars
-    ifeq "$(NEW_DPKG_SHLIBDEPS)" "n"
-	BUILD_DEPS += , dpkg-dev (>= 1.13.19)
-    endif
 	JAVA_GCJ_DEPENDS = libgcj-common (>= 1:4.1.1-14)
   endif
 endif
@@ -746,7 +727,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 	JAVA_HOME=/usr/lib/jvm/java-6-openjdk
     else
 	BUILD_DEPS += , openjdk-6-jdk (>= 6b23~pre8-2) [$(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))]
-	JAVA_HOME=/usr/lib/jvm/java-6-openjdk-$(ARCH)
+	JAVA_HOME=/usr/lib/jvm/java-6-openjdk-$(DEB_HOST_ARCH)
     endif
 	CONFIGURE_FLAGS += --with-java-target-version=1.5
   endif
@@ -774,10 +755,10 @@ endif
 #  ifneq (,$(GCJ_JAWT_DEPENDS))
 #	JAVA_RUNTIME_DEPENDS += | $(GCJ_JAWT_DEPENDS)
 #  endif
-  ifneq (,$(filter $(ARCH), $(OOO_OPENJDK_ARCHS)))
+  ifneq (,$(filter $(DEB_HOST_ARCH), $(OOO_OPENJDK_ARCHS)))
 	JAVA_RUNTIME_DEPENDS += | openjdk-6-jre
   endif
-  ifneq (,$(filter $(ARCH), amd64 i386))
+  ifneq (,$(filter $(DEB_HOST_ARCH), amd64 i386))
 	JAVA_RUNTIME_DEPENDS += | sun-java5-jre | sun-java6-jre
   endif
 	JAVA_RUNTIME_DEPENDS += | java5-runtime
@@ -793,7 +774,7 @@ export JAVA_HOME
 	BUILD_DEPS += , libsaxonb-java$(OOO_NO_JAVA_ARCHS)
   endif
   ifeq "$(PACKAGE_SDK)" "y"
-    ifeq "$(DIST)" "Debian"
+    ifeq "$(DEB_VENDOR)" "Debian"
 	BUILD_DEPS += , gcc-mingw32$(OOO_NO_JAVA_ARCHS), mingw32-runtime$(OOO_NO_JAVA_ARCHS)
 	CONFIGURE_FLAGS += --enable-build-unowinreg
 	CONFIGURE_FLAGS += --with-mingw=i586-mingw32msvc-g++
@@ -856,7 +837,7 @@ ifneq "$(MOZILLA)" ""
     endif
   endif
 endif
-ifneq (,$(findstring $(ARCH),$(OOO_MOZILLA_ARCHS)))
+ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_MOZILLA_ARCHS)))
 	CONFIGURE_FLAGS += --with-system-mozilla=$(MOZILLA)
 else
 	CONFIGURE_FLAGS += --disable-mozilla --without-system-mozilla
@@ -1401,7 +1382,7 @@ debian/control: $(wildcard debian/control*in) $(OOO_BUILD_TREE)/bin/openoffice-x
 	chmod 755 $(OOO_BUILD_TREE)/bin/openoffice-xlate-lang
 	sed -e "s#libreofficeVER#libreoffice$(VER)#g" \
 	    -e "s#libreofficeVER#libreoffice$(VER)#g" \
-	    -e "s#%$(DIST)=\([^%]*\)%#, \1#g#" \
+	    -e "s#%$(DEB_VENDOR)=\([^%]*\)%#, \1#g#" \
 	    -e "s#%[A-Za-z]*=[^%]*%##g#" \
 	    -e "s#%BUILD_DEPS%#$(strip $(BUILD_DEPS))#g" \
 	    -e "s#%BUILD_DEPS_INDEP%#$(strip $(BUILD_DEPS_INDEP))#g" \
@@ -1420,7 +1401,7 @@ ifeq "$(ENABLE_LDAP)" "y"
 endif
 
 	for LNUM in $(filter-out en-US,$(LANGPACKISOS)) ; do \
-	    [ "$$LNUM" = en-US -a "$(PKGSOURCE)" = "libreoffice$(VER)-l10n" ] && continue; \
+	    [ "$$LNUM" = en-US -a "$(DEB_SOURCE)" = "libreoffice$(VER)-l10n" ] && continue; \
 	    LNAME=`$(OOO_BUILD_TREE)/bin/openoffice-xlate-lang -l $$LNUM | perl -e 'print ucfirst(<STDIN>);'`; \
 	    LCODE=`$(OOO_BUILD_TREE)/bin/openoffice-xlate-lang -i $$LNUM | tr A-Z a-z`; \
 	    CCODE=`echo $$LCODE | sed 's/-.*//'`; \
@@ -1844,7 +1825,7 @@ ifeq "$(RUN_SMOKETEST)" "y"
 			EPM=yes PKGFORMAT=archive WITH_LANG="en-US" dmake openoffice; \
 	fi
 	# smoketest
-ifeq "$(ARCH)" "armel"
+ifeq "$(DEB_HOST_ARCH)" "armel"
 	cd $(SOURCE_TREE)/smoketestoo_native && \
 		patch -p1 < $(CURDIR)/debian/smoketest/patches/smoketest-disable-db-insert-delete-seek-tests.diff
 endif
@@ -1859,7 +1840,7 @@ endif
 	# doesn't get cleaned up.. (at least the dirs, the contents are gone)
 	cd $(CURDIR)/debian/smoketest && \
 	find . -noleaf -maxdepth 1 ! -name "patches" ! -name "." -exec rm -rf {} \;
-ifeq "$(ARCH)" "armel"
+ifeq "$(DEB_HOST_ARCH)" "armel"
 	cd $(SOURCE_TREE)/smoketestoo_native && \
 		patch -p1 -R < $(CURDIR)/debian/smoketest/patches/smoketest-disable-db-insert-delete-seek-tests.diff
 endif
@@ -2088,7 +2069,7 @@ endif
 #
 # Generate maintainer scripts
 maintscripts: $(STAMP_DIR)/maintscripts
-$(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*.sh) $(wildcard debian/*.preinst.in) $(wildcard debian/*.postinst.in) $(wildcard debian/*.prerm.in) $(wildcard debian/*.postrm.in) debian/scripts/vars.$(ARCH) debian/control
+$(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*.sh) $(wildcard debian/*.preinst.in) $(wildcard debian/*.postinst.in) $(wildcard debian/*.prerm.in) $(wildcard debian/*.postrm.in) debian/scripts/vars.$(DEB_HOST_ARCH) debian/control
 	dh_testdir
 
 	rm -f debian/*.{pre,post}{inst,rm}
@@ -2100,7 +2081,7 @@ $(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*.sh) $(wildcard debian/*.
 	    if [ -e $$MAINTSCRIPT.in ]; then \
 	      sed -n '1,/^#INCLUDE_SHELL_LIB#$$/p' < $$MAINTSCRIPT.in | sed -e '/^#INCLUDE_SHELL_LIB#$$/d' > $$MAINTSCRIPT; \
 	      if echo $(ARCH_DEP_PACKAGES) | grep -q $$PKG; then \
-	        grep PLATFORMID debian/scripts/vars.$(ARCH) >> $$MAINTSCRIPT; \
+	        grep PLATFORMID debian/scripts/vars.$(DEB_HOST_ARCH) >> $$MAINTSCRIPT; \
 	      fi; \
 	      echo "" >> $$MAINTSCRIPT; \
 	      if egrep -q "(add|remove|validate|sync)_extension" $$MAINTSCRIPT.in; then \
@@ -2169,7 +2150,7 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/install $(STAMP_DIR)/install-indep $(OOO_BU
 		> $$TMP && \
 	debian/scripts/cleandupes --base=libreoffice$(VER) --prefix=debian < $$TMP && rm -f $$TMP
 
-ifeq "$(DIST)" "Debian"
+ifeq "$(DEB_VENDOR)" "Debian"
 	# install Debian presentation template
 	otps=`cd debian/templates; echo *.otp`; \
 	for iso in $(LANGPACKISOS); do \
@@ -2696,7 +2677,7 @@ endif
 
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(BUILD_JARS_NATIVE)" "y"
-    ifneq "$(PKGSOURCE)" "libreoffice$(VER)-l10n"
+    ifneq "$(DEB_SOURCE)" "libreoffice$(VER)-l10n"
 	rm -rf $(PKGDIR)-gcj/usr/lib/gcj
 	mkdir -p $(PKGDIR)-gcj/usr/lib/gcj/$(OODIRNAME)
 	cp -p debian/tmp/native-jars/gcj/* $(PKGDIR)-gcj/usr/lib/gcj/$(OODIRNAME)
@@ -3134,7 +3115,7 @@ endif
 		mkdir -p $(OODIR)/share/dtd && \
 		cd $(OODIR)/share/dtd && ln -s /$(shell echo $(OODIR) | sed -e s/libreoffice/openoffice/)/share/dtd/officedocument
 
-ifeq "$(DIST)" "Debian"
+ifeq "$(DEB_VENDOR)" "Debian"
 	# install Debian presentation template
 	mkdir -p $(PKGDIR)-common/$(OODIR)/share/template/en-US/presnt
 	install -m644 debian/templates/*.otp $(PKGDIR)-common/$(OODIR)/share/template/en-US/presnt/
@@ -3466,7 +3447,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 	perl -pi -e "s/java-gcj-compat/java-gcj-compat (>= 1.0.77-4)/" \
 		debian/libreoffice$(VER)-officebean/DEBIAN/control
 endif
-ifneq (,$(findstring $(ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
+ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
 ifeq "$(ENABLE_PDFIMPORT)" "y"
 	dh_gencontrol -plibreoffice$(VER)-pdfimport -- \
 		-v$(shell grep "<version" $(SOURCE_TREE)/sdext/source/pdfimport/config/description.xml | perl -pi -e 's,<version.*value=\"(.*)\" />,\1,; s/^\s+//')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
@@ -3505,12 +3486,12 @@ endif
 
 binary-indep: $(GSI_EXPORT_STAMP) $(STAMP_DIR)/binary-indep
 $(STAMP_DIR)/binary-indep: $(STAMP_DIR)/install-indep debian/control $(STAMP_DIR)/maintscripts $(STAMP_DIR)/langpacks
-ifneq ($(ARCH),$(findstring $(ARCH),$(OOO_JAVA_ARCHS)))
+ifneq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_JAVA_ARCHS)))
 	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 	echo "For uploads with binary-all packages, please use arches where Java is enabled!!!!!"
 	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 endif
-ifneq ($(ARCH),$(findstring $(ARCH),$(OOO_MONO_ARCHS)))
+ifneq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_MONO_ARCHS)))
 	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 	echo "For uploads with binary-all packages, please use arches where Mono is enabled!!!!!"
 	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
@@ -3656,7 +3637,7 @@ binary: binary-arch binary-indep
 get-ooo-build:
 	if echo $(OOO_BUILD_VERSION) | egrep -q "\."; then \
 		wget http://download.go-oo.org/$(MWS)/ooo-build-$(OOO_BUILD_TARBALL_VERSION).tar.gz && \
-		mv ooo-build-$(OOO_BUILD_TARBALL_VERSION).tar.gz ../libreoffice_$(UPSTREAM_VERSION).orig-ooo-build-$(OOO_BUILD_TARBALL_VERSION).tar.gz && \
+		mv ooo-build-$(OOO_BUILD_TARBALL_VERSION).tar.gz ../libreoffice_$(DEB_VERSION_UPSTREAM).orig-ooo-build-$(OOO_BUILD_TARBALL_VERSION).tar.gz && \
 		tar xfvz ooo-build-$(OOO_BUILD_TARBALL_VERSION).tar.gz && \
 		mv ooo-build-$(OOO_BUILD_TARBALL_VERSION) $(OOO_BUILD_TREE); \
 	else \
@@ -3670,7 +3651,7 @@ get-ooo-build:
 		tar xfvz ooo-build-$(OOO_BUILD_TARBALL_VERSION).tar.gz && \
 		mv ooo-build-$(OOO_BUILD_TARBALL_VERSION) $(OOO_BUILD_TREE) && \
 		rm ooo-build-$(OOO_BUILD_TARBALL_VERSION).tar.gz archive/ooo-build-$(OOO_BUILD_TARBALL_VERSION).tar.gz && \
-		tar cfvz $(CURDIR)/../libreoffice_$(UPSTREAM_VERSION).orig-ooo-build-$(OOO_BUILD_VERSION).tar.gz $(OOO_BUILD_TREE) && \
+		tar cfvz $(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig-ooo-build-$(OOO_BUILD_VERSION).tar.gz $(OOO_BUILD_TREE) && \
 		rm -rf $$TMPD; \
 	fi
 
@@ -3694,8 +3675,8 @@ get-orig-source:
 		TMPD=`mktemp -d`; \
 	fi && \
 	cd $$TMPD && \
-	mkdir -p libreoffice-$(UPSTREAM_VERSION) && \
-	cd libreoffice-$(UPSTREAM_VERSION) && \
+	mkdir -p libreoffice-$(DEB_VERSION_UPSTREAM) && \
+	cd libreoffice-$(DEB_VERSION_UPSTREAM) && \
 		cp -ra $(CURDIR)/$(OOO_BUILD_TREE) $(OOO_BUILD_TREE); \
 		cd $(OOO_BUILD_TREE) && \
 			./configure --with-tag=$(TAG) --with-distro=$(PATCHSET) \
@@ -3706,7 +3687,7 @@ get-orig-source:
 				mv src/$$i ../ext-sources-$(OOO_BUILD_TREE); \
 			done && \
 		cd .. && \
-		tar cfvz $(CURDIR)/../libreoffice_$(UPSTREAM_VERSION).orig-ext-sources-$(OOO_BUILD_TREE).tar.gz ext-sources-$(OOO_BUILD_TREE) && \
+		tar cfvz $(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig-ext-sources-$(OOO_BUILD_TREE).tar.gz ext-sources-$(OOO_BUILD_TREE) && \
 		rm -rf ext-sources-$(OOO_BUILD_TREE) && \
 		cd $(OOO_BUILD_TREE) && \
 			./bin/ooo-pack-sources --force --no-lo-build . && \
@@ -3720,9 +3701,9 @@ get-orig-source:
 		tar cfvj ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-extern-sys.tar.bz2.dfsg ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-extern-sys && \
 		ln -sf ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-extern-sys.tar.bz2.dfsg ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-extern-sys.tar.bz2 && \
 		rm -rf ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-extern-sys && \
-		cd $$TMPD/libreoffice-$(UPSTREAM_VERSION) && tar cfvz libreoffice_$(UPSTREAM_VERSION).orig-archive-$(OOO_BUILD_VERSION).tar.gz archive-$(OOO_BUILD_VERSION) && \
-		rm -rf libreoffice-$(UPSTREAM_VERSION) && \
-		mv libreoffice_$(UPSTREAM_VERSION).orig-archive-$(OOO_BUILD_VERSION).tar.gz $(CURDIR)/.. && \
+		cd $$TMPD/libreoffice-$(DEB_VERSION_UPSTREAM) && tar cfvz libreoffice_$(DEB_VERSION_UPSTREAM).orig-archive-$(OOO_BUILD_VERSION).tar.gz archive-$(OOO_BUILD_VERSION) && \
+		rm -rf libreoffice-$(DEB_VERSION_UPSTREAM) && \
+		mv libreoffice_$(DEB_VERSION_UPSTREAM).orig-archive-$(OOO_BUILD_VERSION).tar.gz $(CURDIR)/.. && \
 		rm -rf $$TMPD
 	if test -n "$$TMP"; then \
 		TMPD=`mktemp -d -p $$TMP`; \
@@ -3734,8 +3715,8 @@ get-orig-source:
 		$(CURDIR)/debian/rules get-ext-sources && \
 		zip -d $$TARFILE_LOCATION/*liblayout.zip liblayout/resource/rfc1345.txt && \
 		rm $$TARFILE_LOCATION/JLanguageTool* && \
-		tar cfvz libreoffice_$(UPSTREAM_VERSION).orig-$$TARFILE_LOCATION.tar.gz $$TARFILE_LOCATION && \
-		mv libreoffice_$(UPSTREAM_VERSION).orig-$$TARFILE_LOCATION.tar.gz $(CURDIR)/.. && \
+		tar cfvz libreoffice_$(DEB_VERSION_UPSTREAM).orig-$$TARFILE_LOCATION.tar.gz $$TARFILE_LOCATION && \
+		mv libreoffice_$(DEB_VERSION_UPSTREAM).orig-$$TARFILE_LOCATION.tar.gz $(CURDIR)/.. && \
 		rm -rf $$TMPD
 	# get ooo-build
 	if test -n "$$TMP"; then \
@@ -3744,7 +3725,7 @@ get-orig-source:
 		TMPD=`mktemp -d`; \
 	fi && \
 	if [ ! -d $(OOO_BUILD_TREE) ]; then ./debian/rules get-ooo-build; fi
-	tar cfvz ../libreoffice_$(UPSTREAM_VERSION).orig-$(OOO_BUILD_TREE).tar.gz $(OOO_BUILD_TREE)
+	tar cfvz ../libreoffice_$(DEB_VERSION_UPSTREAM).orig-$(OOO_BUILD_TREE).tar.gz $(OOO_BUILD_TREE)
 
 # Download the latest sources needed for ooo-build. Note that is
 # might download more than actually needed here....
