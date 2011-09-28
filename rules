@@ -134,7 +134,8 @@ BUILD_ONLY_EN_US=n
 ENABLE_JAVA=y
 ifeq "$(ENABLE_JAVA)" "y"
   JDK=openjdk
-  ifneq (,$(filter hppa ia64 kfreebsd%, $(DEB_HOST_ARCH)))
+  JAVA_MAINVER=6
+  ifneq (,$(filter hppa kfreebsd%, $(DEB_HOST_ARCH)))
     JDK=gcj-jdk
   endif
 endif
@@ -196,9 +197,6 @@ ifeq "$(ENABLE_JAVA)" "y"
   # for UOF, but still for e.g. M$.
   #SYSTEM_STUFF += saxon
   SYSTEM_STUFF += lucene
-  ifeq (,$(filter $(DEB_HOST_ARCH), powerpc powerpcspe ppc64))
-    BUILD_JARS_NATIVE=y
-  endif
 endif
 SYSTEM_STUFF += lpsolve
 USE_SHARED_LPSOLVE=y
@@ -364,11 +362,10 @@ OOO_64BIT_ARCHS = $(filter alpha amd64 ia64 kfreebsd-amd64 ppc64 s390x, $(OOO_AR
 OOO_JAVA_ARCHS = $(OOO_ARCHS)
 $(eval $(call gen_no_archs,OOO_JAVA_ARCHS))
 
-# gcj does not work on ppc, so no need to build -gcj for it
-OOO_GCJ_ARCHS = $(filter-out powerpc powerpcspe ppc64, $(OOO_JAVA_ARCHS))
+OOO_GCJ_ARCHS = $(filter-out $(OOO_OPENJDK_ARCHS), $(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs,OOO_GCJ_ARCHS))
 
-OOO_GCJ_JDK_ARCHS := hppa ia64 kfreebsd-i386 kfreebsd-amd64
+OOO_GCJ_JDK_ARCHS := hppa kfreebsd-i386 kfreebsd-amd64
 OOO_OPENJDK_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs,OOO_OPENJDK_ARCHS))
 
@@ -411,6 +408,10 @@ ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_GCJ_JDK_ARCHS)))
 	ENABLE_REPORTDESIGN=n
 	SYSTEM_STUFF := $(filter-out jfreereport, $(SYSTEM_STUFF))
   endif
+endif
+
+ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_GCJ_ARCHS)))
+	BUILD_JARS_NATIVE=y
 endif
 
 ifeq "$(ENABLE_MONO)" "y"
@@ -574,10 +575,19 @@ ifneq "$(BUILD_DBG_PACKAGE)" "y"
 else
   ifeq (debug,$(findstring debug,$(DEB_BUILD_OPTIONS)))
 	SMALL_SYMBOLS = n
-	# reduces -dbg size from 760M to ~320M
         USE_XZ_COMPRESS = y
   else
+    ifneq (,$(findstring i386,$(DEB_HOST_ARCH)))
+	SMALL_SYMBOLS = n
+        USE_XZ_COMPRESS = y
+    else
+      ifneq (,$(findstring amd64,$(DEB_HOST_ARCH)))
+	SMALL_SYMBOLS = n
+        USE_XZ_COMPRESS = y
+      else
 	SMALL_SYMBOLS = y
+      endif
+    endif
   endif
 	DBG_DBG_SUGGESTS+= , libc6.1-dbg [alpha ia64], libc0.1-dbg [kfreebsd-i386 kfreebsd-amd64], libc0.3-dbg [hurd-i386], libc6-dbg [!ia64 !alpha !kfreebsd-i386 !kfreebsd-amd64 !hurd-i386], libatk1.0-dbg, libglib2.0-0-dbg, libgnomevfs2-0-dbg, libstdc++6-$(SYSTEM_GCC_VERSION)-dbg, libx11-6-dbg, libxext6-dbg, libxaw7-dbg, libxml2-dbg, libgtk2.0-0-dbg, libxau6-dbg, libice6-dbg, libsm6-dbg, libxinerama1-dbg, libfontconfig1-dbg
   ifeq "$(USE_LIBCURL4)" "y"
@@ -721,21 +731,26 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
   ifeq "$(JDK)" "openjdk"
     ifeq "$(SQUEEZE_BACKPORT)" "y"
-	BUILD_DEPS += , openjdk-6-jdk [$(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))]
-	JAVA_HOME=/usr/lib/jvm/java-6-openjdk
+	BUILD_DEPS += , openjdk-$(JAVA_MAINVER)-jdk [$(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))]
+	JAVA_HOME=/usr/lib/jvm/java-$(JAVA_MAINVER)-openjdk
     else
-	BUILD_DEPS += , openjdk-6-jdk (>= 6b23~pre8-2) [$(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))]
-	JAVA_HOME=/usr/lib/jvm/java-6-openjdk-$(DEB_HOST_ARCH)
+      ifeq "$(JAVA_MAINVER)" "6"
+	BUILD_DEPS += , openjdk-$(JAVA_MAINVER)-jdk (>= 6b23~pre8-2) [$(filter-out ia64,$(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))])
+	BUILD_DEPS += , openjdk-7-jdk [ia64]
+        ifeq "$(DEB_HOST_ARCH)" "ia64"
+	JAVA_MAINVER=7
+        endif
+      else
+	BUILD_DEPS += , openjdk-$(JAVA_MAINVER)-jdk [$(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))]
+      endif
+	JAVA_HOME=/usr/lib/jvm/java-$(JAVA_MAINVER)-openjdk-$(DEB_HOST_ARCH)
     endif
 	CONFIGURE_FLAGS += --with-java-target-version=1.5
   endif
         TEST_JAVA_HOME=$(JAVA_HOME)
-  ifeq "$(BUILD_JARS_NATIVE)" "y"
-	BUILD_DEPS += , gcj-native-helper$(OOO_NO_GCJ_ARCHS), libgcj-common (>= 1:4.4.1)$(OOO_NO_GCJ_ARCHS)
-  else
-    ifneq "$(OOO_GCJ_JDK_ARCHS)" ""
+  ifneq "$(OOO_GCJ_JDK_ARCHS)" ""
 	BUILD_DEPS += , gcj-jdk [$(OOO_GCJ_JDK_ARCHS)]
-    endif
+	BUILD_DEPS += , gcj-native-helper [$(OOO_GCJ_ARCHS)], libgcj-common (>= 1:4.4.1) [$(OOO_GCJ_ARCHS)]
   endif
   ifeq "$(ENABLE_MEDIAWIKI)" "y"
 	BUILD_DEPS += , ant (>= 1.7.0)$(OOO_NO_JAVA_ARCHS), ant-optional (>= 1.7.0)$(OOO_NO_JAVA_ARCHS)
@@ -754,7 +769,11 @@ endif
 #	JAVA_RUNTIME_DEPENDS += | $(GCJ_JAWT_DEPENDS)
 #  endif
   ifneq (,$(filter $(DEB_HOST_ARCH), $(OOO_OPENJDK_ARCHS)))
-	JAVA_RUNTIME_DEPENDS += | openjdk-6-jre
+    ifneq "$(DEB_HOST_ARCH)" "ia64"
+	JAVA_RUNTIME_DEPENDS += | openjdk-6-jre | openjdk-7-jre
+    else
+	JAVA_RUNTIME_DEPENDS += | openjdk-7-jre
+    endif
   endif
   ifneq (,$(filter $(DEB_HOST_ARCH), amd64 i386))
 	JAVA_RUNTIME_DEPENDS += | sun-java5-jre | sun-java6-jre
@@ -795,10 +814,10 @@ export MINGWSTRIP = i586-mingw32msvc-strip
   ifeq "$(ENABLE_REPORTDESIGN)" "y"
 	# report-builder
     ifneq (,$(filter jfreereport, $(SYSTEM_STUFF)))
-	REPORT_BUILDER_BUILD_DEPS += , libbase-java-openoffice.org$(OOO_NO_REPORTDESIGN_ARCHS), libsac-java$(OOO_NO_REPORTDESIGN_ARCHS), libxml-java-openoffice.org$(OOO_NO_REPORTDESIGN_ARCHS), libflute-java-openoffice.org$(OOO_NO_REPORTDESIGN_ARCHS), libpentaho-reporting-flow-engine-java-openoffice.org$(OOO_NO_REPORTDESIGN_ARCHS), liblayout-java-openoffice.org$(OOO_NO_REPORTDESIGN_ARCHS), libloader-java-openoffice.org$(OOO_NO_REPORTDESIGN_ARCHS), libformula-java-openoffice.org$(OOO_NO_REPORTDESIGN_ARCHS), librepository-java-openoffice.org$(OOO_NO_REPORTDESIGN_ARCHS), libfonts-java-openoffice.org$(OOO_NO_REPORTDESIGN_ARCHS), libserializer-java-openoffice.org$(OOO_NO_REPORTDESIGN_ARCHS)
-	REPORT_BUILDER_JAR_DEPENDS := , libbase-java-openoffice.org, libsac-java, libxml-java-openoffice.org, libflute-java-openoffice.org, libpentaho-reporting-flow-engine-java-openoffice.org, liblayout-java-openoffice.org, libloader-java-openoffice.org, libformula-java-openoffice.org, librepository-java-openoffice.org, libfonts-java-openoffice.org, libserializer-java-openoffice.org
+	REPORT_BUILDER_BUILD_DEPS += , libbase-java$(OOO_NO_REPORTDESIGN_ARCHS), libsac-java$(OOO_NO_REPORTDESIGN_ARCHS), libxml-java (>= 1.1.6)$(OOO_NO_REPORTDESIGN_ARCHS), libflute-java (>= 1.1.6)$(OOO_NO_REPORTDESIGN_ARCHS), libpentaho-reporting-flow-engine-java (>= 0.9.4)$(OOO_NO_REPORTDESIGN_ARCHS), liblayout-java (>= 0.2.10)$(OOO_NO_REPORTDESIGN_ARCHS), libloader-java (>= 1.1.6)$(OOO_NO_REPORTDESIGN_ARCHS), libformula-java (>= 1.1.7)$(OOO_NO_REPORTDESIGN_ARCHS), librepository-java (>= 1.1.6)$(OOO_NO_REPORTDESIGN_ARCHS), libfonts-java (>= 1.1.6)$(OOO_NO_REPORTDESIGN_ARCHS), libserializer-java (>= 1.1.6)$(OOO_NO_REPORTDESIGN_ARCHS)
+	REPORT_BUILDER_JAR_DEPENDS := , libbase-java, libsac-java, libxml-java (>= 1.1.6), libflute-java (>= 1.1.6), libpentaho-reporting-flow-engine-java (>= 0.9.4), liblayout-java (>= 0.2.10), libloader-java (>= 1.1.6), libformula-java (>= 1.1.7), librepository-java (>= 1.1.6), libfonts-java (>= 1.1.6), libserializer-java (>= 1.1.6)
 	BUILD_DEPS += $(REPORT_BUILDER_BUILD_DEPS)
-	CONFIGURE_FLAGS += --with-libbase-jar=/usr/share/java/openoffice/libbase.jar --with-libxml-jar=/usr/share/java/openoffice/libxml.jar --with-flute-jar=/usr/share/java/openoffice/flute.jar --with-jfreereport-jar=/usr/share/java/openoffice/flow-engine.jar --with-liblayout-jar=/usr/share/java/openoffice/liblayout.jar --with-libloader-jar=/usr/share/java/openoffice/libloader.jar --with-libformula-jar=/usr/share/java/openoffice/libformula.jar --with-librepository-jar=/usr/share/java/openoffice/librepository.jar --with-libfonts-jar=/usr/share/java/openoffice/libfonts.jar --with-libserializer-jar=/usr/share/java/openoffice/libserializer.jar
+	CONFIGURE_FLAGS += --with-libbase-jar=/usr/share/java/libbase.jar --with-libxml-jar=/usr/share/java/libxml.jar --with-flute-jar=/usr/share/java/flute.jar --with-jfreereport-jar=/usr/share/java/flow-engine.jar --with-liblayout-jar=/usr/share/java/liblayout.jar --with-libloader-jar=/usr/share/java/libloader.jar --with-libformula-jar=/usr/share/java/libformula.jar --with-librepository-jar=/usr/share/java/librepository.jar --with-libfonts-jar=/usr/share/java/libfonts.jar --with-libserializer-jar=/usr/share/java/libserializer.jar
     endif
     ifneq (,$(filter apache-commons, $(SYSTEM_STUFF)))
 	REPORT_BUILDER_BUILD_DEPS += , libcommons-logging-java$(OOO_NO_JAVA_ARCHS)
@@ -1063,13 +1082,13 @@ ifeq "$(ENABLE_JAVA)" "y"
   ifneq (,$(filter hsqldb, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libhsqldb-java $(HSQLDB_MINVER)$(OOO_NO_JAVA_ARCHS)
 	BASE_HSQLDB_DEPENDS = libhsqldb-java $(HSQLDB_MINVER), libhsqldb-java (<< $(HSQLDB_TOONEWVER)~)
-	JAVA_GCJ_DEPENDS += , libhsqldb-java-gcj
+	JAVA_GCJ_DEPENDS += , libhsqldb-java-gcj [$(OOO_GCJ_ARCHS)]
   endif
   ifeq "$(ENABLE_SCRIPT_PROVIDER_BSH)" "y"
     ifneq (,$(filter beanshell, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , bsh (>= 2.0b4)$(OOO_NO_JAVA_ARCHS)
 	BSH_DEPENDS = bsh (>= 2.0b4)
-	JAVA_GCJ_DEPENDS += , bsh-gcj
+	JAVA_GCJ_DEPENDS += , bsh-gcj [$(OOO_GCJ_ARCHS)]
     endif
 	CONFIGURE_FLAGS += --enable-ext-scripting-beanshell
   else
@@ -1480,10 +1499,8 @@ endif
 	sed -e "s|libreofficeVER|libreoffice$(VER)|g" \
 		>> debian/control < debian/control.ure.in
 ifeq "$(ENABLE_JAVA)" "y"
-  ifeq "$(BUILD_JARS_NATIVE)" "y"
 	sed -e "s|libreofficeVER|libreoffice$(VER)|g" \
 		>> debian/control < debian/control.gcj.in
-  endif
 endif
 ifneq "$(OOO_MONO_ARCHS)" ""
 	sed -e "s|libreofficeVER|libreoffice$(VER)|g" \
@@ -2184,6 +2201,7 @@ endif
 
 native-jars: $(STAMP_NATIVE_JARS)
 $(STAMP_NATIVE_JARS): $(STAMP_DIR)/install
+ifeq "$(BUILD_JARS_NATIVE)" "y"
 	rm -rf debian/tmp/native-jars
 	mkdir -p debian/tmp/native-jars/gcj
 	cp -a \
@@ -2224,6 +2242,7 @@ endif
 	    | xargs -r -0 \
 		gcj-dbtool -m debian/tmp/native-jars/tmp.db debian/tmp/native-jars/tmp.db || exit 1
 	rm -f debian/tmp/native-jars/gcj/*.db
+endif
 	touch $@
 
 # Install files generated by setup into arch-dependent package directories
@@ -2548,12 +2567,12 @@ ifeq "$(BUILD_PYUNO)" "y"
 	mkdir -p debian/python-uno/$(OOBRANDDIR)/share/extensions
 	mv debian/tmp/$(OOBRANDDIR)/share/extensions/script-provider-for-python \
 		debian/python-uno/$(OOBRANDDIR)/share/extensions
-	rm -f $debian/python-uno/$(OOBRANDDIR)/share/extensions/script-provider-for-python/registration/LICENSE
+	rm -f debian/python-uno/$(OOBRANDDIR)/share/extensions/script-provider-for-python/registration/LICENSE
     ifeq "$(ENABLE_PYTHON3)" "y"
 	mkdir -p debian/python3-uno/$(OOBRANDDIR)/share/extensions
 	mv debian/tmp/$(OOBRANDDIR)/share/extensions/script-provider-for-python \
 		debian/python3-uno/$(OOBRANDDIR)/share/extensions
-	rm -f $debian/python3-uno/$(OOBRANDDIR)/share/extensions/script-provider-for-python/registration/LICENSE
+	rm -f debian/python3-uno/$(OOBRANDDIR)/share/extensions/script-provider-for-python/registration/LICENSE
     endif
   endif
 
@@ -2982,7 +3001,7 @@ endif
 	ln -s /$(shell echo $(OODIR) | sed -e s/usr/var/)/share/config/javasettingsunopkginstall.xml \
 		$(PKGDIR)-common/$(OODIR)/share/config/javasettingsunopkginstall.xml
 	# set PYTHONPATH in unopkg
-	perl -pi -e 's,export PATH,export PATH\n\nexport PYTHONPATH=\"/$(OOBASISDIR)/program\"\n\n,' \
+	perl -pi -e 's,unset XENVIRONMENT,unset XENVIRONMENT\n\nexport PYTHONPATH=\"/$(OOBASISDIR)/program\"\n\n,' \
 		$(PKGDIR)-common/$(OOBRANDDIR)/program/unopkg
 
 	# install DicOOo; we need to do this manually; the
@@ -3211,6 +3230,7 @@ endif
 	  LINKS=debian/$$PKG.links ; \
 	  if [ -e $$LINKS.in ]; then \
 	    sed -e "s#\@OOBASISDIR\@#$(OOBASISDIR)#g" \
+		-e "s/@ICONVERSION@/$(shell echo $(OOVER) | sed -e "s/\.//g")/" \
 		< $$LINKS.in > $$LINKS ; \
 	  fi; \
 	done
@@ -3471,8 +3491,8 @@ endif
 		-v"`echo $(BINARY_VERSION) | cut -d: -f2`"
 	dh_md5sums -s
 ifeq "$(USE_XZ_COMPRESS)" "y"
-	dh_builddeb -plibreoffice$(VER)-dbg -s $(DEBHELPER_OPTIONS) $(filter-out -Zbzip2,$(BUILDDEB_OPTIONS)) -Zxz
 	dh_builddeb -Nlibreoffice$(VER)-dbg -s $(DEBHELPER_OPTIONS) $(BUILDDEB_OPTIONS)
+	dh_builddeb -plibreoffice$(VER)-dbg $(DEBHELPER_OPTIONS) $(filter-out -Zbzip2,$(BUILDDEB_OPTIONS)) -Zxz
 else
 	dh_builddeb -s $(DEBHELPER_OPTIONS) $(BUILDDEB_OPTIONS)
 endif
