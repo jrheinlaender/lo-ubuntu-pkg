@@ -112,7 +112,6 @@ BUILD_PYUNO=y
 ifeq "$(BUILD_PYUNO)" "y"
   ENABLE_SCRIPT_PROVIDER_PYTHON=y
 endif
-PYTHON_HELPER=dh_python2
 # THIS IS ONLY FOR TESTING. When building against a specified pythonX.Y
 # this will work inside OOo but *not* from outside OOo unless the user
 # uses pythonX.Y directly (and the dh_pycentral-created dependencies allow
@@ -622,17 +621,7 @@ PYMINORPLUS1:=$(shell python -c "import sys; print sys.version_info[1]+1")
 PYTHON_SITE:=debian/python-uno/$(shell python -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
 
 ifeq "$(BUILD_PYUNO)" "y"
-  ifeq ($(PYTHON_HELPER),dh_python2)
 	BUILD_DEPS += , python (>= 2.6.6-3+squeeze4)
-  else ifeq ($(PYTHON_HELPER),dh_pycentral)
-	BUILD_DEPS += , python-central (>= 0.5)
-  else ifeq ($(PYTHON_HELPER),dh_pysupport)
-    ifeq "$(PYMAJOR).$(PYMINOR)" "2.6"
-	BUILD_DEPS += , python-support (>= 0.90.4)
-    else
-	BUILD_DEPS += , python-support
-    endif
-  endif
 	DBG_DBG_SUGGESTS+= , python-dbg
 	BUILD_DEPS += , $(PYTHON)-dev
 else
@@ -3282,20 +3271,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 	dh_nativejava -plibreoffice$(VER)-gcj -o
   endif
 endif
-ifeq ($(PYTHON_HELPER),dh_python2)
 	dh_python2 -ppython-uno --no-guessing-versions --no-guessing-deps
-else ifeq ($(PYTHON_HELPER),dh_pycentral)
-	dh_pycentral -ppython-uno
-  ifeq "$(PYTHON_VERSION)" "current"
-	# fix up broken depends (should be like python (<< 2.6), python (>= 2.5)
-	# as it was the case before it broke somewhen
-	perl -pi -e 's/python, python-central/python (<< $(PYMAJOR).$(PYMINORPLUS1)), python (>= $(PYMAJOR).$(PYMINOR)), python-central/' debian/python-uno.substvars
-  endif
-else ifeq ($(PYTHON_HELPER),dh_pysupport)
-	dh_pysupport -ppython-uno -V $(PYMAJOR).$(PYMINOR)
-else
-	dh_python
-endif
 	dh_lintian -s
 	dh_bugfiles -s -A
 	dh_link -s
