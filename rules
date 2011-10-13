@@ -394,15 +394,27 @@ ifeq (,$(filter $(ARCH),$(OOO_JAVA_ARCHS)))
 	ENABLE_JAVA=n
 	ENABLE_REPORTDESIGN=n
 	ENABLE_MEDIAWIKI=n
+	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-wiki-publisher
+	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-report-builder-bin -Nlibreoffice$(VER)-report-builder
 endif
 
 ifeq ($(ARCH),$(findstring $(ARCH),$(OOO_GCJ_JDK_ARCHS)))
   ifneq ($(ARCH),$(findstring $(ARCH),$(OOO_OPENJDK_ARCHS)))
 	ENABLE_REPORTDESIGN=n
 	SYSTEM_STUFF := $(filter-out jfreereport, $(SYSTEM_STUFF))
+	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-report-builder-bin -Nlibreoffice$(VER)-report-builder
   endif
 endif
-
+# disable SRB on ia64 when building with internal jfreereport.
+# fails to build. ("The system is out of resources."). FIXME.
+ifeq (ia64,$(findstring ia64,$(OOO_OPENJDK_ARCHS)))
+  ifeq (,$(findstring jfreereport,$(SYSTEM_STUFF))) 
+    OOO_REPORTDESIGN_ARCHS := $(filter-out ia64,$(OOO_REPORTDESIGN_ARCHS))
+    ifeq "$(ARCH)" "ia64"
+	ENABLE_REPORTDESIGN=n
+    endif
+  endif
+endif
 ifneq (,$(filter $(ARCH),$(OOO_GCJ_ARCHS)))
 	BUILD_JARS_NATIVE=y
 endif
