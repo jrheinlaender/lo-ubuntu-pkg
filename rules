@@ -106,7 +106,6 @@ ENABLE_PYTHON3=y
 ifeq "$(BUILD_PYUNO)" "y"
   ENABLE_SCRIPT_PROVIDER_PYTHON=y
 endif
-PYTHON_HELPER=dh_python2
 # THIS IS ONLY FOR TESTING. When building against a specified pythonX.Y
 # this will work inside OOo but *not* from outside OOo unless the user
 # uses pythonX.Y directly (and the dh_pycentral-created dependencies allow
@@ -450,7 +449,7 @@ endif
 # Debian Squeeze
 ifeq "$(SQUEEZE_BACKPORT)" "y"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out libwpd libwpg libwps mythes mdds libexttextcat graphite libvisio, $(SYSTEM_STUFF))
+  SYSTEM_STUFF := $(filter-out libwpd libwpg libwps mythes mdds libexttextcat graphite jfreereport libvisio, $(SYSTEM_STUFF))
   JUNIT_MIN_VER=
   PARALLEL_BUILD=n
 endif
@@ -514,6 +513,9 @@ ifneq "$(ENABLE_PRESENTER_CONSOLE)" "y"
 endif
 ifeq "$(ENABLE_PDFIMPORT)" "y"
 	BUILD_DEPS += , libpoppler-dev (>= 0.8.0), libpoppler-cpp-dev
+  ifneq "$(SQUEEZE_BACKPORT)" "y"
+	BUILD_DEPS += , libpoppler-cpp-dev
+  endif
 else
 	CONFIGURE_FLAGS += --disable-ext-pdfimport
 endif
@@ -550,7 +552,11 @@ endif
 
 ifneq (,$(filter openssl, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libssl-dev
+  ifeq "$(SQUEEZE_BACKPORTS)" "y"
 	DBG_DBG_SUGGESTS += , libssl$(shell readlink /usr/lib/libssl.so | cut -d"." -f3,4,5)-dbg
+  else
+	DBG_DBG_SUGGESTS += , libssl$(shell readlink /usr/lib/`dpkg-architecture -qDEB_HOST_MULTIARCH`/libssl.so | cut -d"." -f3,4,5)-dbg
+endif
 endif
 
 ifneq "$(ENABLE_RSVG)" "y"
@@ -575,19 +581,23 @@ else
 	SMALL_SYMBOLS = n
         USE_XZ_COMPRESS = y
   else
-    ifneq (,$(findstring i386,$(DEB_HOST_ARCH)))
-	SMALL_SYMBOLS = n
-        USE_XZ_COMPRESS = y
+    ifeq "$(SQUEEZE_BACKPORTS)" "y"
+	SMALL_SYMBOLS = y
     else
-      ifneq (,$(findstring amd64,$(DEB_HOST_ARCH)))
+      ifneq (,$(findstring i386,$(DEB_HOST_ARCH)))
 	SMALL_SYMBOLS = n
         USE_XZ_COMPRESS = y
       else
+        ifneq (,$(findstring amd64,$(DEB_HOST_ARCH)))
+	SMALL_SYMBOLS = n
+        USE_XZ_COMPRESS = y
+        else
 	SMALL_SYMBOLS = y
+        endif
       endif
     endif
   endif
-	DBG_DBG_SUGGESTS+= , libc6.1-dbg [alpha ia64], libc0.1-dbg [kfreebsd-i386 kfreebsd-amd64], libc0.3-dbg [hurd-i386], libc6-dbg [!ia64 !alpha !kfreebsd-i386 !kfreebsd-amd64 !hurd-i386], libatk1.0-dbg, libglib2.0-0-dbg, libgnomevfs2-0-dbg, libstdc++6-$(SYSTEM_GCC_VERSION)-dbg, libx11-6-dbg, libxext6-dbg, libxaw7-dbg, libxml2-dbg, libgtk2.0-0-dbg, libxau6-dbg, libice6-dbg, libsm6-dbg, libxinerama1-dbg, libfontconfig1-dbg
+	DBG_DBG_SUGGESTS+= , libc6.1-dbg [alpha ia64], libc0.1-dbg [kfreebsd-i386 kfreebsd-amd64], libc0.3-dbg [hurd-i386], libc6-dbg [!ia64 !alpha !kfreebsd-i386 !kfreebsd-amd64 !hurd-i386], libatk1.0-dbg, libglib2.0-0-dbg, libgnomevfs2-0-dbg, libstdc++6-$(SYSTEM_GCC_VERSION)-dbg, libx11-6-dbg, libxext6-dbg, libxaw7-dbg, libxml2-dbg, libgtk2.0-0-dbg, libxau6-dbg, libice6-dbg, libsm6-dbg, libxinerama1-dbg, libfontconfig1-dbg, libhunspell-$(shell pkg-config --modversion hunspell | cut -d. -f1,2)-0-dbg
   ifeq "$(USE_LIBCURL4)" "y"
 	DBG_DBG_SUGGESTS+= , libcurl3-dbg
   else
@@ -619,15 +629,7 @@ PY3MINORPLUS1:=$(shell python3 -c "import sys; print (sys.version_info[1]+1)")
 PYTHON3_SITE:=debian/python3-uno/$(shell python3 -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
 
 ifeq "$(BUILD_PYUNO)" "y"
-  ifeq ($(PYTHON_HELPER),dh_pycentral)
-	BUILD_DEPS += , python-central (>= 0.5)
-  else ifeq ($(PYTHON_HELPER),dh_pysupport)
-    ifeq "$(PYMAJOR).$(PYMINOR)" "2.6"
-	BUILD_DEPS += , python-support (>= 0.90.4)
-    else
-	BUILD_DEPS += , python-support
-    endif
-  endif
+	BUILD_DEPS += , python (>= 2.6.6-3+squeeze4)
 	DBG_DBG_SUGGESTS+= , python-dbg
 	BUILD_DEPS += , $(PYTHON)-dev (>= 2.6)
   ifeq "$(ENABLE_PYTHON3)" "y"
@@ -790,12 +792,20 @@ export JAVA_HOME
   endif
   ifeq "$(PACKAGE_SDK)" "y"
     ifeq "$(DEB_VENDOR)" "Debian"
-	BUILD_DEPS += , gcc-mingw32$(OOO_NO_JAVA_ARCHS), mingw32-runtime$(OOO_NO_JAVA_ARCHS)
 	CONFIGURE_FLAGS += --enable-build-unowinreg
+      ifeq "$(SQUEEZE_BACKPORT)" "y"
+	BUILD_DEPS += , gcc-mingw32$(OOO_NO_JAVA_ARCHS), mingw32-runtime$(OOO_NO_JAVA_ARCHS)
 	CONFIGURE_FLAGS += --with-mingw=i586-mingw32msvc-g++
 	# this normally is done in configure with sed -e s/[cg]++/strip/ but that somehow
 	# doesn't work. Workaround. FIXME.
 export MINGWSTRIP = i586-mingw32msvc-strip
+      else
+	BUILD_DEPS += , mingw-w64 (>= 1.0)$(OOO_NO_JAVA_ARCHS)
+	CONFIGURE_FLAGS += --with-mingw=i686-w64-mingw32-g++
+	# this normally is done in configure with sed -e s/[cg]++/strip/ but that somehow
+	# doesn't work. Workaround. FIXME.
+export MINGWSTRIP = i686-w64-mingw32-strip
+      endif
     endif
   endif
   ifeq "$(ENABLE_MEDIAWIKI)" "y"
@@ -1044,7 +1054,7 @@ else
 endif
 
 ifeq "$(ENABLE_SDBC_POSTGRESQL)" "y"
-	BUILD_DEPS += , libpq-dev
+	BUILD_DEPS += , libpq-dev (>= 9.0~)
 	ADDITIONAL_SECTIONS += PostgreSQL
 endif
 
@@ -1758,6 +1768,10 @@ endif
 	touch $(OOO_BUILD_TREE)/distro-configs/Win32.conf.in
 	touch $(OOO_BUILD_TREE)/distro-configs/Solaris.conf.in
 
+ifeq "$(SQUEEZE_BACKPORT)" "y"
+	quilt pop `tail -n 3 debian/patches/series | head -n 1`
+endif
+
 	cd $(OOO_BUILD_TREE) ; \
 		PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ../$(OOO_BUILD_TREE)/configure $(CONFIGURE_FLAGS)
 
@@ -2264,15 +2278,8 @@ ifeq "$(ENABLE_JAVA)" "y"
 		done
 	# fix up Class-Path of jurt.jar to be able to find libjpipe.so.
 	# See See http://www.openoffice.org/servlets/ReadMsg?list=dev&msgNo=27765
-	t=`mktemp -q -d`; \
-	mkdir -p $$t && cd $$t && \
-	unzip $(CURDIR)/debian/ure/usr/share/java/jurt.jar \
-		META-INF/MANIFEST.MF && \
-	perl -pi -e 's#../../lib/#../../lib/ /$(OOUREDIR)/lib/#g' \
-		META-INF/MANIFEST.MF && \
-	zip -r $(CURDIR)/debian/ure/usr/share/java/jurt.jar \
-		META-INF/MANIFEST.MF && \
-	cd $(CURDIR) && rm -rf $$t
+	jh_classpath --classpath="ridl.jar unoloader.jar ../../lib /$(OOUREDIR)/lib/ ../bin/" \
+		$(CURDIR)/debian/ure/usr/share/java/jurt.jar
 endif
 	# and the public libs to uno-libs3
 	mkdir -p debian/uno-libs3/$(OOUREDIR)/lib
@@ -3325,20 +3332,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 	dh_nativejava -plibreoffice$(VER)-gcj -o
   endif
 endif
-ifeq ($(PYTHON_HELPER),dh_python2)
 	dh_python2 -ppython-uno --no-guessing-versions --no-guessing-deps
-else ifeq ($(PYTHON_HELPER),dh_pycentral)
-	dh_pycentral -ppython-uno
-  ifeq "$(PYTHON_VERSION)" "current"
-	# fix up broken depends (should be like python (<< 2.6), python (>= 2.5)
-	# as it was the case before it broke somewhen
-	perl -pi -e 's/python, python-central/python (<< $(PYMAJOR).$(PYMINORPLUS1)), python (>= $(PYMAJOR).$(PYMINOR)), python-central/' debian/python-uno.substvars
-  endif
-else ifeq ($(PYTHON_HELPER),dh_pysupport)
-	dh_pysupport -ppython-uno -V $(PYMAJOR).$(PYMINOR)
-else
-	dh_python
-endif
 	dh_lintian -s
 	dh_bugfiles -s -A
 	dh_link -s
@@ -3490,7 +3484,7 @@ endif
 	dh_md5sums -s
 ifeq "$(USE_XZ_COMPRESS)" "y"
 	dh_builddeb -Nlibreoffice$(VER)-dbg -s $(DEBHELPER_OPTIONS) $(BUILDDEB_OPTIONS)
-	dh_builddeb -plibreoffice$(VER)-dbg $(DEBHELPER_OPTIONS) $(filter-out -Zbzip2,$(BUILDDEB_OPTIONS)) -Zxz
+	dh_builddeb -plibreoffice$(VER)-dbg $(DEBHELPER_OPTIONS) $(filter-out -Zbzip2 -Zlzma,$(BUILDDEB_OPTIONS)) -Zxz
 else
 	dh_builddeb -s $(DEBHELPER_OPTIONS) $(BUILDDEB_OPTIONS)
 endif
