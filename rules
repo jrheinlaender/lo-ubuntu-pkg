@@ -552,7 +552,11 @@ ifneq (,$(filter libtextcat, $(SYSTEM_STUFF)))
 endif
 ifeq "$(USE_SYSTEM_TEXTCAT_DATA)" "y"
 	CONFIGURE_FLAGS += --with-external-libtextcat-data=/usr/share/libtextcat/LM
+  ifeq "$(SQUEEZE_BACKPORT)" "y"
+	TEXTCAT_DATA_RECOMMENDS := libtextcat-data-utf8
+  else
 	TEXTCAT_DATA_RECOMMENDS := libtextcat-data (>= 2.2-9)
+  endif
 endif
 
 ifeq "$(USE_LIBCURL4)" "y"
@@ -3189,7 +3193,15 @@ endif
 	done
 
 ifeq "$(USE_SYSTEM_TEXTCAT_DATA)" "y"
+  ifneq "$(SQUEEZE_BACKPORT)" "y"
 	echo "usr/share/libtextcat/LM $(OOBASISDIR)/share/fingerprint" >> debian/libreoffice-common.links
+  else
+	# remove duplicated textcat data and replace with symlinks
+	cd $(PKGDIR)-common/$(OOBASISDIR)/share && \
+	for i in `fdupes -n -f -1 fingerprint/ /usr/share/libtextcat/LM`; do \
+		ln -sf /usr/share/libtextcat/LM/`basename $$i` fingerprint/`basename $$i`; \
+	done
+  endif
 endif
 
 ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
