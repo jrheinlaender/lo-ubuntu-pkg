@@ -70,21 +70,14 @@ export QUILT_OPTIONS="-p1 -F0"
 # work around tcsh bugs.debian.org/339034: tcsh: Unknown colorls variable `su'
 unexport LS_COLORS
 
-MWS=OOO340
-MILESTONE=m1
-TAG=$(shell echo $(MWS) | tr A-Z a-z)-$(MILESTONE)
-GIT_TAG=$(MWS)_$(MILESTONE)
-OOO_BUILD_BRANCH=libreoffice-3-4-3
-OOO_BUILD_VERSION=3.4.3.2
-# in ooo-build releases the same as OOO_BUILD_VERSION
-OOO_BUILD_TARBALL_VERSION=$(OOO_BUILD_VERSION)
-OOO_BUILD_TAG=libreoffice-$(OOO_BUILD_TARBALL_VERSION)
-OOO_BUILD_TREE=libreoffice-build
-SOURCE_TREE=$(OOO_BUILD_TREE)/build/libreoffice-$(OOO_BUILD_TARBALL_VERSION)
+MWS=OOO350
+GIT_TAG=libreoffice-3.4.3.2
+GIT_BRANCH=
+SOURCE_TREE=.
 STAMP_DIR=debian/stampdir
 TARFILE_LOCATION=$(CURDIR)/ext-sources
 export TARFILE_LOCATION
-USE_SOURCE_TARBALLS=y
+USE_SOURCE_TARBALLS=n
 
 ifeq "$(DISTREL)" "squeeze"
  SQUEEZE_BACKPORT=y
@@ -206,7 +199,6 @@ SYSTEM_STUFF += neon
 NEON_SECTYPE=gnutls
 NEONSONR=27
 SYSTEM_STUFF += redland
-USE_OOO_BUILD_DESKTOPS=n
 PACKAGE_SDK=y
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(JDK)" "openjdk"
@@ -293,25 +285,20 @@ HYPH_DIR=/usr/share/hyphen
 THES_DIR=/usr/share/mythes
 
 # Default flags to pass to configure of ooo-build
-CONFIGURE_FLAGS= --disable-post-install-scripts \
-                 --with-tag=$(TAG) \
-                --with-distro=$(PATCHSET) \
+CONFIGURE_FLAGS= \
 		--with-vendor='$(OOO_VENDOR)' \
-                --enable-package-directories \
-                --with-installed-ooo-dirname=$(OODIRNAME) \
+                --with-install-dirname=$(OODIRNAME) \
                 --prefix=/usr --mandir=/usr/share/man \
                 --with-docdir=/usr/share/doc/libreoffice \
-                --with-build-version="tag $(OOO_BUILD_TAG), $(DEB_VENDOR) package $(BINARY_VERSION)" \
                 --disable-strip \
                 --enable-lockdown \
-		--with-drink=coffee \
 		--libdir=/usr/lib \
 		--host=$(DEB_HOST_GNU_TYPE) --build=$(DEB_BUILD_GNU_TYPE) \
-		--with-additional-sections="$(ADDITIONAL_SECTIONS)" \
 		--enable-broffice \
 		--enable-extension-integration \
 		--disable-online-update \
-		--disable-fetch-external
+		--disable-fetch-external \
+		--enable-release-build
 
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
   CONFIGURE_FLAGS += --without-git
@@ -680,16 +667,16 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	# but we can't/shouldn't do dynamic switching, so let en-US be the first
 	# one to that gid_Module_Root always is english and the other langpacks
 	# have gid_Module_Root.$iso
-	#ISOS=$(shell $(OOO_BUILD_TREE)/bin/openoffice-xlate-lang -i all')
+	#ISOS=$(shell $(SOURCE_TREE)/bin/lo-xlate-lang -i all')
 	ISOS:=en-US af ar as ast be bg bn br bs ca cs cy da de dz el \
 	  en-GB en-ZA eo es et eu fa fi fr ga gl gu he hi hr hu id is it ja \
 	  ka km ko ku lt lv mk mn ml mr nb ne nl nn nr nso oc om or \
 	  pa-IN pl pt pt-BR ro ru rw si sk sl sr ss st sv \
 	  ta te tg th tn tr ts ug uk uz ve vi xh zh-CN zh-TW zu
-	#HELPISOS:=$(shell $(OOO_BUILD_TREE)/bin/openoffice-xlate-lang -i all') 
+	#HELPISOS:=$(shell $(SOURCE_TREE)/bin/lo-xlate-lang -i all') 
 	HELPISOS:=en-US ca cs da de dz el en-GB es et eu fi fr gl hi hu it \
 	  ja km ko nl om pl pt pt-BR ru sk sl sv zh-CN zh-TW
-	#LANGPACKISOS:=$(shell $(OOO_BUILD_TREE)/bin/openoffice-xlate-lang -i all')
+	#LANGPACKISOS:=$(shell $(SOURCE_TREE)/bin/lo-xlate-lang -i all')
 	LANGPACKISOS:=en-US af ar as ast be bg bn br bs ca cs cy da de dz el \
 	  en-GB en-ZA eo es et eu fa fi fr ga gl gu he hi hr hu id is it ja \
 	  ka km ko ku lt lv mk mn ml mr nb ne nl nn nr nso oc om or \
@@ -1202,8 +1189,8 @@ endif
 
 # Use compiler cache?  Include ccache in DEB_BUILD_OPTIONS for much faster rebuild times
 # A complete build uses about 200Mb of compiler cache.
-ifeq (ccache,$(findstring ccache,$(DEB_BUILD_OPTIONS)))
-	CONFIGURE_FLAGS += --with-gcc-speedup=ccache
+ifneq (ccache,$(findstring ccache,$(DEB_BUILD_OPTIONS)))
+	CONFIGURE_FLAGS += --disable-ccache
 endif
 
 ## Build n projects in parallel?
@@ -1290,66 +1277,27 @@ endif
 clean-debdir:
 	dh_testdir
 	rm -f debian/*.postinst debian/*.postrm debian/*.preinst debian/*.prerm debian/*.triggers
-	rm -f $(STAMP_DIR)/setup
 	dh_clean
-
-# Clean compilation results, but leave solver (about 600Mb in addition to instsetoo)
-clean-objectdirs: clean-instsetoo
-	dh_testdir
-	find $(SOURCE_TREE) -maxdepth 2 -name $(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT) -type d -exec rm -rf {} \;
 
 clean:
 	dh_testroot
 	dh_testdir
-
-	# openoffice.applications and openoffice*.keys are not removed via make distclean
-	# although they are generated files. Work around this.
-	# FIXME: Fix the makefiles in ooo-build directly
-	if [ -e $(OOO_BUILD_TREE)/desktop/openoffice.applications ]; then \
-		$(MAKE) -C $(OOO_BUILD_TREE)//desktop clean || true;\
-	fi
-	if [ -r $(OOO_BUILD_TREE)/Makefile ]; then \
-	  $(MAKE) -C $(OOO_BUILD_TREE) distclean || true ;\
-	fi
-
-	# remove file with space in the name
-	rm -f $(OOO_BUILD_TREE)/test/macro/clock\ chart.xls
-
-	rm -rf $(OOO_BUILD_TREE)/autom4ate.cache
-	rm -rf $(OOO_BUILD_TREE)/build
-	rm -rf $(OOO_BUILD_TREE)/desktop/*.desktop
-	rm -f $(OOO_BUILD_TREE)/fonts/symbols.xls
-	rm -f $(OOO_BUILD_TREE)/po/.intltool-merge-cache
-	rm -f $(OOO_BUILD_TREE)/src/GSI*.sdf
-	rm -f $(OOO_BUILD_TREE)/src/accessories*langpack.sdf
-	rm -f $(OOO_BUILD_TREE)/src/extensions*langpack.sdf
-	rm -rf $(OOO_BUILD_TREE)/bin/localize-*.err
-	find $(OOO_BUILD_TREE)/stamp -type f ! -name "Make*" ! -name "README" -exec rm {} \;
 
 	# remove generated symlinks / java wrappers
 	rm -rf debian/usr
 
 	# stlport home
 	rm -rf $(CURDIR)/stlport
-	# convenience link
-	rm -f build
 
 	rm -f $(OOO_BUILD_TREE)/src/GSI*err
 	rm -f $(OOO_BUILD_TREE)/config.*
 
+	if [ -f Makefile ]; then $(MAKE) distclean; fi
+	rm -f config.status
+
 ifneq "$(OOO_L10N_DIR)" ""
 	rm -rf $(OOO_L10N_DIR)
 endif
-
-	dh_clean
-
-	# Files created in debian directory
-	rm -f debian/*.postinst debian/*.postrm debian/*.preinst debian/*.prerm
-	find debian -name "*.links" ! -name "libreoffice-common*.links" -exec rm {} \;
-	if [ -d "$(STAMP_DIR)" ]; then rm -rf "$(STAMP_DIR)"; fi
-	rm -f debian/shlibs.override.stdlibs
-	rm -f debian/*.bug-script
-	rm -f debian/scripts/aotcompile.py*
 
 ifeq "$(ENABLE_MONO)" "y"
 	rm -rf $(MONO_SHARED_DIR)/.wapi
@@ -1358,6 +1306,14 @@ endif
 ifeq "$(HELPISOS)" ""
 	rm -rf images*
 endif
+
+	# Files created in debian directory
+	$(MAKE) -f debian/rules clean-debdir
+	find debian -name "*.links" ! -name "libreoffice-common*.links" -exec rm {} \;
+	if [ -d "$(STAMP_DIR)" ]; then rm -rf "$(STAMP_DIR)"; fi
+	rm -f debian/shlibs.override.stdlibs
+	rm -f debian/*.bug-script
+	rm -f debian/scripts/aotcompile.py*
 
 	rm -f l10n.fdupes
 	rm -f debian/shlibs.local
@@ -1373,41 +1329,14 @@ endif
 	rm -f debian/openoffice.org-dtd-officedocument1.0.xmlcatalogs
 	rm -f download.list
 
-	rm -f $(OOO_BUILD_TREE)/src/libreoffice-$(OOO_BUILD_TARBAL_VERSION)*
-	rm -f $(OOO_BUILD_TREE)/src/GSI*
-	rm -f $(OOO_BUILD_TREE)/src/*.log
-
-	for i in ext-sources-$(OOO_BUILD_TREE)/*; do \
-		rm -f $(OOO_BUILD_TREE)/src/`basename $$i`; \
-	done
-
-	for i in `find $(OOO_BUILD_TREE)/patches/dev300 -name "*.in" ! -name "Makefile*"`; do \
-		if [ -e `echo $$i | sed -e s/\.in$$//` ]; then \
-			rm `echo $$i | sed -e s/\.in$$//`; \
-		fi; \
-	done
-	rm -f $(OOO_BUILD_TREE)/bin/setup
-	rm -f $(OOO_BUILD_TREE)/bin/piece/sys-setup
-	rm -f $(OOO_BUILD_TREE)/download
-	rm -f $(OOO_BUILD_TREE)/distro-configs/*.conf
-	rm -f $(OOO_BUILD_TREE)/patches/apply.pl
-	find $(OOO_BUILD_TREE) -name "Makefile" | xargs rm -f
-	rm -f $(OOO_BUILD_TREE)/intltool-extract \
-		$(OOO_BUILD_TREE)/intltool-merge \
-		$(OOO_BUILD_TREE)/intltool-update
-	rm -f $(OOO_BUILD_TREE)/scratch/place
-
-	# left-over from ooo-pack-sources
-	rm -rf .releases
-
 	$(MAKE) -f debian/rules control
 
 
 # Generate control file, because we have so many different languages
 # Based on script by Martin Quinson <Martin.Quinson@tuxfamily.org>
 control: debian/control
-debian/control: $(wildcard debian/control*in) $(OOO_BUILD_TREE)/bin/openoffice-xlate-lang  debian/rules
-	chmod 755 $(OOO_BUILD_TREE)/bin/openoffice-xlate-lang
+debian/control: $(wildcard debian/control*in) $(SOURCE_TREE)/bin/lo-xlate-lang  debian/rules
+	chmod 755 $(SOURCE_TREE)/bin/lo-xlate-lang
 	sed -e "s#libreofficeVER#libreoffice$(VER)#g" \
 	    -e "s#libreofficeVER#libreoffice$(VER)#g" \
 	    -e "s#%$(DEB_VENDOR)=\([^%]*\)%#, \1#g#" \
@@ -1430,8 +1359,8 @@ endif
 
 	for LNUM in $(filter-out en-US,$(LANGPACKISOS)) ; do \
 	    [ "$$LNUM" = en-US -a "$(DEB_SOURCE)" = "libreoffice$(VER)-l10n" ] && continue; \
-	    LNAME=`$(OOO_BUILD_TREE)/bin/openoffice-xlate-lang -l $$LNUM | perl -e 'print ucfirst(<STDIN>);'`; \
-	    LCODE=`$(OOO_BUILD_TREE)/bin/openoffice-xlate-lang -i $$LNUM | tr A-Z a-z`; \
+	    LNAME=`$(SOURCE_TREE)/bin/lo-xlate-lang -l $$LNUM | perl -e 'print ucfirst(<STDIN>);'`; \
+	    LCODE=`$(SOURCE_TREE)/bin/lo-xlate-lang -i $$LNUM | tr A-Z a-z`; \
 	    CCODE=`echo $$LCODE | sed 's/-.*//'`; \
 	    case "$$LCODE" in \
 		bn|gu|pa-in|ml|or|te|ta) \
@@ -1492,8 +1421,8 @@ endif
 
 ifneq "$(HELPISOS)" ""
 	for LNUM in $(HELPISOS) ; do \
-	    LNAME=`$(OOO_BUILD_TREE)/bin/openoffice-xlate-lang -l $$LNUM | perl -e 'print ucfirst(<STDIN>);'`; \
-	    LCODE=`$(OOO_BUILD_TREE)/bin/openoffice-xlate-lang -i $$LNUM | tr A-Z a-z`; \
+	    LNAME=`$(SOURCE_TREE)/bin/lo-xlate-lang -l $$LNUM | perl -e 'print ucfirst(<STDIN>);'`; \
+	    LCODE=`$(SOURCE_TREE)/bin/lo-xlate-lang -i $$LNUM | tr A-Z a-z`; \
 	    CCODE=`echo $$LCODE | sed 's/-.*//'`; \
 	    sed -e "s|@LNAME@|$$LNAME|g" -e "s|@LCODE@|$$LCODE|g" \
 		-e "s|@CCODE@|$$CCODE|g" \
@@ -1668,8 +1597,7 @@ build-indep: $(STAMP_DIR)/build
 # so that the target will not be run again.  Removing the file will make
 # make run the target over.
 
-configure: $(OOO_BUILD_TREE)/config.status
-$(OOO_BUILD_TREE)/config.status: $(OOO_BUILD_TREE)/configure
+config.status:
 	dh_testdir
 
 	# Make sure needed scripts are executable
@@ -1677,19 +1605,12 @@ $(OOO_BUILD_TREE)/config.status: $(OOO_BUILD_TREE)/configure
 	for FILE in debian/scripts/move-if-change \
 		    debian/scripts/cleandupes \
 		    debian/scripts/get_libebook_dep.sh \
-		    $(OOO_BUILD_TREE)/configure \
-		    $(OOO_BUILD_TREE)/bin/[a-z]* \
-		    $(OOO_BUILD_TREE)/bin/piece/[a-z]*; \
+		    autogen.sh \
 	do \
 	  chmod 755 $$FILE ;\
 	done
 
 	mkdir -p $(STAMP_DIR)
-
-ifeq "$(USE_SOURCE_TARBALLS)" "y"
-	cp -a sources/* $(OOO_BUILD_TREE)/src
-endif
-	cp -a ext-sources-$(OOO_BUILD_TREE)/* $(OOO_BUILD_TREE)/src
 
 ifneq ($(GCC_VERSION),)
   ifneq ($(GCC_VERSION),snapshot)
@@ -1714,68 +1635,15 @@ ifneq ($(GCC_VERSION),)
   endif
 endif
 
-ifneq "$(BUILD_ONLY_EN_US)" "y"
-  ifneq "$(LANGPACKISOS)" "en-US"
-	# copy and extract extra GSIs 
-	#cp translation-updates-*/GSI*.sdf.* $(OOO_BUILD_TREE)/src
-	find $(OOO_BUILD_TREE)/src -name "*.sdf.bz2" -exec bunzip2 -k \{\} \;
-	for i in `find $(OOO_BUILD_TREE)/src/*.sdf.gz`; do gunzip -dc "$$i" > \
-		$(OOO_BUILD_TREE)/src/`basename $$i .gz`; done
-	# work around broken stuff in the GSI breaking the build in svx
-	for iso in lv sh-YU sr-CS; do \
-	  case " $(LANGPACKISOS) " in *\ $$iso\ *) ;; *) continue; esac; \
-	  [ -f $(OOO_BUILD_TREE)/src/GSI_$$iso.sdf ] || continue; \
-	  TMP=`mktemp -q`; \
-	  grep -v OOO_LICENSE $(OOO_BUILD_TREE)/src/GSI_$$iso.sdf \
-	    > $$TMP && mv $$TMP $(OOO_BUILD_TREE)/src/GSI_$$iso.sdf; \
-	done
-	# we change the message, and those translations therefore don't match anymore.
-	for iso in $(LANGPACKISOS); do \
-	  [ -f $(OOO_BUILD_TREE)/src/GSI_$$iso.sdf ] || continue; \
-	  if [ "$$iso" = "ku" ]; then continue; fi; \
-	  TMP=`mktemp -q`; \
-	  grep -v ExtensionNotPresent\.src.*RID_STR_EXTENSION_NOT_PRESENT $(OOO_BUILD_TREE)/src/GSI_$$iso.sdf \
-	    > $$TMP && mv $$TMP $(OOO_BUILD_TREE)/src/GSI_$$iso.sdf; \
-	done
-    ifeq (he,$(findstring he,$(LANGPACKISOS)))
-	# TKOS_BUILD_DATE is bogus, too
-	if [ -f $(OOO_BUILD_TREE)/src/GSI_he.sdf ]; then \
-	 TMP=`mktemp -q`; \
-	 sed -e "s/TKOS_BUILD_DATE//g" < $(OOO_BUILD_TREE)/src/GSI_he.sdf \
-	   > $$TMP && mv $$TMP $(OOO_BUILD_TREE)/src/GSI_he.sdf ; \
-	fi
-    endif
-    ifeq (da,$(findstring da,$(LANGPACKISOS)))
-	if [ -f $(OOO_BUILD_TREE)/src/GSI_da.sdf ]; then \
-	  perl -pi -e 's/\s\(.*på engelsk\)//' $(OOO_BUILD_TREE)/src/GSI_da.sdf; \
-	fi
-    endif
-    ifeq (es,$(findstring es,$(LANGPACKISOS)))
-	if [ -f $(OOO_BUILD_TREE)/src/GSI_es.sdf ]; then \
-	  perl -pi -e 's/(.*SC_OPCODE_SUBSTITUTE.*)REEMPLAZAR(.*)/\1SUSTITUIR\2/' $(OOO_BUILD_TREE)/src/GSI_es.sdf; \
-	fi
-    endif
-  endif
-endif
-
-	# Make convenience link
-	if [ ! -L build ]; then ln -s $(SOURCE_TREE) build ; fi
-
 	# Make sure we have /proc mounted - otherwise idlc will fail later.
 	test -r /proc/version
 
-	# hrmpf. Empty in ooo-build and patch does not give them to us but
-	# configure need them. Create them...
-	touch $(OOO_BUILD_TREE)/distro-configs/Win32.conf.in
-	touch $(OOO_BUILD_TREE)/distro-configs/Solaris.conf.in
-
-	cd $(OOO_BUILD_TREE) ; \
-		PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ../$(OOO_BUILD_TREE)/configure $(CONFIGURE_FLAGS)
+	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ./autogen.sh $(CONFIGURE_FLAGS)
 
 	touch $@
 
 build: $(STAMP_DIR)/build
-$(STAMP_DIR)/build: $(OOO_BUILD_TREE)/config.status
+$(STAMP_DIR)/build: config.status
 	dh_testdir
 
 ifeq "$(BUILD_KDE)" "n"
@@ -1790,9 +1658,9 @@ ifeq "$(BUILD_KDE)" "n"
 endif
 
 ifeq ($(ON_BUILDD),y)
-	cd $(OOO_BUILD_TREE) ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` CFLAGS="$(CFLAGS)" CXXFLAGS="$(CXXFLAGS)" $(MAKE) build
+	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` CFLAGS="$(CFLAGS)" CXXFLAGS="$(CXXFLAGS)" $(MAKE) build
 else
-	cd $(OOO_BUILD_TREE) ; PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 VERBOSE=true ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` CFLAGS="$(CFLAGS)" CXXFLAGS="$(CXXFLAGS)" $(MAKE) build
+	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 VERBOSE=true ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` CFLAGS="$(CFLAGS)" CXXFLAGS="$(CXXFLAGS)" $(MAKE) build
 endif
 
 ifeq "$(BUILD_PYUNO)" "y"
@@ -1901,7 +1769,7 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/build
 		 LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(BUILD_LD_LIBRARY_PATH)" \
 		 LD_PRELOAD=/usr/lib/libfakeroot/libfakeroot-$(shell update-alternatives --query fakeroot | grep Value: | cut -d"-" -f2).so \
 		 DESTDIR=$(CURDIR)/debian/tmp \
-		 solenv/bin/ooinstall /$(OOBRANDDIR)
+		 $(MAKE) install
 	# FIXME: Move here so that we don't rely on libreoffice-build here.
 	# Would also obsolete disable-ooinstall-in-package-ooo.diff
 	cd $(OOO_BUILD_TREE)/bin; \
@@ -2129,7 +1997,7 @@ $(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*.sh) $(wildcard debian/*.
 
 # Install files generated by setup into package directories
 langpacks: $(STAMP_DIR)/langpacks
-$(STAMP_DIR)/langpacks: $(STAMP_DIR)/install $(STAMP_DIR)/install-indep $(OOO_BUILD_TREE)/bin/openoffice-xlate-lang
+$(STAMP_DIR)/langpacks: $(STAMP_DIR)/install $(STAMP_DIR)/install-indep $(SOURCE_TREE)/bin/lo-xlate-lang
 
 	# remove empty uno_packages dirs somehow in the langpacks(?)
 	for iso in `echo $(LANGPACKISOS) | tr A-Z a-z`; do \
@@ -2466,7 +2334,6 @@ endif
 	mkdir -p -m755 $(PKGDIR)-base/usr/share/applications \
 	               $(PKGDIR)-core/usr/share/applications
 
-ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	# menu files from sysui
 	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare >/dev/null; pwd`" ;\
 	for p in writer calc impress draw math base; do \
@@ -2512,20 +2379,6 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 		perl -pi -e 's/Application;//; s/X-Red-Hat-Base;//; s/X-SuSE-Core-Office;//; s/X-MandrivaLinux-.*;//;' $(PKGDIR)-$$i/usr/share/applications/libreoffice$(VER)-$$i.desktop; \
 	done
 	perl -pi -e 's/Application;//' $(PKGDIR)-gtk/$(OOBRANDDIR)/share/xdg/qstart.desktop
-else
-	# menu files from $(OOO_BUILD_TREE)/desktop
-	for p in writer calc impress draw math base; do \
-		mkdir -p -m755 $(PKGDIR)-$$p/usr/share/applications ;\
-			sed -e '/^TryExec=.*/d' \
-			    -e "s,^Exec=.*,Exec=ooffice$(VER) -$$p %U," \
-			    -e "s,^Icon=.*,Icon=ooo-$$p," \
-			    -e '/^Name=/s,  , ,' \
-			    -e 's/@STARTUPNOTIFY@/true/' \
-			    -e '/^Categories/s/Office/Application;Office/' \
-				$(OOO_BUILD_TREE)/desktop/$$p.desktop \
-				> $(PKGDIR)-$$p/usr/share/applications/libreoffice$(VER)-$$p.desktop || exit 1 ;\
-	done
-endif
 	# add version to .menu and .lintian-overrides
 	for i in base calc draw impress math writer; do \
 		cat debian/libreoffice$(VER)-$$i.menu.in \
@@ -2860,7 +2713,6 @@ endif
 	  install -m644 $$f $(CURDIR)/$(PKGDIR)-common/usr/share/icons/$$f || exit 1 ;\
 	done && cd ../../.. && rm -rf usr etc
 
-ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	# menu files from sysui
 	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare >/dev/null; pwd`" ;\
 	mkdir -p -m755 $(PKGDIR)-common/usr/share/applications ;\
@@ -2875,7 +2727,6 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	perl -pi -e 's/ Supported by Sun Microsystems.//' $(PKGDIR)-common//usr/share/applications/libreoffice$(VER)-startcenter.desktop
 	# invalid, according to lintian. make it shut up.
 	perl -pi -e 's/Application;//; s/X-Red-Hat-Base;//; s/X-SuSE-Core-Office;//; s/X-MandrivaLinux-.*;//;' $(PKGDIR)-common/usr/share/applications/libreoffice$(VER)-startcenter.desktop
-endif
 
 	# install .applications, .keys, .mime and openoffice.org.xml for
 	# shared-mime-info
@@ -2899,7 +2750,7 @@ endif
 
 	# install openoffice-xlate-lang
 	install -d -m755 $(PKGDIR)-common/usr/share/$(OODIRNAME)/bin
-	install -m755 $(OOO_BUILD_TREE)/bin/openoffice-xlate-lang \
+	install -m755 $(SOURCE_TREE)/bin/lo-xlate-lang \
 		$(PKGDIR)-common/usr/share/$(OODIRNAME)/bin
 
 ifeq "$(HELPISOS)" ""
@@ -2960,7 +2811,6 @@ ifeq "$(ENABLE_JAVA)" "y"
 	  mv $(PKGDIR)-common/$(OODIR)/share/registry/$$i.xcd \
 		$(PKGDIR)-filter-mobiledev/$(OODIR)/share/registry; \
 	done
-ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	# menu files from sysui
 	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare >/dev/null; pwd`" ;\
 	mkdir -p -m755 $(PKGDIR)-filter-mobiledev/usr/share/applications ;\
@@ -2971,7 +2821,6 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	   	-e 's/  / /' \
 	  	< $$dirname/javafilter.desktop \
 	  	> $(PKGDIR)-filter-mobiledev/usr/share/applications/libreoffice$(VER)-javafilter.desktop || exit 1
-endif
 endif
 
 	# fix permissions
@@ -3050,15 +2899,6 @@ endif
 			rmdir $(PKGDIR)-common/$(OOBRANDDIR)/$$i; \
 		fi; \
 	done
-
-ifeq "$(USE_OOO_BUILD_DESKTOPS)" "y"
-	# install ooo-build desktop icons
-	for r in 16x16 22x22 24x24 32x32 48x48; do \
-		mkdir -p $(PKGDIR)-common/usr/share/icons/hicolor/$$r/apps; \
-		cp $(OOO_BUILD_TREE)/desktop/$$r/*.png \
-			$(PKGDIR)-common/usr/share/icons/hicolor/$$r/apps; \
-	done
-endif
 
 	# move psprint.conf into /etc
 	mkdir -p $(PKGDIR)-common/etc/$(OODIRNAME)
@@ -3237,7 +3077,6 @@ endif
 	  fi; \
 	done
 
-ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	# menu files from sysui
 	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/misc/libreoffice >/dev/null; pwd`" ;\
 	mkdir -p -m755 $(PKGDIR)-common/usr/share/mimelnk/application ;\
@@ -3247,7 +3086,6 @@ ifeq "$(USE_OOO_BUILD_DESKTOPS)" "n"
 	    < $$dirname/extension.desktop \
 	    > $(PKGDIR)-common/usr/share/mimelnk/application/vnd.openofficeorg.extension.desktop || exit 1
 	perl -pi -e "s/Icon=openofficeorg.*-extension/Icon=application-vnd.openofficeorg.extension.png/" $(PKGDIR)-common/usr/share/mimelnk/application/vnd.openofficeorg.extension.desktop
-endif
 
 	# install extension shell lib for use by extensions not from here
 	install -D -m644 debian/shell-lib-extensions.sh \
@@ -3637,38 +3475,17 @@ endif
 
 binary: binary-arch binary-indep
 
-# Get ooo-build
-get-ooo-build:
-	if echo $(OOO_BUILD_VERSION) | egrep -q "\."; then \
-		wget http://download.go-oo.org/$(MWS)/ooo-build-$(OOO_BUILD_TARBALL_VERSION).tar.gz && \
-		mv ooo-build-$(OOO_BUILD_TARBALL_VERSION).tar.gz ../libreoffice_$(DEB_VERSION_UPSTREAM).orig-ooo-build-$(OOO_BUILD_TARBALL_VERSION).tar.gz && \
-		tar xfvz ooo-build-$(OOO_BUILD_TARBALL_VERSION).tar.gz && \
-		mv ooo-build-$(OOO_BUILD_TARBALL_VERSION) $(OOO_BUILD_TREE); \
-	else \
-		if test -n "$$TMP"; then \
-			TMPD=`mktemp -d -p $$TMP`; \
-		else \
-			TMPD=`mktemp -d`; \
-		fi && \
-		cd $$TMPD && pwd && \
-		$(CURDIR)/$(OOO_BUILD_TREE)/bin/ooo-pack-sources --force --no-lo-pieces $(CURDIR)/$(OOO_BUILD_TREE) && \
-		tar xfvz ooo-build-$(OOO_BUILD_TARBALL_VERSION).tar.gz && \
-		mv ooo-build-$(OOO_BUILD_TARBALL_VERSION) $(OOO_BUILD_TREE) && \
-		rm ooo-build-$(OOO_BUILD_TARBALL_VERSION).tar.gz archive/ooo-build-$(OOO_BUILD_TARBALL_VERSION).tar.gz && \
-		tar cfvz $(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig-ooo-build-$(OOO_BUILD_VERSION).tar.gz $(OOO_BUILD_TREE) && \
-		rm -rf $$TMPD; \
-	fi
-
 # Get upstream external sources
 get-ext-sources:
 	rm -rf $(TARFIILE_LOCATION)
 	mkdir -p $(TARFILE_LOCATION)
-	wget http://cgit.freedesktop.org/ooo-build/bootstrap/plain/fetch_tarballs.sh?id=ooo/$(GIT_TAG) -O fetch_tarballs.sh && chmod 755 fetch_tarballs.sh && \
-	wget http://cgit.freedesktop.org/ooo-build/bootstrap/plain/ooo.lst?id=ooo/$(GIT_TAG) -O ooo.lst && \
-	./fetch_tarballs.sh ooo.lst; \
-	rm -f fetch_tarballs.sh ooo.lst
+	$(MAKE) -f debian/rules configure
+	./download
+	$(MAKE) -f debian/rules clean
+	rm -f ooo.lst
 
 get-orig-source:
+ifneq "$(SOURCE_TARBALLS)" "y"
 	if ! which git >/dev/null 2>/dev/null; then \
 		echo "You need git."; \
 		exit 1; \
@@ -3679,62 +3496,24 @@ get-orig-source:
 		TMPD=`mktemp -d`; \
 	fi && \
 	cd $$TMPD && \
-	mkdir -p libreoffice-$(DEB_VERSION_UPSTREAM) && \
-	cd libreoffice-$(DEB_VERSION_UPSTREAM) && \
-		cp -ra $(CURDIR)/$(OOO_BUILD_TREE) $(OOO_BUILD_TREE); \
-		cd $(OOO_BUILD_TREE) && \
-			./configure --with-tag=$(TAG) --with-distro=$(PATCHSET) \
-				--with-git --with-lang="$(BUILD_ISOS)" && \
-			./download && \
-			mkdir ../ext-sources-$(OOO_BUILD_TREE) && \
-			for i in biblio.tar.bz2 extras-3.tar.bz2 ????????????????????????????????-*; do \
-				mv src/$$i ../ext-sources-$(OOO_BUILD_TREE); \
-			done && \
-		cd .. && \
-		tar cfvz $(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig-ext-sources-$(OOO_BUILD_TREE).tar.gz ext-sources-$(OOO_BUILD_TREE) && \
-		rm -rf ext-sources-$(OOO_BUILD_TREE) && \
-		cd $(OOO_BUILD_TREE) && \
-			./bin/ooo-pack-sources --force --no-lo-build . && \
-			mv archive ../archive-$(OOO_BUILD_TREE) && \
-		cd ../archive-$(OOO_BUILD_TREE) && \
-		tar xfvj ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-extern-sys.tar.bz2 && \
-		for i in da_DK en_GB ru_RU; do \
-			if [ "$$i" = "en_GB" ]; then j=en; else j=$$i; fi; \
-			rm ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-extern-sys/dictionaries/$$j/hyph_$${i}.dic; \
-		done && \
-		tar cfvj ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-extern-sys.tar.bz2.dfsg ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-extern-sys && \
-		ln -sf ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-extern-sys.tar.bz2.dfsg ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-extern-sys.tar.bz2 && \
-		rm -rf ooo-build-$(OOO_BUILD_TARBALL_VERSION)-libs-extern-sys && \
-		cd $$TMPD/libreoffice-$(DEB_VERSION_UPSTREAM) && tar cfvz libreoffice_$(DEB_VERSION_UPSTREAM).orig-archive-$(OOO_BUILD_VERSION).tar.gz archive-$(OOO_BUILD_VERSION) && \
-		rm -rf libreoffice-$(DEB_VERSION_UPSTREAM) && \
-		mv libreoffice_$(DEB_VERSION_UPSTREAM).orig-archive-$(OOO_BUILD_VERSION).tar.gz $(CURDIR)/.. && \
-		rm -rf $$TMPD
-	if test -n "$$TMP"; then \
-		TMPD=`mktemp -d -p $$TMP`; \
-	else \
-		TMPD=`mktemp -d`; \
-	fi && \
-	cd $$TMPD && \
-		export TARFILE_LOCATION=`basename $(TARFILE_LOCATION)`; \
-		$(CURDIR)/debian/rules get-ext-sources && \
-		zip -d $$TARFILE_LOCATION/*liblayout.zip liblayout/resource/rfc1345.txt && \
-		rm $$TARFILE_LOCATION/JLanguageTool* && \
-		tar cfvz libreoffice_$(DEB_VERSION_UPSTREAM).orig-$$TARFILE_LOCATION.tar.gz $$TARFILE_LOCATION && \
-		mv libreoffice_$(DEB_VERSION_UPSTREAM).orig-$$TARFILE_LOCATION.tar.gz $(CURDIR)/.. && \
-		rm -rf $$TMPD
-	# get ooo-build
-	if test -n "$$TMP"; then \
-		TMPD=`mktemp -d -p $$TMP`; \
-	else \
-		TMPD=`mktemp -d`; \
-	fi && \
-	if [ ! -d $(OOO_BUILD_TREE) ]; then ./debian/rules get-ooo-build; fi
-	tar cfvz ../libreoffice_$(DEB_VERSION_UPSTREAM).orig-$(OOO_BUILD_TREE).tar.gz $(OOO_BUILD_TREE)
-
-# Download the latest sources needed for ooo-build. Note that is
-# might download more than actually needed here....
-download: $(OOO_BUILD_TREE)/config.status
-	$(OOO_BUILD_TREE)/download	
+	git clone git://anongit.freedesktop.org/libreoffice/core && \
+	mv core libreoffice-$(DEB_VERSION_UPSTREAM) && \
+	tar cfvz ../libreoffice_$(DEB_VERSION_UPSTREAM).orig.tar.gz libreoffice-$(DEB_VERSION_UPSTREAM) && \
+	mkdir -p libreoffice-$(DEB_VERSION_UPSTREAM)/clone  && \
+	cd libreoffice-$(DEB_VERSION_UPSTREAM)/clone && \
+	for i in binfilter dictionaries help translations; do \
+		if [ "$$i" = "help"; then j=helpcontent2; else j=$$i; fi; \
+		git clone git://anongit.freedesktop.org/libreoffice/$$i; \
+		mv $$i/$$j ..; \
+	done && cd .. && \
+	for j in binfilter dictionaries helpcontent2 translations; do \
+		tar cfvz ../libreoffice_$(DEB_VERSION_UPSTREAM).orig-$$j.tar.gz $$j; \
+	done && \
+	mkdir ext-sources && cd ext-sources && \
+	$(MAKE) -f debian/rules get-ext-sources TARFILE_LOCATION="$$TMPD/libreoffice-$(DEB_VERSION_UPSTREAM)/ext-sources" && \
+	tar cfvz ../../libreoffice_$(DEB_VERSION_UPSTREAM).orig-ext-sources.tar.gz ext-sources && \
+	cd $(CURDIR) && rm -rf $$TMPD
+endif
 
 .PHONY: control
 .PHONY: clean-debdir clean-instsetoo clean-objectdirs clean default configure
