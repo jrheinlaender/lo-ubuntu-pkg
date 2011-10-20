@@ -132,13 +132,6 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
 endif
 JAVAHELPER_MIN_VERSION= (>= 0.37~)
-ENABLE_MONO=y
-MONO2=y
-ifeq "$(MONO2)" "y"
-  MONO_MINVER= (>= 2.4.2.3)
-else
-  MONO_MINVER= (>= 1.2.3)
-endif
 SYSTEM_STUFF += hunspell
 HUNSPELL_MIN_VER= (>= 1.1.5-2)
 SYSTEM_STUFF += altlinuxhyph
@@ -407,17 +400,6 @@ endif
 
 ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_GCJ_ARCHS)))
 	BUILD_JARS_NATIVE=y
-endif
-
-ifeq "$(ENABLE_MONO)" "y"
-# mono
-# ppc fails (#412967), arm(el), too
-OOO_MONO_ARCHS = $(filter amd64 i386 ia64 kfreebsd-amd64 kfreebsd-i386, $(OOO_ARCHS))
-ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_MONO_ARCHS)))
-       ENABLE_MONO=n
-endif
-else
-OOO_MONO_ARCHS=
 endif
 
 ifeq "$(PACKAGE_NPSOPLUGIN)" "y"
@@ -887,31 +869,6 @@ ifeq "$(USE_SYSTEM_DMAKE)" "y"
 	BUILD_DEPS += , dmake (>= 1:4.11)
 endif
 
-ifneq "$(OOO_MONO_ARCHS)" ""
-  ifeq "$(MONO2)" "y"
-	BUILD_DEPS += , mono-devel $(MONO_MINVER) [$(OOO_MONO_ARCHS)], libmono-dev $(MONO_MINVER) [$(OOO_MONO_ARCHS)], mono-utils $(MONO_MINVER) [$(OOO_MONO_ARCHS)], cli-common-dev (>= 0.5.7) [$(OOO_MONO_ARCHS)]
-  else
-	# mono-gmcs for gmcs itself and mkbundle2
-	# mono-mcs for mcs itself and al
-	BUILD_DEPS += , mono-mcs $(MONO_MINVER) [$(OOO_MONO_ARCHS)], mono-gmcs $(MONO_MINVER) [$(OOO_MONO_ARCHS)], libmono-dev $(MONO_MINVER) [$(OOO_MONO_ARCHS)], mono-utils $(MONO_MINVER) [$(OOO_MONO_ARCHS)], cli-common-dev (>= 0.5.7) [$(OOO_MONO_ARCHS)], mono-1.0-devel [$(OOO_MONO_ARCHS)], mono-2.0-devel [$(OOO_MONO_ARCHS)]
-  endif
-endif
-ifeq "$(ENABLE_MONO)" "y"
-	# http://pkg-mono.alioth.debian.org/cli-policy/ch-mono.html#s7.3
-	MONO_SHARED_DIR = $(CURDIR)
-	export MONO_SHARED_DIR
-	CONFIGURE_FLAGS+= --enable-mono
-  ifeq "$(MONO2)" "y"
-export MCS=/usr/bin/mono-csc
-export GMCS=/usr/bin/mono-csc
-export MKBUNDLE2=/usr/bin/mkbundle
-  endif
-	DBG_DBG_SUGGESTS += , mono-jit-dbg [$(OOO_MONO_ARCHS)], libmono0-dbg [$(OOO_MONO_ARCHS)], mono-dbg [$(OOO_MONO_ARCHS)]
-else
-	CONFIGURE_FLAGS+= --disable-mono
-	DEBHELPER_OPTIONS += -Nlibuno-cli-basetypes1.0-cil -Nlibuno-cli-uretypes1.0-cil -Nlibuno-cli-oootypes1.0-cil -Nlibuno-cli-cppuhelper1.0-cil -Nlibuno-cli-ure1.0-cil
-endif
-
 ifneq (,$(filter hunspell, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libhunspell-dev $(HUNSPELL_MIN_VER)
 endif
@@ -1305,10 +1262,6 @@ ifneq "$(OOO_L10N_DIR)" ""
 	rm -rf $(OOO_L10N_DIR)
 endif
 
-ifeq "$(ENABLE_MONO)" "y"
-	rm -rf $(MONO_SHARED_DIR)/.wapi
-endif
-
 ifeq "$(HELPISOS)" ""
 	rm -rf images*
 endif
@@ -1447,10 +1400,6 @@ ifeq "$(ENABLE_JAVA)" "y"
 	sed -e "s|libreofficeVER|libreoffice$(VER)|g" \
 		>> debian/control < debian/control.gcj.in
 endif
-ifneq "$(OOO_MONO_ARCHS)" ""
-	sed -e "s|libreofficeVER|libreoffice$(VER)|g" \
-		>> debian/control < debian/control.mono.in
-endif
 ifneq "$(OOO_NPSOPLUGIN_ARCHS)" ""
 	sed -e "s|libreofficeVER|libreoffice$(VER)|g" \
 		>> debian/control < debian/control.mozilla.in
@@ -1524,7 +1473,6 @@ endif
 	perl -pi -e "s,%OOO_NO_BASE_ARCHS%,$(OOO_NO_BASE_ARCHS),"g debian/control
 	perl -pi -e "s,%OOO_JAVA_ARCHS%,$(OOO_JAVA_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_GCJ_ARCHS%,$(OOO_GCJ_ARCHS),g" debian/control
-	perl -pi -e "s,%OOO_MONO_ARCHS%,$(OOO_MONO_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_NPSOPLUGIN_ARCHS%,$(OOO_NPSOPLUGIN_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_OGLTRANS_ARCHS%,$(OOO_OGLTRANS_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_BINFILTER_ARCHS%,$(OOO_BINFILTER_ARCHS),g" debian/control
@@ -1895,27 +1843,6 @@ ifeq "$(ENABLE_JAVA)" "y"
 	# remove sdbc_hsqldb.jar. otherwise ends up in -java-common
 	rm -f $(PKGDIR)-common/$(OODIR)/program/classes/sdbc_hsqldb.jar
   endif
-endif
-
-ifeq "$(ENABLE_MONO)" "y"
-	mkdir -p $(PKGDIR)-core/$(OOBRANDDIR)/ure/lib; \
-	mv $(PKGDIR)-common/$(OOBRANDDIR)/ure/lib/cli_uno_bridge.dll*  \
-		$(PKGDIR)-core/$(OOBRANDDIR)/ure/lib
-	mv $(PKGDIR)-common/$(OOBRANDDIR)/ure/lib/mono_loader*.uno.so \
-		$(PKGDIR)-core/$(OOBRANDDIR)/ure/lib
-	for i in `dh_listpackages | grep libuno-cli`; do \
-		if echo "$$i" | grep -q oootypes; then p=libreoffice-common; d=$(OODIR)/program; \
-		else p=ure; d=$(OOBRANDDIR)/ure/lib; fi; \
-		rm -rf debian/$$i && mkdir -p -m755 debian/$$i/usr/lib/cli/uno-`echo $$i | perl -pi -e 's/.*(\d.\d).*/$$1/'`; \
-		mv debian/$$p/$$d/`echo $$i | sed -e "s/libuno-//" | sed -e "s/-cil$$//" | sed -e "s/-/_/" | perl -pi -e 's/\d.\d//'`.dll \
-			debian/$$i/usr/lib/cli/uno-`echo $$i | perl -pi -e 's/.*(\d.\d).*/$$1/'`; \
-		mv debian/$$p/$$d/`echo $$i | sed -e "s/libuno-//" | sed -e "s/-cil$$//" | sed -e "s/-/_/" | perl -pi -e 's/\d.\d//'`.config \
-			debian/$$i/usr/lib/cli/uno-`echo $$i | perl -pi -e 's/.*(\d.\d).*/$$1/'`/`echo $$i | sed -e "s/libuno-//" | sed -e "s/-cil$$//" | sed -e "s/-/_/" | perl -pi -e 's/\d.\d//'`.dll.config; \
-	ln -s `echo $$i | sed -e "s/libuno-//" | sed -e "s/-cil$$//" | sed -e "s/-/_/" | perl -pi -e 's/\d.\d//'`.dll.config \
-			debian/$$i/usr/lib/cli/uno-`echo $$i | perl -pi -e 's/.*(\d.\d).*/$$1/'`/`echo $$i | sed -e "s/libuno-//" | sed -e "s/-cil$$//" | sed -e "s/-/_/" | perl -pi -e 's/\d.\d//'`.config; \
-		mv debian/$$p/$$d/policy.*.`echo $$i | sed -e "s/libuno-//" | sed -e "s/-cil$$//" | sed -e "s/-/_/" | perl -pi -e 's/\d.\d//'`.dll \
-			debian/$$i/usr/lib/cli/uno-`echo $$i | perl -pi -e 's/.*(\d.\d).*/$$1/'`; \
-	done
 endif
 
 	# remove eventually sneaked in .testtoolrc
@@ -2455,23 +2382,6 @@ ifeq "$(BUILD_PYUNO)" "y"
 	cd debian/python3-uno/usr/share/doc/python3-uno && \
 		find . -type d -name "CVS" | xargs -r rm -rf
   endif
-endif
-
-ifeq "$(ENABLE_MONO)" "y"
-	# Mono bindings
-	mkdir -p -m755 debian/cli-uno-bridge/$(OOUREDIR)/lib
-	mv $(PKGDIR)-core/$(OOBRANDDIR)/ure/lib/cli_uno_bridge.dll \
-		debian/cli-uno-bridge/$(OOUREDIR)/lib
-	mv $(PKGDIR)-core/$(OOBRANDDIR)/ure/lib/mono_loader*.uno.so \
-		debian/cli-uno-bridge/$(OOUREDIR)/lib
-
-	mv debian/ure/$(OOUREDIR)/lib/libcli* \
-		debian/cli-uno-bridge/$(OOUREDIR)/lib
-	mkdir -p debian/cli-uno-bridge/usr/lib/pkgconfig
-	cat debian/tmp/usr/lib/pkgconfig/mono-$(OODIRNAME).pc \
-		| sed -e s,/usr/lib/mono/openoffice,/usr/lib/cli/uno-1.0,g \
-		| sed -e s,/usr/lib/cli/uno-1.0/cli_uno_bridge.dll,/$(OOUREDIR)/lib/cli_uno_bridge.dll, \
-		> debian/cli-uno-bridge/usr/lib/pkgconfig/mono-$(OODIRNAME).pc
 endif
 
 	# should be empty now, remove if there
@@ -3189,9 +3099,6 @@ else
 	dh_strip -s
 endif
 	dh_icons -s
-ifeq "$(ENABLE_MONO)" "y"
-	dh_installcligac -s
-endif
 	dh_compress -s -X.py -X.mk -X.sxd
 	dh_makeshlibs -puno-libs3 -V"ure (>= $(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }'))" -- -c0 -v`echo $(BINARY_VERSION) | cut -d: -f2`
 	dh_makeshlibs -n -pure -V"ure (>= $(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }'))" -- -v`echo $(BINARY_VERSION) | cut -d: -f2`
@@ -3246,10 +3153,6 @@ ifeq "$(ENABLE_JAVA)" "y"
 endif
 ifeq "$(LINK_TO_STLPORT)" "y"
 	perl -pi -e 's/(shlibs.*$$)/$$1, $(shell cat /var/lib/dpkg/info/libstlport4.6*.shlibs | awk '{ print $$3,$$4,$$5 }')/' debian/ure.substvars
-endif
-ifeq "$(ENABLE_MONO)" "y"
-	dh_makeclilibs -s
-	dh_clideps -s
 endif
 ifeq "$(ENABLE_JAVA)" "y"
 	jh_depends -s -Xlibreoffice$(VER)-gcj -Xlibreoffice$(VER)-dbg -Xure
@@ -3339,11 +3242,6 @@ ifneq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_JAVA_ARCHS)))
 	echo "For uploads with binary-all packages, please use arches where Java is enabled!!!!!"
 	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 endif
-ifneq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_MONO_ARCHS)))
-	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-	echo "For uploads with binary-all packages, please use arches where Mono is enabled!!!!!"
-	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-endif
 	dh_testdir
 	dh_testroot
 
@@ -3402,15 +3300,8 @@ endif
 	dh_fixperms -i
 	dh_icons -i
 	dh_installxmlcatalogs -i
-ifeq "$(ENABLE_MONO)" "y"
-	dh_installcligac -i
-endif
 	dh_compress -i -X.py -X.mk -X.sxd -X.xcd.sample
 	dh_installdeb -i
-ifeq "$(ENABLE_MONO)" "y"
-	dh_makeclilibs -i
-	dh_clideps -i
-endif
 ifeq "$(ENABLE_JAVA)" "y"
 	# the help recommends lucene. this is enough. no need for a hard depend in
         # -common, IMHO
@@ -3440,20 +3331,6 @@ endif
 		-V'ooo-binfilter-dep=$(OOO_BINFILTER_DEP)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-v$(BINARY_VERSION)
-ifeq "$(ENABLE_MONO)" "y"
-	# although this version gets increased before every OOo release
-	# we need the +LibO anyway when we build milestones..
-	dh_gencontrol -plibuno-cli-basetypes1.0-cil -- \
-		-v$(shell grep CLI_BASETYPES_NEW_VERSION $(SOURCE_TREE)/cli_ure/version/version.txt | cut -d"=" -f2)+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
-	dh_gencontrol -plibuno-cli-uretypes1.0-cil -- \
-		-v$(shell grep CLI_URETYPES_NEW_VERSION $(SOURCE_TREE)/cli_ure/version/version.txt | cut -d"=" -f2)+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
-	dh_gencontrol -plibuno-cli-oootypes1.0-cil -- \
-		-v$(shell grep CLI_OOOTYPES_NEW_VERSION $(SOURCE_TREE)/unoil/climaker/version.txt | cut -d"=" -f2)+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
-	dh_gencontrol -plibuno-cli-cppuhelper1.0-cil -- \
-		-v$(shell grep CLI_CPPUHELPER_NEW_VERSION $(SOURCE_TREE)/cli_ure/version/version.txt | cut -d"=" -f2)+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
-	dh_gencontrol -plibuno-cli-ure1.0-cil -- \
-		-v$(shell grep CLI_URE_NEW_VERSION $(SOURCE_TREE)/cli_ure/version/version.txt | cut -d"=" -f2)+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
-endif
 ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 	dh_gencontrol -pttf-opensymbol -- \
 		-v$(shell echo `echo $(BINARY_VERSION) | cut -d: -f1` + 1 | bc):$(shell fontforge -lang=ff -c 'Open($$1); Print ($$fontversion); Quit(0);' debian/ttf-opensymbol/usr/share/fonts/truetype/openoffice/opens___.ttf)+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
