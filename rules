@@ -164,7 +164,7 @@ SYSTEM_STUFF += mythes
 SYSTEM_STUFF += icu
 ICU_MINVER= (>= 4.0)
 SYSTEM_STUFF += libwpd libwpg libwps
-#SYSTEM_STUFF += libvisio
+SYSTEM_STUFF += libvisio
 #SYSTEM_STUFF += xmlsec
 BUILD_CAIROCANVAS=y
 SYSTEM_STUFF += cairo
@@ -283,6 +283,17 @@ MYSQLCPPCONN_MINVER= (>= 1.1.0~r791)
 DICT_DIR=/usr/share/hunspell
 HYPH_DIR=/usr/share/hyphen
 THES_DIR=/usr/share/mythes
+SYSTEM_STUFF += libcmis
+SYSTEM_STUFF += jpeg
+SYSTEM_STUFF += libxml
+SYSTEM_STUFF += expat
+SYSTEM_STUFF += odbc
+SYSTEM_STUFF += curl
+SYSTEM_STUFF += sane
+SYSTEM_STUFF += xrender-headers
+SYSTEM_STUFF += mesa-headers
+SYSTEM_STUFF += db
+SYSTEM_STUFF += poppler
 
 # Default flags to pass to configure of ooo-build
 CONFIGURE_FLAGS= \
@@ -436,7 +447,7 @@ endif
 # Debian Squeeze
 ifeq "$(SQUEEZE_BACKPORT)" "y"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out libwpd libwpg libwps mythes mdds libexttextcat graphite jfreereport libvisio poppler, $(SYSTEM_STUFF))
+  SYSTEM_STUFF := $(filter-out libwpd libwpg libwps mythes mdds libexttextcat graphite jfreereport libvisio poppler libcmis, $(SYSTEM_STUFF))
   JUNIT_MIN_VER=
   PARALLEL_BUILD=n
   ENABLE_PDFIMPORT=n
@@ -481,11 +492,11 @@ endif
 	BUILDDEB_OPTIONS = -- -Zbzip2
 
 ifneq "$(OOO_OGLTRANS_ARCHS)" ""
+  ifneq (,$(findstring mesa-headers,$(SYSTEM_STUFF)))
 	BUILD_DEPS += , libgl1-mesa-dev$(OOO_NO_OGLTRANS_ARCHS), libglu1-mesa-dev$(OOO_NO_OGLTRANS_ARCHS)
+  endif
 endif
 ifeq "$(ENABLE_OPENGL)" "y"
-	CONFIGURE_FLAGS += --with-system-mesa-headers
-else
 	CONFIGURE_FLAGS += --disable-opengl
 endif
 
@@ -532,10 +543,27 @@ ifneq (,$(filter libexttextcat, $(SYSTEM_STUFF)))
 	TEXTCAT_DATA_RECOMMENDS := libexttextcat-data
 endif
 
-ifeq "$(USE_LIBCURL4)" "y"
+ifneq (,$(filter jpeg, $(SYSTEM_STUFF)))
+       BUILD_DEPS += , libjpeg-dev
+endif
+ifneq (,$(filter libxml, $(SYSTEM_STUFF)))
+       BUILD_DEPS += , libxml2-dev
+endif
+ifneq (,$(filter expat, $(SYSTEM_STUFF)))
+       BUILD_DEPS += , libexpat1-dev
+endif
+ifneq (,$(filter odbc, $(SYSTEM_STUFF)))
+       BUILD_DEPS += , unixodbc-dev (>= 2.2.11)
+endif
+ifneq (,$(filter sane, $(SYSTEM_STUFF)))
+       BUILD_DEPS += , libsane-dev
+endif
+ifneq (,$(filter xrender-headers, $(SYSTEM_STUFF)))
+       BUILD_DEPS += , libxrender-dev
+endif
+
+ifeq (,$(filter curl, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libcurl4-$(CURL_SECTYPE)-dev
-else
-	BUILD_DEPS += , libcurl3-$(CURL_SECTYPE)-dev
 endif
 
 ifneq (,$(filter openssl, $(SYSTEM_STUFF)))
@@ -558,8 +586,10 @@ else
 	CONFIGURE_FLAGS += --enable-librsvg=no
 endif
 
+ifneq (,$(findstring db,$(SYSTEM_STUFF)))
 	BUILD_DEPS += , libdb-dev
 	DBG_DBG_SUGGESTS += , $(shell dpkg -s libdb-dev | grep Depends | awk '{ print $$2 }' | sed -e s/dev/dbg/)
+endif
 
 ifneq "$(BUILD_DBG_PACKAGE)" "y"
 	# build with small symbols anyway
@@ -585,12 +615,7 @@ else
       endif
     endif
   endif
-	DBG_DBG_SUGGESTS+= , libc6.1-dbg [alpha ia64], libc0.1-dbg [kfreebsd-i386 kfreebsd-amd64], libc0.3-dbg [hurd-i386], libc6-dbg [!ia64 !alpha !kfreebsd-i386 !kfreebsd-amd64 !hurd-i386], libatk1.0-dbg, libglib2.0-0-dbg, libgnomevfs2-0-dbg, libstdc++6-$(SYSTEM_GCC_VERSION)-dbg, libx11-6-dbg, libxext6-dbg, libxaw7-dbg, libxml2-dbg, libgtk2.0-0-dbg, libxau6-dbg, libice6-dbg, libsm6-dbg, libxinerama1-dbg, libfontconfig1-dbg, libhunspell-$(shell pkg-config --modversion hunspell | cut -d. -f1,2)-0-dbg
-  ifeq "$(USE_LIBCURL4)" "y"
-	DBG_DBG_SUGGESTS+= , libcurl3-dbg
-  else
-	DBG_DBG_SUGGESTS+= , libcurl4-dbg
-  endif
+	DBG_DBG_SUGGESTS+= , libc6.1-dbg [alpha ia64], libc0.1-dbg [kfreebsd-i386 kfreebsd-amd64], libc0.3-dbg [hurd-i386], libc6-dbg [!ia64 !alpha !kfreebsd-i386 !kfreebsd-amd64 !hurd-i386], libatk1.0-dbg, libglib2.0-0-dbg, libgnomevfs2-0-dbg, libstdc++6-$(SYSTEM_GCC_VERSION)-dbg, libx11-6-dbg, libxext6-dbg, libxaw7-dbg, libxml2-dbg, libgtk2.0-0-dbg, libxau6-dbg, libice6-dbg, libsm6-dbg, libxinerama1-dbg, libfontconfig1-dbg, libhunspell-$(shell pkg-config --modversion hunspell | cut -d. -f1,2)-0-dbg, libcurl4-dbg
 endif
 # Small symbols?
 ifeq "$(SMALL_SYMBOLS)" "y"
@@ -1247,8 +1272,7 @@ ifeq "$(ENABLE_LDAP)" "y"
   ifeq "$(USE_OPENLDAP)" "y"
     BUILD_DEPS += , libldap2-dev
     LDAP_LIB := $(shell echo libldap-`grep LDAP_VENDOR_VERSION_M /usr/include/ldap_features.h | cut -d: -f2 | awk '{ print $$3 }' | xargs | sed -e "s/ /\./"`-`grep LDAP_VENDOR_VERSION_MAJOR /usr/include/ldap_features.h | cut -d: -f2 | awk '{ print $$3 }'`)
-   else
-     CONFIGURE_FLAGS += --without-openldap
+    CONFIGURE_FLAGS += --with-openldap
    endif
 else
   CONFIGURE_FLAGS += --disable-ldap
