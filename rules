@@ -195,16 +195,9 @@ SYSTEM_STUFF += redland
 PACKAGE_SDK=y
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(JDK)" "openjdk"
-    RUN_SMOKETEST=n
-    RUN_MAKE_CHECK=n
-  else
-    ifneq ($(ON_BUILDD),y)
-      RUN_SMOKETEST=n
-      RUN_MAKE_CHECK=n
-    endif
+    RUN_MAKE_CHECK=y
   endif
 else
-  RUN_SMOKETEST=n
   RUN_MAKE_CHECK=n
 endif
 # "Unfortunately, running the unoapi tests is still not stable enough to give
@@ -647,7 +640,7 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
 endif
 
-ifeq "$(RUN_SMOKETEST)" "y"
+ifeq "$(RUN_MAKE_CHECK)" "y"
 	BUILD_DEPS += , epm
 endif
 ifeq "$(RUN_TESTTOOL)" "y"
@@ -1644,64 +1637,42 @@ endif
 		PATH=$(BUILD_PATH) DPKG="dpkg" PKGFORMAT="deb" NO_PKG_MANGLE=go-away \
 		../solenv/bin/build.pl && ../solenv/bin/deliver.pl
 
-ifeq "$(PACKAGE_SDK)" "y"
-	# build gengal...
-	cd $(SOURCE_TREE)/svx/source/gengal; \
-		. $(CURDIR)/$(SOURCE_TREE)/*Env*.sh; \
-		PATH=$(BUILD_PATH) \
-		dmake
-endif
+#ifeq "$(PACKAGE_SDK)" "y"
+#	# build gengal...
+#	cd $(SOURCE_TREE)/svx/source/gengal; \
+#		. $(CURDIR)/$(SOURCE_TREE)/*Env*.sh; \
+#		PATH=$(BUILD_PATH) \
+#		dmake
+#endif
 
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
-	$(CURDIR)/debian/rules test
+	$(CURDIR)/debian/rules check
 endif
 
 	touch $@
 
-test: 
-	# some test library needed for the tests...
-	if [ ! -f $(SOURCE_TREE)/test/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/lib/libtest.so ]; then \
-		cd $(SOURCE_TREE)/test && \
-			. $(CURDIR)/$(SOURCE_TREE)/Env.Host.sh; \
-			export PATH=$(BUILD_PATH); \
-			../solenv/bin/build.pl; \
-			../solenv/bin/deliver.pl; \
-	fi
-ifeq "$(RUN_SMOKETEST)" "y"
-	# sigh. the new smoketest needs a archive/install/en-US/OOo_*_install_*.tar.gz
-	# build it.
-	if [ ! -d $(SOURCE_TREE)/instsetoo_native/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/OpenOffice/archive/install/en-US ]; then \
-		cd $(SOURCE_TREE)/instsetoo_native/util && \
-			. $(CURDIR)/$(SOURCE_TREE)/Env.Host.sh; \
-			export PATH=$(BUILD_PATH); \
-			EPM=yes PKGFORMAT=archive WITH_LANG="en-US" dmake openoffice; \
-	fi
-	# smoketest
+check: 
+ifeq "$(RUN_MAKE_CHECK)" "y"
 ifeq "$(DEB_HOST_ARCH)" "armel"
 	cd $(SOURCE_TREE)/smoketestoo_native && \
 		patch -p1 < $(CURDIR)/debian/smoketest/patches/smoketest-disable-db-insert-delete-seek-tests.diff
 endif
-	cd $(SOURCE_TREE)/smoketestoo_native && \
+
+	cd $(SOURCE_TREE) && \
 		. $(CURDIR)/$(SOURCE_TREE)/Env.Host.sh; \
 		export PATH=$(BUILD_PATH); \
 		export TMPDIR=$(CURDIR)/debian/smoketest; \
-		export JAVA_HOME=$(TEST_JAVA_HOME); \
-		export SAL_USE_VCLPLUGIN="svp"; \
 		export HOME=$(CURDIR)/debian/smoketest; \
-		 ../solenv/bin/build.pl
+		export SAL_USE_VCLPLUGIN="svp"; \
+		 $(MAKE) check
 	# doesn't get cleaned up.. (at least the dirs, the contents are gone)
 	cd $(CURDIR)/debian/smoketest && \
 	find . -noleaf -maxdepth 1 ! -name "patches" ! -name "." -exec rm -rf {} \;
+
 ifeq "$(DEB_HOST_ARCH)" "armel"
 	cd $(SOURCE_TREE)/smoketestoo_native && \
 		patch -p1 -R < $(CURDIR)/debian/smoketest/patches/smoketest-disable-db-insert-delete-seek-tests.diff
 endif
-endif
-ifeq "$(RUN_MAKE_CHECK)" "y"
-	cd $(SOURCE_TREE) && \
-		export PATH=$(BUILD_PATH); \
-		. $(CURDIR)/$(SOURCE_TREE)/Env.Host.sh; \
-		$(MAKE) check
 endif
 
 install: $(STAMP_DIR)/install
