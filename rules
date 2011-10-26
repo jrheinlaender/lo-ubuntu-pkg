@@ -257,7 +257,7 @@ SYSTEM_LIBRSVG=y
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with libreoffice2), we need to set this. Don't touch
 # otherwise
-INTERNAL_STDLIBS=n
+SYSTEM_STUFF += stdlibs
 DEFAULT_IMAGE=galaxy
 IMAGES:=$(DEFAULT_IMAGE) crystal hicontrast tango oxygen
 ENABLE_MYSQLNATIVE=y
@@ -2408,18 +2408,6 @@ ifeq "$(PACKAGE_SDK)" "y"
 
 endif
 
-ifeq "$(INTERNAL_STDLIBS)" "y"
-	# we have to do this manually; specifying --without-system-stdlibs
-	# won't work because the odering of the configure arguments...
-	LIBSTDCPP=`readlink `PATH=$(BUILD_PATH) g++ --print-file-name=libstdc++.so``; \
-	LIBGCC=`readlink `PATH=$(BUILD_PATH) gcc --print-file-name=libgcc_s.so``; \
-	LIBSTDCPP_SOVER=`echo $$LIBSTDCPP | sed -e 's/.*\.//'`; \
-	LIBGCC_SOVER=`echo $$LIBGCC | sed -e 's/.*\.//'`; \
-	cp $$LIBSTDCPP debian/ure/$(OOUREDIR)/lib; \
-	cp $$LIBGCC debian/ure/$(OOUREDIR)/lib; \
-	echo "libstdc++	$$LIBSTDCPP_SOVER" > debian/shlibs.override.stdlibs; \
-	echo "libgcc_s	$$LIBGCC_SOVER" >> debian/shlibs.override.stdlibs
-endif
 ifeq "$(LINK_TO_STLPORT)" "y"
 	rm -f debian/ure/$(OOUREDIR)/lib/libstlport*
 	ln -s `readlink -f /usr/lib/libstlport_gcc.so` \
@@ -3076,7 +3064,7 @@ endif
 ifneq (,$(filter icu, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.icu >> debian/shlibs.local
 endif
-ifeq "$(INTERNAL_STDLIBS)" "y"
+ifneq (,$(filter stdlibs, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.stdlibs >> debian/shlibs.local
 endif
 	# we need to do it in two steps. The new dpkg-shlibdeps doesn't find
