@@ -8,7 +8,6 @@ TMPDIR=`mktemp -d`
 PATCHFILE=$TMPDIR/libreoffice/libreoffice-build/patches/hotfixes/update-from-$FROMTAG-to-$TOTAG.diff
 mkdir -p `dirname $PATCHFILE`
 
-echo "commits from $FROMTAG to $TOTAG" > $PATCHFILE
 for repo in \
     artwork \
     base \
@@ -45,9 +44,12 @@ do
     else
         exit 1
     fi
-    #echo "commits on repository $repo from $FROMTAG to $TOTAG"
 
-    git --git-dir=$repodir format-patch --stdout --subject-prefix="$repo" ${TAGPREFIX}${FROMTAG}..${TAGPREFIX}${TOTAG}
+    MERGEBASE=`cd $repodir && git merge-base ${TAGPREFIX}${FROMTAG} ${TAGPREFIX}${TOTAG}`
+    echo "reverting on repository $repo from ${FROMTAG} to merge-base ${MERGEBASE}"
+    git --git-dir=$repodir diff ${TAGPREFIX}${FROMTAG}..${MERGEBASE}
+    echo "commits on repository $repo merge-base ${MERGEBASE} to ${TOTAG}"
+    git --git-dir=$repodir format-patch --stdout --subject-prefix="$repo" ${MERGEBASE}..${TAGPREFIX}${TOTAG}
 done | sed \
     -e 's|^--- a/|--- |' \
     -e 's|^+++ b/|+++ |' \
