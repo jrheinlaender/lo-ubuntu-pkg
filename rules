@@ -279,6 +279,7 @@ SYSTEM_STUFF += mesa-headers
 SYSTEM_STUFF += db
 SYSTEM_STUFF += poppler
 SYSTEM_STUFF += libpng
+SYSTEM_STUFF += nss
 
 # Default flags to pass to configure of ooo-build
 CONFIGURE_FLAGS= \
@@ -295,7 +296,8 @@ CONFIGURE_FLAGS= \
 		--disable-online-update \
 		--disable-fetch-external \
 		--enable-release-build \
-		--disable-linkoo
+		--disable-linkoo \
+		--disable-build-mozilla
 
 ifneq ($(ON_BUILDD),y)
 CONFIGURE_FLAGS += --enable-verbose
@@ -839,29 +841,12 @@ else
 	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-officebean -Nlibreoffice$(VER)-java-common -Nlibreoffice$(VER)-filter-mobiledev -Nlibreoffice$(VER)-gcj -Nlibreoffice$(VER)-script-provider-bsh -Nlibreoffice$(VER)-script-provider-js
 endif
 
-ifneq "$(MOZILLA)" ""
-  ifneq "$(OOO_MOZILLA_ARCHS)" ""
-    ifeq "$(MOZILLA)" "xulrunner"
-	BUILD_DEPS+= , libxul-dev$(OOO_NO_MOZILLA_ARCHS), libnss3-dev (>= 3.12.3)$(OOO_NO_MOZILLA_ARCHS)
-	DBG_DBG_SUGGESTS+= , libnss3-1d-dbg, libnspr4-0d-dbg
-    else
-      ifeq "$(MOZILLA)" "libxul"
-	BUILD_DEPS+= , xulrunner-dev$(OOO_NO_MOZILLA_ARCHS), libnss3-dev (>= 3.12.3)$(OOO_NO_MOZILLA_ARCHS)
-      else
-        ifeq "$(MOZILLA)" "iceape"
-	BUILD_DEPS += , $(MOZILLA)-dev (>= 1.1.9-5)$(OOO_NO_MOZILLA_ARCHS), libnss3-dev (>= 3.12.3)$(OOO_NO_MOZILLA_ARCHS)]
-        else
-	BUILD_DEPS += , $(MOZILLA)-dev$(OOO_NO_MOZILLA_ARCHS)
-        endif
-      endif
-	DBG_DBG_SUGGESTS+= , libnss3-1d-dbg, libnspr4-0d-dbg
-    endif
-  endif
+ifneq (,$(filter nss, $(SYSTEM_STUFF)))
+	BUILD_DEPS+= , libnss3-dev (>= 3.12.3)
+	DBG_DBG_SUGGESTS+= , libnss3-1d-dbg
 endif
-ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_MOZILLA_ARCHS)))
-	CONFIGURE_FLAGS += --with-system-mozilla=$(MOZILLA)
-else
-	CONFIGURE_FLAGS += --disable-mozilla --without-system-mozilla
+ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_MOZILLA_ARCHS)))
+	CONFIGURE_FLAGS += --disable-mozilla
 	PACKAGE_NPSOPLUGIN=n
 endif
 
