@@ -1234,6 +1234,7 @@ clean:
 	rm -f $(OOO_BUILD_TREE)/config.*
 
 	if [ -f Makefile ]; then $(MAKE) distclean; fi
+	rm -rf $(SOURCE_TREE)/pyuno-py3
 	rm -f config.status
 
 ifneq "$(OOO_L10N_DIR)" ""
@@ -1591,19 +1592,6 @@ endif
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` CFLAGS="$(CFLAGS)" CXXFLAGS="$(CXXFLAGS)" $(MAKE) build
 
-ifeq "$(BUILD_PYUNO)" "y"
-  ifeq "$(ENABLE_PYTHON3)" "y"
-	# FIXME: won't work when pyuno is migrated to gbuild as all is directly in solver
-	# then...
-	cp -ra $(SOURCE_TREE)/pyuno $(SOURCE_TREE)/pyuno-py3
-	cd $(SOURCE_TREE)/pyuno-py3; \
-		rm -rf $(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT); \ 
-		. $(CURDIR)/$(SOURCE_TREE)/Env.Host.sh; \
-		PATH=$(BUILD_PATH) PYTHON=$(PYTHON3) PYTHON_CFLAGS=$(shell pkg-config --cflags python-$(PY3MAJOR).$(PY3MINOR)mu) PYTHON_LIBS=$(shell pkg-config --cflags python-$(PY3MAJOR).$(PY3MINOR)mu) \
-		../solenv/bin/build.pl	# NO DELIVER!
-  endif
-endif
-
 	# apparently setting this here globally doesn't work, so hack around.
 	# If we don't do this we get loads of harmless, but log-bloating
 	# warnings
@@ -1617,6 +1605,20 @@ endif
 		. $(CURDIR)/$(SOURCE_TREE)/Env.Host.sh; \
 		PATH=$(BUILD_PATH) DPKG="dpkg" PKGFORMAT="deb" NO_PKG_MANGLE=go-away \
 		../solenv/bin/build.pl && ../solenv/bin/deliver.pl
+
+ifeq "$(BUILD_PYUNO)" "y"
+  ifeq "$(ENABLE_PYTHON3)" "y"
+	# FIXME: won't work when pyuno is migrated to gbuild as all is directly in solver
+	# then...
+	rm -rf $(SOURCE_TREE)/pyuno-py3
+	cp -ra $(SOURCE_TREE)/pyuno $(SOURCE_TREE)/pyuno-py3
+	cd $(SOURCE_TREE)/pyuno-py3; \
+		rm -rf $(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT); \
+		. $(CURDIR)/$(SOURCE_TREE)/Env.Host.sh; \
+		PATH=$(BUILD_PATH) PYTHON=$(PYTHON3) PYTHON_CFLAGS=$(shell pkg-config --cflags python-$(PY3MAJOR).$(PY3MINOR)mu) PYTHON_LIBS=$(shell pkg-config --libs python-$(PY3MAJOR).$(PY3MINOR)mu) \
+		../solenv/bin/build.pl	# NO DELIVER!
+  endif
+endif
 
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 	$(CURDIR)/debian/rules check
