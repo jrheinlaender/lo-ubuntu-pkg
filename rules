@@ -386,12 +386,25 @@ ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_JAVA_ARCHS)))
 	ENABLE_JAVA=n
 	ENABLE_REPORTDESIGN=n
 	ENABLE_MEDIAWIKI=n
+	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-wiki-publisher
+	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-report-builder-bin -Nlibreoffice$(VER)-report-builder
 endif
 
 ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_GCJ_JDK_ARCHS)))
   ifneq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_OPENJDK_ARCHS)))
 	ENABLE_REPORTDESIGN=n
 	SYSTEM_STUFF := $(filter-out jfreereport, $(SYSTEM_STUFF))
+	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-report-builder-bin -Nlibreoffice$(VER)-report-builder
+  endif
+endif
+# disable SRB on ia64 when building with internal jfreereport.
+# fails to build. ("The system is out of resources."). FIXME.
+ifeq (ia64,$(findstring ia64,$(OOO_OPENJDK_ARCHS)))
+  ifeq (,$(findstring jfreereport,$(SYSTEM_STUFF))) 
+    OOO_REPORTDESIGN_ARCHS := $(filter-out ia64,$(OOO_REPORTDESIGN_ARCHS))
+    ifeq "$(ARCH)" "ia64"
+	ENABLE_REPORTDESIGN=n
+    endif
   endif
 endif
 
@@ -485,9 +498,7 @@ ifneq "$(ENABLE_PRESENTER_CONSOLE)" "y"
 endif
 ifeq "$(ENABLE_PDFIMPORT)" "y"
 	BUILD_DEPS += , libpoppler-dev (>= 0.8.0), libpoppler-cpp-dev
-  ifneq "$(SQUEEZE_BACKPORT)" "y"
 	BUILD_DEPS += , libpoppler-cpp-dev
-  endif
 else
 	CONFIGURE_FLAGS += --disable-ext-pdfimport
 endif
@@ -573,12 +584,12 @@ ifneq "$(BUILD_DBG_PACKAGE)" "y"
 	# build with small symbols anyway
 	SMALL_SYMBOLS = y
 else
-  ifeq (debug,$(findstring debug,$(DEB_BUILD_OPTIONS)))
+  ifeq "$(SQUEEZE_BACKPORTS)" "y"
+	SMALL_SYMBOLS = y
+  else
+    ifneq (,$(findstring i386,$(ARCH)))
 	SMALL_SYMBOLS = n
         USE_XZ_COMPRESS = y
-  else
-    ifeq "$(SQUEEZE_BACKPORTS)" "y"
-	SMALL_SYMBOLS = y
     else
       ifneq (,$(findstring i386,$(DEB_HOST_ARCH)))
 	SMALL_SYMBOLS = n
@@ -589,7 +600,6 @@ else
         USE_XZ_COMPRESS = y
         else
 	SMALL_SYMBOLS = y
-        endif
       endif
     endif
   endif
@@ -604,6 +614,10 @@ export CFLAGS CXXFLAGS
 else
 	CONFIGURE_FLAGS += --enable-symbols
 endif
+ifeq (debug,$(findstring debug,$(DEB_BUILD_OPTIONS)))
+	CONFIGURE_FLAGS += --enable-debug
+endif
+
 
 ifeq (noopt,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
 	ARCH_FLAGS += -O0
@@ -1135,7 +1149,7 @@ ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 endif
 
 # Use compiler cache?  Include ccache in DEB_BUILD_OPTIONS for much faster rebuild times
-# A complete build uses about 200Mb of compiler cache.
+# A complete build uses about 4.5G of compiler cache.
 ifneq (ccache,$(findstring ccache,$(DEB_BUILD_OPTIONS)))
 	CONFIGURE_FLAGS += --disable-ccache
 endif
@@ -2249,6 +2263,7 @@ endif
 	for i in base calc draw impress math writer; do \
 		cat debian/libreoffice$(VER)-$$i.menu.in \
 			| sed -e s/@VER@/$(VER)/ \
+			| sed -e s,@ICONVERSION@,$(shell echo $(OOVER) | sed -e "s/\.//g"), \
 			> debian/libreoffice$(VER)-$$i.menu; \
 	done; \
 	for i in base calc core draw impress math writer; do \
