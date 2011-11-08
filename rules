@@ -209,8 +209,6 @@ USE_SYSTEM_DMAKE=y
 USE_LIBSUITESPARSE=y
 SUITESPARSE_MIN_VERSION= (>= 1:3.4.0)
 PARALLEL_BUILD=n
-ENABLE_MOZILLA=n
-MOZILLA=libxul
 ENABLE_LDAP=y
 USE_OPENLDAP=y
 ENABLE_OPENGL=y
@@ -280,6 +278,7 @@ SYSTEM_STUFF += db
 SYSTEM_STUFF += poppler
 SYSTEM_STUFF += libpng
 SYSTEM_STUFF += nss
+SYSTEM_STUFF += mozilla-headers
 
 # Default flags to pass to configure of ooo-build
 CONFIGURE_FLAGS= \
@@ -296,8 +295,7 @@ CONFIGURE_FLAGS= \
 		--disable-online-update \
 		--disable-fetch-external \
 		--enable-release-build \
-		--disable-linkoo \
-		--disable-build-mozilla
+		--disable-linkoo
 
 ifneq ($(ON_BUILDD),y)
 CONFIGURE_FLAGS += --enable-verbose
@@ -459,12 +457,6 @@ ifeq "$(GCC_VERSION)" ""
     endif
   endif
 endif
-
-# Note that this does *NOT* only affect the mozilla plugin but also
-# stuff like the xmlsecurity (which uses nss). For the plugin only,
-# change the OOO_NPSOPLUGIN_ARCHS
-OOO_MOZILLA_ARCHS = $(filter-out nothing, $(OOO_ARCHS))
-$(eval $(call gen_no_archs,OOO_MOZILLA_ARCHS))
 
 ifeq "$(USE_SOURCE_TARBALLS)" "n"
 	BUILD_DEPS += , git, rsync
@@ -844,10 +836,13 @@ ifneq (,$(filter nss, $(SYSTEM_STUFF)))
 	BUILD_DEPS+= , libnss3-dev (>= 3.12.3)
 	DBG_DBG_SUGGESTS+= , libnss3-1d-dbg
 endif
-#ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_MOZILLA_ARCHS)))
-	CONFIGURE_FLAGS += --disable-mozilla
+ifneq (,$(filter mozilla-headers, $(SYSTEM_STUFF)))
+	BUILD_DEPS+= , xulrunner-dev
+endif
+	CONFIGURE_FLAGS += --disable-build-mozilla --disable-mozilla
+ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NPSOPLUGIN_ARCHS)))
 	PACKAGE_NPSOPLUGIN=n
-#endif
+endif
 
 ifeq "$(USE_SYSTEM_DMAKE)" "y"
 	BUILD_DEPS += , dmake (>= 1:4.11)
@@ -936,11 +931,7 @@ ifneq (,$(filter icu, $(SYSTEM_STUFF)))
 endif
 
 ifneq (,$(filter xmlsec, $(SYSTEM_STUFF)))
-  ifneq (,$(findstring xul,$(MOZILLA)))
-	BUILD_DEPS += , libxmlsec1-dev (>= 1.2.9-1.1), libxmlsec1-nss (>= 1.2.9-1.1), libxmlsec1-openssl (>= 1.2.9-1.1)
-  else
 	BUILD_DEPS += , libxmlsec1-dev (>= 1.2.9), libxmlsec1-nss (>= 1.2.9), libxmlsec1-openssl (>= 1.2.9)
-  endif
 endif
 
 ifeq "$(BUILD_CAIROCANVAS)" "y"
@@ -3112,7 +3103,6 @@ endif
 		-V'java-common-depends=$(JAVA_COMMON_DEPENDS) $(JAVA_COMMON_DEPENDS_VERSION)' \
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-V'java-gcj-depends=$(JAVA_GCJ_DEPENDS)' \
-		-V'mozilla-nss-depends=$(MOZILLA_NSS_DEPENDS)' \
 		-V'lucene-depends=$(LUCENE_DEPENDS)' \
 		-V'Binary-Version=$(BINARY_VERSION)' \
 		-V'ooo-binfilter-dep=$(OOO_BINFILTER_DEP)' \
