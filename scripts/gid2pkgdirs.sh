@@ -64,6 +64,7 @@ create_package_directory gid_Module_Brand_Prg_Wrt               pkg/libreoffice-
 create_package_directory gid_Module_Brand_Prg_Impress           pkg/libreoffice-impress
 create_package_directory gid_Module_Brand_Prg_Base              pkg/libreoffice-base
 create_package_directory gid_Module_Optional_Pyuno              pkg/python-uno
+create_package_directory gid_Module_Optional_Extensions_Script_Provider_For_Python		pkg/python-uno
 create_package_directory gid_Module_Optional_Gnome              pkg/libreoffice-gnome
 create_package_directory gid_Module_Optional_Kde                pkg/libreoffice-kde
 create_package_directory gid_Module_Root_Files_2                pkg/libreoffice-common
@@ -74,6 +75,8 @@ create_package_directory gid_Module_Root_Files_6                pkg/libreoffice-
 create_package_directory gid_Module_Root_Files_7                pkg/libreoffice-common
 create_package_directory gid_Module_Optional_Testtool           pkg/libreoffice-qa-tools
 create_package_directory gid_Module_Root_SDK                    pkg/libreoffice-dev
+create_package_directory gid_Module_Optional_Extensions_Script_Provider_For_Beanshell	pkg/libreoffice-script-provider-bsh
+create_package_directory gid_Module_Optional_Extensions_Script_Provider_For_Javascript  pkg/libreoffice-script-provider-js
 move_wrappers pkg/libreoffice-common soffice unopkg
 move_wrappers pkg/libreoffice-common libreoffice lofromtemplate
 move_wrappers pkg/libreoffice-base lobase
