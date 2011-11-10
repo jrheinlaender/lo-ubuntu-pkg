@@ -77,6 +77,12 @@ create_package_directory gid_Module_Optional_Testtool           pkg/libreoffice-
 create_package_directory gid_Module_Root_SDK                    pkg/libreoffice-dev
 create_package_directory gid_Module_Optional_Extensions_Script_Provider_For_Beanshell	pkg/libreoffice-script-provider-bsh
 create_package_directory gid_Module_Optional_Extensions_Script_Provider_For_Javascript  pkg/libreoffice-script-provider-js
+create_package_directory gid_Module_Optional_Extensions_MEDIAWIKI	pkg/librepffice-wiki-publisher
+create_package_directory gid_Module_Optional_Extensions_MINIMIZER	pkg/libreoffice-presentation-minimizer
+create_package_directory gid_Module_Optional_Extensions_MySQLConnector  pkg/libreoffice-mysql-connector
+create_package_directory gid_Module_Optional_Extensions_PDFIMPORT	pkg/libreoffice-pdfimport
+create_package_directory gid_Module_Optional_Extensions_PRESENTER_SCREEN	pkg/libreoffice-presenter-console
+create_package_directory gid_Module_Optional_Extensions_REPORTDESIGN	pkg/libreoffice-report-builder
 move_wrappers pkg/libreoffice-common soffice unopkg
 move_wrappers pkg/libreoffice-common libreoffice lofromtemplate
 move_wrappers pkg/libreoffice-base lobase
