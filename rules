@@ -361,7 +361,7 @@ OOO_ARCH_DEP_EXTENSIONS_ARCHS := $(OOO_ARCHS)
 
 OOO_BASE_ARCHS := $(filter-out armel,$(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs,OOO_BASE_ARCHS))
-OOO_REPORTDESIGN_ARCHS := $(filter-out armel,$(OOO_JAVA_ARCHS))
+OOO_REPORTDESIGN_ARCHS := $(filter-out armel $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs,OOO_REPORTDESIGN_ARCHS))
 
 ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
@@ -1319,7 +1319,9 @@ endif
 			FONT_SUGGESTS=", ttf-dzongkha"; \
 			;; \
 		th) \
-			FONT_SUGGESTS=", ttf-thai-tlwg"; \
+			if [ "$(SQUEEZE_BACKPORTS)" != "y" ]; then \
+			FONT_SUGGESTS=", fonts-thai-tlwg"; else \
+			FONT_SUGGESTS=", ttf-thai-tlwg"; fi; \
 			;; \
 		*) \
 			FONT_SUGGESTS= ;; \
@@ -1454,6 +1456,7 @@ endif
 	perl -pi -e "s,%OOO_STLPORT_ARCHS%,$(OOO_STLPORT_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_GCJ_JDK_ARCHS%,$(OOO_GCJ_JDK_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_ARCH_DEP_EXTENSIONS_ARCHS%,$(OOO_ARCH_DEP_EXTENSIONS_ARCHS),g" debian/control
+	perl -pi -e "s,%OOO_REPORTDESIGN_ARCHS%,$(OOO_REPORTDESIGN_ARCHS),g" debian/control
 
 ifeq (sk,$(findstring sk,$(HELPISOS)))
 	perl -pi -e 's/(Depends:.*)libreoffice-l10n-sk(.*)$$/\1libreoffice-l10n-sk, libreoffice-help-cs\2/' debian/control
@@ -2689,9 +2692,9 @@ endif
 		$(PKGDIR)-common/usr/share/myspell/dicts
 
 ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
-	mkdir -p debian/ttf-opensymbol/usr/share/fonts/truetype/openoffice
+	mkdir -p debian/fonts-opensymbol/usr/share/fonts/truetype/openoffice
 	mv $(PKGDIR)-common/$(OODIR)/share/fonts/truetype/opens___.ttf \
-		debian/ttf-opensymbol/usr/share/fonts/truetype/openoffice
+		debian/fonts-opensymbol/usr/share/fonts/truetype/openoffice
 	rm -rf $(PKGDIR)-common/$(OODIR)/share/fonts/truetype
 else
 	rm -f $(PKGDIR)-common/$(OODIR)/share/fonts/truetype/opens___.ttf
@@ -3189,6 +3192,7 @@ endif
 		-Nlibuno-cli-cppuhelper1.0-cil \
 		-Nlibuno-cli-ure1.0-cil \
 		-Nttf-opensymbol \
+		-Nfonts-opensymbol \
 		-Nopenoffice.org-dtd-officedocument1.0 -- \
 		-V'base-version=$(BASE_VERSION)' \
 		-V'basis-version=$(BASIS_VERSION)' \
@@ -3205,8 +3209,8 @@ endif
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-v$(BINARY_VERSION)
 ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
-	dh_gencontrol -pttf-opensymbol -- \
-		-v$(shell echo `echo $(BINARY_VERSION) | cut -d: -f1` + 1 | bc):$(shell fontforge -lang=ff -c 'Open($$1); Print ($$fontversion); Quit(0);' debian/ttf-opensymbol/usr/share/fonts/truetype/openoffice/opens___.ttf)+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
+	dh_gencontrol -pttf-opensymbol -pfonts-opensymbol -- \
+		-v$(shell echo `echo $(BINARY_VERSION) | cut -d: -f1` + 1 | bc):$(shell fontforge -lang=ff -c 'Open($$1); Print ($$fontversion); Quit(0);' debian/fonts-opensymbol/usr/share/fonts/truetype/openoffice/opens___.ttf)+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
 endif
 ifeq "$(ENABLE_MEDIAWIKI)" "y"
 	dh_gencontrol -plibreoffice$(VER)-wiki-publisher -- \
