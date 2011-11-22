@@ -3235,49 +3235,57 @@ endif
 
 binary: binary-arch binary-indep
 
+ifneq "$(SOURCE_TARBALLS)" "y"
+# $(1) is the upstream name of the repo
+# $(2) is the location where the contents of the tarball end up relative to CURDIR (might be empty)
+# $(3) is the name of the tarball
+
+define pack_gittarball
+if ! which git >/dev/null 2>/dev/null; then \
+	echo "You need git."; \
+	exit 1; \
+fi && \
+if test -n "$$TMP"; then \
+	TMPD=`mktemp -d -p $$TMP`; \
+else \
+	TMPD=`mktemp -d`; \
+fi && \
+git clone --bare $(GIT_BASEURL)/$(1) $${TMPD} -b $(GIT_BRANCH) && \
+git archive --remote $${TMPD} --format=tar --prefix libreoffice-$(DEB_VERSION_UPSTREAM)/$(2) $(GIT_TAG) \
+	| gzip \
+	> $(3) && \
+rm -rf $${TMPD} && \
+tar xvzf $(3) -C $(CURDIR) --strip-components=1
+endef
+
+$(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig.tar.gz:
+	$(call pack_gittarball,core,,$@)
+
+$(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM)-helpcontent2.orig.tar.gz:
+	$(call pack_gittarball,helpcontent2,clone/help/,$@)
+
+$(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM)-%.orig.tar.gz:
+	$(call pack_gittarball,$*,clone/$*/,$@)
+
+config.status: $(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig.tar.gz
+config.status: $(foreach repo,binfilter dictionaries translations,$(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM)-$(repo).orig.tar.gz)
+
 # Get upstream external sources
-get-ext-sources:
+$(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig-ext-sources.tar.gz: config.status
 	rm -rf $(TARFIILE_LOCATION)
 	mkdir -p $(TARFILE_LOCATION)
-	$(MAKE) -f debian/rules configure
 	./download
-	$(MAKE) -f debian/rules clean
+	tar cfvz $@ -C $(dir $(TARFILE_LOCATION)) $(notdir $(TARFILE_LOCATION))
 	rm -f ooo.lst
 
-get-orig-source:
-ifneq "$(SOURCE_TARBALLS)" "y"
-	if ! which git >/dev/null 2>/dev/null; then \
-		echo "You need git."; \
-		exit 1; \
-	fi; \
-	if test -n "$$TMP"; then \
-		TMPD=`mktemp -d -p $$TMP`; \
-	else \
-		TMPD=`mktemp -d`; \
-	fi && \
-	cd $$TMPD && \
-	git clone git://anongit.freedesktop.org/libreoffice/core && \
-	mv core libreoffice-$(DEB_VERSION_UPSTREAM) && \
-	tar cfvz ../libreoffice_$(DEB_VERSION_UPSTREAM).orig.tar.gz libreoffice-$(DEB_VERSION_UPSTREAM) && \
-	mkdir -p libreoffice-$(DEB_VERSION_UPSTREAM)/clone  && \
-	cd libreoffice-$(DEB_VERSION_UPSTREAM)/clone && \
-	for i in binfilter dictionaries help translations; do \
-		if [ "$$i" = "help"; then j=helpcontent2; else j=$$i; fi; \
-		git clone git://anongit.freedesktop.org/libreoffice/$$i; \
-		mv $$i/$$j ..; \
-	done && cd .. && \
-	for j in binfilter dictionaries helpcontent2 translations; do \
-		tar cfvz ../libreoffice_$(DEB_VERSION_UPSTREAM).orig-$$j.tar.gz $$j; \
-	done && \
-	mkdir ext-sources && cd ext-sources && \
-	$(MAKE) -f debian/rules get-ext-sources TARFILE_LOCATION="$$TMPD/libreoffice-$(DEB_VERSION_UPSTREAM)/ext-sources" && \
-	tar cfvz ../../libreoffice_$(DEB_VERSION_UPSTREAM).orig-ext-sources.tar.gz ext-sources && \
-	cd $(CURDIR) && rm -rf $$TMPD
+get-orig-source: $(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig-ext-sources.tar.gz
+
 endif
 
 .PHONY: control
 .PHONY: clean-debdir clean-instsetoo clean-objectdirs clean default configure
 .PHONY: build build-indep build-arch install-arch install-indep
+.PHONY: get-orig-source
 .PHONY: $(stampdir_targets)
 
 # vim:set noet ai sts=8 sw=8 tw=0:
