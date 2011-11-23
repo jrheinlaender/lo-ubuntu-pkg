@@ -3248,17 +3248,14 @@ ifneq "$(SOURCE_TARBALLS)" "y"
 # case and not random dirs. see also: debian bug 494141
 # also, we need to run configure to create the ext-sources tarball anyway
 
+GIT_INSTALLED:=$(shell which git >/dev/null 2>/dev/null && echo "y")
+
+get_orig_tarball=$(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig$(1).tar.gz
+
 define pack_gittarball
+$(if $(GIT_INSTALLED),,$(error You need git.))
 dh_testdir
-if ! which git >/dev/null 2>/dev/null; then \
-	echo "You need git."; \
-	exit 1; \
-fi && \
-if test -n "$$TMP"; then \
-	TMPD=`mktemp -d -p $$TMP`; \
-else \
-	TMPD=`mktemp -d`; \
-fi && \
+TMPD=`mktemp -d $(if $(TMP),-p $(TMP))` && \
 mkdir $${TMPD}/archive && \
 git clone --bare $(GIT_BASEURL)/$(1) $${TMPD}/repo -b $(GIT_BRANCH) && \
 git archive --remote $${TMPD}/repo --format=tar --prefix libreoffice-$(DEB_VERSION_UPSTREAM)/ $(GIT_TAG) |tar x -C $${TMPD}/archive && \
@@ -3266,48 +3263,50 @@ tar cvzf $(2) -C $${TMPD}/archive/$(3) --transform 's,./,,' . && \
 rm -rf $${TMPD}
 endef
 
-$(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig.tar.gz:
+define unpack_gittarball
+dh_testdir
+mkdir -p $(CURDIR)/$(1)
+tar xvzf $(2) -C $(CURDIR)/$(1) $(3)
+endef
+
+$(call get_orig_tarball):
 	$(call pack_gittarball,core,$@,)
 
-$(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig-helpcontent2.tar.gz:
+$(call get_orig_tarball,-helpcontent2):
 	$(call pack_gittarball,help,$@,libreoffice-$(DEB_VERSION_UPSTREAM)/helpcontent2)
 
-$(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig-%.tar.gz:
+$(call get_orig_tarball,-%):
 	$(call pack_gittarball,$*,$@,libreoffice-$(DEB_VERSION_UPSTREAM)/$*)
 
-.gitignore: $(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig.tar.gz
-	dh_testdir
-	tar xvzf $< -C $(CURDIR) --strip-components=1
-
-%/.gitignore: $(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig-%.tar.gz
-	dh_testdir
-	mkdir -p $(CURDIR)/$*
-	tar xvzf $< -C $(CURDIR)/$*
-
-ext-sources/fetch.log: $(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig-ext-sources.tar.gz
-	dh_testdir
-	mkdir -p $(CURDIR)/ext-sources
-	tar xvzf $< -C $(CURDIR)/ext-sources
-
-config.status:| $(foreach tarball,binfilter dictionaries helpcontent2 translations,$(tarball)/.gitignore  $(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig-$(tarball).tar.gz)
-config.status:|.gitignore $(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig.tar.gz
-
-
 # Get upstream external sources
-$(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig-ext-sources.tar.gz:| config.status
+$(call get_orig_tarball,-ext-sources):| config.status
 	dh_testdir
 	rm -rf $(TARFIILE_LOCATION)
 	mkdir -p $(TARFILE_LOCATION)
 	./download
 	tar cvzf $@ -C $(TARFILE_LOCATION) --transform 's,./,,' .
 
-get-orig-source: $(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig-ext-sources.tar.gz
+endif
+
+# using .gitignore/fetch.log as flag files for unpacking
+.gitignore: $(call get_orig_tarball)
+	$(call unpack_gittarball,,$<,--strip-components=1)
+
+%/.gitignore: $(call get_orig_tarball,-%)
+	$(call unpack_gittarball,$*,$<,)
+
+ext-sources/fetch.log: $(call get_orig_tarball,-ext-sources)
+	$(call unpack_gittarball,ext-sources,$<,)
+
+config.status:| $(foreach tarball,binfilter dictionaries helpcontent2 translations,$(tarball)/.gitignore $(call get_orig_tarball,-$(tarball)))
+config.status:| .gitignore $(call get_orig_tarball)
+
+get-orig-source: $(call get_orig_tarball,-ext-sources)
 	dh_testdir
 
 unpack: ext-sources/fetch.log
 	dh_testdir
 
-endif
 
 .PHONY: control
 .PHONY: clean-debdir clean-instsetoo clean-objectdirs clean default configure
