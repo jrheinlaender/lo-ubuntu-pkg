@@ -1575,7 +1575,7 @@ endif
 	touch $@
 
 build: $(STAMP_DIR)/build
-$(STAMP_DIR)/build: config.status $(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig-ext-sources.tar.gz
+$(STAMP_DIR)/build: config.status | ext-sources/fetch.log
 	dh_testdir
 
 ifeq "$(BUILD_KDE)" "n"
@@ -3238,15 +3238,15 @@ binary: binary-arch binary-indep
 ifneq "$(SOURCE_TARBALLS)" "y"
 
 # $(1) is the upstream name of the repo
-# $(2) is the location where the contents of the tarball end up relative to CURDIR (might be empty)
-# $(3) is the name of the tarball
+# $(2) is the name of the tarball
+# $(3) is the path to archive (empty for everything)
 #
 # according to policy get-orig-source has to download to the current dir, thus
 # should not require a dh_testdir. However, like this we can have clean deps
 # from build and download the source, configure, build, pack in on piece. As
 # get-orig-source is an optional target anyway, we stick to support only this
 # case and not random dirs. see also: debian bug 494141
-
+# also, we need to run configure to create the ext-sources tarball anyway
 
 define pack_gittarball
 dh_testdir
@@ -3259,43 +3259,60 @@ if test -n "$$TMP"; then \
 else \
 	TMPD=`mktemp -d`; \
 fi && \
-git clone --bare $(GIT_BASEURL)/$(1) $${TMPD} -b $(GIT_BRANCH) && \
-git archive --remote $${TMPD} --format=tar --prefix libreoffice-$(DEB_VERSION_UPSTREAM)/$(2) $(GIT_TAG) \
-	| gzip \
-	> $(3) && \
-rm -rf $${TMPD} && \
-tar xvzf $(3) -C $(CURDIR) --strip-components=1
+mkdir $${TMPD}/archive && \
+git clone --bare $(GIT_BASEURL)/$(1) $${TMPD}/repo -b $(GIT_BRANCH) && \
+git archive --remote $${TMPD}/repo --format=tar --prefix libreoffice-$(DEB_VERSION_UPSTREAM)/ $(GIT_TAG) |tar x -C $${TMPD}/archive && \
+tar cvzf $(2) -C $${TMPD}/archive/$(3) --transform 's,./,,' . && \
+rm -rf $${TMPD}
 endef
 
 $(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig.tar.gz:
-	$(call pack_gittarball,core,,$@)
+	$(call pack_gittarball,core,$@,)
 
-$(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM)-helpcontent2.orig.tar.gz:
-	$(call pack_gittarball,helpcontent2,clone/help/,$@)
+$(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig-helpcontent2.tar.gz:
+	$(call pack_gittarball,help,$@,libreoffice-$(DEB_VERSION_UPSTREAM)/helpcontent2)
 
-$(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM)-%.orig.tar.gz:
-	$(call pack_gittarball,$*,clone/$*/,$@)
+$(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig-%.tar.gz:
+	$(call pack_gittarball,$*,$@,libreoffice-$(DEB_VERSION_UPSTREAM)/$*)
 
-config.status: $(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig.tar.gz
-config.status: $(foreach repo,binfilter dictionaries translations,$(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM)-$(repo).orig.tar.gz)
+.gitignore: $(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig.tar.gz
+	dh_testdir
+	tar xvzf $< -C $(CURDIR) --strip-components=1
+
+%/.gitignore: $(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig-%.tar.gz
+	dh_testdir
+	mkdir -p $(CURDIR)/$*
+	tar xvzf $< -C $(CURDIR)/$*
+
+ext-sources/fetch.log: $(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig-ext-sources.tar.gz
+	dh_testdir
+	mkdir -p $(CURDIR)/ext-sources
+	tar xvzf $< -C $(CURDIR)/ext-sources
+
+config.status:| $(foreach tarball,binfilter dictionaries helpcontent2 translations,$(tarball)/.gitignore  $(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig-$(tarball).tar.gz)
+config.status:|.gitignore $(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig.tar.gz
+
 
 # Get upstream external sources
-$(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig-ext-sources.tar.gz: config.status
+$(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig-ext-sources.tar.gz:| config.status
+	dh_testdir
 	rm -rf $(TARFIILE_LOCATION)
 	mkdir -p $(TARFILE_LOCATION)
 	./download
-	tar cfvz $@ -C $(dir $(TARFILE_LOCATION)) $(notdir $(TARFILE_LOCATION))
-	rm -f ooo.lst
-
+	tar cvzf $@ -C $(TARFILE_LOCATION) --transform 's,./,,' .
 
 get-orig-source: $(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig-ext-sources.tar.gz
+	dh_testdir
+
+unpack: ext-sources/fetch.log
+	dh_testdir
 
 endif
 
 .PHONY: control
 .PHONY: clean-debdir clean-instsetoo clean-objectdirs clean default configure
 .PHONY: build build-indep build-arch install-arch install-indep
-.PHONY: get-orig-source
+.PHONY: get-orig-source unpack
 .PHONY: $(stampdir_targets)
 
 # vim:set noet ai sts=8 sw=8 tw=0:
