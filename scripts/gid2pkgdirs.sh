@@ -5,6 +5,8 @@
 ## (c) 2005 Chris Halls <halls@debian.org>
 ## (c) 2005-2011 Rene Engelhard <rene@debian.org>
 
+export OODESTDIR=$DESTDIR
+
 cd $DESTDIR
 
 echo "Copying gid files...."
