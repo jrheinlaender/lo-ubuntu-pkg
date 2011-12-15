@@ -3258,24 +3258,33 @@ $(call get_orig_tarball,-%):
 	$(call pack_gittarball,$*,$@,libreoffice-$(DEB_VERSION_UPSTREAM)/$*)
 
 # Get upstream external sources
-$(call get_orig_tarball,-ext-sources): config.status
+$(call get_orig_tarball,-ext-sources): |config.status
 	dh_testdir
 	rm -rf $(TARFIILE_LOCATION)
 	mkdir -p $(TARFILE_LOCATION)
 	./download
 	tar cvzf $@ -C $(TARFILE_LOCATION) --transform 's,./,,' .
 
-# using .gitignore/fetch.log as flag files for unpacking
+# using flag files for unpacking
 .gitignore: $(call get_orig_tarball)
 	$(call unpack_gittarball,,$<,--strip-components=1)
 
-%/.gitignore: $(call get_orig_tarball,-%)
-	$(call unpack_gittarball,$*,$<,)
+binfilter/no_localization: $(call get_orig_tarball,-binfilter)
+	$(call unpack_gittarball,binfilter,$<,)
+
+dictionaries/en/README.txt: $(call get_orig_tarball,-dictionaries)
+	$(call unpack_gittarball,dictionaries,$<,)
+
+translations/makefile.mk:  $(call get_orig_tarball,-translations)
+	$(call unpack_gittarball,translations,$<,)
+
+helpcontent2/makefile.pmk:  $(call get_orig_tarball,-helpcontent2)
+	$(call unpack_gittarball,helpcontent2,$<,)
 
 ext-sources/fetch.log: $(call get_orig_tarball,-ext-sources)
 	$(call unpack_gittarball,ext-sources,$<,)
 
-get-orig-source: $(call get_orig_tarball,-ext-sources)
+get-orig-source: $(call get_orig_tarball,-ext-sources) ext-sources/fetch.log
 	dh_testdir
 
 unpack: ext-sources/fetch.log
@@ -3283,7 +3292,8 @@ unpack: ext-sources/fetch.log
 
 endif
 
-config.status:| $(foreach tarball,binfilter dictionaries helpcontent2 translations,$(tarball)/.gitignore $(call get_orig_tarball,-$(tarball)))
+config.status:| $(foreach tarball,binfilter dictionaries helpcontent2 translations,$(call get_orig_tarball,-$(tarball)))
+config.status:| binfilter/no_localization dictionaries/en/README.txt helpcontent2/makefile.pmk translations/makefile.mk
 config.status:| .gitignore $(call get_orig_tarball)
 
 endif
