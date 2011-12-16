@@ -3281,7 +3281,7 @@ translations/makefile.mk:  $(call get_orig_tarball,-translations)
 helpcontent2/makefile.pmk:  $(call get_orig_tarball,-helpcontent2)
 	$(call unpack_gittarball,helpcontent2,$<,)
 
-ext-sources/fetch.log: $(call get_orig_tarball,-ext-sources)
+ext-sources/fetch.log: $(call get_orig_tarball,-ext-sources) patched
 	$(call unpack_gittarball,ext-sources,$<,)
 
 get-orig-source: $(call get_orig_tarball,-ext-sources) ext-sources/fetch.log
@@ -3289,12 +3289,15 @@ get-orig-source: $(call get_orig_tarball,-ext-sources) ext-sources/fetch.log
 
 unpack: ext-sources/fetch.log
 	dh_testdir
-
 endif
+patched:| $(foreach tarball,binfilter dictionaries helpcontent2 translations,$(call get_orig_tarball,-$(tarball))) $(call get_orig_tarball)
+patched: binfilter/no_localization dictionaries/en/README.txt helpcontent2/makefile.pmk translations/makefile.mk .gitignore
 
-config.status:| $(foreach tarball,binfilter dictionaries helpcontent2 translations,$(call get_orig_tarball,-$(tarball)))
-config.status:| binfilter/no_localization dictionaries/en/README.txt helpcontent2/makefile.pmk translations/makefile.mk
-config.status:| .gitignore $(call get_orig_tarball)
+patched:
+	dh_testdir
+	quilt push -a || true
+
+config.status : patched
 
 endif
 
@@ -3302,7 +3305,7 @@ endif
 .PHONY: control
 .PHONY: clean-debdir clean-instsetoo clean-objectdirs clean default configure
 .PHONY: build build-indep build-arch install-arch install-indep
-.PHONY: get-orig-source unpack
+.PHONY: get-orig-source unpack patched
 .PHONY: $(stampdir_targets)
 
 # vim:set noet ai sts=8 sw=8 tw=0:
