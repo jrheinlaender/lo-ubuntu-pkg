@@ -24,9 +24,7 @@ HELP_L10N_VIRTUAL_VERSION:=$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d: -f2 | 
 #HELP_L10N_VIRTUAL_VERSION:=3.5
 #VER:=3
 OOVER:=3.5
-BASIS_VERSION:=$(OOVER)
 NEXT_OOVER:=$(shell echo "$(OOVER) + 0.1" | bc)
-NEXT_BASIS_VERSION:=$(NEXT_OOVER)
 
 ARCH_INDEP_PACKAGES := $(shell dh_listpackages -i)
 ARCH_DEP_PACKAGES := $(shell dh_listpackages -s)
@@ -44,12 +42,9 @@ ON_BUILDD := $(shell if [ "`whoami`" = buildd -o -f /CurrentlyBuilding ] || echo
 
 PKGDIR:=debian/libreoffice$(VER)
 OODIRNAME=libreoffice$(VER)
-OOBRANDDIR:=usr/lib/$(OODIRNAME)
-OOBASISDIR:=$(OOBRANDDIR)/basis$(BASIS_VERSION)
-OOSDKDIR:=$(OOBASISDIR)/sdk
+OODIR:=usr/lib/$(OODIRNAME)
 OOUREDIR:=usr/lib/ure
-# compatability
-OODIR:=$(OOBASISDIR)
+OOSDKDIR:=$(OODIR)/sdk
 
 # Figure out who's building this package.
 OOO_VENDOR:=The Document Foundation/Debian
@@ -75,8 +70,8 @@ SOURCE_TREE=.
 STAMP_DIR=debian/stampdir
 TARFILE_LOCATION=$(CURDIR)/ext-sources
 export TARFILE_LOCATION
-USE_SOURCE_TARBALLS=n
-USE_GIT_TARBALLS=y
+USE_SOURCE_TARBALLS=y
+USE_GIT_TARBALLS=n
 
 ifeq "$(DISTREL)" "squeeze"
  SQUEEZE_BACKPORT=y
@@ -140,7 +135,7 @@ LIBHYPHEN_MINVER= (>= 2.4)
 USE_AGG=n
 # SYSTEM_STUFF += agg
 SYSTEM_STUFF += boost
-BOOST_VERSION=default
+BOOST_VERSION=1.46
 ifeq "$(BOOST_VERSION)" "default"
   BOOST_MINVER= (>= 1.38)
 endif
@@ -1572,28 +1567,11 @@ endif
 	touch $@
 
 build: $(STAMP_DIR)/build
-$(STAMP_DIR)/build: config.status | ext-sources/fetch.log
+#$(STAMP_DIR)/build: config.status | ext-sources/fetch.log
+$(STAMP_DIR)/build: config.status
 	dh_testdir
 
-ifeq "$(BUILD_KDE)" "n"
-	# hack to tell we want crystal icons nevertheless and they should be
-	# extracted...
-	if ! grep -q crystal $(OOO_BUILD_TREE)/bin/setup; then \
-		cp $(OOO_BUILD_TREE)/bin/setup $(OOO_BUILD_TREE)/bin/setup.bak && \
-		cat $(OOO_BUILD_TREE)/bin/setup.bak \
-			| sed -e s/\'industrial/\'industrial\ crystal/ \
-			> $(OOO_BUILD_TREE)/bin/setup && rm $(OOO_BUILD_TREE)/bin/setup.bak; \
-	fi
-endif
-
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` CFLAGS="$(CFLAGS)" CXXFLAGS="$(CXXFLAGS)" $(MAKE) build
-
-	# DPKG is only set on with-EPM build what we don't do and the menu stuff
-	# is only built wenn DPKG is set.. Same with PKGFORMAT.
-	cd $(SOURCE_TREE)/sysui; \
-		. $(CURDIR)/$(SOURCE_TREE)/Env.Host.sh; \
-		PATH=$(BUILD_PATH) DPKG="dpkg" PKGFORMAT="deb" NO_PKG_MANGLE=go-away \
-		../solenv/bin/build.pl && ../solenv/bin/deliver.pl
 
 ifeq "$(BUILD_PYUNO)" "y"
   ifeq "$(ENABLE_PYTHON3)" "y"
@@ -1651,6 +1629,8 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/build
 	# anymore (different dirs)
 	rm -rf $(SOURCE_TREE)/instsetoo_native/util/LibreOffice
 
+	rm -rf $(SOURCE_TREE)/file-lists
+
 	# install LibreOffice.
 	cd $(SOURCE_TREE)/; \
 		 . $(CURDIR)/$(SOURCE_TREE)/Env.Host.sh; \
@@ -1658,8 +1638,8 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/build
 		 DESTDIR=$(CURDIR)/debian/tmp \
 		 $(MAKE) distro-pack-install
 	export DESTDIR=$(CURDIR)/debian/tmp ;\
-	export VERSION=$(BASIS_VERSION); \
-	export OOINSTBASE=$(OOBRANDDIR); \
+	export VERSION=$(OOVER); \
+	export OOINSTBASE=$(OODIR); \
 	export OOO_LANGS_LIST="$(ISOS)"; \
 	$(CURDIR)/debian/scripts/gid2pkgdirs.sh
 	
@@ -1720,13 +1700,17 @@ ifneq "$(HELPISOS)" ""
 	done
 endif
 
-	# FIXME: Fix in ooo-build
-	rm -rf debian/tmp/pkg/libreoffice-qa-tools
-
 	dh_installdirs -A
 	dh_install -A --sourcedir=debian/tmp/pkg --fail-missing
 
 	rm -rf debian/tmp/pkg
+
+	# move desktop files to their correct packages
+	for i in base calc draw impress math writer; do \
+		mkdir -p $(PKGDIR)-$$i/$(OODIR)/share/xdg; \
+		mv $(PKGDIR)-common/$(OODIR)/share/xdg/$$i.desktop \
+			$(PKGDIR)-$$i/$(OODIR)/share/xdg; \
+	done
 
 	# move help to /usr/share
 	for iso in $(HELPISOS); do \
@@ -1739,30 +1723,30 @@ endif
 
 ifeq (sk,$(findstring sk,$(HELPISOS)))
 	# add fake sk help
-	mkdir -p $(PKGDIR)-help-sk/$(shell echo $(OOBASISDIR) | sed -e s/lib/share/)/help
+	mkdir -p $(PKGDIR)-help-sk/$(shell echo $(OODIR) | sed -e s/lib/share/)/help
 	ln -s cs \
-		$(PKGDIR)-help-sk/$(shell echo $(OOBASISDIR) | sed -e s/lib/share/)/help/sk
+		$(PKGDIR)-help-sk/$(shell echo $(OODIR) | sed -e s/lib/share/)/help/sk
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
 	# move officebean.jar into -officebean (They will be moved out of -core
 	# in the install-arch target). Do the /usr/share move here already
-	mkdir -p $(PKGDIR)-core/$(shell echo $(OOBASISDIR) | sed -e s/lib/share/)/program/classes; \
+	mkdir -p $(PKGDIR)-core/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes; \
 	mv $(PKGDIR)-common/$(OODIR)/program/classes/officebean.jar \
-		$(PKGDIR)-core/$(shell echo $(OOBASISDIR) | sed -e s/lib/share/)/program/classes
+		$(PKGDIR)-core/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes
 	# fix the classpath
 	jh_classpath --classpath="ridl.jar unoil.jar jurt.jar juh.jar" \
-		$(PKGDIR)-core/$(shell echo $(OOBASISDIR) | sed -e s/lib/share/)/program/classes/officebean.jar
+		$(PKGDIR)-core/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes/officebean.jar
 	
   ifeq "$(PACKAGE_BASE)" "y"
 	# move sdbc_hsqldb.jar into -base (do the move
 	# to /usr/share/java here directly, we do it for the "rest"
 	# later
-	mkdir -p $(PKGDIR)-base/$(shell echo $(OOBASISDIR) | sed -e s/lib/share/)/program/classes; \
+	mkdir -p $(PKGDIR)-base/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes; \
 	mkdir -p $(PKGDIR)-base/$(OODIR)/program/classes; \
 	mv $(PKGDIR)-common/$(OODIR)/program/classes/sdbc_hsqldb.jar \
-		$(PKGDIR)-base/$(shell echo $(OOBASISDIR) | sed -e s/lib/share/)/program/classes; \
-	ln -s $(shell echo /$(OOBASISDIR) | sed -e s/lib/share/)/program/classes/sdbc_hsqldb.jar \
+		$(PKGDIR)-base/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes; \
+	ln -s $(shell echo /$(OODIR) | sed -e s/lib/share/)/program/classes/sdbc_hsqldb.jar \
 		$(PKGDIR)-base/$(OODIR)/program/classes/sdbc_hsqldb.jar
 
     ifeq (,$(filter hsqldb, $(SYSTEM_STUFF)))
@@ -1783,9 +1767,9 @@ endif
 
 ifeq "$(BUILD_GTK)" "y"
 	# Gtk quickstarter, so to -gtk (via -gnome)
-	mkdir -p -m755 $(PKGDIR)-gnome/$(OOBRANDDIR)/share/xdg
-	mv $(PKGDIR)-common/$(OOBRANDDIR)/share/xdg/qstart.desktop \
-		$(PKGDIR)-gnome/$(OOBRANDDIR)/share/xdg
+	mkdir -p -m755 $(PKGDIR)-gnome/$(OODIR)/share/xdg
+	mv $(PKGDIR)-common/$(OODIR)/share/xdg/qstart.desktop \
+		$(PKGDIR)-gnome/$(OODIR)/share/xdg
 	# gnome config stuff, should land in gnome upstream even but...
 	mkdir -p $(PKGDIR)-gnome/$(OODIR)/share/registry
 	mv $(PKGDIR)-common/$(OODIR)/share/registry/gnome.xcd \
@@ -1795,30 +1779,29 @@ endif
 ifeq "$(PACKAGE_SDK)" "y"
 	# move SDK documentation into own package
 	rm -rf $(PKGDIR)-dev-doc
-	mkdir -p $(PKGDIR)-dev-doc/usr/share/doc/libreoffice-dev-doc
-	mv $(PKGDIR)-dev/usr/share/doc/libreoffice \
-		$(PKGDIR)-dev-doc/usr/share/doc/libreoffice-dev && \
-	mv $(PKGDIR)-dev-doc/usr/share/doc/libreoffice-dev/sdk/docs \
-		$(PKGDIR)-dev-doc/usr/share/doc/libreoffice-dev
+	mkdir -p $(PKGDIR)-dev-doc/usr/share/doc/libreoffice-dev/docs
+	mv $(PKGDIR)-dev/usr/share/doc/libreoffice/sdk/docs/* \
+		$(PKGDIR)-dev-doc/usr/share/doc/libreoffice-dev/docs
+	rmdir $(PKGDIR)-dev/usr/share/doc/libreoffice/sdk/docs
 	mkdir -p $(PKGDIR)-dev-doc/$(OOSDKDIR)
-	mv $(PKGDIR)-dev-doc/usr/share/doc/libreoffice-dev/sdk/index.html \
-		$(PKGDIR)-dev-doc/$(OOSDKDIR)
-	rm -f $(PKGDIR)-dev/$(OOSDKDIR)/index.html
-	rm -rf $(PKGDIR)-dev/usr/share/doc/libreoffice \
-		$(PKGDIR)-dev-doc/usr/share/doc/libreoffice-dev/sdk
+	ln -sf /usr/share/doc/libreoffice-dev/docs \
+		$(PKGDIR)-dev/$(OOSDKDIR)/docs
 	mv $(PKGDIR)-dev/$(OOSDKDIR)/examples \
 		$(PKGDIR)-dev-doc/$(OOSDKDIR)
 endif
 
 	# fixup ure-link symlink. The move is done in install-arch
 	# but the link is in -common so we need to do it here.
-	cd $(PKGDIR)-common/$(OOBASISDIR) && \
+	cd $(PKGDIR)-common/$(OODIR) && \
 		rm ure-link && ln -sf /$(OOUREDIR) ure-link
 
 ifeq "$(ENABLE_EVO2)" "y"
-	mkdir -p $(PKGDIR)-evolution/$(OOBRANDDIR)/presets/database
-	mv $(PKGDIR)-common/$(OOBRANDDIR)/presets/database/evolocal.odb \
-		$(PKGDIR)-evolution/$(OOBRANDDIR)/presets/database
+	mkdir -p $(PKGDIR)-evolution/$(OODIR)/presets/database
+	mkdir -p $(PKGDIR)-evolution/$(OODIR)/share/registry
+	mv $(PKGDIR)-common/$(OODIR)/presets/database/evolocal.odb \
+		$(PKGDIR)-evolution/$(OODIR)/presets/database
+	mv $(PKGDIR)-common/$(OODIR)/share/registry/evoab.xcd \
+		$(PKGDIR)-evolution/$(OODIR)/share/registry
 endif
 
 	find debian/tmp ! -perm -200 | xargs -r chmod u+w
@@ -1846,14 +1829,9 @@ $(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*.sh) $(wildcard debian/*.
 	      if egrep -q "(add|remove|validate|sync)_extension" $$MAINTSCRIPT.in; then \
 		 cat debian/shell-lib-extensions.sh >> $$MAINTSCRIPT; \
 	      fi; \
-	      if grep -q services_rdb $$MAINTSCRIPT.in; then \
-		 cat debian/shell-lib-components.sh >> $$MAINTSCRIPT; \
-	      fi; \
 	      sed -n '/^#INCLUDE_SHELL_LIB#$$/,$$p' < $$MAINTSCRIPT.in | sed -e '/^#INCLUDE_SHELL_LIB#$$/d' >> $$MAINTSCRIPT; \
 	      perl -pi -e "s/\@LANGPACKISOS\@/$(LANGPACKISOS)/" $$MAINTSCRIPT; \
 	      perl -pi -e "s,\@OODIR\@,$(OODIR),g" $$MAINTSCRIPT; \
-	      perl -pi -e "s,\@OOBRANDDIR\@,$(OOBRANDDIR),g" $$MAINTSCRIPT; \
-	      perl -pi -e "s,\@OOBASISDIR\@,$(OOBASISDIR),g" $$MAINTSCRIPT; \
 	      perl -pi -e "s/\@VER\@/$(VER)/g" $$MAINTSCRIPT; \
 	    fi; \
 	  done; \
@@ -1877,14 +1855,14 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/install $(STAMP_DIR)/install-indep $(SOURCE
 
 	# remove extra license files
 	for iso in `echo $(LANGPACKISOS) | tr A-Z a-z`; do \
-		rm -rf $(PKGDIR)-l10n-$$iso/$(OOBRANDDIR)/licenses; \
-		rm -f $(PKGDIR)-l10n-$$iso/$(OOBRANDDIR)/share/readme/LICENSE*; \
+		rm -rf $(PKGDIR)-l10n-$$iso/$(OODIR)/licenses; \
+		rm -f $(PKGDIR)-l10n-$$iso/$(OODIR)/share/readme/LICENSE*; \
 	done
 
 	# remove extra readme files
 	for iso in `echo $(LANGPACKISOS) | tr A-Z a-z`; do \
-		rm -rf $(PKGDIR)-l10n-$$iso/$(OOBRANDDIR)/readmes; \
-		rm -f $(PKGDIR)-l10n-$$iso/$(OOBRANDDIR)/share/readme/README*; \
+		rm -rf $(PKGDIR)-l10n-$$iso/$(OODIR)/readmes; \
+		rm -f $(PKGDIR)-l10n-$$iso/$(OODIR)/share/readme/README*; \
 	done
 
 	# remove empty help directories
@@ -1925,19 +1903,19 @@ endif
 
 ifeq (pt-BR,$(findstring pt-BR,$(LANGPACKISOS)))
 	# move pt-BR ("BrOffice") splashs into -l10n-pt-br
-	mkdir -p $(PKGDIR)-l10n-pt-br/$(OOBRANDDIR)/program
-	mv $(PKGDIR)-common/$(OOBRANDDIR)/program/intro-pt_BR.png \
-		$(PKGDIR)-l10n-pt-br/$(OOBRANDDIR)/program/intro-pt_BR.png
-	mv $(PKGDIR)-common/$(OOBRANDDIR)/program/about-pt_BR.png \
-		$(PKGDIR)-l10n-pt-br/$(OOBRANDDIR)/program/about-pt_BR.png
+	mkdir -p $(PKGDIR)-l10n-pt-br/$(OODIR)/program
+	mv $(PKGDIR)-common/$(OODIR)/program/intro-pt_BR.png \
+		$(PKGDIR)-l10n-pt-br/$(OODIR)/program/intro-pt_BR.png
+	mv $(PKGDIR)-common/$(OODIR)/program/about-pt_BR.png \
+		$(PKGDIR)-l10n-pt-br/$(OODIR)/program/about-pt_BR.png
 else
 	# remove them, unneeded and would gerate file conflicts
-	rm -f $(PKGDIR)-common/$(OOBRANDDIR)/program/intro-pt_BR.png
-	rm -f $(PKGDIR)-common/$(OOBRANDDIR)/program/about-pt_BR.png
+	rm -f $(PKGDIR)-common/$(OODIR)/program/intro-pt_BR.png
+	rm -f $(PKGDIR)-common/$(OODIR)/program/about-pt_BR.png
 endif
 
 ifeq (he,$(findstring he,$(LANGPACKISOS)))
-	perl -pi -e 's#<prop oor:name="CTLSequenceChecking"><value>true</value></prop>#<prop oor:name="CTLSequenceChecking"><value>false</value></prop>#' $(PKGDIR)-l10n-he/$(OOBASISDIR)/share/registry/ctl_he.xcd
+	perl -pi -e 's#<prop oor:name="CTLSequenceChecking"><value>true</value></prop>#<prop oor:name="CTLSequenceChecking"><value>false</value></prop>#' $(PKGDIR)-l10n-he/$(OODIR)/share/registry/ctl_he.xcd
 endif
 
 	touch $@
@@ -1948,10 +1926,10 @@ ifeq "$(BUILD_JARS_NATIVE)" "y"
 	rm -rf debian/tmp/native-jars
 	mkdir -p debian/tmp/native-jars/gcj
 	cp -a \
-	    $(PKGDIR)-common/$(OOBASISDIR)/program/classes/*.jar \
+	    $(PKGDIR)-common/$(OODIR)/program/classes/*.jar \
 		debian/tmp/native-jars/
 	cp -a \
-	    $(PKGDIR)-core/$(shell echo $(OOBASISDIR) | sed -e s/lib/share/)/program/classes/*.jar \
+	    $(PKGDIR)-core/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes/*.jar \
 	        debian/tmp/native-jars/
 ifeq "$(PACKAGE_BASE)" "y"
 	cp -a \
@@ -1996,8 +1974,8 @@ $(STAMP_DIR)/install-arch: $(STAMP_DIR)/install $(STAMP_NATIVE_JARS)
 	umask 022
 
 	# move the URE to /usr/lib/ure
-	mv debian/ure/$(OOBRANDDIR)/ure debian/ure/usr/lib
-	rmdir debian/ure/$(OOBRANDDIR)
+	mv debian/ure/$(OODIR)/ure debian/ure/usr/lib
+	rmdir debian/ure/$(OODIR)
 	# move URE Java stuff to /usr/share/java
 	mkdir -p debian/ure/usr/share/java
 ifeq "$(ENABLE_JAVA)" "y"
@@ -2021,7 +1999,7 @@ endif
 
 ifeq "$(BUILD_KDE)" "y"
 	mkdir -p -m755 $(PKGDIR)-kde/$(OODIR)/program
-	mkdir -p -m755 $(PKGDIR)-kde/$(OOBRANDDIR)/program
+	mkdir -p -m755 $(PKGDIR)-kde/$(OODIR)/program
 	for f in fps_kde*.uno.so libvclplug_kde*.so; do \
 	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-kde/$(OODIR)/program || exit 1 ;\
 	done
@@ -2055,38 +2033,19 @@ endif
 ifeq "$(ENABLE_KDEAB)" "y"
 	rm -rf $(PKGDIR)-kab
 	mkdir -p -m755 $(PKGDIR)-kab/$(OODIR)/program
-	for f in libkab*so; do \
-	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-kab/$(OODIR)/program || exit 1 ;\
-	done
-        mkdir -p $(PKGDIR)-kab/$(OODIR)/registered-components
-        install -m644 $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$UPD/$$OUTPATH$$PROEXT)/xml/kab1.component \
-                $(PKGDIR)-kab/$(OODIR)/registered-components/kab1.component
-endif
-
-	# move the GNOME stuff which are *not* in gid_Module_Optional_Gnome
-	# (which is moved into -gnome in package-ooo) into -gnome
-	mkdir -p -m755 $(PKGDIR)-gnome/$(OODIR)/program
-	mv $(PKGDIR)-core/$(OODIR)/program/gnome-open-url.bin $(PKGDIR)-gnome/$(OODIR)/program || exit 1
-ifeq "$(BUILD_GTK)" "y"
-	for f in fps_gnome.uno.so libvclplug_gtklo.so; do \
-	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-gnome/$(OODIR)/program || exit 1;\
-	done
-	mv $(PKGDIR)-core/$(OODIR)/program/libqstart_gtk* $(PKGDIR)-gnome/$(OODIR)/program || exit 1
-endif
-ifeq "$(BUILD_GTK3)" "y"
-	for f in libvclplug_gtk3lo.so; do \
-	  mv $(PKGDIR)-core/$(OODIR)/program/$$f $(PKGDIR)-gnome/$(OODIR)/program || exit 1;\
-	done
+	mv $(PKGDIR)-core/$(OODIR)/program/libkab*so $(PKGDIR)-kab/$(OODIR)/program || exit 1
 endif
 
 	# split out gtk stuff
 	rm -rf $(PKGDIR)-gtk
+	rm -rf $(PKGDIR)-gtk3
 	mkdir -p -m755 $(PKGDIR)-gtk/$(OODIR)/program
+	mkdir -p -m755 $(PKGDIR)-gtk3/$(OODIR)/program
+	mv $(PKGDIR)-gnome/$(OODIR)/program/libvclplug_gtk3lo.so $(PKGDIR)-gtk3/$(OODIR)/program/
 	mv $(PKGDIR)-gnome/$(OODIR)/program/* $(PKGDIR)-gtk/$(OODIR)/program/
-	mkdir -p -m755 $(PKGDIR)-gtk/$(OOBRANDDIR)/share
 ifeq "$(BUILD_GTK)" "y"
-	mv $(PKGDIR)-gnome/$(OOBRANDDIR)/share/xdg $(PKGDIR)-gtk/$(OOBRANDDIR)/share && \
-		rmdir $(PKGDIR)-gnome/$(OOBRANDDIR)/share
+	mkdir -p -m755 $(PKGDIR)-gtk/$(OODIR)/share
+	mv $(PKGDIR)-gnome/$(OODIR)/share/xdg $(PKGDIR)-gtk/$(OODIR)/share
   ifeq "$(ENABLE_GIO)" "y"
 	mv $(PKGDIR)-gtk/$(OODIR)/program/ucpgio1.uno.so \
 		$(PKGDIR)-gnome/$(OODIR)/program/
@@ -2103,57 +2062,39 @@ endif
 
 ifeq "$(ENABLE_EVO2)" "y"
 	mkdir -p -m755 $(PKGDIR)-evolution/$(OODIR)/program
-	mv $(PKGDIR)-core/$(OODIR)/program/libevoab*.so $(PKGDIR)-evolution/$(OODIR)/program
-	mkdir -p $(PKGDIR)-evolution/$(OODIR)/registered-components
-	install -m644 $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$UPD/$$OUTPATH$$PROEXT)/xml/evoab.component \
-		$(PKGDIR)-evolution/$(OODIR)/registered-components/evoab.component
-endif
-
-ifeq "$(BUILD_BINFILTERS)" "y"
-	mkdir -p $(PKGDIR)-filter-binfilter/$(OODIR)/registered-components
-	for i in bf_migratefilter bindet; do \
-		install -m644 $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$UPD/$$OUTPATH$$PROEXT)/xml/$$i.component \
-                $(PKGDIR)-filter-binfilter/$(OODIR)/registered-components/$$i.component; \
-	done
+	mv $(PKGDIR)-gtk/$(OODIR)/program/libevoab*.so $(PKGDIR)-evolution/$(OODIR)/program
+	# FIXME: When the rdb is correctly generated, move here, too.
 endif
 
 ifeq "$(PACKAGE_NPSOPLUGIN)" "y"
-	# libnpsoplugins.so two times with different sizes? Oh my.
-	# Upstream has it this way, too, but..
+	# FIXME: Why isn't this installed?
 	mkdir -p -m755 debian/mozilla-libreoffice$(VER)/$(OODIR)/program
-	mkdir -p -m755 debian/mozilla-libreoffice$(VER)/$(OOBRANDDIR)/program
-	for f in libnpsoplugin.so nsplugin; do \
-		mv $(PKGDIR)-core/$(OODIR)/program/$$f debian/mozilla-libreoffice$(VER)/$(OODIR)/program; \
-	done
-	mv $(PKGDIR)-core/$(OOBRANDDIR)/program/libnpsoplugin.so debian/mozilla-libreoffice$(VER)/$(OOBRANDDIR)/program
+	install -m644 $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/lib/libnpsoplugin.so debian/mozilla-libreoffice$(VER)/$(OODIR)/program
+	install -m644 $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/bin/nsplugin debian/mozilla-libreoffice$(VER)/$(OODIR)/program
 	cd debian/mozilla-libreoffice$(VER) && \
 		mkdir -p usr/lib/mozilla/plugins && \
-			ln -sf /$(OOBRANDDIR)/program/libnpsoplugin.so \
+			ln -sf /$(OODIR)/program/libnpsoplugin.so \
 			   usr/lib/mozilla/plugins/libnpsoplugin.so
-else
-	rm -f $(PKGDIR)-core/$(OODIR)/program/libnpsoplugin.so
-	rm -f $(PKGDIR)-core/$(OODIR)/program/nsplugin
 endif
 
 	# OOo's package split sucks...
 	mv $(PKGDIR)-core/$(OODIR)/program/libsw* \
 		$(PKGDIR)-writer/$(OODIR)/program
-	mv $(PKGDIR)-core/$(OODIR)/program/libsd$(LIBSUFFIX)* \
+	mv $(PKGDIR)-core/$(OODIR)/program/libsdlo* \
 	   $(PKGDIR)-core/$(OODIR)/program/libsdd* \
 	   $(PKGDIR)-core/$(OODIR)/program/libsdui* \
 	   $(PKGDIR)-core/$(OODIR)/program/libsdfilt* \
 		$(PKGDIR)-draw/$(OODIR)/program
 	mv $(PKGDIR)-core/$(OODIR)/program/slideshow.uno.so \
 		$(PKGDIR)-impress/$(OODIR)/program
-	mkdir -p -m755 $(PKGDIR)-base/$(OODIR)/program
 	mv $(PKGDIR)-core/$(OODIR)/program/libdba* \
 		$(PKGDIR)-base/$(OODIR)/program
 	# except for libdba680l?.so itself
 	rm -rf $(PKGDIR)-base-core
 	mkdir -p $(PKGDIR)-base-core/$(OODIR)/program
-	mv $(PKGDIR)-base/$(OODIR)/program/libdba$(LIBSUFFIX).so \
-		 $(PKGDIR)-base-core/$(OODIR)/program
-	for i in odbcbase dbpool2 odbc sdbc2 mysql adabas; do \
+	mv $(PKGDIR)-base/$(OODIR)/program/libdbalo.so \
+		$(PKGDIR)-base-core/$(OODIR)/program
+	for i in odbcbase dbpool2 odbc sdbc2 mysql; do \
 		mv $(PKGDIR)-core/$(OODIR)/program/lib$$i* \
 		   $(PKGDIR)-base/$(OODIR)/program; \
 	done
@@ -2188,63 +2129,29 @@ endif
 ifeq "$(ENABLE_JAVA)" "y"
 	rm -rf $(PKGDIR)-officebean
 	mkdir -p -m755 $(PKGDIR)-officebean/$(OODIR)/program/classes
-	mkdir -p -m755 $(PKGDIR)-officebean/$(shell echo $(OOBASISDIR) | sed -e s/lib/share/)/program/classes
-	mv $(PKGDIR)-core/$(shell echo $(OOBASISDIR) | sed -e s/lib/share/)/program/classes/officebean.jar \
-		$(PKGDIR)-officebean/$(shell echo $(OOBASISDIR) | sed -e s/lib/share/)/program/classes
-	ln -s $(shell echo /$(OOBASISDIR) | sed -e s/lib/share/)/program/classes/officebean.jar \
+	mkdir -p -m755 $(PKGDIR)-officebean/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes
+	mv $(PKGDIR)-core/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes/officebean.jar \
+		$(PKGDIR)-officebean/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes
+	ln -s $(shell echo /$(OODIR) | sed -e s/lib/share/)/program/classes/officebean.jar \
 		 $(PKGDIR)-officebean/$(OODIR)/program/classes/officebean.jar
-	mv $(PKGDIR)-core/$(OODIR)/program/libofficebean.so \
+	mv $(PKGDIR)-core/$(OODIR)/program/libofficebeanlo.so \
 		$(PKGDIR)-officebean/$(OODIR)/program
 endif
 
 	mkdir -p -m755 $(PKGDIR)-base/usr/share/applications \
 	               $(PKGDIR)-core/usr/share/applications
 
-	# menu files from sysui
-	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare >/dev/null; pwd`" ;\
-	for p in writer calc impress draw math base; do \
-		mkdir -p -m755 $(PKGDIR)-$$p/usr/share/applications ;\
-		sed -e 's,Exec=$${UNIXBASISROOTNAME} \(.*\) %U,Exec=libreoffice$(VER) \1 %U,' \
-		    -e 's,Icon=$${WITHOUTDOTUNIXPRODUCTNAME},Icon=libreoffice,' \
-		    -e 's,Name=$${PRODUCTNAME} $${PRODUCTVERSION},Name=LibreOffice $(VER),' \
-		    -e 's,Name\[pt_BR\]=$${PRODUCTNAME_BR} $${PRODUCTVERSION},Name[pt_BR]=BrOffice $(VER),' \
-		    -e 's/  / /' \
-		   < $$dirname/$$p.desktop \
-		   > $(PKGDIR)-$$p/usr/share/applications/libreoffice$(VER)-$$p.desktop || exit 1 ;\
-	done
-  ifeq (tr,$(findstring tr,$(LANGPACKISOS)))
-	sed -i 's,Comment\[tr\]=$${PRODUCTNAME} $${PRODUCTVERSION},Comment[tr]=LibreOffice $(VER),' \
-		$(PKGDIR)-calc/usr/share/applications/libreoffice$(VER)-calc.desktop
-  endif
-  ifeq (da,$(findstring da,$(LANGPACKISOS)))
-	sed -i 's,Comment\[da\]=$${PRODUCTNAME} $${PRODUCTVERSION},Comment[da]=LibreOffice $(VER),' \
-		$(PKGDIR)-writer/usr/share/applications/libreoffice$(VER)-writer.desktop
-  endif
-  ifeq "$(BUILD_GTK)" "y"
-	# qstart.desktop is different to the above. Should be handled by
-	# --with-unix-wrapper of ooo-build but that somehow doesn't work as
-	# expected. FIXME.
-	PRODUCTVERSION=`grep PRODUCTVERSION $(SOURCE_TREE)/sysui/desktop/productversion.mk | head -n 1 | cut -d"=" -f2 | sed -e s/\ //g`; \
-	sed -i -e "s,Exec=libreoffice$$PRODUCTVERSION,Exec=ooffice$(VER)," \
-		-e "s,Name=LibreOffice $$PRODUCTVERSION,Name=LibreOffice $(VER)," \
-		-e "s/  / /" \
-		$(PKGDIR)-gtk/$(OOBRANDDIR)/share/xdg/qstart.desktop
-  endif
-	# we don't need the share/xdgs except qstart
-	for f in `find debian -name '*.desktop' | grep xdg | grep -v qstart`; do \
-		rm -f $$f; done
-	for f in `find debian -name '*.desktop' ! -name "*soffice.od*"`; do \
-		sed -i -e '/^Comment\[de\]/s/- *\([a-zA-Z0-9]*\) *macht.*glich.*$$/mit \1/' $$f; \
+	for f in `find debian -name 'xdg/*.desktop' ! -name "*soffice.od*"`; do \
 		if ! grep -q X-KDE-Protocols $$f; then \
 			echo 'X-KDE-Protocols=file,http,smb,ftp,webdav' >> $$f; \
 		fi; \
 	done
-	sed -i -e 's/Office;/Office;Graphics;/' $(PKGDIR)-draw/usr/share/applications/libreoffice$(VER)-draw.desktop
+	sed -i -e 's/Office;/Office;Graphics;/' $(PKGDIR)-draw/$(OODIR)/share/xdg/draw.desktop
 	# invalid, according to lintian. make it shut up.
 	for i in writer calc impress draw math base; do \
-		perl -pi -e 's/Application;//; s/X-Red-Hat-Base;//; s/X-SuSE-Core-Office;//; s/X-MandrivaLinux-.*;//;' $(PKGDIR)-$$i/usr/share/applications/libreoffice$(VER)-$$i.desktop; \
+		perl -pi -e 's/Application;//; s/X-Red-Hat-Base;//; s/X-SuSE-Core-Office;//; s/X-MandrivaLinux-.*;//;' $(PKGDIR)-$$i/$(OODIR)/share/xdg/$$i.desktop; \
 	done
-	perl -pi -e 's/Application;//' $(PKGDIR)-gtk/$(OOBRANDDIR)/share/xdg/qstart.desktop
+	perl -pi -e 's/Application;//' $(PKGDIR)-gtk/$(OODIR)/share/xdg/qstart.desktop
 	# add version to .menu and .lintian-overrides
 	for i in base calc draw impress math writer; do \
 		cat debian/libreoffice$(VER)-$$i.menu.in \
@@ -2255,7 +2162,6 @@ endif
 	for i in base calc core draw impress math writer; do \
 		cat debian/libreoffice$(VER)-$$i.lintian-overrides.in \
 			| sed -e s/@VER@/$(VER)/ \
-			| sed -e s/@BASIS_VERSION@/$(BASIS_VERSION)/ \
 			> debian/libreoffice$(VER)-$$i.lintian-overrides; \
 	done
 
@@ -2278,6 +2184,8 @@ ifeq "$(BUILD_PYUNO)" "y"
 	cp $(PYTHON_SITE)/unohelper.py \
 		$(PYTHON3_SITE)
 	mkdir -p debian/python3-uno/$(OODIR)/program
+	mkdir -p debian/python3-uno/$(OODIR)/share/registry
+	mkdir -p debian/python3-uno/$(OODIR)/share/Scripts
 	cat debian/python-uno/$(OODIR)/program/pythonloader.unorc \
 		| sed -e "s/$(PYMAJOR).$(PYMINOR)/$(PY3MAJOR).$(PY3MINOR)/" \
 		> debian/python3-uno/$(OODIR)/program/pythonloader.unorc
@@ -2285,12 +2193,19 @@ ifeq "$(BUILD_PYUNO)" "y"
 		install -m644 $(SOURCE_TREE)/pyuno-py3/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/lib/$$i \
 			debian/python3-uno/$(OODIR)/program/$$i; \
 	done
+	cp debian/python-uno/$(OODIR)/program/pythonloader.py \
+		debian/python3-uno/$(OODIR)/program
+	cp debian/python-uno/$(OODIR)/share/registry/pyuno.xcd \
+		debian/python3-uno/$(OODIR)/share/registry
+	cp -r debian/python-uno/$(OODIR)/share/Scripts/python \
+		debian/python3-uno/$(OODIR)/share/Scripts
   endif
   ifeq "$(ENABLE_SCRIPT_PROVIDER_PYTHON)" "y"
+	rm -f debian/python-uno/$(OODIR)/share/extensions/script-provider-for-python/registration/LICENSE
     ifeq "$(ENABLE_PYTHON3)" "y"
-	mkdir -p debian/python3-uno/$(OOBRANDDIR)/share/extensions
-	cp -ra debian/python-uno/$(OOBRANDDIR)/share/extensions/* \
-		debian/python3-uno/$(OOBRANDDIR)/share/extensions
+	mkdir -p debian/python3-uno/$(OODIR)/share/extensions
+	cp -ra debian/python-uno/$(OODIR)/share/extensions/* \
+		debian/python3-uno/$(OODIR)/share/extensions
     endif
   endif
 
@@ -2315,7 +2230,7 @@ ifeq "$(BUILD_PYUNO)" "y"
 endif
 
 	# should be empty now, remove if there
-	rm -rf $(PKGDIR)-core/$(OOBRANDDIR)/ure
+	rm -rf $(PKGDIR)-core/$(OODIR)/ure
 
 ifeq "$(PACKAGE_SDK)" "y"
   ifeq "$(ENABLE_JAVA)" "y"
@@ -2325,10 +2240,6 @@ ifeq "$(PACKAGE_SDK)" "y"
 	mkdir -p $(PKGDIR)-dev/$(OOSDKDIR)/classes/win
 	mkdir -p $(PKGDIR)-dev/$(OOSDKDIR)/classes/com/sun/star/lib/loader
 	mkdir -p $(PKGDIR)-dev/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/com/sun/star/lib/loader
-	mv $(PKGDIR)-dev/usr/share/libreoffice/sdk/classes/com/sun/star/lib/loader/* \
-		$(PKGDIR)-dev/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/com/sun/star/lib/loader && \
-	mv $(PKGDIR)-dev/usr/share/$(OODIRNAME)/sdk/classes/win \
-		$(PKGDIR)-dev/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes
 	chmod 644 $(PKGDIR)-dev/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/win/unowinreg.dll
 	cd $(PKGDIR)-dev/$(OOSDKDIR)/classes/com/sun/star/lib/loader && \
 		for i in $(CURDIR)/$(PKGDIR)-dev/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/com/sun/star/lib/loader/*.class; do \
@@ -2361,7 +2272,7 @@ ifeq "$(PACKAGE_SDK)" "y"
 
 	# install gsicheck into -dev
 	mkdir -p $(PKGDIR)-dev/$(OODIR)/program
-	install -m755 $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$UPD/$$OUTPATH$$PROEXT)/bin/gsicheck \
+	install -m755 $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/bin/gsicheck \
 		$(PKGDIR)-dev/$(OODIR)/program/gsicheck.bin
 	( \
 	  echo '#! /bin/sh'; \
@@ -2395,18 +2306,11 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
 endif
 
-	# install some docs.
-	mkdir -p $(PKGDIR)-base/usr/share/doc/libreoffice$(VER)-base
-	cp $(OOO_BUILD_TREE)/doc/using-mysql-databases.txt \
-		$(PKGDIR)-base/usr/share/doc/libreoffice$(VER)-base
-	cp $(OOO_BUILD_TREE)/doc/data-from-remote-mysql-server.txt \
-		$(PKGDIR)-base/usr/share/doc/libreoffice$(VER)-base
-
 ifeq "$(PACKAGE_SDK)" "y"
   ifeq "$(ENABLE_JAVA)" "y"
 	# install the UNO Java sources for e.g. eclipse
 	mkdir -p $(CURDIR)/$(PKGDIR)-dev/usr/share/java
-	cd $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$UPD)/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/bin && \
+	cd $(SOURCE_TREE)/solver/$(shell . $(SOURCE_TREE)/*Env*.sh; echo $$OUTPATH$$PROEXT)/bin && \
 		for i in juh jurt jut ridl unoloader; do \
 			cp $${i}_src.zip \
 			  $(CURDIR)/$(PKGDIR)-dev/usr/share/java; \
@@ -2422,7 +2326,7 @@ endif
 
 	# remove empty resource directories
 	for i in draw base writer impress calc math; do \
-		rm -rf $(PKGDIR)-$$i/$(OOBRANDDIR)/program/resource; \
+		rm -rf $(PKGDIR)-$$i/$(OODIR)/program/resource; \
 	done
 
 ifneq "$(ENABLE_REPORTDESIGN)" "y"
@@ -2442,25 +2346,16 @@ else
 endif
 
 ifeq "$(ENABLE_MINIMIZER)" "y"
-	rm -f $(PKGDIR)-presentation-minimizer/$(OOBRANDDIR)/share/extensions/presentation-minimizer/registration/LICENSE
+	rm -f $(PKGDIR)-presentation-minimizer/$(OODIR)/share/extensions/presentation-minimizer/registration/LICENSE
 endif
 
 ifeq "$(ENABLE_MYSQLNATIVE)" "y"
-	rm -f $(PKGDIR)-mysql-connector/$(OOBRANDDIR)/share/extensions/mysql-connector-ooo/registration/LICENSE
+	rm -f $(PKGDIR)-mysql-connector/$(OODIR)/share/extensions/mysql-connector-ooo/registration/LICENSE
 endif
 
 ifeq "$(ENABLE_PDFIMPORT)" "y"
-	rm -f $(PKGDIR)-pdfimport/$(OOBRANDDIR)/share/extensions/pdfimport/registration/LICENSE
+	rm -f $(PKGDIR)-pdfimport/$(OODIR)/share/extensions/pdfimport/registration/LICENSE
 endif
-
-	# move "default" services.rdb to a hidden file
-	mv $(PKGDIR)-core/usr/lib/$(OODIRNAME)/basis$(OOVER)/program/services.rdb \
-		$(PKGDIR)-core/usr/lib/$(OODIRNAME)/basis$(OOVER)/program/.services.rdb
-	# create dir for services.rdb which is read. like when we merged
- 	# additional/optional components
-	mkdir -p $(PKGDIR)-core/var/lib/$(OODIRNAME)/basis$(OOVER)/program
-	ln -s /var/lib/$(OODIRNAME)/basis$(OOVER)/program/services.rdb \
-		$(PKGDIR)-core/usr/lib/$(OODIRNAME)/basis$(OOVER)/program/services.rdb
 
 #ifeq "$(PACKAGE_SDK)" "y"
 #	# install gengal stuff into -dev
@@ -2475,7 +2370,6 @@ endif
 		if [ -e debian/$$i.bug-script.in ]; then \
 			cat debian/$$i.bug-script.in \
 				| sed -e "s/@PLATFORMID@/$(PLATFORMID)/" \
-				| sed -e "s/@BASIS_VERSION@/$(BASIS_VERSION)/" \
 				> debian/$$i.bug-script; \
 		fi ;\
 	done
@@ -2483,7 +2377,7 @@ endif
 	for PKG in $(ARCH_DEP_PACKAGES); do \
 	  LINKS=debian/$$PKG.links ; \
 	  if [ -e $$LINKS.in ]; then \
-	    sed -e "s#\@OOBASISDIR\@#$(OOBASISDIR)#g" \
+	    sed -e "s#\@OODIR\@#$(OODIR)#g" \
 		< $$LINKS.in > $$LINKS ; \
 	  fi; \
 	done
@@ -2500,8 +2394,12 @@ $(STAMP_DIR)/install-indep: $(STAMP_DIR)/install
 	dh_testdir
 	dh_testroot
 
-	perl -pi -e 's,/bin,/usr/bin,' \
-		 debian/libreoffice$(VER)-emailmerge/$(OODIR)/program/mailmerge.py
+	# split out emailmerge stuff
+	mkdir -p $(PKGDIR)-emailmerge/$(OODIR)/program
+	for i in mailmerge msgbox officehelper; do \
+		mv $(PKGDIR)-common/$(OODIR)/program/$$i.py \
+			$(PKGDIR)-emailmerge/$(OODIR)/program; \
+	done
 
 ifneq "$(USE_GSTREAMER)" "y"
 	# sound doesn't work anyway, remove the .wav files to save space
@@ -2510,51 +2408,6 @@ ifneq "$(USE_GSTREAMER)" "y"
 endif
 
 	rm -f $(PKGDIR)-common/$(OODIR)/program/oo_product.bmp
-
-	# Extract and install icons
-	cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/bin/desktop-integration && dpkg --extract libreoffice$(OOVER)-debian-menus_*_all.deb . && cd usr/share/icons && \
-	rm -rf gnome locolor && \
-	for d in `find -type d`; do \
-	  install -d -m755 $(CURDIR)/$(PKGDIR)-common/usr/share/icons/$$d || exit 1 ;\
-	done &&\
-	for f in `find -type f`; do \
-	  install -m644 $$f $(CURDIR)/$(PKGDIR)-common/usr/share/icons/$$f || exit 1 ;\
-	done && cd ../../.. && rm -rf usr etc
-
-	# menu files from sysui
-	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare >/dev/null; pwd`" ;\
-	mkdir -p -m755 $(PKGDIR)-common/usr/share/applications ;\
-	sed -e 's,Exec=$${UNIXBASISROOTNAME} %U,Exec=libreoffice$(VER) %U,' \
-	    -e 's,Icon=$${WITHOUTDOTUNIXPRODUCTNAME},Icon=libreoffice,' \
-	    -e 's,Name=$${PRODUCTNAME} $${PRODUCTVERSION},Name=LibreOffice $(VER),' \
-	    -e 's,Name\[pt_BR\]=$${PRODUCTNAME_BR} $${PRODUCTVERSION},Name[pt_BR]=BrOffice $(VER),' \
-	    -e 's/  / /' \
-	   < $$dirname/startcenter.desktop \
-	   > $(PKGDIR)-common/usr/share/applications/libreoffice$(VER)-startcenter.desktop || exit 1
-	# remove Sun reference 
-	perl -pi -e 's/ Supported by Sun Microsystems.//' $(PKGDIR)-common//usr/share/applications/libreoffice$(VER)-startcenter.desktop
-	# invalid, according to lintian. make it shut up.
-	perl -pi -e 's/Application;//; s/X-Red-Hat-Base;//; s/X-SuSE-Core-Office;//; s/X-MandrivaLinux-.*;//;' $(PKGDIR)-common/usr/share/applications/libreoffice$(VER)-startcenter.desktop
-
-	# install .applications, .keys, .mime and openoffice.org.xml for
-	# shared-mime-info
-	mkdir -p $(PKGDIR)-common/usr/share/application-registry && \
-	cat $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/misc/libreoffice/openoffice.applications \
-		| sed -e s/OFFICENAME/ooffice/g \
-		| sed -e s/\%PRODUCTNAME/LibreOffice/g \
-		> $(PKGDIR)-common/usr/share/application-registry/openoffice.applications
-	mkdir -p $(PKGDIR)-common/usr/share/mime/packages && \
-	mkdir -p $(PKGDIR)-common/usr/share/mime-info && \
-	install -m644 $(SOURCE_TREE)/sysui/desktop/mimetypes/openoffice.mime \
-		$(PKGDIR)-common/usr/share/mime-info && \
-	rm -f $(PKGDIR)-common/usr/share/mime-info/openoffice.keys; \
-	for i in $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/misc/libreoffice/*.keys; do \
-		cat $$i >> $(PKGDIR)-common/usr/share/mime-info/openoffice.keys; \
-	done
-	install -m644 $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/misc/libreoffice/openoffice.org.xml \
-		$(PKGDIR)-common/usr/share/mime/packages
-
-	mkdir -p $(PKGDIR)-common/usr/share/applications
 
 	# install openoffice-xlate-lang
 	install -d -m755 $(PKGDIR)-common/usr/share/$(OODIRNAME)/bin
@@ -2577,15 +2430,7 @@ ifeq "$(PACKAGE_SDK)" "y"
 	rm -f $(PKGDIR)-dev-doc/usr/share/doc/libreoffice-dev-doc/LICENSE
 	perl -pi -e 's,license.html,http://www.gnu.org/licenses/lgpl.html,' \
 		$(PKGDIR)-dev-doc/$(OOSDKDIR)/index.html
-	find $(PKGDIR)-dev-doc/$(OOBASISDIR)/sdk/examples -type f -exec chmod 644 {} \;
-
-  ifeq "$(ENABLE_JAVA)" "y"
-        # fix links
-	cd $(PKGDIR)-dev-doc/usr/share/doc/libreoffice-dev/docs/java/ref && \
-	for i in `find . -type f | xargs`; do \
-		perl -pi -e 's,file:$(CURDIR)/$(OOO_BUILD_TREE)/build/$(TAG)/odk/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/bin/odkcommon/docs/common/ref/,,g' $$i; \
-	done
-  endif
+	find $(PKGDIR)-dev-doc/$(OODIR)/sdk/examples -type f -exec chmod 644 {} \;
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
@@ -2619,33 +2464,23 @@ ifeq "$(ENABLE_JAVA)" "y"
 	  mv $(PKGDIR)-common/$(OODIR)/share/registry/$$i.xcd \
 		$(PKGDIR)-filter-mobiledev/$(OODIR)/share/registry; \
 	done
-	# menu files from sysui
-	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/misc/desktopshare >/dev/null; pwd`" ;\
-	mkdir -p -m755 $(PKGDIR)-filter-mobiledev/usr/share/applications ;\
-	sed -e 's,Exec=$${UNIXBASISROOTNAME} \(.*\) %U,Exec=libreoffice$(VER) \1 %U,' \
-		-e 's,Icon=$${WITHOUTDOTUNIXPRODUCTNAME},Icon=libreoffice,' \
-	   	-e 's,Name=$${PRODUCTNAME} $${PRODUCTVERSION},Name=LibreOffice $(VER),' \
-	   	-e 's,Name\[pt_BR\]=$${PRODUCTNAME_BR} $${PRODUCTVERSION},Name[pt_BR]=BrOffice $(VER),' \
-	   	-e 's/  / /' \
-	  	< $$dirname/javafilter.desktop \
-	  	> $(PKGDIR)-filter-mobiledev/usr/share/applications/libreoffice$(VER)-javafilter.desktop || exit 1
 endif
 
 	# fix permissions
 	for i in editpic poll savepic show webcast; do \
 		chmod 755 $(PKGDIR)-common/$(OODIR)/share/config/webcast/$$i.pl; \
 	done
-	chmod 644 $(PKGDIR)-common/$(OOBRANDDIR)/LICENSE.odt
-	chmod 644 $(PKGDIR)-common/$(OOBRANDDIR)/CREDITS.odt
+	chmod 644 $(PKGDIR)-common/$(OODIR)/LICENSE.odt
+	chmod 644 $(PKGDIR)-common/$(OODIR)/CREDITS.odt
 
-	rm -rf $(PKGDIR)-common/$(OOBRANDDIR)/LICENSE
+	rm -rf $(PKGDIR)-common/$(OODIR)/LICENSE
 
 	# move uno_packages/cache to /var and create symlink for for
 	# documentation referencing it...
-	rm -rf $(PKGDIR)-common/$(OOBRANDDIR)/share/uno_packages/cache
+	rm -rf $(PKGDIR)-common/$(OODIR)/share/uno_packages/cache
 	mkdir -p $(PKGDIR)-common/var/spool/$(OODIRNAME)/uno_packages/cache
 	ln -s /var/spool/$(OODIRNAME)/uno_packages/cache \
-		$(PKGDIR)-common/$(OOBRANDDIR)/share/uno_packages/cache
+		$(PKGDIR)-common/$(OODIR)/share/uno_packages/cache
 	perl -pi -e \
 	      's,\$$UNO_SHARED_PACKAGES/cache,file:///var/spool/$(OODIRNAME)/uno_packages/cache,g' \
 		$(PKGDIR)-common/$(OODIR)/program/unorc
@@ -2660,15 +2495,8 @@ endif
 	ln -s /$(shell echo $(OODIR) | sed -e s/usr/var/)/share/config/javasettingsunopkginstall.xml \
 		$(PKGDIR)-common/$(OODIR)/share/config/javasettingsunopkginstall.xml
 	# set PYTHONPATH in unopkg
-	perl -pi -e 's,unset XENVIRONMENT,unset XENVIRONMENT\n\nexport PYTHONPATH=\"/$(OOBASISDIR)/program\"\n\n,' \
-		$(PKGDIR)-common/$(OOBRANDDIR)/program/unopkg
-
-	# install DicOOo; we need to do this manually; the
-	# dictionaries/ module isn't built with --without-myspell-dicts
-	# and those two somehow (why?) are in there...
-	mkdir -p $(PKGDIR)-common/usr/share/myspell/dicts
-	install -m644 $(SOURCE_TREE)/dictionaries/diclst/DicOOo.sxw \
-		$(PKGDIR)-common/usr/share/myspell/dicts
+	perl -pi -e 's,unset XENVIRONMENT,unset XENVIRONMENT\n\nexport PYTHONPATH=\"/$(OODIR)/program\"\n\n,' \
+		$(PKGDIR)-common/$(OODIR)/program/unopkg
 
 ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 	mkdir -p debian/fonts-opensymbol/usr/share/fonts/truetype/openoffice
@@ -2690,21 +2518,21 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
 endif
 	# remove extra license files
-	rm -rf $(PKGDIR)-common/$(OOBRANDDIR)/licenses
-	rm -f $(PKGDIR)-common/$(OOBRANDDIR)/share/readme/LICENSE*
-	rm -f $(PKGDIR)-common/$(OOBRANDDIR)/THIRDPARTYLICENSEREADME.html
-	rm -f $(PKGDIR)-common/$(OOBRANDDIR)/LICENSE.html
+	rm -rf $(PKGDIR)-common/$(OODIR)/licenses
+	rm -f $(PKGDIR)-common/$(OODIR)/share/readme/LICENSE*
+	rm -f $(PKGDIR)-common/$(OODIR)/THIRDPARTYLICENSEREADME.html
+	rm -f $(PKGDIR)-common/$(OODIR)/LICENSE.html
 
 	# remove extra readme files
-	rm -rf $(PKGDIR)-common/$(OOBRANDDIR)/readmes
-	rm -f $(PKGDIR)-common/$(OOBRANDDIR)/share/readme/README*
-	rm -f $(PKGDIR)-common/$(OOBRANDDIR)/README.html
-	rm -f $(PKGDIR)-common/$(OOBRANDDIR)/README
+	rm -rf $(PKGDIR)-common/$(OODIR)/readmes
+	rm -f $(PKGDIR)-common/$(OODIR)/share/readme/README*
+	rm -f $(PKGDIR)-common/$(OODIR)/README.html
+	rm -f $(PKGDIR)-common/$(OODIR)/README
 
 	# URE got moved to /usr/lib, so this is obsolete
 	for i in ure/lib ure; do \
-		if [ -e $(PKGDIR)-common/$(OOBRANDDIR)/$$i ]; then \
-			rmdir $(PKGDIR)-common/$(OOBRANDDIR)/$$i; \
+		if [ -e $(PKGDIR)-common/$(OODIR)/$$i ]; then \
+			rmdir $(PKGDIR)-common/$(OODIR)/$$i; \
 		fi; \
 	done
 
@@ -2718,22 +2546,22 @@ endif
 	# prepare a fake sofficerc in the place where OOo expects it
 	# which does nothing except reference the "normal" one
 	# which we put into /etc
-	mv $(PKGDIR)-common/$(OOBRANDDIR)/program/sofficerc \
+	mv $(PKGDIR)-common/$(OODIR)/program/sofficerc \
 		$(PKGDIR)-common/etc/$(OODIRNAME)/sofficerc
 	( \
 	  echo "# *DO NOT* CHANGE THIS FILE. IT ONLY TAKES THE SETTINGS FROM"; \
 	  echo "# /etc/$(OODIRNAME)/sofficerc. CHANGE THAT FILE IF YOU"; \
 	  echo "# REALLY WANT TO CHANGE SOMETHING."; \
 	  echo "FHS_CONFIG_FILE=file:///etc/$(OODIRNAME)/sofficerc"; \
-	  echo "" >> $(PKGDIR)-common/$(OOBRANDDIR)/program/sofficerc; \
-	) > $(PKGDIR)-common/$(OOBRANDDIR)/program/sofficerc
+	  echo "" >> $(PKGDIR)-common/$(OODIR)/program/sofficerc; \
+	) > $(PKGDIR)-common/$(OODIR)/program/sofficerc
 	cat $(PKGDIR)-common/etc/$(OODIRNAME)/sofficerc \
 		| perl -p -e 's/(.*)=(.*)/$$1=\$${\$$FHS_CONFIG_FILE:Bootstrap:$$1}/' \
-		>> $(PKGDIR)-common/$(OOBRANDDIR)/program/sofficerc
+		>> $(PKGDIR)-common/$(OODIR)/program/sofficerc
 	# except for URE_BOOTSTRAP...
 	TMP=`mktemp -q`; \
-		grep -v URE_BOOTSTRAP $(PKGDIR)-common/$(OOBRANDDIR)/program/sofficerc > $$TMP && mv $$TMP $(PKGDIR)-common/$(OOBRANDDIR)/program/sofficerc && \
-		grep URE_BOOTSTRAP $(PKGDIR)-common/etc/$(OODIRNAME)/sofficerc >> $(PKGDIR)-common/$(OOBRANDDIR)/program/sofficerc && \
+		grep -v URE_BOOTSTRAP $(PKGDIR)-common/$(OODIR)/program/sofficerc > $$TMP && mv $$TMP $(PKGDIR)-common/$(OODIR)/program/sofficerc && \
+		grep URE_BOOTSTRAP $(PKGDIR)-common/etc/$(OODIRNAME)/sofficerc >> $(PKGDIR)-common/$(OODIR)/program/sofficerc && \
 		grep -v URE_BOOTSTRAP $(PKGDIR)-common/etc/$(OODIRNAME)/sofficerc > $$TMP && mv $$TMP $(PKGDIR)-common/etc/$(OODIRNAME)/sofficerc
 
 	install -m 644 debian/soffice.sh \
@@ -2773,10 +2601,10 @@ endif
 	mv $(PKGDIR)-common/$(OODIR)/share/dtd/officedocument \
 		debian/openoffice.org-dtd-officedocument1.0/$(shell echo $(OODIR) | sed -e s/libreoffice/openoffice/)/share/dtd
 	cat debian/catalog.xml.in \
-		| sed -e "s,\@OOBASISDIR\@,$(shell echo $(OOBASISDIR) | sed -e s/libreoffice/openoffice/)," \
+		| sed -e "s,\@OODIR\@,$(shell echo $(OODIR) | sed -e s/libreoffice/openoffice/)," \
 		> debian/openoffice.org-dtd-officedocument1.0/$(shell echo $(OODIR) | sed -e s/libreoffice/openoffice/)/share/dtd/officedocument/1_0/catalog.xml
 	cat debian/openoffice.org-dtd-officedocument1.0.xmlcatalogs.in \
-		| sed -e "s,\@OOBASISDIR\@,$(shell echo $(OOBASISDIR) | sed -e s/libreoffice/openoffice/)," \
+		| sed -e "s,\@OODIR\@,$(shell echo $(OODIR) | sed -e s/libreoffice/openoffice/)," \
 		> debian/openoffice.org-dtd-officedocument1.0.xmlcatalogs
 	# symlink, as it's in a openoffice.org-* package
 	cd debian/openoffice.org-dtd-officedocument1.0 && \
@@ -2794,6 +2622,8 @@ ifeq "$(PACKAGE_SDK)" "y"
 	cd $(PKGDIR)-dev-doc/$(OOSDKDIR) && \
 		rm -rf docs && \
 		ln -sf /usr/share/doc/libreoffice-dev/docs docs
+	mkdir -p $(PKGDIR)-dev-doc/usr/share/doc/libreoffice-dev
+	mkdir -p $(PKGDIR)-dev-doc/usr/share/doc/libreoffice-dev-doc
 	cd $(PKGDIR)-dev-doc/usr/share/doc/libreoffice-dev-doc && \
 		ln -s /usr/share/doc/libreoffice-dev/docs docs
 	cd $(PKGDIR)-dev-doc/usr/share/doc/libreoffice-dev-doc && \
@@ -2805,37 +2635,43 @@ ifeq "$(PACKAGE_SDK)" "y"
 		ln -s /$(OOSDKDIR)/index.html index.html
 endif
 
+ifeq "$(ENABLE_JAVA)" "y"
+  ifeq "$(ENABLE_SCRIPT_PROVIDER_BSH)" "y"
+	mkdir -p $(PKGDIR)-script-provider-bsh/$(OODIR)/share/Scripts
+	mv $(PKGDIR)-common/$(OODIR)/share/Scripts/beanshell \
+		$(PKGDIR)-script-provider-bsh/$(OODIR)/share/Scripts
+  endif
+
+  ifeq "$(ENABLE_SCRIPT_PROVIDER_JS)" "y"
+	mkdir -p $(PKGDIR)-script-provider-js/$(OODIR)/share/Scripts
+	mv $(PKGDIR)-common/$(OODIR)/share/Scripts/javascript \
+		$(PKGDIR)-script-provider-js/$(OODIR)/share/Scripts
+  endif
+endif
+
 ifeq "$(ENABLE_REPORTDESIGN)" "y"
   ifeq "$(ENABLE_JAVA)" "y"
 	for i in THIRDPARTYREADMELICENSE.html readme_en-US.html readme_en-US.txt \
 		registration/LICENSE; do \
-		rm -f $(PKGDIR)-report-builder/$(OOBRANDDIR)/share/extensions/report-builder/$$i; \
+		rm -f $(PKGDIR)-report-builder/$(OODIR)/share/extensions/report-builder/$$i; \
 	done
   endif
 endif
 
 ifeq "$(ENABLE_MEDIAWIKI)" "y"
-	rm -f $(PKGDIR)-wiki-publisher/$(OOBRANDDIR)/share/extensions/wiki-publisher/license/THIRDPARTYLICENSEREADME.html
+	rm -f $(PKGDIR)-wiki-publisher/$(OODIR)/share/extensions/wiki-publisher/license/THIRDPARTYLICENSEREADME.html
 endif
 
-	# add version to  .lintian-overrides
-	for i in common; do \
-		cat debian/libreoffice$(VER)-$$i.lintian-overrides.in \
-			| sed -e s/@BASIS_VERSION@/$(BASIS_VERSION)/ \
-			> debian/libreoffice$(VER)-$$i.lintian-overrides; \
-	done
-
 	# unopkg creates stuff in there.
-	mkdir -p $(PKGDIR)-common/$(OOBRANDDIR)/share/prereg
-	mkdir -p $(PKGDIR)-common/$(shell echo $(OOBRANDDIR) | sed -e s/usr/var/)/share/prereg/bundled
-	ln -s /$(shell echo $(OOBRANDDIR) | sed -e s/usr/var/)/share/prereg/bundled \
-		$(PKGDIR)-common/$(OOBRANDDIR)/share/prereg/bundled
+	mkdir -p $(PKGDIR)-common/$(OODIR)/share/prereg
+	mkdir -p $(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/usr/var/)/share/prereg/bundled
+	ln -s /$(shell echo $(OODIR) | sed -e s/usr/var/)/share/prereg/bundled \
+		$(PKGDIR)-common/$(OODIR)/share/prereg/bundled
 
 	for i in $(ARCH_INDEP_PACKAGES); do \
 		if [ -e debian/$$i.bug-script.in ]; then \
 			cat debian/$$i.bug-script.in \
 				| sed -e "s/@PLATFORMID@/$(PLATFORMID)/" \
-				| sed -e "s/@BASIS_VERSION@/$(BASIS_VERSION)/" \
 				> debian/$$i.bug-script; \
 		fi ;\
 	done
@@ -2843,21 +2679,11 @@ endif
 	for PKG in $(ARCH_INDEP_PACKAGES); do \
 	  LINKS=debian/$$PKG.links ; \
 	  if [ -e $$LINKS.in ]; then \
-	    sed -e "s#\@OOBASISDIR\@#$(OOBASISDIR)#g" \
+	    sed -e "s#\@OODIR\@#$(OODIR)#g" \
 		-e "s/@ICONVERSION@/$(shell echo $(OOVER) | sed -e "s/\.//g")/" \
 		< $$LINKS.in > $$LINKS ; \
 	  fi; \
 	done
-
-	# menu files from sysui
-	dirname="`cd $(SOURCE_TREE)/sysui/$(shell . $(SOURCE_TREE)/Env.Host.sh; echo $$OUTPATH$$PROEXT)/misc/libreoffice >/dev/null; pwd`" ;\
-	mkdir -p -m755 $(PKGDIR)-common/usr/share/mimelnk/application ;\
-	sed -e 's,Comment=Extension,Comment=LibreOffice $(VER) Extension,' \
-	    -e 's,Icon=openofficeorg[0123456789]-extension,Icon=application-vnd.openofficeorg.extension.png,' \
-	    -e 's/  / /' \
-	    < $$dirname/extension.desktop \
-	    > $(PKGDIR)-common/usr/share/mimelnk/application/vnd.openofficeorg.extension.desktop || exit 1
-	perl -pi -e "s/Icon=openofficeorg.*-extension/Icon=application-vnd.openofficeorg.extension.png/" $(PKGDIR)-common/usr/share/mimelnk/application/vnd.openofficeorg.extension.desktop
 
 	# install extension shell lib for use by extensions not from here
 	install -D -m644 debian/shell-lib-extensions.sh \
@@ -2869,14 +2695,12 @@ endif
 		$(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)
 	# help is in /usr/share
 	sed -i 's,$$(instpath)/help,/$(shell echo $(OODIR) | sed -e s/lib/share/)/help,' \
-		$(PKGDIR)-common/$(OOBASISDIR)/share/registry/main.xcd
+		$(PKGDIR)-common/$(OODIR)/share/registry/main.xcd
 
 	# compat dirs, the split icons thing need it
-	mkdir -p $(PKGDIR)-common/$(shell echo $(OOBRANDDIR) | sed -e s/lib/share/)/program
+	mkdir -p $(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/program
 	mkdir -p $(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/program
 	# three-layer symlinks also for /usr/share
-	ln -s basis$(OOVER) \
-		$(PKGDIR)-common/$(shell echo $(OOBRANDDIR) | sed -e s/lib/share/)/basis-link
 	ln -s /$(OOUREDIR) \
 		$(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/ure-link
 
@@ -2886,9 +2710,9 @@ endif
 	# examples. move where they belong
 	mkdir -p $(PKGDIR)-common/usr/share/doc/libreoffice-common/examples
 	for i in oo-ldap.xcd.sample oo-ad-ldap.xcd.sample; do \
-		mv $(PKGDIR)-common/$(OOBASISDIR)/share/registry/$$i \
+		mv $(PKGDIR)-common/$(OODIR)/share/registry/$$i \
 			$(PKGDIR)-common/usr/share/doc/libreoffice-common/examples; \
-		ln -s /usr/share/doc/libreoffice-common/examples/$$i $(PKGDIR)-common/$(OOBASISDIR)/share/registry/$$i; \
+		ln -s /usr/share/doc/libreoffice-common/examples/$$i $(PKGDIR)-common/$(OODIR)/share/registry/$$i; \
 	done
 
 	# install font config. Doesn't get installed with
@@ -2918,9 +2742,7 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 	  rm -rf debian/$$pkg/DEBIAN;\
 	done
 
-	dh_installdocs -s -A debian/README.Debian \
-		$(SOURCE_TREE)/instsetoo_native/util/LibreOffice/replace_file/*/en-US/README_en-US \
-		$(OOO_BUILD_TREE)/NEWS
+	dh_installdocs -s -A debian/README.Debian
 	dh_installdebconf -s
 	dh_installman -s
 	for i in writer calc draw base math impress; do \
@@ -2941,7 +2763,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 endif
 	dh_python2 -ppython-uno --no-guessing-versions --no-guessing-deps
 ifeq "$(ENABLE_PYTHON3)" "y"
-       dh_python3 -ppython3-uno --no-guessing-deps
+	dh_python3 -ppython3-uno --no-guessing-deps
 endif
 	dh_lintian -s
 	dh_bugfiles -s -A
@@ -2970,10 +2792,10 @@ endif
 ifeq "$(BUILD_KFREEBSD)" "y"
 	cat debian/shlibs.override.libc >> debian/shlibs.local
 endif
-ifneq (,$(filter icu, $(SYSTEM_STUFF)))
+ifeq (,$(filter icu, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.icu >> debian/shlibs.local
 endif
-ifneq (,$(filter stdlibs, $(SYSTEM_STUFF)))
+ifeq (,$(filter stdlibs, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.stdlibs >> debian/shlibs.local
 endif
 	# we need to do it in two steps. The new dpkg-shlibdeps doesn't find
@@ -2991,7 +2813,7 @@ ifneq (,$(filter redland, $(SYSTEM_STUFF)))
 	# dh_shlibdeps would fail. It's excluded, and we now need to do it
 	# manually. Saves us a versioned build-conflict with ourselves
 	# which quickly can get outdated
-	perl -pi -e 's/(shlibs.*$$)/$$1, $(shell cat /var/lib/dpkg/info/$(shell dpkg -S /usr/lib/`objdump -p $(PKGDIR)-core/$(OOBASISDIR)/program/libunordf*.so | grep NEEDED | grep librdf | awk '{ print $$2 }'` | cut -d: -f1).shlibs | awk '{ print $$3,$$4,$$5 }')/' $(PKGDIR)-core.substvars
+	perl -pi -e 's/(shlibs.*$$)/$$1, $(shell cat /var/lib/dpkg/info/$(shell dpkg -S /usr/lib/`objdump -p $(PKGDIR)-core/$(OODIR)/program/libunordf*.so | grep NEEDED | grep librdf | awk '{ print $$2 }'` | cut -d: -f1).shlibs | awk '{ print $$3,$$4,$$5 }')/' $(PKGDIR)-core.substvars
 endif
 ifeq "$(ENABLE_LIBRSVG)" "y"
   ifeq "$(SYSTEM_LIBRSVG)" "y"
@@ -3059,7 +2881,7 @@ endif
 ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
 ifeq "$(ENABLE_PDFIMPORT)" "y"
 	dh_gencontrol -plibreoffice$(VER)-pdfimport -- \
-		-v$(shell grep "<version" $(SOURCE_TREE)/sdext/source/pdfimport/config/description.xml | perl -pi -e 's,<version.*value=\"(.*)\" />,\1,; s/^\s+//')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
+		-v$(shell grep "<version" $(SOURCE_TREE)/sdext/source/pdfimport/description.xml | perl -pi -e 's,<version.*value=\"(.*)\" />,\1,; s/^\s+//')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
 endif
 ifeq "$(ENABLE_MINIMIZER)" "y"
 	dh_gencontrol -plibreoffice$(VER)-presentation-minimizer -- \
@@ -3139,9 +2961,7 @@ ifeq "$(PACKAGE_SDK)" "y"
 	# But fix it..
 	perl -pi -e 's,html/,html /,g' debian/libreoffice-dev-doc.doc-base.udk-common-ref
 endif
-	dh_installdocs -i -A debian/README.Debian \
-		$(SOURCE_TREE)/instsetoo_native/util/LibreOffice/replace_file/*/en-US/README_en-US \
-		$(OOO_BUILD_TREE)/NEWS
+	dh_installdocs -i -A debian/README.Debian
 	# note libreoffice.1 is already installed into -common by libreoffice-builds package-ooo
 	dh_installman -i
 	for i in `find $(PKGDIR)-common -type l -name "lo*.1"`; do \
@@ -3177,8 +2997,6 @@ endif
 		-Nfonts-opensymbol \
 		-Nopenoffice.org-dtd-officedocument1.0 -- \
 		-V'base-version=$(BASE_VERSION)' \
-		-V'basis-version=$(BASIS_VERSION)' \
-		-V'next-basis-version=$(NEXT_BASIS_VERSION)' \
 		-V'help-l10n-virtual-version=$(HELP_L10N_VIRTUAL_VERSION)' \
 		-V'bsh-depends=$(BSH_DEPENDS)' \
 		-V'java-common-depends=$(JAVA_COMMON_DEPENDS)' \

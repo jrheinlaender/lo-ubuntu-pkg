@@ -47,6 +47,38 @@ done
 create_package_directory gid_Module_Root_Ure_Hidden             pkg/ure
 create_package_directory gid_Module_Root                        pkg/libreoffice-common
 create_package_directory gid_Module_Root_Brand                  pkg/libreoffice-common
+# FIXME: This is added to gid_Module_Root_Brand but doesn't get installed....
+mkdir -p pkg/libreoffice-common/usr/share/mimelnk/application
+mv ./usr/share/mimelnk/application/* \
+	pkg/libreoffice-common/usr/share/mimelnk/application
+# done by dh_installman
+#mkdir -p pkg/libreoffice-common/usr/share/man/man1
+#mv usr/share/man/man1/libreoffice$BINSUFFIX.1.gz \
+#	pkg/libreoffice-common/usr/share/man/man1
+#for i in ./usr/share/man/man1/*; do \
+#	if [ "$i" = "unopkg.1.gz" -o "$i" = "lofromtemplate.1.gz" \
+#	   -o "$i" = "loffice.1.gz" ]; then p=common; \
+#	else p=`basename $i .1.gz | sed -e s/^lo//`; \
+#	fi
+#	mkdir -p pkg/libreoffice-$p/usr/share/man/man1
+#	mv $i \
+#		pkg/libreoffice-$p/usr/share/man/man1
+#done
+for i in ./usr/share/applications/*.desktop; do \
+	if [ "`basename $i`" = "libreoffice-startcenter.desktop" ]; then p=libreoffice-common; else \
+	p=`basename $i .desktop`; fi
+	mkdir -p pkg/$p/usr/share/applications
+	mv $i \
+		pkg/$p/usr/share/applications
+done
+mkdir -p pkg/libreoffice-common/usr/share
+mv ./usr/share/icons \
+	pkg/libreoffice-common/usr/share
+mv ./usr/share/application-registry \
+	pkg/libreoffice-common/usr/share
+mv ./usr/share/mime* \
+	pkg/libreoffice-common/usr/share
+
 create_package_directory gid_Module_Root_Files_Images           pkg/libreoffice-common
 create_package_directory gid_Module_Oo_Linguistic               pkg/libreoffice-common
 create_package_directory gid_Module_Optional_Xsltfiltersamples  pkg/libreoffice-common
@@ -75,7 +107,6 @@ create_package_directory gid_Module_Root_Files_4                pkg/libreoffice-
 create_package_directory gid_Module_Root_Files_5                pkg/libreoffice-common
 create_package_directory gid_Module_Root_Files_6                pkg/libreoffice-common
 create_package_directory gid_Module_Root_Files_7                pkg/libreoffice-common
-create_package_directory gid_Module_Optional_Testtool           pkg/libreoffice-qa-tools
 create_package_directory gid_Module_Root_SDK                    pkg/libreoffice-dev
 create_package_directory gid_Module_Optional_Extensions_Script_Provider_For_Beanshell	pkg/libreoffice-script-provider-bsh
 create_package_directory gid_Module_Optional_Extensions_Script_Provider_For_Javascript  pkg/libreoffice-script-provider-js
@@ -87,7 +118,7 @@ create_package_directory gid_Module_Optional_Extensions_PRESENTER_SCREEN	pkg/lib
 create_package_directory gid_Module_Optional_Extensions_REPORTDESIGN	pkg/libreoffice-report-builder
 create_package_directory gid_Module_Optional_Extensions_PostgreSQL     pkg/libreoffice-sdbc-postgresql
 move_wrappers pkg/libreoffice-common soffice unopkg
-move_wrappers pkg/libreoffice-common libreoffice lofromtemplate
+move_wrappers pkg/libreoffice-common libreoffice loffice lofromtemplate
 move_wrappers pkg/libreoffice-base lobase
 move_wrappers pkg/libreoffice-writer lowriter loweb
 move_wrappers pkg/libreoffice-calc localc
@@ -113,38 +144,32 @@ for l in `echo $OOO_LANGS_LIST`; do
         # some help files are in _Langpack_{Writer,Impress,...}_<lang>
         # move them from -l10n to -help
         if [ "$l" = "en-US" ]; then d=en; else d=$l; fi
-        mv pkg/libreoffice-l10n-$l/$OOINSTBASE/basis$VERSION/help/$d/* \
-                pkg/libreoffice-help-$l/$OOINSTBASE/basis$VERSION/help/$d && \
-        rmdir pkg/libreoffice-l10n-$l/$OOINSTBASE/basis$VERSION/help/$d
+        mv pkg/libreoffice-l10n-$l/$OOINSTBASE/help/$d/* \
+                pkg/libreoffice-help-$l/$OOINSTBASE/help/$d && \
+        rmdir pkg/libreoffice-l10n-$l/$OOINSTBASE/help/$d
 done
 	
-# Move all libraries, binaries, *.rdb from -common to -core
-for d in $OOINSTBASE/basis$VERSION/program $OOINSTBASE/program; do \
-  if [ ! -d $OODESTDIR/pkg/libreoffice-core/$d ]; then \
-  mkdir -p $OODESTDIR/pkg/libreoffice-core/$d; \
-  fi &&
-  ( cd pkg/libreoffice-common/$d
-    find -maxdepth 1 \
-       -regex '\./\(.*\.so.*\|.*\.bin\|pagein\|nsplugin\|kdefilepicker\|msfontextract\|.*\.rdb\|javaldx\|uri-encode\)' \
-   -exec mv {} $OODESTDIR/pkg/libreoffice-core/$d \;
-  ); \
-done
-
-mkdir -p pkg/libreoffice-common/usr/share/man/man1
-mv usr/share/man/man1/libreoffice$BINSUFFIX.1.gz \
-	pkg/libreoffice-common/usr/share/man/man1
+# Move all libraries and binaries from -common to -core
+if [ ! -d $OODESTDIR/pkg/libreoffice-core/$OOINSTBASE/program ]; then \
+mkdir -p $OODESTDIR/pkg/libreoffice-core/$OOINSTBASE/program; \
+fi &&
+( cd pkg/libreoffice-common/$OOINSTBASE/program
+  find -maxdepth 1 \
+     -regex '\./\(.*\.so.*\|.*\.bin\|pagein\|nsplugin\|kdefilepicker\|msfontextract\|.*\.rdb\|javaldx\|uri-encode\)' \
+     -exec mv {} $OODESTDIR/pkg/libreoffice-core/$OOINSTBASE/program \;
+);
 
 mkdir -p pkg/libreoffice-common/etc/bash_completion.d
 mv etc/bash_completion.d/libreoffice$BINSUFFIX.sh \
 	pkg/libreoffice-common/etc/bash_completion.d
 
-mv .$OOINSTBASE/basis$VERSION/program/java-set-classpath \
+mv .$OOINSTBASE/program/java-set-classpath \
 	pkg/libreoffice-common/$OOINSTBASE/program
 if echo $OOO_LANGS_LIST | grep -q en-US; then
         for i in forms/resume.ott officorr/project-proposal.ott; do \
-                mkdir -p pkg/libreoffice-common/$OOINSTBASE/basis$VERSION/share/template/en-US/`dirname $i`; \
-                mv .$OOINSTBASE/basis$VERSION/share/template/en-US/$i \
-                        pkg/libreoffice-common/$OOINSTBASE/basis$VERSION/share/template/en-US/$i; \
+                mkdir -p pkg/libreoffice-common/$OOINSTBASE/share/template/en-US/`dirname $i`; \
+                mv .$OOINSTBASE/share/template/en-US/$i \
+                        pkg/libreoffice-common/$OOINSTBASE/share/template/en-US/$i; \
         done; \
 fi
 
