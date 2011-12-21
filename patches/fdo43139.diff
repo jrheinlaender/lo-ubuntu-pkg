@@ -1,141 +1,33 @@
 --- /dev/null	2011-12-15 01:37:17.931118287 +0100
 +++ libreoffice-3.4.4/libreoffice-build/patches/hotfixes/fdo43139.diff	2011-12-20 10:49:37.000000000 +0100
-@@ -0,0 +1,138 @@
-+--- framework/source/accelerators/acceleratorcache.cxx.orig	2011-12-15 15:08:41.329168423 -0200
-++++ framework/source/accelerators/acceleratorcache.cxx	2011-12-15 15:17:59.473190664 -0200
-+@@ -61,7 +61,7 @@ AcceleratorCache::AcceleratorCache()
-+ AcceleratorCache::AcceleratorCache(const AcceleratorCache& rCopy)
-+     : ThreadHelpBase(&Application::GetSolarMutex())
-+ {
-+-    m_lCommand2Keys = rCopy.m_lCommand2Keys;
-++    m_lCommand2Keys = const_cast< framework::BaseHash<comphelper::SequenceAsVector<com::sun::star::awt::KeyEvent> >& > (rCopy.m_lCommand2Keys);
-+     m_lKey2Commands = rCopy.m_lKey2Commands;
-+ }
-+ 
-+@@ -78,7 +78,7 @@ void AcceleratorCache::takeOver(const Ac
-+     // SAFE -> ----------------------------------
-+     WriteGuard aWriteLock(m_aLock);
-+     
-+-    m_lCommand2Keys = rCopy.m_lCommand2Keys;
-++    m_lCommand2Keys = const_cast< framework::BaseHash<comphelper::SequenceAsVector<com::sun::star::awt::KeyEvent> >& > (rCopy.m_lCommand2Keys);
-+     m_lKey2Commands = rCopy.m_lKey2Commands;
-+     
-+     aWriteLock.unlock();
-+--- framework/source/loadenv/loadenv.cxx.orig	2011-12-15 15:08:15.771487938 -0200
-++++ framework/source/loadenv/loadenv.cxx	2011-12-15 15:19:06.038358483 -0200
-+@@ -255,7 +255,8 @@ void LoadEnv::initializeLoading(const ::
-+     // take over all new parameters.
-+     m_xTargetFrame.clear();
-+     m_xBaseFrame                    = xBaseFrame        ;
-+-    m_lMediaDescriptor              = impl_mergeMediaDescriptorWithMightExistingModelArgs(lMediaDescriptor);
-++    ::comphelper::MediaDescriptor tmp = impl_mergeMediaDescriptorWithMightExistingModelArgs(lMediaDescriptor);
-++    m_lMediaDescriptor              =  tmp;
-+     m_sTarget                       = sTarget           ;
-+     m_nSearchFlags                  = nSearchFlags      ;
-+     m_eFeature                      = eFeature          ;
-+--- framework/source/uiconfiguration/uiconfigurationmanagerimpl.hxx.orig	2011-12-15 15:08:49.033072112 -0200
-++++ framework/source/uiconfiguration/uiconfigurationmanagerimpl.hxx	2011-12-15 15:11:07.209344668 -0200
-+@@ -175,6 +175,15 @@ namespace framework
-+                 sal_Int16                                                         nElementType;
-+                 UIElementDataHashMap                                              aElementsHashMap;
-+                 com::sun::star::uno::Reference< com::sun::star::embed::XStorage > xStorage;
-++                UIElementType& operator=(const UIElementType& rRight) {
-++                        bModified = rRight.bModified;
-++                        bLoaded = rRight.bLoaded;
-++                        bDefaultLayer = rRight.bDefaultLayer;
-++                        nElementType = rRight.nElementType;
-++                        aElementsHashMap = rRight.aElementsHashMap;
-++                        xStorage = rRight.xStorage;
-++                        return *this;
-++                };
-+             };
-+ 
-+             typedef ::std::vector< UIElementType > UIElementTypesVector;
-+--- framework/inc/uiconfiguration/moduleuiconfigurationmanager.hxx.orig	2011-12-19 11:10:56.000000000 +0000
-++++ framework/inc/uiconfiguration/moduleuiconfigurationmanager.hxx	2011-12-19 11:12:06.000000000 +0000
-+@@ -185,6 +185,15 @@ namespace framework
-+                 sal_Int16                                                         nElementType;
-+                 UIElementDataHashMap                                              aElementsHashMap;
-+                 com::sun::star::uno::Reference< com::sun::star::embed::XStorage > xStorage;
-++		UIElementType& operator=(const UIElementType& rRight) {
-++			bModified = rRight.bModified;
-++			bLoaded = rRight.bLoaded;
-++			bDefaultLayer = rRight.bDefaultLayer;
-++			nElementType = rRight.nElementType;
-++			aElementsHashMap = rRight.aElementsHashMap;
-++			xStorage = rRight.xStorage;
-++			return *this;
-++		};
-+             };
-+ 
-+             typedef ::std::vector< UIElementType > UIElementTypesVector;
-+--- framework/inc/uiconfiguration/uiconfigurationmanager.hxx.orig	2011-12-19 11:14:17.000000000 +0000
-++++ framework/inc/uiconfiguration/uiconfigurationmanager.hxx	2011-12-19 11:15:16.000000000 +0000
-+@@ -171,6 +171,15 @@ namespace framework
-+                 sal_Int16                                                         nElementType;
-+                 UIElementDataHashMap                                              aElementsHashMap;
-+                 com::sun::star::uno::Reference< com::sun::star::embed::XStorage > xStorage;
-++                UIElementType& operator=(const UIElementType& rRight) {
-++                        bModified = rRight.bModified;
-++                        bLoaded = rRight.bLoaded;
-++                        bDefaultLayer = rRight.bDefaultLayer;
-++                        nElementType = rRight.nElementType;
-++                        aElementsHashMap = rRight.aElementsHashMap;
-++                        xStorage = rRight.xStorage;
-++                        return *this;
-++                };
-+             };
-+ 
-+             typedef ::std::vector< UIElementType > UIElementTypesVector;
+@@ -0,0 +1,30 @@
++From 9c2ab9f4febec2b2c5fac25469f1d0cfedc6af5e Mon Sep 17 00:00:00 2001
++From: Caolán McNamara <caolanm@redhat.com>
++Date: Wed, 21 Dec 2011 12:10:02 +0000
++Subject: fix build with bleeding edge external boost and gcc
 +
-+--- padmin/source/prtsetup.cxx.orig	2011-12-15 15:09:05.133870823 -0200
-++++ padmin/source/prtsetup.cxx	2011-12-15 15:13:55.626239170 -0200
-+@@ -813,7 +813,7 @@ extern "C" {
++It seems that a recent boost and recent gcc causes a problem when
++boost::unordered_map is used as a baseclass for something.
++Asking gcc to use -std=c++0x mode makes gcc do the right thing.
++
++Signed-off-by: Petr Mladek <pmladek@suse.cz>
++---
++diff --git a/solenv/gbuild/platform/unxgcc.mk b/solenv/gbuild/platform/unxgcc.mk
++index d3b63ed..3d6a088 100755
++--- solenv/gbuild/platform/unxgcc.mk
+++++ solenv/gbuild/platform/unxgcc.mk
++@@ -97,6 +97,12 @@ gb_CFLAGS += -fno-strict-aliasing
++ gb_CXXFLAGS += -fno-strict-aliasing
++ endif
 + 
-+         if( aDialog.Execute() )
-+         {
-+-            rJobData = aDialog.getSetup();
-++            rJobData = const_cast< ::psp::PrinterInfo & > ( aDialog.getSetup() );
-+             nRet = 1;
-+         }
-+ 
-+--- sfx2/source/doc/guisaveas.cxx.orig	2011-12-15 15:08:58.332955848 -0200
-++++ sfx2/source/doc/guisaveas.cxx	2011-12-15 15:12:39.953185212 -0200
-+@@ -731,7 +731,7 @@ sal_Int8 ModelData_Impl::CheckFilter( co
-+         if ( aFilterName.getLength() )
-+             m_pOwner->GetFilterConfiguration()->getByName( aFilterName ) >>= aFilterProps;
-+ 
-+-        aFiltPropsHM = ::comphelper::SequenceAsHashMap( aFilterProps );
-++        aFiltPropsHM <<  aFilterProps;
-+         nFiltFlags = aFiltPropsHM.getUnpackedValueOrDefault( ::rtl::OUString(RTL_CONSTASCII_USTRINGPARAM("Flags")), (sal_Int32)0 );
-+     }
-+ 
-+--- framework/inc/classes/filtercachedata.hxx.orig	2011-12-17 13:14:22.102898902 +0000
-++++ framework/inc/classes/filtercachedata.hxx	2011-12-17 13:17:51.524424012 +0000
-+@@ -230,7 +230,7 @@
-+         {
-+             bPreferred			= rCopy.bPreferred		;
-+             sName				= rCopy.sName			;
-+-            lUINames			= rCopy.lUINames		;
-++            lUINames			= const_cast < framework::BaseHash<rtl::OUString>&  > (rCopy.lUINames);
-+             sMediaType			= rCopy.sMediaType		;
-+             sClipboardFormat	= rCopy.sClipboardFormat;
-+             nDocumentIconID		= rCopy.nDocumentIconID	;
-+@@ -298,7 +298,7 @@
-+             nOrder              = rCopy.nOrder              ;
-+             sName				= rCopy.sName				;
-+             sType				= rCopy.sType				;
-+-            lUINames			= rCopy.lUINames			;
-++            lUINames			= const_cast < framework::BaseHash<rtl::OUString>&  > (rCopy.lUINames);
-+             sDocumentService	= rCopy.sDocumentService	;
-+             sFilterService		= rCopy.sFilterService		;
-+             sUIComponent        = rCopy.sUIComponent        ;
-+@@ -405,7 +405,7 @@
-+         inline Loader& impl_copy( const Loader& rCopy )
-+         {
-+             sName       = rCopy.sName       ;
-+-            lUINames	= rCopy.lUINames	;
-++            lUINames	= const_cast < framework::BaseHash<rtl::OUString>&  > (rCopy.lUINames);
-+             lTypes		= rCopy.lTypes		;
-+             return (*this);
-+         }
+++ifeq ($(HAVE_CXX0X),TRUE)
+++#Currently, as well as for its own merits, c++11/c++0x mode allows use to use
+++#a template for SAL_N_ELEMENTS to detect at compiler time its misuse
+++gb_CXXFLAGS += -std=c++0x -Wno-deprecated-declarations
+++endif
+++
++ ifneq ($(EXTERNAL_WARNINGS_NOT_ERRORS),TRUE)
++ gb_CFLAGS_WERROR := -Werror
++ gb_CXXFLAGS_WERROR := -Werror
++--
++cgit v0.9.0.2-2-gbebe
