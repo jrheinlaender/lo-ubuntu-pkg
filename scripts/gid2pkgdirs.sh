@@ -107,6 +107,7 @@ create_package_directory gid_Module_Root_Files_4                pkg/libreoffice-
 create_package_directory gid_Module_Root_Files_5                pkg/libreoffice-common
 create_package_directory gid_Module_Root_Files_6                pkg/libreoffice-common
 create_package_directory gid_Module_Root_Files_7                pkg/libreoffice-common
+create_package_directory gid_Module_Optional_OGLTrans		pkg/libreoffice-ogltrans
 create_package_directory gid_Module_Root_SDK                    pkg/libreoffice-dev
 create_package_directory gid_Module_Optional_Extensions_Script_Provider_For_Beanshell	pkg/libreoffice-script-provider-bsh
 create_package_directory gid_Module_Optional_Extensions_Script_Provider_For_Javascript  pkg/libreoffice-script-provider-js
