@@ -449,9 +449,6 @@ ifeq "$(GCC_VERSION)" ""
     ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_GCJ_ARCHS)))
 	GCJ_JDK_PACKAGE=$(shell dpkg -s gcj-jdk | grep Depends | sed -e 's/.*\(gcj-[0-9]\.[0-9]-jdk\).*/\1/')
 	GCJ_JDK_VERSION=$(shell echo $(GCJ_JDK_PACKAGE) | cut -d- -f2)
-      ifeq "$(GCJ_JDK_VERSION)" ""
-        $(error GCJ_JDK_VERSION not defined, you need gcj-jdk installed for generating correct build-deps on $(GCJ_JDK_ARCHS))
-      endif
       ifneq "$(SYSTEM_GCC_VERSION)" "$(GCJ_JDK_VERSION)"
         BUILD_DEPS += , gcc-$(GCJ_JDK_VERSION) [$(OOO_GCJ_JDK_ARCHS)], g++-$(GCJ_JDK_VERSION) [$(OOO_GCJ_JDK_ARCHS)]
         ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_GCJ_JDK_ARCHS)))
@@ -1249,6 +1246,11 @@ endif
 # Based on script by Martin Quinson <Martin.Quinson@tuxfamily.org>
 control: debian/control
 debian/control: $(wildcard debian/control*in) $(SOURCE_TREE)/bin/lo-xlate-lang  debian/rules
+ifeq "$(GCJ_JDK_VERSION)" ""
+		echo "GCJ_JDK_VERSION not defined."; \
+		echo "You need gcj-jdk installed for generating correct build-deps on $(OOO_GCJ_JDK_ARCHS)"; \
+		exit 1
+endif
 	chmod 755 $(SOURCE_TREE)/bin/lo-xlate-lang
 	sed -e "s#libreofficeVER#libreoffice$(VER)#g" \
 	    -e "s#libreofficeVER#libreoffice$(VER)#g" \
