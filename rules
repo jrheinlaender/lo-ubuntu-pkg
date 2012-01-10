@@ -273,6 +273,7 @@ ALLOC=system
 SYSTEM_STUFF += libtextcat
 USE_SYSTEM_TEXTCAT_DATA=y
 SYSTEM_STUFF += cppunit
+FAKEROOT_LIBDIR=/usr/lib/`dpkg-architecture -qDEB_HOST_MULTIARCH`/libfakeroot
 
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with libreoffice2), we need to set this. Don't touch
@@ -461,6 +462,7 @@ ifeq "$(SQUEEZE_BACKPORT)" "y"
   SYSTEM_STUFF := $(filter-out libwpd libwpg libwps mythes mdds libtextcat graphite jfreereport, $(SYSTEM_STUFF))
   JUNIT_MIN_VER=
   PARALLEL_BUILD=n
+  FAKEROOT_LIBDIR=/usr/lib/libfakeroot
 endif
 
 CONFIGURE_FLAGS += $(foreach i, $(SYSTEM_STUFF),--with-system-$(i))
@@ -1242,7 +1244,7 @@ else
   endif
 endif
 BUILD_PATH := $(CURDIR)/debian/usr/bin:$(BUILD_PATH)
-BUILD_LD_LIBRARY_PATH := /usr/lib/libfakeroot:$(BUILD_LD_LIBRARY_PATH):$(GCJ_JAWT_DIR)
+BUILD_LD_LIBRARY_PATH := $(FAKEROOT_LIBDIR):$(BUILD_LD_LIBRARY_PATH):$(GCJ_JAWT_DIR)
 
 ifeq "$(ENABLE_LDAP)" "y"
   ifeq "$(USE_OPENLDAP)" "y"
@@ -1797,7 +1799,7 @@ endif
 	# If we don't do this we get loads of harmless, but log-bloating
 	# warnings
 	if ! grep fakeroot $(OOO_BUILD_TREE)/bin/setup; then \
-		perl -pi -e 's,LD_LIBRARY_PATH=\"(.*)\",LD_LIBRARY_PATH=\"/usr/lib/libfakeroot:\1\",' $(OOO_BUILD_TREE)/bin/setup; \
+		perl -pi -e 's,LD_LIBRARY_PATH=\"(.*)\",LD_LIBRARY_PATH=\"/usr/lib/`dpkg-architecture -qDEB_HOST_GNU_TYPE`/libfakeroot:\1\",' $(OOO_BUILD_TREE)/bin/setup; \
 	fi
 
 	# DPKG is only set on with-EPM build what we don't do and the menu stuff
@@ -1883,13 +1885,13 @@ $(STAMP_DIR)/install: $(STAMP_DIR)/build
 
 	# install LibreOffice.
 	# somehow in the installer LD_LIBRARY_PATH doesn't contain
-	# /usr/lib/libfakeroot anymore, causiong loads of ERROR:'s from
+	# /usr/lib/`dpkg-architecture -qDEB_HOST_GNU_TYPE`/libfakeroot anymore, causiong loads of ERROR:'s from
 	# ld.so. Set LD_PRELOAD to the full path here manually.
 	cd $(SOURCE_TREE)/; \
 		 . $(CURDIR)/$(SOURCE_TREE)/*Env*.sh; \
 		 PATH=$(BUILD_PATH) \
-		 LD_LIBRARY_PATH="/usr/lib/libfakeroot:$(BUILD_LD_LIBRARY_PATH)" \
-		 LD_PRELOAD=/usr/lib/libfakeroot/libfakeroot-$(shell update-alternatives --query fakeroot | grep Value: | cut -d"-" -f2).so \
+		 LD_LIBRARY_PATH="/usr/lib/`dpkg-architecture -qDEB_HOST_GNU_TYPE`/libfakeroot:$(BUILD_LD_LIBRARY_PATH)" \
+		 LD_PRELOAD=/usr/lib/`dpkg-architecture -qDEB_HOST_GNU_TYPE`/libfakeroot/libfakeroot-$(shell update-alternatives --query fakeroot | grep Value: | cut -d"-" -f2).so \
 		 DESTDIR=$(CURDIR)/debian/tmp \
 		 solenv/bin/ooinstall /$(OOBRANDDIR)
 	# FIXME: Move here so that we don't rely on libreoffice-build here.
@@ -3341,7 +3343,7 @@ endif
 	# /usr/lib/libgcj-bc.so when specifying -l$(GCJ_JAWT_DIR)
 	# and therefore we must not use it for -gcj. But we *do* need it
 	# for -officebean (libjawt.so is referenced there)
-	LD_LIBRARY_PATH="/usr/lib/libfakeroot:debian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program:$(PKGDIR)-base-core/$(OODIR)/program:$(PKGDIR)-base/$(OODIR)/program:$(PKGDIR)-writer/$(OODIR)/program" \
+	LD_LIBRARY_PATH="/usr/lib/`dpkg-architecture -qDEB_HOST_GNU_TYPE`/libfakeroot:debian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program:$(PKGDIR)-base-core/$(OODIR)/program:$(PKGDIR)-base/$(OODIR)/program:$(PKGDIR)-writer/$(OODIR)/program" \
 		dh_shlibdeps -s -Nlibreoffice$(VER)-officebean \
 			-Lure -Luno-libs3 \
 			-ldebian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program:$(PKGDIR)-base/$(OODIR)/program:$(shell dirname $(shell dpkg -L `echo $(GCJ_JAWT_DEPENDS) | sed -e s/-awt//` | grep _bc)) \
@@ -3359,7 +3361,7 @@ endif
 	# .. and prevent ure to depend on itself..
 	perl -pi -e 's/, ure \(.*\)$$//' debian/ure.substvars
 ifeq "$(ENABLE_JAVA)" "y"
-	LD_LIBRARY_PATH="/usr/lib/libfakeroot:debian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program" \
+	LD_LIBRARY_PATH="/usr/lib/`dpkg-architecture -qDEB_HOST_GNU_TYPE`/libfakeroot:debian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program" \
 		dh_shlibdeps -plibreoffice$(VER)-officebean \
 			-Lure -Luno-libs3 \
 			-ldebian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program:$(GCJ_JAWT_DIR) \
