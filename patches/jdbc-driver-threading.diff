@@ -1,0 +1,65 @@
+--- /dev/null	2012-01-12 01:26:03.031969178 +0100
++++ libreoffice-3.4.5/libreoffice-build/patches/hotfixes/jdbc-driver-threading.diff	2012-01-15 23:08:55.000000000 +0100
+@@ -0,0 +1,62 @@
++From cbc1ddba1bbe8843e0b31d39cb5c04f7b6518925 Mon Sep 17 00:00:00 2001
++From: Stephan Bergmann <sbergman@redhat.com>
++Date: Fri, 13 Jan 2012 08:38:07 +0000
++Subject: Confine JDBC driver to thread-affine apartment for Java 6 performance
++
++... so that the massive number of the JDBC driver's calls to JNI Attach/Detach-
++CurrentThread are guaranteed not to happen on the main thread (where they are
++extremely expensive, see
++<http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6978641> "Fix for 6929067
++introduces additional overhead in thread creation/termination paths").
++
++(cherry picked from commit bb59742bcf4883af5876a2ffadcc4a689e414b60)
++---
++diff --git a/connectivity/source/drivers/jdbc/exports.dxp b/connectivity/source/drivers/jdbc/exports.dxp
++index 7003307..f0e1c69 100755
++--- connectivity/source/drivers/jdbc/exports.dxp
+++++ connectivity/source/drivers/jdbc/exports.dxp
++@@ -1 +1,2 @@
+++component_getImplementationEnvironment
++ component_getFactory
++diff --git a/connectivity/source/drivers/jdbc/jservices.cxx b/connectivity/source/drivers/jdbc/jservices.cxx
++index 59c73ff..85df771 100644
++--- connectivity/source/drivers/jdbc/jservices.cxx
+++++ connectivity/source/drivers/jdbc/jservices.cxx
++@@ -83,7 +83,21 @@ struct ProviderRequest
++     void* getProvider() const { return xRet.get(); }
++ };
++ 
++-//---------------------------------------------------------------------------------------
+++extern "C" SAL_DLLPUBLIC_EXPORT void SAL_CALL
+++component_getImplementationEnvironment(
+++    char const ** ppEnvTypeName, uno_Environment **)
+++{
+++    // Recent Java 6 VMs make calls to JNI Attach/DetachCurrentThread (which
+++    // this code does extensively) very expensive.  A follow-up JVM fix reduced
+++    // the overhead significantly again for all threads but the main thread.  So
+++    // a quick hack to improve performance of this component again is to confine
+++    // it in the affine apartment (where all code will run on a single,
+++    // dedicated thread that is guaranteed no to be the main thread).  However,
+++    // a better fix would still be to redesign the code so that it does not call
+++    // Attach/DetachCurrentThread so frequently:
+++    *ppEnvTypeName = CPPU_CURRENT_LANGUAGE_BINDING_NAME ":affine";
+++}
+++
++ extern "C" SAL_DLLPUBLIC_EXPORT void* SAL_CALL component_getFactory(
++                     const sal_Char* pImplementationName,
++                     void* pServiceManager,
++diff --git a/connectivity/source/drivers/jdbc/makefile.mk b/connectivity/source/drivers/jdbc/makefile.mk
++index befdc73..4229c8f 100755
++--- connectivity/source/drivers/jdbc/makefile.mk
+++++ connectivity/source/drivers/jdbc/makefile.mk
++@@ -78,8 +78,6 @@ SLOFILES=\
++         $(SLO)$/tools.obj                           \
++         $(SLO)$/ContextClassLoader.obj
++ 
++-SHL1VERSIONMAP=$(SOLARENV)/src/component.map
++-
++ # --- Library -----------------------------------
++ 
++ SHL1TARGET=	$(JDBC_TARGET)$(DLLPOSTFIX)
++--
++cgit v0.9.0.2-2-gbebe
