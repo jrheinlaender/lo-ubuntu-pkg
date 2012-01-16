@@ -548,7 +548,7 @@ endif
 
 ifneq (,$(filter openssl, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libssl-dev
-  ifeq "$(SQUEEZE_BACKPORTS)" "y"
+  ifeq "$(SQUEEZE_BACKPORT)" "y"
 	DBG_DBG_SUGGESTS += , libssl$(shell readlink /usr/lib/libssl.so | cut -d"." -f3,4,5)-dbg
   else
 	DBG_DBG_SUGGESTS += , libssl$(shell readlink /usr/lib/`dpkg-architecture -qDEB_HOST_MULTIARCH`/libssl.so | cut -d"." -f3,4,5)-dbg
@@ -575,7 +575,7 @@ ifneq "$(BUILD_DBG_PACKAGE)" "y"
 	# build with small symbols anyway
 	SMALL_SYMBOLS = y
 else
-  ifeq "$(SQUEEZE_BACKPORTS)" "y"
+  ifeq "$(SQUEEZE_BACKPORT)" "y"
 	SMALL_SYMBOLS = y
   else
     ifneq (,$(findstring i386,$(DEB_HOST_ARCH)))
@@ -803,11 +803,13 @@ export MINGWSTRIP = i686-w64-mingw32-strip
 	MEDIAWIKI_JAR_DEPENDS := , libcommons-codec-java, libcommons-httpclient-java, libcommons-lang-java, libcommons-logging-java
 	BUILD_DEPS += $(MEDIAWIKI_BUILD_DEPS)
 	CONFIGURE_FLAGS += --with-commons-codec-jar=/usr/share/java/commons-codec.jar --with-commons-lang-jar=/usr/share/java/commons-lang.jar --with-commons-httpclient-jar=/usr/share/java/commons-httpclient.jar --with-commons-logging-jar=/usr/share/java/commons-logging.jar
-	CONFIGURE_FLAGS += --with-system-servlet-api --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }'` | grep servlet-api.*\.jar$ | head -n 1)
+	CONFIGURE_FLAGS += --with-system-servlet-api
       ifeq "$(SQUEEZE_BACKPORT)" "y"
 	BUILD_DEPS += , $(shell dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }')
+	CONFIGURE_FLAGS += --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }'` | grep servlet-api.*\.jar$ | head -n 1)
       else
 	BUILD_DEPS += , $(shell dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f5 | sed -e s/^\ // | awk '{ print $$1 }') (>= 1.1.1-9)
+	CONFIGURE_FLAGS += --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f5 | sed -e s/^\ // | awk '{ print $$1 }'` | grep servlet-api.*\.jar$ | head -n 1)
       endif
     endif
   endif
@@ -823,8 +825,13 @@ export MINGWSTRIP = i686-w64-mingw32-strip
 	REPORT_BUILDER_BUILD_DEPS += , libcommons-logging-java$(OOO_NO_JAVA_ARCHS)
 	REPORT_BUILDER_JAR_DEPENDS += , libcommons-logging-java
 	CONFIGURE_FLAGS += --with-commons-logging-jar=/usr/share/java/commons-logging.jar
-	CONFIGURE_FLAGS += --with-system-servlet-api --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }'` | grep servlet-api.*\.jar$ | head -n 1)
+      ifeq "$(SQUEEZE_BACKPORT)" "y"
 	BUILD_DEPS += , $(shell dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }')
+	CONFIGURE_FLAGS += --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }'` | grep servlet-api.*\.jar$ | head -n 1)
+      else
+	BUILD_DEPS += , $(shell dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f5 | sed -e s/^\ // | awk '{ print $$1 }') (>= 1.1.1-9)
+	CONFIGURE_FLAGS += --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f5 | sed -e s/^\ // | awk '{ print $$1 }'` | grep servlet-api.*\.jar$ | head -n 1)
+      endif
     endif
   else
 	CONFIGURE_FLAGS += --disable-ext-report-builder
@@ -1306,7 +1313,7 @@ endif
 			FONT_SUGGESTS=", ttf-dzongkha"; \
 			;; \
 		th) \
-			if [ "$(SQUEEZE_BACKPORTS)" != "y" ]; then \
+			if [ "$(SQUEEZE_BACKPORT)" != "y" ]; then \
 			FONT_SUGGESTS=", fonts-thai-tlwg"; else \
 			FONT_SUGGESTS=", ttf-thai-tlwg"; fi; \
 			;; \
