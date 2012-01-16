@@ -845,8 +845,13 @@ export MINGWSTRIP = i686-w64-mingw32-strip
 	REPORT_BUILDER_BUILD_DEPS += , libcommons-logging-java$(OOO_NO_JAVA_ARCHS)
 	REPORT_BUILDER_JAR_DEPENDS += , libcommons-logging-java
 	CONFIGURE_FLAGS += --with-commons-logging-jar=/usr/share/java/commons-logging.jar
-	CONFIGURE_FLAGS += --with-system-servlet-api --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }'` | grep servlet-api.*\.jar$ | head -n 1)
+      ifeq "$(SQUEEZE_BACKPORT)" "y"
 	BUILD_DEPS += , $(shell dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }')
+	CONFIGURE_FLAGS += --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }'` | grep servlet-api.*\.jar$ | head -n 1)
+      else
+	BUILD_DEPS += , $(shell dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f5 | sed -e s/^\ // | awk '{ print $$1 }') (>= 1.1.1-9)
+	CONFIGURE_FLAGS += --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f5 | sed -e s/^\ // | awk '{ print $$2 }'` | grep servlet-api.*\.jar$ | head -n 1)
+      endif
     endif
 	CONFIGURE_FLAGS += --enable-ext-report-builder
   endif
