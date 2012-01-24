@@ -117,7 +117,7 @@ create_package_directory gid_Module_Optional_Extensions_MySQLConnector  pkg/libr
 create_package_directory gid_Module_Optional_Extensions_PDFIMPORT	pkg/libreoffice-pdfimport
 create_package_directory gid_Module_Optional_Extensions_PRESENTER_SCREEN	pkg/libreoffice-presenter-console
 create_package_directory gid_Module_Optional_Extensions_REPORTDESIGN	pkg/libreoffice-report-builder
-create_package_directory gid_Module_Optional_Extensions_PostgreSQL     pkg/libreoffice-sdbc-postgresql
+create_package_directory gid_Module_Optional_PostgresqlSdbc     pkg/libreoffice-sdbc-postgresql
 move_wrappers pkg/libreoffice-common soffice unopkg
 move_wrappers pkg/libreoffice-common libreoffice loffice lofromtemplate
 move_wrappers pkg/libreoffice-base lobase
