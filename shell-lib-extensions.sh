@@ -10,7 +10,7 @@ sync_extensions() {
   else
 	d=/usr/lib/libreoffice
   fi
-  if [ -e /usr/lib/libreoffice/share/prereg/bundled ] && readlink /usr/lib/libreoffice/share/prereg/bundled 2>&1 >/dev/null; then
+  if [ -e /usr/lib/libreoffice/share/prereg/bundled ] && readlink /usr/lib/libreoffice/share/prereg/bundled 2>&1 >/dev/null && [ -e /usr/lib/libreoffice/program/unopkg.bin ]; then
     /usr/lib/libreoffice/program/unopkg sync -v --shared \
       "-env:BUNDLED_EXTENSIONS_USER=file:///usr/lib/libreoffice/share/prereg/bundled" \
       "-env:UserInstallation=file://$INSTDIR" \
