@@ -65,7 +65,8 @@ mv ./usr/share/mimelnk/application/* \
 #		pkg/libreoffice-$p/usr/share/man/man1
 #done
 for i in ./usr/share/applications/*.desktop; do \
-	if [ "`basename $i`" = "libreoffice-startcenter.desktop" ]; then p=libreoffice-common; else \
+	if [ "`basename $i`" = "libreoffice-startcenter.desktop" ]; then p=libreoffice-common; \
+	elif [ "`basename $i`" = "libreoffice-binfilter.desktop" ]; then p=libreoffice-filter-binfilter; else \
 	p=`basename $i .desktop`; fi
 	mkdir -p pkg/$p/usr/share/applications
 	mv $i \
