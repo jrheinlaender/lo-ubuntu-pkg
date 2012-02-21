@@ -359,14 +359,16 @@ OOO_GCJ_JDK_ARCHS := hppa kfreebsd-i386 kfreebsd-amd64
 OOO_OPENJDK_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs,OOO_OPENJDK_ARCHS))
 
-OOO_ARCH_DEP_EXTENSIONS_ARCHS := $(OOO_ARCHS)
+OOO_ARCH_DEP_EXTENSIONS_ARCHS := $(filter-out s390 s390x,$(OOO_ARCHS))
+OOO_EXTENSIONS_ARCHS := $(OOO_ARCH_DEP_EXTENSIONS_ARCHS)
 
-OOO_BASE_ARCHS := $(filter-out armel powerpc powerpcspe ppc64,$(OOO_JAVA_ARCHS))
+OOO_BASE_ARCHS := $(filter-out armel powerpc powerpcspe ppc64 s390x,$(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs,OOO_BASE_ARCHS))
 OOO_REPORTDESIGN_ARCHS := $(filter-out armel $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs,OOO_REPORTDESIGN_ARCHS))
 
 ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
+  ifneq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_BASE_ARCHS)))
 	PACKAGE_BASE=n
 	ENABLE_SDBC_POSTGRESQL=n
 	ENABLE_MYSQLNATIVE=n
@@ -377,6 +379,7 @@ ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
 	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-evolution -Nlibreoffice$(VER)-kab
 	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-sdbc-postgresql -Nlibreoffice$(VER)-mysql-connector
 	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-report-builder-bin -Nlibreoffice$(VER)-report-builder
+  endif
 endif
 
 ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
@@ -385,6 +388,16 @@ ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
 	ENABLE_PRESENTER_CONSOLE=n
 	ENABLE_SDBC_POSTGRESQL=n
 	ENABLE_MYSQLNATIVE=n
+	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-mysql-connector
+	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-report-builder-bin -Nlibreoffice$(VER)-report-builder
+	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-pdfimport -Nlibreoffice$(VER)-presentation-minimizer
+	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-presenter-console
+endif
+ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
+	ENABLE_MEDIAWIKI=n
+	ENABLE_REPORTDESIGN=n
+	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-report-builder-bin -Nlibreoffice$(VER)-report-builder
+	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-wiki-publisher
 endif
 
 ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_JAVA_ARCHS)))
@@ -418,7 +431,7 @@ ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_GCJ_ARCHS)))
 endif
 
 ifeq "$(PACKAGE_NPSOPLUGIN)" "y"
-OOO_NPSOPLUGIN_ARCHS = $(OOO_ARCHS)
+OOO_NPSOPLUGIN_ARCHS = $(filter-out s390x,$(OOO_ARCHS))
 else
 OOO_NPSOPLUGIN_ARCHS=
 endif
@@ -428,6 +441,11 @@ ifneq (,$(filter arm% mips% m68k, $(DEB_HOST_ARCH)))
 	BUILD_BINFILTERS=n
 endif
 OOO_BINFILTER_ARCHS:=$(filter-out arm% mips% m68k, $(OOO_ARCHS))
+
+ifeq (s390x,$(findstring s390x,$(DEB_HOST_ARCH)))
+	ENABLE_EVO2=n
+	SYSTEM_STUFF := $(filter-out mozilla-headers, $(SYSTEM_STUFF))
+endif
 
 #############
 # Distro-specific overrides
@@ -1601,6 +1619,10 @@ ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
 	cd $(SOURCE_TREE)/smoketest && \
 		patch -p1 < $(CURDIR)/debian/patches/smoketest-disable-db-insert-delete-seek-tests.diff
 endif
+ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_EXTENSION_ARCHS)))
+	cd $(SOURCE_TREE)/smoketest && \
+		patch -p1 < $(CURDIR)/debian/patches/smoketest-disable-extension-tests.diff
+endif
 
 	t=`mktemp -q -d`; \
 	cd $(SOURCE_TREE) && \
@@ -1614,6 +1636,10 @@ endif
 ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
 	cd $(SOURCE_TREE)/smoketest && \
 		patch -p1 -R < $(CURDIR)/debian/patches/smoketest-disable-db-insert-delete-seek-tests.diff
+endif
+ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_EXTENSION_ARCHS)))
+	cd $(SOURCE_TREE)/smoketest && \
+		patch -p1 -R < $(CURDIR)/debian/patches/smoketest-disable-extension-tests.diff
 endif
 endif
 
