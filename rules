@@ -486,6 +486,7 @@ ifeq "$(DEB_VENDOR)" "Debian"
        BUILD_ONLY_EN_US=y
   endif
   CONFIGURE_FLAGS += --with-intro-progressbar-color=215,7,81
+  VENDOR_PRESENTATION_TEMPLATES=templates
 endif
 
 # Debian Squeeze
@@ -507,6 +508,12 @@ ifeq "$(DEB_VENDOR)" "Ubuntu"
   ifneq (,$(filter armhf armel powerpc,$(DEB_HOST_ARCH)))
     RUN_MAKE_CHECK:=n
   endif
+  # VENDOR_PRESENTATION_TEMPLATES=ubuntu-templates
+  # do not create any default templates for 3.5/precise. they take precious
+  # install media space and the current ones are ugly/outdated anyway
+  # see: lp#958384
+  VENDOR_PRESENTATION_TEMPLATES=
+  PARALLEL_BUILD=y
 endif
 
 CONFIGURE_FLAGS += $(foreach i, $(SYSTEM_STUFF),--with-system-$(i))
@@ -1951,9 +1958,9 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/install $(STAMP_DIR)/install-indep $(SOURCE
 		> $$TMP && \
 	debian/scripts/cleandupes --base=libreoffice$(VER) --prefix=debian < $$TMP && rm -f $$TMP
 
-ifeq "$(DEB_VENDOR)" "Debian"
-	# install Debian presentation template
-	otps=`cd debian/templates; echo *.otp`; \
+ifneq "$(VENDOR_PRESENTATION_TEMPLATES)" ""
+	# install vendor presentation template
+	otps=`cd debian/$(VENDOR_PRESENTATION_TEMPLATES); echo *.otp`; \
 	for iso in $(LANGPACKISOS); do \
 	  [ "$$iso" = "en-US" ] && continue; \
 	  pkgiso=`echo $$iso | tr \[:upper:\] \[:lower:\]`; \
@@ -2631,10 +2638,10 @@ endif
 		mkdir -p $(OODIR)/share/dtd && \
 		cd $(OODIR)/share/dtd && ln -s /$(shell echo $(OODIR) | sed -e s/libreoffice/openoffice/)/share/dtd/officedocument
 
-ifeq "$(DEB_VENDOR)" "Debian"
+ifneq "$(VENDOR_PRESENTATION_TEMPLATES)" ""
 	# install Debian presentation template
 	mkdir -p $(PKGDIR)-common/$(OODIR)/share/template/en-US/presnt
-	install -m644 debian/templates/*.otp $(PKGDIR)-common/$(OODIR)/share/template/en-US/presnt/
+	install -m644 debian/$(VENDOR_PRESENTATION_TEMPLATES)/*.otp $(PKGDIR)-common/$(OODIR)/share/template/en-US/presnt/
 endif
 
 ifeq "$(PACKAGE_SDK)" "y"
