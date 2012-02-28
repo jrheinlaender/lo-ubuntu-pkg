@@ -1,0 +1,180 @@
+diff --git a/framework/inc/services/desktop.hxx b/framework/inc/services/desktop.hxx
+index ac51f25..530d615 100644
+--- a/framework/inc/services/desktop.hxx
++++ b/framework/inc/services/desktop.hxx
+@@ -339,6 +339,10 @@ class Desktop   :   // interfaces
+         virtual ::rtl::OUString SAL_CALL getUntitledPrefix()
+             throw (css::uno::RuntimeException);
+ 
++        // we need this wrapped terminate()-call to terminate even the QuickStarter
++        // non-virtual and non-UNO for now
++        bool SAL_CALL terminateQuickstarterToo()
++            throw( css::uno::RuntimeException );
+     //-------------------------------------------------------------------------------------------------------------
+     //  protected methods
+     //-------------------------------------------------------------------------------------------------------------
+diff --git a/framework/source/services/desktop.cxx b/framework/source/services/desktop.cxx
+index eccd010..7050adb 100644
+--- a/framework/source/services/desktop.cxx
++++ b/framework/source/services/desktop.cxx
+@@ -401,6 +401,36 @@ sal_Bool SAL_CALL Desktop::terminate()
+     return bTerminate;
+ }
+ 
++namespace
++{
++    class QuickstartSuppressor
++    {
++        Desktop* const m_pDesktop;
++        css::uno::Reference< css::frame::XTerminateListener > m_xQuickLauncher;
++        public:
++            QuickstartSuppressor(Desktop* const pDesktop, css::uno::Reference< css::frame::XTerminateListener > xQuickLauncher)
++                : m_pDesktop(pDesktop)
++                , m_xQuickLauncher(xQuickLauncher)
++            {
++                SAL_INFO("fwk", "temporary removing Quickstarter");
++                if(m_xQuickLauncher.is())
++                    m_pDesktop->removeTerminateListener(m_xQuickLauncher);
++            }
++            ~QuickstartSuppressor()
++            {
++                SAL_INFO("fwk", "readding Quickstarter");
++                if(m_xQuickLauncher.is())
++                    m_pDesktop->addTerminateListener(m_xQuickLauncher);
++            }    
++    };
++}
++
++bool SAL_CALL Desktop::terminateQuickstarterToo()
++    throw( css::uno::RuntimeException )
++{
++    QuickstartSuppressor(this, m_xQuickLauncher);
++    return terminate();
++}
+ 
+ //=============================================================================
+ void SAL_CALL Desktop::addTerminateListener( const css::uno::Reference< css::frame::XTerminateListener >& xListener )
+diff --git a/framework/source/services/sessionlistener.cxx b/framework/source/services/sessionlistener.cxx
+index 524a14c..f171653 100644
+--- a/framework/source/services/sessionlistener.cxx
++++ b/framework/source/services/sessionlistener.cxx
+@@ -30,6 +30,7 @@
+ // my own includes
+ 
+ #include <services/sessionlistener.hxx>
++#include <services/desktop.hxx>
+ #include <threadhelp/readguard.hxx>
+ #include <threadhelp/resetableguard.hxx>
+ #include <protocols.h>
+@@ -136,10 +137,12 @@ SessionListener::SessionListener(const css::uno::Reference< css::lang::XMultiSer
+         , m_bAllowUserInteractionOnQuit( sal_False )
+         , m_bTerminated( sal_False )
+ {
++    SAL_INFO("fwk", "SessionListener::SessionListener");
+ }
+ 
+ SessionListener::~SessionListener()
+ {
++    SAL_INFO("fwk", "SessionListener::~SessionListener");
+     if (m_rSessionManager.is())
+     {
+         css::uno::Reference< XSessionManagerListener> me(this);
+@@ -149,6 +152,7 @@ SessionListener::~SessionListener()
+ 
+ void SessionListener::StoreSession( sal_Bool bAsync )
+ {
++    SAL_INFO("fwk", "SessionListener::StoreSession");
+     ResetableGuard aGuard(m_aLock);
+     try
+     {
+@@ -182,6 +186,7 @@ void SessionListener::StoreSession( sal_Bool bAsync )
+ 
+ void SessionListener::QuitSessionQuietly()
+ {
++    SAL_INFO("fwk", "SessionListener::QuitSessionQuietly");
+     ResetableGuard aGuard(m_aLock);
+     try
+     {
+@@ -206,11 +211,13 @@ void SessionListener::QuitSessionQuietly()
+ 
+ void SAL_CALL SessionListener::disposing(const com::sun::star::lang::EventObject&) throw (RuntimeException)
+ {
++    SAL_INFO("fwk", "SessionListener::disposing");
+ }
+ 
+ void SAL_CALL SessionListener::initialize(const Sequence< Any  >& args)
+     throw (RuntimeException)
+ {
++    SAL_INFO("fwk", "SessionListener::initialize");
+ 
+     OUString aSMgr(RTL_CONSTASCII_USTRINGPARAM("com.sun.star.frame.SessionManagerClient"));
+     if (args.getLength() > 0)
+@@ -242,6 +249,7 @@ void SAL_CALL SessionListener::initialize(const Sequence< Any  >& args)
+ void SAL_CALL SessionListener::statusChanged(const FeatureStateEvent& event)
+     throw (css::uno::RuntimeException)
+ {
++   SAL_INFO("fwk", "SessionListener::statusChanged");
+    if (event.FeatureURL.Complete.equalsAsciiL(RTL_CONSTASCII_STRINGPARAM("vnd.sun.star.autorecovery:/doSessionRestore")))
+     {
+         if (event.FeatureDescriptor.compareToAscii("update")==0)
+@@ -262,6 +270,7 @@ void SAL_CALL SessionListener::statusChanged(const FeatureStateEvent& event)
+ sal_Bool SAL_CALL SessionListener::doRestore()
+     throw (RuntimeException)
+ {
++    SAL_INFO("fwk", "SessionListener::doRestore");
+     ResetableGuard aGuard(m_aLock);
+     m_bRestored = sal_False;
+     try {
+@@ -288,6 +297,7 @@ sal_Bool SAL_CALL SessionListener::doRestore()
+ void SAL_CALL SessionListener::doSave( sal_Bool bShutdown, sal_Bool /*bCancelable*/ )
+     throw (RuntimeException)
+ {
++    SAL_INFO("fwk", "SessionListener::doSave");
+     if (bShutdown)
+     {
+         m_bSessionStoreRequested = sal_True; // there is no need to protect it with mutex
+@@ -304,6 +314,7 @@ void SAL_CALL SessionListener::doSave( sal_Bool bShutdown, sal_Bool /*bCancelabl
+ void SAL_CALL SessionListener::approveInteraction( sal_Bool bInteractionGranted )
+     throw (RuntimeException)
+ {
++    SAL_INFO("fwk", "SessionListener::approveInteraction");
+     // do AutoSave as the first step
+     ResetableGuard aGuard(m_aLock);
+ 
+@@ -316,7 +327,19 @@ void SAL_CALL SessionListener::approveInteraction( sal_Bool bInteractionGranted
+             StoreSession( sal_False );
+ 
+             css::uno::Reference< css::frame::XDesktop > xDesktop( m_xSMGR->createInstance(SERVICENAME_DESKTOP), css::uno::UNO_QUERY_THROW);
+-            m_bTerminated = xDesktop->terminate();
++            // honestly: how many implementations of XDesktop will we ever have?
++            // so casting this directly to the implementation
++            Desktop* pDesktop(dynamic_cast<Desktop*>(xDesktop.get()));
++            if(pDesktop)
++            {
++                SAL_INFO("fwk", "XDesktop is a framework::Desktop -- good.");
++                m_bTerminated = pDesktop->terminateQuickstarterToo();
++            }
++            else
++            {
++                SAL_WARN("fwk", "XDesktop is not a framework::Desktop -- this should never happen.");
++                m_bTerminated = xDesktop->terminate();
++            }
+ 
+             if ( m_rSessionManager.is() )
+             {
+@@ -345,6 +368,7 @@ void SAL_CALL SessionListener::approveInteraction( sal_Bool bInteractionGranted
+ void SessionListener::shutdownCanceled()
+     throw (RuntimeException)
+ {
++    SAL_INFO("fwk", "SessionListener::shutdownCanceled");
+     // set the state back
+     m_bSessionStoreRequested = sal_False; // there is no need to protect it with mutex
+ }
+@@ -352,6 +376,7 @@ void SessionListener::shutdownCanceled()
+ void SessionListener::doQuit()
+     throw (RuntimeException)
+ {
++    SAL_INFO("fwk", "SessionListener::doQuit");
+     if ( m_bSessionStoreRequested && !m_bTerminated )
+     {
+         // let the session be closed quietly in this case
