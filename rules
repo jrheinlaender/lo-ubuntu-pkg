@@ -246,7 +246,6 @@ ENABLE_GVFS=n
 ENABLE_GCONF=y
 ENABLE_GIO=y
 ENABLE_RANDR=y
-ENABLE_LAYOUT=n
 ifeq "$(BUILD_GTK)" "y"
   PACKAGE_NPSOPLUGIN=y
 endif
@@ -279,7 +278,7 @@ SYSTEM_STUFF += expat
 SYSTEM_STUFF += odbc
 SYSTEM_STUFF += curl
 SYSTEM_STUFF += sane
-SYSTEM_STUFF += xrender-headers
+SYSTEM_STUFF += xextensions-headers
 SYSTEM_STUFF += mesa-headers
 SYSTEM_STUFF += db
 SYSTEM_STUFF += poppler
@@ -293,12 +292,11 @@ CONFIGURE_FLAGS= \
 		--with-vendor='$(OOO_VENDOR)' \
                 --with-install-dirname=$(OODIRNAME) \
                 --prefix=/usr --mandir=/usr/share/man \
-                --with-docdir=/usr/share/doc/libreoffice \
-                --disable-strip \
+                --docdir=/usr/share/doc/libreoffice \
+                --disable-strip-solver \
                 --enable-lockdown \
 		--libdir=/usr/lib \
 		--host=$(DEB_HOST_GNU_TYPE) --build=$(DEB_BUILD_GNU_TYPE) \
-		--enable-broffice \
 		--enable-extension-integration \
 		--disable-online-update \
 		--disable-fetch-external \
@@ -309,10 +307,6 @@ CONFIGURE_FLAGS= \
 ifneq ($(ON_BUILDD),y)
 CONFIGURE_FLAGS += --enable-verbose
 endif
-
-# distro-configs is too late; it already gets searched in unpack
-# when we don't do that here, too.
-CONFIGURE_FLAGS += --disable-access
 
 CONFIGURE_FLAGS += --with-alloc=$(ALLOC)
 
@@ -363,14 +357,16 @@ OOO_GCJ_JDK_ARCHS := hppa kfreebsd-i386 kfreebsd-amd64
 OOO_OPENJDK_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs,OOO_OPENJDK_ARCHS))
 
-OOO_ARCH_DEP_EXTENSIONS_ARCHS := $(OOO_ARCHS)
+OOO_ARCH_DEP_EXTENSIONS_ARCHS := $(filter-out s390 s390x,$(OOO_ARCHS))
+OOO_EXTENSIONS_ARCHS := $(OOO_ARCH_DEP_EXTENSIONS_ARCHS)
 
-OOO_BASE_ARCHS := $(filter-out armel powerpc powerpcspe ppc64,$(OOO_JAVA_ARCHS))
+OOO_BASE_ARCHS := $(filter-out armel armhf powerpc powerpcspe ppc64 s390x,$(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs,OOO_BASE_ARCHS))
 OOO_REPORTDESIGN_ARCHS := $(filter-out armel $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs,OOO_REPORTDESIGN_ARCHS))
 
 ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
+  ifneq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_BASE_ARCHS)))
 	PACKAGE_BASE=n
 	ENABLE_SDBC_POSTGRESQL=n
 	ENABLE_MYSQLNATIVE=n
@@ -381,6 +377,7 @@ ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
 	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-evolution -Nlibreoffice$(VER)-kab
 	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-sdbc-postgresql -Nlibreoffice$(VER)-mysql-connector
 	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-report-builder-bin -Nlibreoffice$(VER)-report-builder
+  endif
 endif
 
 ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
@@ -389,6 +386,16 @@ ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
 	ENABLE_PRESENTER_CONSOLE=n
 	ENABLE_SDBC_POSTGRESQL=n
 	ENABLE_MYSQLNATIVE=n
+	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-mysql-connector
+	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-report-builder-bin -Nlibreoffice$(VER)-report-builder
+	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-pdfimport -Nlibreoffice$(VER)-presentation-minimizer
+	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-presenter-console
+endif
+ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
+	ENABLE_MEDIAWIKI=n
+	ENABLE_REPORTDESIGN=n
+	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-report-builder-bin -Nlibreoffice$(VER)-report-builder
+	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-wiki-publisher
 endif
 
 ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_JAVA_ARCHS)))
@@ -422,7 +429,7 @@ ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_GCJ_ARCHS)))
 endif
 
 ifeq "$(PACKAGE_NPSOPLUGIN)" "y"
-OOO_NPSOPLUGIN_ARCHS = $(OOO_ARCHS)
+OOO_NPSOPLUGIN_ARCHS = $(filter-out s390x,$(OOO_ARCHS))
 else
 OOO_NPSOPLUGIN_ARCHS=
 endif
@@ -432,6 +439,11 @@ ifneq (,$(filter arm% mips% m68k, $(DEB_HOST_ARCH)))
 	BUILD_BINFILTERS=n
 endif
 OOO_BINFILTER_ARCHS:=$(filter-out arm% mips% m68k, $(OOO_ARCHS))
+
+ifeq (s390x,$(findstring s390x,$(DEB_HOST_ARCH)))
+	ENABLE_EVO2=n
+	SYSTEM_STUFF := $(filter-out mozilla-headers, $(SYSTEM_STUFF))
+endif
 
 #############
 # Distro-specific overrides
@@ -568,7 +580,7 @@ endif
 ifneq (,$(filter sane, $(SYSTEM_STUFF)))
        BUILD_DEPS += , libsane-dev
 endif
-ifneq (,$(filter xrender-headers, $(SYSTEM_STUFF)))
+ifneq (,$(filter xextensions-headers, $(SYSTEM_STUFF)))
        BUILD_DEPS += , libxrender-dev
 endif
 ifneq (,$(filter libpng, $(SYSTEM_STUFF)))
@@ -585,7 +597,7 @@ ifneq (,$(filter openssl, $(SYSTEM_STUFF)))
 	DBG_DBG_SUGGESTS += , libssl$(shell readlink /usr/lib/libssl.so | cut -d"." -f3,4,5)-dbg
   else
 	DBG_DBG_SUGGESTS += , libssl$(shell readlink /usr/lib/`dpkg-architecture -qDEB_HOST_MULTIARCH`/libssl.so | cut -d"." -f3,4,5)-dbg
-endif
+  endif
 endif
 
 ifneq "$(ENABLE_RSVG)" "y"
@@ -721,12 +733,6 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
   ifneq "$(BUILD_ISOS)" "en-US"
 	CONFIGURE_FLAGS += --with-lang="$(BUILD_ISOS)"
   endif
-endif
-
-ifeq "$(VER)" ""
-	CONFIGURE_FLAGS += --with-binsuffix=no
-else
-	CONFIGURE_FLAGS += --with-binsuffix=$(VER)
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
@@ -1043,17 +1049,13 @@ endif
 ifeq "$(ENABLE_SDBC_POSTGRESQL)" "y"
 	BUILD_DEPS += , libpq-dev (>= 9.0~)
 else
-	CONFIGURE_FLAGS += --disable-sdbc-postgresql
+	CONFIGURE_FLAGS += --disable-postgresql-sdbc
 endif
 
 ifeq "$(ENABLE_RANDR)" "y"
 	BUILD_DEPS += , libxrandr-dev
 else
 	CONFIGURE_FLAGS += --disable-randr
-endif
-
-ifneq "$(ENABLE_LAYOUT)" "y"
-	CONFIGURE_FLAGS += --disable-layout
 endif
 
 ifeq "$(BUILD_BINFILTERS)" "y"
@@ -1064,10 +1066,6 @@ endif
 ifneq "$(BUILD_PYUNO)" "y"
 	DEBHELPER_OPTIONS+= -Npython-uno
 	CONFIGURE_FLAGS += --disable-python
-else
-  ifeq "$(ENABLE_SCRIPT_PROVIDER_PYTHON)" "y"
-        CONFIGURE_FLAGS += --enable-ext-scripting-python
-  endif
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
@@ -1638,23 +1636,27 @@ ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
 	cd $(SOURCE_TREE)/smoketest && \
 		patch -p1 < $(CURDIR)/debian/patches/smoketest-disable-db-insert-delete-seek-tests.diff
 endif
+ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
+	cd $(SOURCE_TREE)/smoketest && \
+		patch -p1 < $(CURDIR)/debian/patches/smoketest-disable-extension-tests.diff
+endif
 
+	t=`mktemp -q -d`; \
 	cd $(SOURCE_TREE) && \
 		export PATH=$(BUILD_PATH); \
-		export TMPDIR=$(CURDIR)/debian/smoketest; \
-		export HOME=$(CURDIR)/debian/smoketest; \
+		export TMPDIR=$$t; \
+		export HOME=$$t; \
 		export SAL_USE_VCLPLUGIN="svp"; \
-		$(MAKE) check gb_FULLDEPS= gb_Deliver_HARDLINK=T
-	# doesn't get cleaned up.. (at least the dirs, the contents are gone)
-	if test -d $(CURDIR)/debian/smoketest; then \
-		cd $(CURDIR)/debian/smoketest && \
-		find . -noleaf -maxdepth 1 ! -name "." -exec rm -rf {} \; ; \
-	fi
-
+		$(MAKE) check gb_FULLDEPS= gb_Deliver_HARDLINK=T; \
+	rm -rf $$t
 
 ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
 	cd $(SOURCE_TREE)/smoketest && \
 		patch -p1 -R < $(CURDIR)/debian/patches/smoketest-disable-db-insert-delete-seek-tests.diff
+endif
+ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
+	cd $(SOURCE_TREE)/smoketest && \
+		patch -p1 -R < $(CURDIR)/debian/patches/smoketest-disable-extension-tests.diff
 endif
 endif
 
@@ -1760,10 +1762,11 @@ endif
 	rm -rf debian/tmp/pkg
 
 	# move desktop files to their correct packages
-	for i in base calc draw impress math writer; do \
-		mkdir -p $(PKGDIR)-$$i/$(OODIR)/share/xdg; \
+	for i in base calc draw impress math writer binfilter; do \
+		if [ "$$i" = "binfilter" ]; then j=filter-binfilter; else j=$$i; fi; \
+		mkdir -p $(PKGDIR)-$$j/$(OODIR)/share/xdg; \
 		mv $(PKGDIR)-common/$(OODIR)/share/xdg/$$i.desktop \
-			$(PKGDIR)-$$i/$(OODIR)/share/xdg; \
+			$(PKGDIR)-$$j/$(OODIR)/share/xdg; \
 	done
 
 	# move help to /usr/share
@@ -2062,10 +2065,12 @@ endif
 
 	# split out gtk stuff
 	rm -rf $(PKGDIR)-gtk
-	rm -rf $(PKGDIR)-gtk3
 	mkdir -p -m755 $(PKGDIR)-gtk/$(OODIR)/program
+ifeq "$(BUILD_GTK3)" "y"
+	rm -rf $(PKGDIR)-gtk3
 	mkdir -p -m755 $(PKGDIR)-gtk3/$(OODIR)/program
 	mv $(PKGDIR)-gnome/$(OODIR)/program/libvclplug_gtk3lo.so $(PKGDIR)-gtk3/$(OODIR)/program/
+endif
 	mv $(PKGDIR)-gnome/$(OODIR)/program/* $(PKGDIR)-gtk/$(OODIR)/program/
 ifeq "$(BUILD_GTK)" "y"
 	mkdir -p -m755 $(PKGDIR)-gtk/$(OODIR)/share

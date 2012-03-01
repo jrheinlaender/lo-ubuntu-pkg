@@ -1,13 +1,98 @@
+diff --git a/configure.in b/configure.in
+index 4667f0b..28c8790 100644
+--- a/configure.in
++++ b/configure.in
+@@ -6089,6 +6089,7 @@ AC_SUBST(NSS_LIBS)
+ dnl ===================================================================
+ dnl Check for system mozilla headers
+ dnl ===================================================================
++HAVE_NON_CONST_NPP_GETMIMEDESCRIPTION=
+ AC_MSG_CHECKING([which mozilla headers to use])
+ if test "$with_system_mozilla_headers" = "yes"; then
+     AC_MSG_RESULT([external])
+@@ -6103,12 +6104,31 @@ if test "$with_system_mozilla_headers" = "yes"; then
+     if test "x$LOCATED" != "xyes"; then
+         AC_MSG_ERROR([npapi.h header file not found])
+     fi
++
++    AC_LANG_PUSH([C])
++    save_CFLAGS=$CFLAGS
++    CFLAGS="$CFLAGS $MOZILLA_HEADERS_CFLAGS"
++    AC_MSG_CHECKING([for NPP_GetMIMEDescription return type])
++    AC_COMPILE_IFELSE(
++        [AC_LANG_SOURCE([[
++            #define XP_UNIX
++            #include <npapi.h>
++            const char* NPP_GetMIMEDescription(void) { return "foo"; }
++            ]])],
++        [AC_MSG_RESULT([const char*])],
++        [
++        AC_MSG_RESULT([char*])
++        HAVE_NON_CONST_NPP_GETMIMEDESCRIPTION=TRUE
++        ])
++    CFLAGS=$save_CFLAGS
++    AC_LANG_POP([C])
+ else
+     AC_MSG_RESULT([internal])
+     SYSTEM_MOZILLA_HEADERS=NO
+ fi
+ AC_SUBST(MOZILLA_HEADERS_CFLAGS)
+ AC_SUBST(SYSTEM_MOZILLA_HEADERS)
++AC_SUBST(HAVE_NON_CONST_NPP_GETMIMEDESCRIPTION)
+ 
+ dnl ===================================================================
+ dnl Check for system sane
+diff --git a/extensions/source/nsplugin/source/makefile.mk b/extensions/source/nsplugin/source/makefile.mk
+index 5b74764..d3c6fb1 100644
+--- a/extensions/source/nsplugin/source/makefile.mk
++++ b/extensions/source/nsplugin/source/makefile.mk
+@@ -42,6 +42,10 @@ INCPRE+=$(MOZILLA_HEADERS_CFLAGS)
+ INCPRE=$(SOLARINCDIR)$/npsdk
+ .ENDIF
+ 
++.IF "$(HAVE_NON_CONST_NPP_GETMIMEDESCRIPTION)" == "TRUE"
++CFLAGS += -DHAVE_NON_CONST_NPP_GETMIMEDESCRIPTION=1
++.ENDIF
++ 
+ .IF "$(GUI)"=="UNX"
+ 
+ # not sure about -DMOZ_X11 but otheriwse some struct member don't exist...
 diff --git a/extensions/source/nsplugin/source/npshell.cxx b/extensions/source/nsplugin/source/npshell.cxx
-index fa0e0a2..51ac58b 100644
---- libreoffice-3.5.0/extensions/source/nsplugin/source/npshell.cxx
-+++ libreoffice-3.5.0/extensions/source/nsplugin/source/npshell.cxx
-@@ -363,7 +363,7 @@ MIMETYPE_OASIS_OPENDOCUMENT_PRESENTATION_ASCII ":odp:OpenDocument Presentation;"
+index e25326f..be8ea84 100644
+--- a/extensions/source/nsplugin/source/npshell.cxx
++++ b/extensions/source/nsplugin/source/npshell.cxx
+@@ -361,7 +361,10 @@ MIMETYPE_OASIS_OPENDOCUMENT_PRESENTATION_ASCII ":odp:OpenDocument Presentation;"
  MIMETYPE_OASIS_OPENDOCUMENT_PRESENTATION_TEMPLATE_ASCII ":otp:OpenDocument Presentation Template;"
  MIMETYPE_OASIS_OPENDOCUMENT_FORMULA_ASCII ":odf:OpenDocument Formula;" );
  
 -char*
-+const char*
++#ifndef HAVE_NON_CONST_NPP_GETMIMEDESCRIPTION
++const
++#endif
++char*
  NPP_GetMIMEDescription(void)
  {
      debug_fprintf(NSP_LOG_APPEND, "print by Netscape Plugin,  NPP_GetMIMEDescription:%s.\n", pMimeTypes);
+diff --git a/set_soenv.in b/set_soenv.in
+index 817693e..3dc9cfa 100755
+--- a/set_soenv.in
++++ b/set_soenv.in
+@@ -1777,6 +1777,7 @@ ToFile( "HAVE_GCC_VISIBILITY_FEATURE",
+ ToFile( "HAVE_GCC_VISIBILITY_BROKEN",
+         "@HAVE_GCC_VISIBILITY_BROKEN@", "e" );
+ ToFile( "HAVE_LD_HASH_STYLE","@HAVE_LD_HASH_STYLE@","e" );
++ToFile( "HAVE_NON_CONST_NPP_GETMIMEDESCRIPTION","@HAVE_NON_CONST_NPP_GETMIMEDESCRIPTION@","e" );
+ ToFile( "WITH_LINKER_HASH_STYLE","@WITH_LINKER_HASH_STYLE@","e" );
+ ToFile( "HAVE_LD_BSYMBOLIC_FUNCTIONS",
+ 		"@HAVE_LD_BSYMBOLIC_FUNCTIONS@","e" );
+--- a/np_sdk/inc/npapi.h-old	2012-02-22 07:32:09.000000000 +0000
++++ a/np_sdk/inc/npapi.h	2012-02-22 07:32:26.000000000 +0000
+@@ -784,7 +784,7 @@
+ 
+ /* NPP_* functions are provided by the plugin and called by the navigator. */
+ 
+-char* NPP_GetMIMEDescription(void);
++const char* NPP_GetMIMEDescription(void);
+ NPError NP_LOADDS NPP_New(NPMIMEType pluginType, NPP instance,
+                           uint16_t mode, int16_t argc, char* argn[],
+                           char* argv[], NPSavedData* saved);
