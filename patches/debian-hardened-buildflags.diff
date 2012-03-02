@@ -1,0 +1,51 @@
+diff --git a/solenv/gbuild/LinkTarget.mk b/solenv/gbuild/LinkTarget.mk
+index c094bb4..a0608f4 100644
+--- a/solenv/gbuild/LinkTarget.mk
++++ b/solenv/gbuild/LinkTarget.mk
+@@ -46,6 +46,8 @@ CXXFLAGS ?= $(gb_COMPILEROPTFLAGS)
+ OBJCXXFLAGS ?= $(gb_COMPILEROPTFLAGS)
+ endif
+
++LDFLAGS += "$(shell dpkg-buildflags --get LDFLAGS)"
++
+ # if enabled we link all of these libraries into one larger, merged library
+ # for which we can do a lot more optimisation, and which is faster to read
+ # from disk.
+diff --git a/solenv/gbuild/gbuild.mk b/solenv/gbuild/gbuild.mk
+index e85ed83..1665642 100644
+--- a/solenv/gbuild/gbuild.mk
++++ b/solenv/gbuild/gbuild.mk
+@@ -141,6 +141,9 @@ gb__ENV_CXXFLAGS := $(ENVCFLAGSCXX)
+ endif
+ endif
+
++gb__ENV_CXXFLAGS += $(shell dpkg-buildflags --get CXXFLAGS | sed -e s/-g// | sed -e s/-O[0-3]//g)
++gb__ENV_CFLAGS += $(shell dpkg-buildflags --get CFLAGS | sed -e s/-g// | sed -e s/-O[0-3]//g)
++
+ include $(GBUILDDIR)/Helper.mk
+ include $(GBUILDDIR)/TargetLocations.mk
+
+@@ -240,6 +243,8 @@ ifeq ($(HAVE_THREADSAFE_STATICS),TRUE)
+ gb_GLOBALDEFS += -DHAVE_THREADSAFE_STATICS
+ endif
+
++gb_GLOBALDEFS += $(shell dpkg-buildflags --get CPPFLAGS)
++
+ gb_GLOBALDEFS := $(sort $(gb_GLOBALDEFS))
+
+ include $(GBUILDDIR)/Deliver.mk
+diff --git a/solenv/inc/unxgcc.mk b/solenv/inc/unxgcc.mk
+index a3231a6..b97f354 100644
+--- a/solenv/inc/unxgcc.mk
++++ b/solenv/inc/unxgcc.mk
+@@ -233,6 +233,10 @@ LINKFLAGS += -Wl,--hash-style=$(WITH_LINKER_HASH_STYLE)
+ LINKFLAGS += -Wl,-zdynsort
+ .ENDIF
+
++LINKFLAGS += $(shell dpkg-buildflags --get LDFLAGS)
++CDEFS += $(shell dpkg-buildflags --get CPPFLAGS)
++CFLAGS += $(shell dpkg-buildflags --get CFLAGS | sed -e s/-g// | sed -e s/-O[0-3]//g)
++
+ # libraries for linking applications
+ STDLIBGUIMT+=-Wl,--as-needed $(DL_LIB) $(PTHREAD_LIBS) -lm -Wl,--no-as-needed
+ STDLIBCUIMT+=-Wl,--as-needed $(DL_LIB) $(PTHREAD_LIBS) -lm -Wl,--no-as-needed
