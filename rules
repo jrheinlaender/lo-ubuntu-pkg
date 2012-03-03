@@ -247,7 +247,7 @@ ENABLE_GCONF=y
 ENABLE_GIO=y
 ENABLE_RANDR=y
 ifeq "$(BUILD_GTK)" "y"
-  PACKAGE_NPSOPLUGIN=y
+  PACKAGE_NSPLUGIN=y
 endif
 PACKAGE_BASE=y
 ENABLE_GRAPHITE=y
@@ -427,11 +427,12 @@ ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_GCJ_ARCHS)))
 	BUILD_JARS_NATIVE=y
 endif
 
-ifeq "$(PACKAGE_NPSOPLUGIN)" "y"
-OOO_NPSOPLUGIN_ARCHS = $(filter-out s390x,$(OOO_ARCHS))
+ifeq "$(PACKAGE_NSPLUGIN)" "y"
+OOO_NSPLUGIN_ARCHS = $(filter-out s390x,$(OOO_ARCHS))
 else
-OOO_NPSOPLUGIN_ARCHS=
+OOO_NSPLUGIN_ARCHS=
 endif
+$(eval $(call gen_no_archs,OOO_NSPLUGIN_ARCHS))
 
 # builds long and is for legacy filters. probably not needed on {arm,mips}{,el}
 ifneq (,$(filter arm% mips% m68k, $(DEB_HOST_ARCH)))
@@ -855,11 +856,12 @@ ifneq (,$(filter nss, $(SYSTEM_STUFF)))
 	DBG_DBG_SUGGESTS+= , libnss3-1d-dbg
 endif
 ifneq (,$(filter mozilla-headers, $(SYSTEM_STUFF)))
-	BUILD_DEPS+= , xulrunner-dev
+	BUILD_DEPS+= , xulrunner-dev$(OOO_NO_NSPLUGIN_ARCHS)
 endif
 	CONFIGURE_FLAGS += --disable-build-mozilla --disable-mozilla
-ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NPSOPLUGIN_ARCHS)))
-	PACKAGE_NPSOPLUGIN=n
+ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NSPLUGIN_ARCHS)))
+	PACKAGE_NSPLUGIN=n
+	CONFIGURE_FLAGS += --disable-nsplugin
 endif
 
 ifeq "$(USE_SYSTEM_DMAKE)" "y"
@@ -1369,7 +1371,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 	sed -e "s|libreofficeVER|libreoffice$(VER)|g" \
 		>> debian/control < debian/control.gcj.in
 endif
-ifneq "$(OOO_NPSOPLUGIN_ARCHS)" ""
+ifneq "$(OOO_NSPLUGIN_ARCHS)" ""
 	sed -e "s|libreofficeVER|libreoffice$(VER)|g" \
 		>> debian/control < debian/control.mozilla.in
 endif
@@ -1442,7 +1444,7 @@ endif
 	perl -pi -e "s,%OOO_NO_BASE_ARCHS%,$(OOO_NO_BASE_ARCHS),"g debian/control
 	perl -pi -e "s,%OOO_JAVA_ARCHS%,$(OOO_JAVA_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_GCJ_ARCHS%,$(OOO_GCJ_ARCHS),g" debian/control
-	perl -pi -e "s,%OOO_NPSOPLUGIN_ARCHS%,$(OOO_NPSOPLUGIN_ARCHS),g" debian/control
+	perl -pi -e "s,%OOO_NSPLUGIN_ARCHS%,$(OOO_NSPLUGIN_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_OGLTRANS_ARCHS%,$(OOO_OGLTRANS_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_BINFILTER_ARCHS%,$(OOO_BINFILTER_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_STLPORT_ARCHS%,$(OOO_STLPORT_ARCHS),g" debian/control
@@ -2064,7 +2066,7 @@ ifeq "$(ENABLE_EVO2)" "y"
 	# FIXME: When the rdb is correctly generated, move here, too.
 endif
 
-ifeq "$(PACKAGE_NPSOPLUGIN)" "y"
+ifeq "$(PACKAGE_NSPLUGIN)" "y"
 	mkdir -p -m755 debian/mozilla-libreoffice$(VER)/$(OODIR)/program
 	for f in libnpsoplugin.so nsplugin; do \
 		mv $(PKGDIR)-core/$(OODIR)/program/$$f debian/mozilla-libreoffice$(VER)/$(OODIR)/program; \
