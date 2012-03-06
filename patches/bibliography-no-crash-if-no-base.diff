@@ -1,0 +1,53 @@
+--- /dev/null	2012-03-01 23:57:10.294450749 +0100
++++ libreoffice-3.4.5/libreoffice-build/patches/hotfixes/bibliography-no-crash-if-no-base.diff	2012-03-06 22:25:52.000000000 +0100
+@@ -0,0 +1,50 @@
++From 33ef1ffbd15994ec71be99d38c0d5171c63344a2 Mon Sep 17 00:00:00 2001
++From: Bjoern Michaelsen <bjoern.michaelsen@canonical.com>
++Date: Tue, 06 Mar 2012 17:16:35 +0000
++Subject: lp#527938, debian#602953, fdo#33266, i#105408: do not crash on clicking bibliography when base isnt installed
++
++Signed-off-by: Michael Meeks <michael.meeks@suse.com>
++---
++diff --git a/extensions/source/bibliography/bibload.cxx b/extensions/source/bibliography/bibload.cxx
++index c80c81e..9159124 100644
++--- extensions/source/bibliography/bibload.cxx
+++++ extensions/source/bibliography/bibload.cxx
++@@ -54,6 +54,7 @@
++ #include <com/sun/star/text/BibliographyDataField.hpp>
++ #include <com/sun/star/form/XLoadListener.hpp>
++ #include <com/sun/star/frame/XLayoutManager.hpp>
+++#include <com/sun/star/uno/XAggregation.hpp>
++ #include <toolkit/awt/vclxwindow.hxx>
++ #include <vcl/window.hxx>
++ #include <vcl/edit.hxx>
++@@ -243,13 +244,27 @@ void BibliographyLoader::cancel(void) throw (::com::sun::star::uno::RuntimeExcep
++ }
++ 
++ // -----------------------------------------------------------------------
+++namespace
+++{
+++    // lp#527938, debian#602953, fdo#33266, i#105408
+++    static bool lcl_isBaseAvailable()
+++    {
+++        Reference< XMultiServiceFactory >  xMgr = comphelper::getProcessServiceFactory();
+++        Reference< XAggregation > xAggregate = Reference< XAggregation >( xMgr->createInstance(C2U("com.sun.star.sbd.RowSet")), UNO_QUERY);
+++        return xAggregate.is();
+++    }
+++}
++ void BibliographyLoader::load(const Reference< XFrame > & rFrame, const rtl::OUString& rURL,
++         const Sequence< PropertyValue >& rArgs,
++         const Reference< XLoadEventListener > & rListener) throw (::com::sun::star::uno::RuntimeException)
++ {
++-    //!
+++    // lp#527938, debian#602953, fdo#33266, i#105408
+++    // make sure we actually can instanciate services from base first
+++    if(!lcl_isBaseAvailable())
+++        return;
++ 
++     SolarMutexGuard aGuard;
+++    
++     m_pBibMod = OpenBibModul();
++ 
++     String aURLStr( rURL );
++--
++cgit v0.9.0.2-2-gbebe
