@@ -62,11 +62,11 @@ export QUILT_PATCHES=debian/patches
 export QUILT_OPTIONS="-p1 -F0"
 
 GIT_BASEURL:=git://anongit.freedesktop.org/libreoffice
-GIT_TAG=libreoffice-3.5.0.3
-GIT_BRANCH=libreoffice-3-5.0.3
+GIT_TAG=libreoffice-3.5.1.2
+GIT_BRANCH=libreoffice-3.5.1.2
 SOURCE_TREE=.
 STAMP_DIR=debian/stampdir
-TARFILE_LOCATION=$(CURDIR)/ext-sources
+TARFILE_LOCATION=$(CURDIR)/src
 export TARFILE_LOCATION
 USE_SOURCE_TARBALLS=y
 USE_GIT_TARBALLS=n
@@ -130,8 +130,6 @@ SYSTEM_STUFF += altlinuxhyph
 USE_LIBHYPHEN=y
 LIBALTLINUXHYPH_MINVER= (>= 0.1.1-11)
 LIBHYPHEN_MINVER= (>= 2.4)
-USE_AGG=n
-# SYSTEM_STUFF += agg
 SYSTEM_STUFF += boost
 BOOST_VERSION=default
 ifeq "$(BOOST_VERSION)" "default"
@@ -247,7 +245,7 @@ ENABLE_GCONF=y
 ENABLE_GIO=y
 ENABLE_RANDR=y
 ifeq "$(BUILD_GTK)" "y"
-  PACKAGE_NPSOPLUGIN=y
+  PACKAGE_NSPLUGIN=y
 endif
 PACKAGE_BASE=y
 ENABLE_GRAPHITE=y
@@ -362,7 +360,7 @@ OOO_EXTENSIONS_ARCHS := $(OOO_ARCH_DEP_EXTENSIONS_ARCHS)
 
 OOO_BASE_ARCHS := $(filter-out armel armhf powerpc powerpcspe ppc64 s390x,$(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs,OOO_BASE_ARCHS))
-OOO_REPORTDESIGN_ARCHS := $(filter-out armel $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
+OOO_REPORTDESIGN_ARCHS := $(filter-out armel armhf powerpc powerpcspe ppc64 s390x $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs,OOO_REPORTDESIGN_ARCHS))
 
 ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
@@ -384,7 +382,6 @@ ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
 	ENABLE_MINIMIZER=n
 	ENABLE_PDFIMPORT=n
 	ENABLE_PRESENTER_CONSOLE=n
-	ENABLE_SDBC_POSTGRESQL=n
 	ENABLE_MYSQLNATIVE=n
 	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-mysql-connector
 	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-report-builder-bin -Nlibreoffice$(VER)-report-builder
@@ -428,11 +425,12 @@ ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_GCJ_ARCHS)))
 	BUILD_JARS_NATIVE=y
 endif
 
-ifeq "$(PACKAGE_NPSOPLUGIN)" "y"
-OOO_NPSOPLUGIN_ARCHS = $(filter-out s390x,$(OOO_ARCHS))
+ifeq "$(PACKAGE_NSPLUGIN)" "y"
+OOO_NSPLUGIN_ARCHS = $(filter-out s390x,$(OOO_ARCHS))
 else
-OOO_NPSOPLUGIN_ARCHS=
+OOO_NSPLUGIN_ARCHS=
 endif
+$(eval $(call gen_no_archs,OOO_NSPLUGIN_ARCHS))
 
 # builds long and is for legacy filters. probably not needed on {arm,mips}{,el}
 ifneq (,$(filter arm% mips% m68k, $(DEB_HOST_ARCH)))
@@ -538,6 +536,10 @@ else
 endif
 
 # fails their tests
+ifeq "$(DEB_HOST_ARCH)" "alpha"
+ENABLE_GRAPHITE=n
+SYSTEM_STUFF := $(filter-out graphite, $(SYSTEM_STUFF))
+endif
 ifeq "$(DEB_HOST_ARCH)" "armel"
 ENABLE_GRAPHITE=n
 SYSTEM_STUFF := $(filter-out graphite, $(SYSTEM_STUFF))
@@ -549,7 +551,7 @@ endif
 
 ifeq "$(ENABLE_GRAPHITE)" "y"
   ifneq (,$(filter graphite, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libgraphite2-dev (>= 0.9.3) [!armel !sparc]
+	BUILD_DEPS += , libgraphite2-dev (>= 0.9.3) [!alpha !armel !sparc]
   endif
 else
 	CONFIGURE_FLAGS += --disable-graphite
@@ -642,10 +644,6 @@ ifeq (debug,$(findstring debug,$(DEB_BUILD_OPTIONS)))
 	CONFIGURE_FLAGS += --enable-debug
 endif
 
-
-ifeq (noopt,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
-	ARCH_FLAGS += -O0
-endif
 
 # Build python depends from current python version
 PYMAJOR:=$(shell python -c "import sys; print sys.version_info[0]")
@@ -814,16 +812,10 @@ export JAVA_HOME
 	CONFIGURE_FLAGS += --enable-build-unowinreg
       ifeq "$(SQUEEZE_BACKPORT)" "y"
 	BUILD_DEPS += , gcc-mingw32$(OOO_NO_JAVA_ARCHS), mingw32-runtime$(OOO_NO_JAVA_ARCHS)
-	CONFIGURE_FLAGS += --with-mingw=i586-mingw32msvc-g++
-	# this normally is done in configure with sed -e s/[cg]++/strip/ but that somehow
-	# doesn't work. Workaround. FIXME.
-export MINGWSTRIP = i586-mingw32msvc-strip
+	CONFIGURE_FLAGS += --with-mingw-cross-compiler=i586-mingw32msvc-g++
       else
 	BUILD_DEPS += , mingw-w64 (>= 1.0)$(OOO_NO_JAVA_ARCHS)
-	CONFIGURE_FLAGS += --with-mingw=i686-w64-mingw32-g++
-	# this normally is done in configure with sed -e s/[cg]++/strip/ but that somehow
-	# doesn't work. Workaround. FIXME.
-export MINGWSTRIP = i686-w64-mingw32-strip
+	CONFIGURE_FLAGS += --with-mingw-cross-compiler=i686-w64-mingw32-g++
       endif
     endif
   endif
@@ -836,10 +828,10 @@ export MINGWSTRIP = i686-w64-mingw32-strip
 	CONFIGURE_FLAGS += --with-commons-codec-jar=/usr/share/java/commons-codec.jar --with-commons-lang-jar=/usr/share/java/commons-lang.jar --with-commons-httpclient-jar=/usr/share/java/commons-httpclient.jar --with-commons-logging-jar=/usr/share/java/commons-logging.jar
 	CONFIGURE_FLAGS += --with-system-servlet-api
       ifeq "$(SQUEEZE_BACKPORT)" "y"
-	BUILD_DEPS += , $(shell dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }')
+	BUILD_DEPS += (<< 1.1.1-9), $(shell dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }')
 	CONFIGURE_FLAGS += --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }'` | grep servlet-api.*\.jar$ | head -n 1)
       else
-	BUILD_DEPS += , $(shell dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f5 | sed -e s/^\ // | awk '{ print $$1 }') (>= 1.1.1-9)
+	BUILD_DEPS += (>= 1.1.1-9), $(shell dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f5 | sed -e s/^\ // | awk '{ print $$1 }')
 	CONFIGURE_FLAGS += --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f5 | sed -e s/^\ // | awk '{ print $$1 }'` | grep servlet-api.*\.jar$ | head -n 1)
       endif
     endif
@@ -857,10 +849,10 @@ export MINGWSTRIP = i686-w64-mingw32-strip
 	REPORT_BUILDER_JAR_DEPENDS += , libcommons-logging-java
 	CONFIGURE_FLAGS += --with-commons-logging-jar=/usr/share/java/commons-logging.jar
       ifeq "$(SQUEEZE_BACKPORT)" "y"
-	BUILD_DEPS += , $(shell dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }')
+	BUILD_DEPS += (<< 1.1.1-9), $(shell dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }')
 	CONFIGURE_FLAGS += --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }'` | grep servlet-api.*\.jar$ | head -n 1)
       else
-	BUILD_DEPS += , $(shell dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f5 | sed -e s/^\ // | awk '{ print $$1 }') (>= 1.1.1-9)
+	BUILD_DEPS += (>= 1.1.1-9), $(shell dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f5 | sed -e s/^\ // | awk '{ print $$1 }')
 	CONFIGURE_FLAGS += --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f5 | sed -e s/^\ // | awk '{ print $$1 }'` | grep servlet-api.*\.jar$ | head -n 1)
       endif
     endif
@@ -879,11 +871,12 @@ ifneq (,$(filter nss, $(SYSTEM_STUFF)))
 	DBG_DBG_SUGGESTS+= , libnss3-1d-dbg
 endif
 ifneq (,$(filter mozilla-headers, $(SYSTEM_STUFF)))
-	BUILD_DEPS+= , xulrunner-dev | firefox-dev
+	BUILD_DEPS+= , xulrunner-dev$(OOO_NO_NSPLUGIN_ARCHS) | firefox-dev$(OOO_NO_NSPLUGIN_ARCHS)
 endif
 	CONFIGURE_FLAGS += --disable-build-mozilla --disable-mozilla
-ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NPSOPLUGIN_ARCHS)))
-	PACKAGE_NPSOPLUGIN=n
+ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NSPLUGIN_ARCHS)))
+	PACKAGE_NSPLUGIN=n
+	CONFIGURE_FLAGS += --disable-nsplugin
 endif
 
 ifeq "$(USE_SYSTEM_DMAKE)" "y"
@@ -903,13 +896,6 @@ ifneq (,$(filter altlinuxhyph, $(SYSTEM_STUFF)))
   endif
 endif
 	CONFIGURE_FLAGS += --with-external-hyph-dir=$(HYPH_DIR)
-
-ifeq "$(USE_AGG)" "y"
-	CONFIGURE_FLAGS+= --with-agg
-  ifneq (,$(filter agg, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libagg-dev (>= 2.3-2)
-  endif
-endif
 
 ifneq "$(OOO_STLPORT_ARCHS)" ""
 	LIBSTLPORT_MINVER= (>= 4.6.2-3)
@@ -1400,7 +1386,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 	sed -e "s|libreofficeVER|libreoffice$(VER)|g" \
 		>> debian/control < debian/control.gcj.in
 endif
-ifneq "$(OOO_NPSOPLUGIN_ARCHS)" ""
+ifneq "$(OOO_NSPLUGIN_ARCHS)" ""
 	sed -e "s|libreofficeVER|libreoffice$(VER)|g" \
 		>> debian/control < debian/control.mozilla.in
 endif
@@ -1473,7 +1459,7 @@ endif
 	perl -pi -e "s,%OOO_NO_BASE_ARCHS%,$(OOO_NO_BASE_ARCHS),"g debian/control
 	perl -pi -e "s,%OOO_JAVA_ARCHS%,$(OOO_JAVA_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_GCJ_ARCHS%,$(OOO_GCJ_ARCHS),g" debian/control
-	perl -pi -e "s,%OOO_NPSOPLUGIN_ARCHS%,$(OOO_NPSOPLUGIN_ARCHS),g" debian/control
+	perl -pi -e "s,%OOO_NSPLUGIN_ARCHS%,$(OOO_NSPLUGIN_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_OGLTRANS_ARCHS%,$(OOO_OGLTRANS_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_BINFILTER_ARCHS%,$(OOO_BINFILTER_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_STLPORT_ARCHS%,$(OOO_STLPORT_ARCHS),g" debian/control
@@ -1602,7 +1588,7 @@ endif
 	touch $@
 
 build: $(STAMP_DIR)/build
-#$(STAMP_DIR)/build: config.status | ext-sources/fetch.log
+#$(STAMP_DIR)/build: config.status | src/fetch.log
 $(STAMP_DIR)/build: config.status
 	dh_testdir
 
@@ -1868,7 +1854,7 @@ $(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*.sh) $(wildcard debian/*.
 	    MAINTSCRIPT=debian/$$PKG.$$FILE ; \
 	    if [ -e $$MAINTSCRIPT.in ]; then \
 	      sed -n '1,/^#INCLUDE_SHELL_LIB#$$/p' < $$MAINTSCRIPT.in | sed -e '/^#INCLUDE_SHELL_LIB#$$/d' > $$MAINTSCRIPT; \
-	      if echo $(ARCH_DEP_PACKAGES) | grep -q $$PKG; then \
+	      if echo $(ARCH_DEP_PACKAGES) | grep -q $$PKG && [ "$$FILE" != "triggers" ]; then \
 	        grep PLATFORMID debian/vars.$(DEB_HOST_ARCH) >> $$MAINTSCRIPT; \
 	      fi; \
 	      echo "" >> $$MAINTSCRIPT; \
@@ -2011,6 +1997,7 @@ $(STAMP_DIR)/install-arch: $(STAMP_DIR)/install $(STAMP_NATIVE_JARS)
 
 	# move the URE to /usr/lib/ure
 	mv debian/ure/$(OODIR)/ure debian/ure/usr/lib
+	chmod 644 debian/ure/$(OOUREDIR)/lib/unorc
 	rmdir debian/ure/$(OODIR)
 	# move URE Java stuff to /usr/share/java
 	mkdir -p debian/ure/usr/share/java
@@ -2095,7 +2082,7 @@ ifeq "$(ENABLE_EVO2)" "y"
 	# FIXME: When the rdb is correctly generated, move here, too.
 endif
 
-ifeq "$(PACKAGE_NPSOPLUGIN)" "y"
+ifeq "$(PACKAGE_NSPLUGIN)" "y"
 	mkdir -p -m755 debian/mozilla-libreoffice$(VER)/$(OODIR)/program
 	for f in libnpsoplugin.so nsplugin; do \
 		mv $(PKGDIR)-core/$(OODIR)/program/$$f debian/mozilla-libreoffice$(VER)/$(OODIR)/program; \
@@ -2239,6 +2226,7 @@ ifeq "$(PACKAGE_SDK)" "y"
 		perl -pi -e 's,/usr/bin/csh,/bin/csh,'\
 			$(PKGDIR)-dev/$(OOSDKDIR)/setsdkenv_unix.$$i; \
 	done
+	chmod 755 $(PKGDIR)-dev/$(OOSDKDIR)/setsdkenv_unix
 	# create wrapper scripts
 	cd $(PKGDIR)-dev/$(OOSDKDIR)/bin && \
 	for i in *; do \
@@ -3056,7 +3044,7 @@ ifeq "$(USE_GIT_TARBALLS)" "y"
 # from build and download the source, configure, build, pack in on piece. As
 # get-orig-source is an optional target anyway, we stick to support only this
 # case and not random dirs. see also: debian bug 494141
-# also, we need to run configure to create the ext-sources tarball anyway
+# also, we need to run configure to create the src tarball anyway
 
 GIT_INSTALLED:=$(shell which git >/dev/null 2>/dev/null && echo "y")
 
@@ -3090,7 +3078,7 @@ $(call get_orig_tarball,-%):
 	$(call pack_gittarball,$*,$@,libreoffice-$(DEB_VERSION_UPSTREAM)/$*)
 
 # Get upstream external sources
-$(call get_orig_tarball,-ext-sources): binfilter/no_localization dictionaries/en/README.txt helpcontent2/makefile.pmk translations/makefile.mk .gitignore
+$(call get_orig_tarball,-src): binfilter/no_localization dictionaries/en/README.txt helpcontent2/makefile.pmk translations/makefile.mk .gitignore
 	dh_testdir
 	rm -rf $(TARFIILE_LOCATION)
 	mkdir -p $(TARFILE_LOCATION)
@@ -3114,13 +3102,13 @@ translations/makefile.mk:  $(call get_orig_tarball,-translations)
 helpcontent2/makefile.pmk:  $(call get_orig_tarball,-helpcontent2)
 	$(call unpack_gittarball,helpcontent2,$<,)
 
-ext-sources/fetch.log: $(call get_orig_tarball,-ext-sources) patched
-	$(call unpack_gittarball,ext-sources,$<,)
+src/fetch.log: $(call get_orig_tarball,-src) patched
+	$(call unpack_gittarball,src,$<,)
 
-get-orig-source: $(call get_orig_tarball,-ext-sources) ext-sources/fetch.log
+get-orig-source: $(call get_orig_tarball,-src) src/fetch.log
 	dh_testdir
 
-unpack: ext-sources/fetch.log
+unpack: src/fetch.log
 	dh_testdir
 endif
 endif
