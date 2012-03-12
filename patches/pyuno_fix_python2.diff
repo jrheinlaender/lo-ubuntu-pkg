@@ -1,0 +1,71 @@
+From 82bf2998cb243f3269e39de8daee56cb6bc04550 Mon Sep 17 00:00:00 2001
+From: David Bolen <db3l.net@gmail.com>
+Date: Wed, 07 Mar 2012 10:13:52 +0000
+Subject: fdo#46926: fix UNO struct comparison in Python 2
+
+This requires setting a rich comparison flag in Python 2, while Python 3
+uses rich comparison by default.
+(regression from a09ce46818fd4d5e08b3af9a478501cd8ef5b4fe)
+(cherry picked from commit 387389b644b91808fdee74846b2d855382f48ed7)
+
+Signed-off-by: Caolán McNamara <caolanm@redhat.com>
+
+From fc290187f08981c734d1f2d3f6649c94e3ac6f99 Mon Sep 17 00:00:00 2001
+From: David Bolen <db3l.net@gmail.com>
+Date: Wed, 07 Mar 2012 10:07:42 +0000
+Subject: fdo#46859: adapt string type checks to work with both Python 2 and 3
+
+(regression from a09ce46818fd4d5e08b3af9a478501cd8ef5b4fe)
+(cherry picked from commit 4634cbc237239da771e0f6a81f78171ecec726ba)
+
+Signed-off-by: Caolán McNamara <caolanm@redhat.com>
+
+From 94541ebd9eb95a47f40bac95f5f6982a562e5a4d Mon Sep 17 00:00:00 2001
+From: Michael Stahl <mstahl@redhat.com>
+Date: Fri, 09 Mar 2012 10:28:28 +0000
+Subject: fdo#46926: fix the fix for Python 3
+
+Thanks to Maxime de Roucy for the hint that the "cmpfunc" type doesn't exist.
+(cherry picked from commit 06484b6946ac6a974c24af6624fb75bbe298c1e8)
+
+Signed-off-by: Caolán McNamara <caolanm@redhat.com>
+
+diff -u b/pyuno/source/module/pyuno.cxx b/pyuno/source/module/pyuno.cxx
+--- b/pyuno/source/module/pyuno.cxx
++++ b/pyuno/source/module/pyuno.cxx
+@@ -641,9 +641,16 @@
+     {
+         raisePyExceptionWithAny( makeAny( e ) );
+     }
+-    return Py_False;
++    return (op == Py_EQ ? Py_False : Py_True);
+ }
+ 
++/* Python 2 has a tp_flags value for rich comparisons.  Python 3 does not (on by default) */
++#ifdef Py_TPFLAGS_HAVE_RICHCOMPARE
++#define TP_FLAGS (Py_TPFLAGS_HAVE_RICHCOMPARE)
++#else
++#define TP_FLAGS 0
++#endif
++
+ static PyTypeObject PyUNOType =
+ {
+     PyVarObject_HEAD_INIT( &PyType_Type, 0 )
+@@ -654,7 +661,7 @@
+     (printfunc) 0,
+     (getattrfunc) PyUNO_getattr,
+     (setattrfunc) PyUNO_setattr,
+-    0,
++    /* this type does not exist in Python 3: (cmpfunc) */ 0,
+     (reprfunc) PyUNO_repr,
+     0,
+     0,
+@@ -665,7 +672,7 @@
+     (getattrofunc)0,
+     (setattrofunc)0,
+     NULL,
+-    0,
++    TP_FLAGS,
+     NULL,
+     (traverseproc)0,
+     (inquiry)0,
