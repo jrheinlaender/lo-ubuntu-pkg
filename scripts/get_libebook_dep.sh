@@ -1,6 +1,6 @@
 #!/bin/sh
 
-libs=`grep libebook.*\.so build/connectivity/source/drivers/evoab2/EApi.cxx | perl -pe 's/\s+\"(.*)\".*/$1/'`
+libs=`grep libebook.*\.so connectivity/source/drivers/evoab2/EApi.cxx | perl -pe 's/\s+\"(.*)\".*/$1/'`
 
 for l in $libs; do
 	if [ -e "/usr/lib/$l" ]; then
