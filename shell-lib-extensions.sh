@@ -1,5 +1,5 @@
 validate_extensions() {
-	/usr/lib/libreoffice/program/unopkg validate -v --shared
+	/usr/lib/libreoffice/program/unopkg validate -v --bundled
 }
 
 sync_extensions() {
@@ -11,7 +11,7 @@ sync_extensions() {
 	d=/usr/lib/libreoffice
   fi
   if [ -e /usr/lib/libreoffice/share/prereg/bundled ] && readlink /usr/lib/libreoffice/share/prereg/bundled 2>&1 >/dev/null; then
-    /usr/lib/libreoffice/program/unopkg sync -v --shared \
+    /usr/lib/libreoffice/program/unopkg sync -v --bundled \
       "-env:BUNDLED_EXTENSIONS_USER=file:///usr/lib/libreoffice/share/prereg/bundled" \
       "-env:UserInstallation=file://$INSTDIR" \
       "-env:UNO_JAVA_JFW_INSTALL_DATA=file://$d/share/config/javasettingsunopkginstall.xml" \
