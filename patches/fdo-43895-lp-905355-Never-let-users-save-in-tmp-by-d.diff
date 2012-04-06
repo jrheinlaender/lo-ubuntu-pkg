@@ -1,17 +1,5 @@
-From c519ff47d25c273fda15626b56e04bd147cf29b4 Mon Sep 17 00:00:00 2001
-From: "Andrzej J. R. Hunt" <andrzej@hunt.org>
-Date: Tue, 27 Mar 2012 10:32:52 +0200
-Subject: [PATCH] fdo#43895 lp#905355: Never let users save in /tmp by default
- (cherry picked from commit
- dd2fe95cce75f1157bd1c75d286a0047b2e4175e)
-
----
- sfx2/source/dialog/filedlghelper.cxx |   23 +++++++++++++++++++++++
- sfx2/source/dialog/filedlgimpl.hxx   |    2 ++
- 2 files changed, 25 insertions(+), 0 deletions(-)
-
 diff --git a/sfx2/source/dialog/filedlghelper.cxx b/sfx2/source/dialog/filedlghelper.cxx
-index 141b389..79c1e4e 100644
+index 141b389..6acb006 100644
 --- a/sfx2/source/dialog/filedlghelper.cxx
 +++ b/sfx2/source/dialog/filedlghelper.cxx
 @@ -100,6 +100,9 @@
@@ -24,15 +12,24 @@ index 141b389..79c1e4e 100644
  
  //-----------------------------------------------------------------------------
  
-@@ -1648,6 +1651,24 @@ void FileDialogHelper_Impl::getRealFilter( String& _rFilter ) const
+@@ -1648,6 +1651,33 @@ void FileDialogHelper_Impl::getRealFilter( String& _rFilter ) const
      }
  }
  
 +void FileDialogHelper_Impl::verifyPath()
 +{
 +#ifdef UNX
++    static char const s_FileScheme[] = "file://";
++    if (0 != rtl_ustr_ascii_shortenedCompareIgnoreAsciiCase_WithLength(
++                maPath.getStr(), maPath.getLength(),
++                s_FileScheme, RTL_CONSTASCII_LENGTH(s_FileScheme)))
++    {
++        return;
++    }
++    const OString sFullPath = OUStringToOString(
++            maPath.copy(RTL_CONSTASCII_LENGTH(s_FileScheme)) + maFileName,
++            osl_getThreadTextEncoding() );
 +    struct stat aFileStat;
-+    const OString sFullPath = OUStringToOString( maPath.copy(RTL_CONSTASCII_LENGTH("file://")) + maFileName, osl_getThreadTextEncoding() );
 +    stat( sFullPath.getStr(), &aFileStat );
 +    // lp#905355, fdo#43895
 +    // Check that the file has read only permission and is in /tmp -- this is
@@ -49,7 +46,7 @@ index 141b389..79c1e4e 100644
  // ------------------------------------------------------------------------
  void FileDialogHelper_Impl::displayFolder( const ::rtl::OUString& _rPath )
  {
-@@ -1661,6 +1682,7 @@ void FileDialogHelper_Impl::displayFolder( const ::rtl::OUString& _rPath )
+@@ -1661,6 +1691,7 @@ void FileDialogHelper_Impl::displayFolder( const ::rtl::OUString& _rPath )
          try
          {
              mxFileDlg->setDisplayDirectory( maPath );
@@ -57,7 +54,7 @@ index 141b389..79c1e4e 100644
          }
          catch( const IllegalArgumentException& )
          {
-@@ -1678,6 +1700,7 @@ void FileDialogHelper_Impl::setFileName( const ::rtl::OUString& _rFile )
+@@ -1678,6 +1709,7 @@ void FileDialogHelper_Impl::setFileName( const ::rtl::OUString& _rFile )
          try
          {
              mxFileDlg->setDefaultName( maFileName );
@@ -78,6 +75,21 @@ index 6770bb7..3433883 100644
          void                    implGetAndCacheFiles( const ::com::sun::star::uno::Reference< XInterface >& xPicker  ,
                                                              SvStringsDtor*&               rpURLList,
                                                        const SfxFilter*                    pFilter  );
--- 
-1.7.9.1
+commit 7c6154970edd2739eac36a52b17ae6569fd12c1c
+Author: Michael Stahl <mstahl@redhat.com>
+Date:   Thu Apr 5 18:09:41 2012 +0200
 
+    fdo#43895 lp#905355: fix the fix so it doesn't crash
+    
+    rtl::OUString rtl::OUString::copy(sal_Int32) const: Assertion
+    `beginIndex >= 0 && beginIndex <= getLength()' failed.
+    (regression from dd2fe95cce75f1157bd1c75d286a0047b2e4175e)
+    
+    Signed-off-by: Bjoern Michaelsen <bjoern.michaelsen@canonical.com>
+
+commit 2405e5c02aab644811ea27c10f876210b15535b4
+Author: Andrzej J. R. Hunt <andrzej@hunt.org>
+Date:   Tue Mar 27 10:32:52 2012 +0200
+
+    fdo#43895 lp#905355: Never let users save in /tmp by default
+    (cherry picked from commit dd2fe95cce75f1157bd1c75d286a0047b2e4175e)
