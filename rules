@@ -176,7 +176,6 @@ ifeq "$(ENABLE_JAVA)" "y"
   # It does *NOT* fail with _plain_ saxon 9.0.0.8 built with OOos build.xml
   # for UOF, but still for e.g. M$.
   #SYSTEM_STUFF += saxon
-  SYSTEM_STUFF += lucene
 endif
 SYSTEM_STUFF += lpsolve
 USE_SHARED_LPSOLVE=y
@@ -286,6 +285,7 @@ SYSTEM_STUFF += libpng
 SYSTEM_STUFF += nss
 SYSTEM_STUFF += mozilla-headers
 SYSTEM_STUFF += sampleicc
+#SYSTEM_STUFF += clucene
 
 # Default flags to pass to configure
 CONFIGURE_FLAGS= \
@@ -924,6 +924,10 @@ ifneq (,$(filter sampleicc, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libsampleicc-dev, libicc-utils-dev
 endif
 
+ifneq (,$(filter clucene, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libclucene-dev
+endif
+
 ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
   ifneq (,$(filter libwpd, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libwpd-dev (>= 0.9.0)
@@ -1041,13 +1045,6 @@ ifneq "$(BUILD_PYUNO)" "y"
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
-  ifneq (,$(filter lucene, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , liblucene2-java (>= 2.3.2)$(OOO_NO_JAVA_ARCHS)
-	LUCENE_DEPENDS = liblucene2-java (>= 2.3.2)
-        # safety measure; e.g. lucene 2.9 index cannot be handled by lucene 2.4
-        LUCENE_CONFLICTS = liblucene2-java (<< $(shell dpkg -l liblucene2-java | grep ^ii | awk '{ print $$3 }' | cut -d. -f1,2)~)
-	CONFIGURE_FLAGS += --with-lucene-core-jar=/usr/share/java/lucene-core.jar --with-lucene-analyzers-jar=/usr/share/java/lucene-analyzers.jar
-  endif
   ifneq (,$(filter hsqldb, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libhsqldb-java $(HSQLDB_MINVER)$(OOO_NO_JAVA_ARCHS)
 	BASE_HSQLDB_DEPENDS = libhsqldb-java $(HSQLDB_MINVER), libhsqldb-java (<< $(HSQLDB_TOONEWVER)~)
@@ -2861,7 +2858,6 @@ endif
 		-V'java-common-depends=$(JAVA_COMMON_DEPENDS) $(JAVA_COMMON_DEPENDS_VERSION)' \
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-V'java-gcj-depends=$(JAVA_GCJ_DEPENDS)' \
-		-V'lucene-depends=$(LUCENE_DEPENDS)' \
 		-V'Binary-Version=$(BINARY_VERSION)' \
 		-V'ooo-binfilter-dep=$(OOO_BINFILTER_DEP)' \
 		-V'ooo-officebean-dep=$(OOO_OFFICEBEAN_DEP)' \
@@ -2975,9 +2971,7 @@ endif
 	dh_compress -i -X.py -X.mk -X.sxd -X.xcd.sample
 	dh_installdeb -i
 ifeq "$(ENABLE_JAVA)" "y"
-	# the help recommends lucene. this is enough. no need for a hard depend in
-        # -common, IMHO
-	jh_depends -i -Xlibreoffice$(VER)-gcj -Xlibreoffice$(VER)-dbg -Xliblucene2-java
+	jh_depends -i -Xlibreoffice$(VER)-gcj -Xlibreoffice$(VER)-dbg
 endif
 	dh_gencontrol -i $(DEBHELPER_OPTIONS) \
 		-Nlibreoffice$(VER)-report-builder \
@@ -2992,8 +2986,6 @@ endif
 		-V'bsh-depends=$(BSH_DEPENDS)' \
 		-V'java-common-depends=$(JAVA_COMMON_DEPENDS)' \
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
-		-V'lucene-depends=$(LUCENE_DEPENDS)' \
-		-V'lucene-conflicts=$(LUCENE_CONFLICTS)' \
 		-V'textcat-data-recommends=$(TEXTCAT_DATA_RECOMMENDS)' \
 		-V'Binary-Version=$(BINARY_VERSION)' \
 		-V'ooo-binfilter-dep=$(OOO_BINFILTER_DEP)' \
@@ -3006,7 +2998,6 @@ endif
 ifeq "$(ENABLE_MEDIAWIKI)" "y"
 	dh_gencontrol -plibreoffice$(VER)-wiki-publisher -- \
 		-V'mediawiki-jar-depends=$(MEDIAWIKI_JAR_DEPENDS)' \
-		-V'lucene-depends=$(LUCENE_DEPENDS)' \
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-v$(shell grep "<version" $(SOURCE_TREE)/swext/mediawiki/src/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
 endif
