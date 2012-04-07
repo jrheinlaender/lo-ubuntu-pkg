@@ -157,7 +157,11 @@ CAIRO_FONTS_PATCH=y
 BUILD_KDE=y
 # not ported to KDE 4
 ENABLE_KDEAB=n
+ifeq "$(SYSTEM_GCC_VERSION)" "4.7"
+QT_MINVER= (>= 4.8)
+else
 QT_MINVER= (>= 4.5)
+endif
 KDELIBS_MINVER= (>= 4:4.3.4)
 BUILD_DBG_PACKAGE=y
 ifeq "$(BUILD_DBG_PACKAGE)" "y"
@@ -473,28 +477,6 @@ endif
 CONFIGURE_FLAGS += $(foreach i, $(SYSTEM_STUFF),--with-system-$(i))
 
 CC_PREFIX:=$(shell gcc -dumpmachine)-
-
-ifeq "$(GCC_VERSION)" ""
-  ifneq "$(OOO_GCJ_JDK_ARCHS)" ""
-    ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_GCJ_ARCHS)))
-	GCJ_JDK_PACKAGE=$(shell dpkg -s gcj-jdk | grep Depends | sed -e 's/.*\(gcj-[0-9]\.[0-9]-jdk\).*/\1/')
-	GCJ_JDK_VERSION=$(shell echo $(GCJ_JDK_PACKAGE) | cut -d- -f2)
-      ifneq "$(SYSTEM_GCC_VERSION)" "$(GCJ_JDK_VERSION)"
-        BUILD_DEPS += , gcc-$(GCJ_JDK_VERSION) [$(OOO_GCJ_JDK_ARCHS)], g++-$(GCJ_JDK_VERSION) [$(OOO_GCJ_JDK_ARCHS)]
-        ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_GCJ_JDK_ARCHS)))
-	# sanity check. amd64 is in kfreebsd-amd64; same for i386 and mips
-          ifneq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_OPENJDK_ARCHS)))
-          GCC_VERSION := $(GCJ_JDK_VERSION)
-          else
-          GCC_VERSION := $(SYSTEM_GCC_VERSION)
-          endif
-        else
-	  GCC_VERSION := $(SYSTEM_GCC_VERSION)
-        endif
-      endif
-    endif
-  endif
-endif
 
 	BUILDDEB_OPTIONS = -- -Zbzip2
 
@@ -1182,9 +1164,6 @@ else
 	BUILD_DEPS += , gcc-snapshot
   else
 	BUILD_PATH = /usr/lib/jvm/java-gcj/bin:$(CURDIR)/debian/usr/bin:$$PATH
-    ifeq "$(GCJ_JDK_VERSION)" ""
-	BUILD_DEPS += , gcc-$(GCC_VERSION), g++-$(GCC_VERSION)
-    endif
   endif
 endif
 BUILD_PATH := $(CURDIR)/debian/usr/bin:$(BUILD_PATH)
@@ -1277,11 +1256,6 @@ endif
 # Based on script by Martin Quinson <Martin.Quinson@tuxfamily.org>
 control: debian/control
 debian/control: $(wildcard debian/control*in) $(SOURCE_TREE)/bin/lo-xlate-lang  debian/rules
-ifeq "$(GCJ_JDK_VERSION)" ""
-		echo "GCJ_JDK_VERSION not defined."; \
-		echo "You need gcj-jdk installed for generating correct build-deps on $(OOO_GCJ_JDK_ARCHS)"; \
-		exit 1
-endif
 	chmod 755 $(SOURCE_TREE)/bin/lo-xlate-lang
 	sed -e "s#libreofficeVER#libreoffice$(VER)#g" \
 	    -e "s#libreofficeVER#libreoffice$(VER)#g" \
