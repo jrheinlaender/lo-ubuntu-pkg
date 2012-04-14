@@ -158,9 +158,10 @@ BUILD_KDE=y
 # not ported to KDE 4
 ENABLE_KDEAB=n
 ifeq "$(SYSTEM_GCC_VERSION)" "4.7"
-QT_MINVER= (>= 4.8)
+# < 4.8 fails with gcc 4.7, see #667911
+QT_MINVER= (>= 4:4.8)
 else
-QT_MINVER= (>= 4.5)
+QT_MINVER= (>= 4:4.5)
 endif
 KDELIBS_MINVER= (>= 4:4.3.4)
 BUILD_DBG_PACKAGE=y
@@ -206,9 +207,6 @@ ifeq "$(ENABLE_JAVA)" "y"
     else
       ENABLE_JUNIT4=n
     endif
-    ifeq "$(JAVA_MAINVER)" "7"
-      ENABLE_JUNIT4=n
-    endif
   endif
 else
   RUN_MAKE_CHECK=n
@@ -222,7 +220,7 @@ CURL_SECTYPE=gnutls
 USE_SYSTEM_DMAKE=y
 USE_LIBSUITESPARSE=y
 SUITESPARSE_MIN_VERSION= (>= 1:3.4.0)
-PARALLEL_BUILD=n
+PARALLEL_BUILD=y
 ENABLE_LDAP=y
 USE_OPENLDAP=y
 ENABLE_OPENGL=y
@@ -480,6 +478,12 @@ endif
 CONFIGURE_FLAGS += $(foreach i, $(SYSTEM_STUFF),--with-system-$(i))
 
 CC_PREFIX:=$(shell gcc -dumpmachine)-
+
+ifneq "$(GCC_VERSION)" ""
+  ifneq "$(SYSTEM_GCC_VERSION)" "$(GCC_VERSION)"
+        BUILD_DEPS += , gcc-$(GCC_VERSION), g++-$(GCC_VERSION)
+  endif
+endif
 
 	BUILDDEB_OPTIONS = -- -Zbzip2
 
@@ -1150,7 +1154,7 @@ NUM_CPUS=$(shell echo "$(DEB_BUILD_OPTIONS) " | sed -n 's/^\(.* \)\?parallel=\([
 AVAIL_CPUS := $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
 ifeq "$(PARALLEL_BUILD)" "y"
 	# http://bugs.debian.org/622644
-	BUILD_DEPS += , make (>= 3.82)
+	BUILD_DEPS += , make (>= 3.81-8.2)
   ifneq "$(NUM_CPUS)" "$(AVAIL_CPUS)"
 	CONFIGURE_FLAGS += --with-num-cpus=$(NUM_CPUS)
   endif
@@ -2941,7 +2945,6 @@ ifeq "$(PACKAGE_SDK)" "y"
 	perl -pi -e 's,html/,html /,g' debian/libreoffice-dev-doc.doc-base.udk-common-ref
 endif
 	dh_installdocs -i -A debian/README.Debian
-	# note libreoffice.1 is already installed into -common by libreoffice-builds package-ooo
 	dh_installman -i
 	for i in `find $(PKGDIR)-common -type l -name "lo*.1"`; do \
 		mv $$i $$i.gz; \
