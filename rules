@@ -294,6 +294,10 @@ SYSTEM_STUFF += mozilla-headers
 SYSTEM_STUFF += sampleicc
 #SYSTEM_STUFF += clucene
 SYSTEM_STUFF += lcms2
+PACKAGE_UNOWINREG_DLL=y
+ifeq "$(DEB_VENDOR)" "Debian"
+BUILD_UNOWINREG_DLL=y
+endif
 
 # Default flags to pass to configure
 CONFIGURE_FLAGS= \
@@ -371,6 +375,11 @@ $(eval $(call gen_no_archs,OOO_GCJ_ARCHS))
 OOO_GCJ_JDK_ARCHS := hppa kfreebsd-i386 kfreebsd-amd64
 OOO_OPENJDK_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs,OOO_OPENJDK_ARCHS))
+
+OOO_UNOWINREG_DLL_ARCHS := i386 amd64
+ifneq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_UNOWINREG_DLL_ARCHS)))
+	PACKAGE_UNOWINREG_DLL=n
+endif
 
 OOO_ARCH_DEP_EXTENSIONS_ARCHS := $(filter-out s390 s390x,$(OOO_ARCHS))
 OOO_EXTENSIONS_ARCHS := $(OOO_ARCH_DEP_EXTENSIONS_ARCHS)
@@ -800,14 +809,16 @@ export JAVA_HOME
 	BUILD_DEPS += , libsaxonb-java$(OOO_NO_JAVA_ARCHS)
   endif
   ifeq "$(PACKAGE_SDK)" "y"
-    ifeq "$(DEB_VENDOR)" "Debian"
+    ifeq "$(PACKAGE_UNOWINREG_DLL)" "y"
+      ifeq "$(BUILD_UNOWINREG_DLL)" "y"
 	CONFIGURE_FLAGS += --enable-build-unowinreg
-      ifeq "$(SQUEEZE_BACKPORT)" "y"
-	BUILD_DEPS += , gcc-mingw32$(OOO_NO_JAVA_ARCHS), mingw32-runtime$(OOO_NO_JAVA_ARCHS)
+        ifeq "$(SQUEEZE_BACKPORT)" "y"
+	BUILD_DEPS += , gcc-mingw32 [$(OOO_UNOWINREG_DLL_ARCHS)], mingw32-runtime[$(OOO_UNOWINREG_DLL_ARCHS)]
 	CONFIGURE_FLAGS += --with-mingw-cross-compiler=i586-mingw32msvc-g++
-      else
-	BUILD_DEPS += , g++-mingw-w64-i686 $(OOO_NO_JAVA_ARCHS)
+        else
+	BUILD_DEPS += , g++-mingw-w64-i686 [$(OOO_UNOWINREG_DLL_ARCHS)]
 	CONFIGURE_FLAGS += --with-mingw-cross-compiler=i686-w64-mingw32-g++
+        endif
       endif
     endif
   endif
@@ -1573,6 +1584,14 @@ endif
 	# Make sure we have /proc mounted - otherwise idlc will fail later.
 	test -r /proc/version
 
+ifneq "$(PACKAGE_UNOWINREG_DLL)" "y"
+  ifneq "$(BUILD_UNOWINREG_DLL)" "y"
+	# create fake file if file not there; we don't use it anyways.
+	if [ ! -f $(TARFILE_LOCATION)/185d60944ea767075d27247c3162b3bc-unowinreg.dll ]; then \
+		touch $(TARFILE_LOCATION)/185d60944ea767075d27247c3162b3bc-unowinreg.dll; \
+	fi
+  endif
+endif
 	# FIXME: Theoretically this should call ./configure instead of
 	# it exists but that causes the configure flags NOT to be hnoured
 	# somehow...
@@ -2201,15 +2220,19 @@ ifeq "$(PACKAGE_SDK)" "y"
   ifeq "$(ENABLE_JAVA)" "y"
 	# compat/safety symlink for SDK Java stuff moved to /usr/share
 	rm -f $(PKGDIR)-dev/$(OOSDKDIR)/classes
-	mkdir -p $(PKGDIR)-dev/$(OOSDKDIR)/classes/win
 	mkdir -p $(PKGDIR)-dev/$(OOSDKDIR)/classes/com/sun/star/lib/loader
-	chmod 644 $(PKGDIR)-dev/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/win/unowinreg.dll
 	cd $(PKGDIR)-dev/$(OOSDKDIR)/classes/com/sun/star/lib/loader && \
 		for i in $(CURDIR)/$(PKGDIR)-dev/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/com/sun/star/lib/loader/*.class; do \
 			ln -s `echo $$i | sed -e 's,$(CURDIR)/$(PKGDIR)-dev,,'` `basename $$i`; \
 		done
+    ifeq "$(PACKAGE_UNOWINREG_DLL)" "y"
+	mkdir -p $(PKGDIR)-dev/$(OOSDKDIR)/classes/win
+	chmod 644 $(PKGDIR)-dev/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/win/unowinreg.dll
 	ln -s /$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/win/unowinreg.dll \
 		$(PKGDIR)-dev/$(OOSDKDIR)/classes/win/unowinreg.dll
+    else
+	rm -rf $(PKGDIR)-dev/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/win 
+    endif
   endif
 	chmod 644 $(PKGDIR)-dev/$(OOSDKDIR)/configure.pl
 	for i in csh csh.in; do \
