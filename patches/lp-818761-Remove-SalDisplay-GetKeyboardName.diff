@@ -1,0 +1,206 @@
+From 60901a7baff347ae4a04a62199a6129d29a28a56 Mon Sep 17 00:00:00 2001
+From: Thomas Arnhold <thomas@arnhold.org>
+Date: Fri, 27 Jan 2012 16:51:04 +0100
+Subject: [PATCH] lp#818761: Remove SalDisplay::GetKeyboardName
+
+This method seems to be useless. The return value (keyboard name) isn't
+used at any point. And I don't see any point in this method where some
+implicit call is done to refresh mappings...
+(cherry picked from commit 04b9c2f633f0be1b676933943bdd0b1dc58b5471)
+
+additional notes for the cherry-pick to libreoffice-3-5:
+
+also removing the one remaining call of it in
+
+ SalDisplay::GetKeyNameFromKeySym( KeySym nKeySym ) const
+
+which is the only user. All of this is removed dead code on LibreOffice
+3.6/master, see also commit 2233aa52da14ec85331aee1163b885fe9a9fb507.
+Doing the same on 3.5 to prevent the lp#818761 crasher seems sane.
+
+Signed-off-by: Bjoern Michaelsen <bjoern.michaelsen@canonical.com>
+---
+ vcl/inc/unx/saldisp.hxx             |    2 -
+ vcl/unx/generic/app/keysymnames.cxx |   90 -----------------------------------
+ vcl/unx/generic/app/saldisp.cxx     |   18 ++++---
+ vcl/unx/gtk/app/gtkdata.cxx         |    7 +--
+ 4 files changed, 12 insertions(+), 105 deletions(-)
+
+diff --git a/vcl/inc/unx/saldisp.hxx b/vcl/inc/unx/saldisp.hxx
+index 4de2b33..83bf9ea 100644
+--- a/vcl/inc/unx/saldisp.hxx
++++ b/vcl/inc/unx/saldisp.hxx
+@@ -321,7 +321,6 @@ protected:
+     KeySym          nShiftKeySym_;      // first shift modifier
+     KeySym          nCtrlKeySym_;       // first control modifier
+     KeySym          nMod1KeySym_;       // first mod1 modifier
+-    rtl::OString m_aKeyboardName;
+ 
+     vcl_sal::WMAdaptor* m_pWMAdaptor;
+ 
+@@ -422,7 +421,6 @@ public:
+     { mpInputMethod = pInputMethod; }
+     void            SetKbdExtension(SalI18N_KeyboardExtension *pKbdExtension)
+     { mpKbdExtension = pKbdExtension; }
+-    const char*     GetKeyboardName( bool bRefresh = false );
+     ::vcl_sal::WMAdaptor* getWMAdaptor() const { return m_pWMAdaptor; }
+     bool            IsXinerama() const { return m_bXinerama; }
+     const std::vector< Rectangle >& GetXineramaScreens() const { return m_aXineramaScreens; }
+diff --git a/vcl/unx/generic/app/keysymnames.cxx b/vcl/unx/generic/app/keysymnames.cxx
+index 4569091..fa1eafd 100644
+--- a/vcl/unx/generic/app/keysymnames.cxx
++++ b/vcl/unx/generic/app/keysymnames.cxx
+@@ -579,94 +579,4 @@ static const keyboard_layout type6_layout[] =
+ #include <stdio.h>
+ #endif
+ 
+-const char* SalDisplay::GetKeyboardName( bool bRefresh )
+-{
+-    if (bRefresh || m_aKeyboardName.isEmpty())
+-    {
+-#if defined(SOLARIS)
+-        if( IsLocal() )
+-        {
+-            int kbd = open( "/dev/kbd", O_RDONLY );
+-            if( kbd >= 0 )
+-            {
+-                int kbd_type = 0;
+-                if( ! ioctl( kbd, KIOCTYPE, &kbd_type ) )
+-                {
+-                    int kbd_layout = 0;
+-                    if( ! ioctl( kbd, KIOCLAYOUT, &kbd_layout ) )
+-                    {
+-                        const keyboard_layout *p_layout = NULL;
+-                        switch( kbd_type )
+-                        {
+-                            case KB_KLUNK: p_layout = type0_layout;   break;
+-                            case KB_SUN3:  p_layout = type3_layout;   break;
+-                            case KB_SUN4:  p_layout = type4_layout;   break;
+-                            case KB_USB:   p_layout = type6_layout;   break;
+-                            case KB_PC:    p_layout = type101_layout; break;
+-                        }
+-
+-                        if( p_layout )
+-                        {
+-                            while( p_layout->n_layout != -1 )
+-                            {
+-                                if ( p_layout->n_layout == kbd_layout )
+-                                {
+-                                    m_aKeyboardName = p_layout->p_description;
+-                                    break;
+-                                }
+-                                p_layout++;
+-                            }
+-                        }
+-                    }
+-                }
+-                close(kbd);
+-            }
+-        }
+-#elif !defined(AIX)
+-        int opcode, event, error;
+-        int major = XkbMajorVersion, minor = XkbMinorVersion;
+-        if( XkbQueryExtension( GetDisplay(), &opcode, &event,&error, &major, &minor ) )
+-        {
+-            XkbDescPtr pXkbDesc = NULL;
+-            // try X keyboard extension
+-            if( (pXkbDesc = XkbGetKeyboard( GetDisplay(), XkbAllComponentsMask, XkbUseCoreKbd )) )
+-            {
+-                const char* pAtom = NULL;
+-                if( pXkbDesc->names->groups[0] )
+-                {
+-                    pAtom = XGetAtomName( GetDisplay(), pXkbDesc->names->groups[0] );
+-                    m_aKeyboardName = pAtom;
+-                    XFree( (void*)pAtom );
+-                }
+-                else
+-                    m_aKeyboardName = "<unknown keyboard>";
+-#if OSL_DEBUG_LEVEL > 1
+-#define PRINT_ATOM( x ) { if( pXkbDesc->names->x ) { pAtom = XGetAtomName( GetDisplay(), pXkbDesc->names->x ); fprintf( stderr, "%s: %s\n", #x, pAtom ); XFree( (void*)pAtom ); } else fprintf( stderr, "%s: <nil>\n", #x ); }
+-
+-                PRINT_ATOM( keycodes );
+-                PRINT_ATOM( geometry );
+-                PRINT_ATOM( symbols );
+-                PRINT_ATOM( types );
+-                PRINT_ATOM( compat );
+-                PRINT_ATOM( phys_symbols );
+-
+-#define PRINT_ATOM_2( x ) { if( pXkbDesc->names->x[i] ) { pAtom = XGetAtomName( GetDisplay(), pXkbDesc->names->x[i] ); fprintf( stderr, "%s[%d]: %s\n", #x, i, pAtom ); XFree( (void*)pAtom ); } else fprintf( stderr, "%s[%d]: <nil>\n", #x, i ); }
+-                int i;
+-                for( i = 0; i < XkbNumVirtualMods; i++ )
+-                    PRINT_ATOM_2( vmods );
+-                for( i = 0; i < XkbNumIndicators; i++ )
+-                    PRINT_ATOM_2( indicators );
+-                for( i = 0; i < XkbNumKbdGroups; i++ )
+-                    PRINT_ATOM_2( groups );
+-#endif
+-                XkbFreeKeyboard( pXkbDesc, XkbAllComponentsMask, True );
+-            }
+-        }
+-#endif
+-        if (m_aKeyboardName.isEmpty())
+-            m_aKeyboardName = "<unknown keyboard>";
+-    }
+-    return m_aKeyboardName.getStr();
+-}
+-
+ /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/generic/app/saldisp.cxx b/vcl/unx/generic/app/saldisp.cxx
+index 1f3f0d0..47c0b2b 100644
+--- a/vcl/unx/generic/app/saldisp.cxx
++++ b/vcl/unx/generic/app/saldisp.cxx
+@@ -947,7 +947,15 @@ rtl::OUString SalDisplay::GetKeyNameFromKeySym( KeySym nKeySym ) const
+             aRet = rtl::OUString( RTL_CONSTASCII_USTRINGPARAM( "???" ) );
+         else
+         {
+-            aRet = ::vcl_sal::getKeysymReplacementName( const_cast<SalDisplay*>(this)->GetKeyboardName(), nKeySym );
++            // lp#818761: removing the problematic call to GetKeyboardName() as
++            // getKeysymReplacementName only provides the name of the key named
++            // as given by the l10n of the _keyboard_ (not the locale) e.g. a
++            // german keyboard would name "Ctrl" instead as "Strg". Assuming
++            // this change to be safe as getKeysymReplacementName falls back to
++            // English names anyway.
++            // this code is completely removed on master/3.6 anyway, see
++            // commit 2233aa52da14ec85331aee1163b885fe9a9fb507
++            //aRet = ::vcl_sal::getKeysymReplacementName( const_cast<SalDisplay*>(this)->GetKeyboardName(), nKeySym );
+             if( aRet.isEmpty() )
+             {
+                 const char *pString = XKeysymToString( nKeySym );
+@@ -2166,14 +2174,10 @@ long SalX11Display::Dispatch( XEvent *pEvent )
+             }
+             break;
+         case MappingNotify:
+-            if( MappingKeyboard == pEvent->xmapping.request ||
+-                MappingModifier == pEvent->xmapping.request )
++            if( MappingModifier == pEvent->xmapping.request )
+             {
+                 XRefreshKeyboardMapping( &pEvent->xmapping );
+-                if( MappingModifier == pEvent->xmapping.request )
+-                    ModifierMapping();
+-                if( MappingKeyboard == pEvent->xmapping.request ) // refresh mapping
+-                    GetKeyboardName( true );
++                ModifierMapping();
+             }
+             break;
+         case ButtonPress:
+diff --git a/vcl/unx/gtk/app/gtkdata.cxx b/vcl/unx/gtk/app/gtkdata.cxx
+index 5a74e1c..1a01ad3 100644
+--- a/vcl/unx/gtk/app/gtkdata.cxx
++++ b/vcl/unx/gtk/app/gtkdata.cxx
+@@ -129,12 +129,7 @@ extern "C" {
+ void signalKeysChanged( GdkKeymap*, gpointer data )
+ {
+     GtkSalDisplay* pDisp = (GtkSalDisplay*)data;
+-#if !GTK_CHECK_VERSION(3,0,0)
+-    pDisp->GetKeyboardName(true);
+-#else
+-    (void)pDisp;
+-#warning FIXME: impl. / check signalKeysChanged ...
+-#endif
++#warning signalKeysChanged called
+ }
+ 
+ void signalScreenSizeChanged( GdkScreen* pScreen, gpointer data )
+-- 
+1.7.9.5
+
