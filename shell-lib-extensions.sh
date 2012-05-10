@@ -1,6 +1,6 @@
 validate_extensions() {
-  if /usr/lib/libreoffice/program/unopkg list --bundled >/dev/null 2>/dev/null; then
-	/usr/lib/libreoffice/program/unopkg validate -v --bundled
+  if HOME=$INSTDIR /usr/lib/libreoffice/program/unopkg list --bundled >/dev/null 2>/dev/null; then
+	HOME=$INSTDIR /usr/lib/libreoffice/program/unopkg validate -v --bundled
   fi
 }
 
