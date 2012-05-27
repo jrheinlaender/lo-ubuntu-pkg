@@ -1,6 +1,7 @@
 validate_extensions() {
-  if /usr/lib/libreoffice/program/unopkg list --bundled >/dev/null 2>/dev/null; then
-	/usr/lib/libreoffice/program/unopkg validate -v --bundled
+  INSTDIR=`mktemp -d`
+  if HOME=$INSTDIR /usr/lib/libreoffice/program/unopkg list --bundled >/dev/null 2>/dev/null; then
+	HOME=$INSTDIR /usr/lib/libreoffice/program/unopkg validate -v --bundled
   fi
 }
 
@@ -12,7 +13,7 @@ sync_extensions() {
   else
 	d=/usr/lib/libreoffice
   fi
-  if /usr/lib/libreoffice/program/unopkg list --bundled >/dev/null 2>/dev/null; then
+  if HOME=$INSTDIR /usr/lib/libreoffice/program/unopkg list --bundled >/dev/null 2>/dev/null; then
     if [ -e /usr/lib/libreoffice/share/prereg/bundled ] && readlink /usr/lib/libreoffice/share/prereg/bundled 2>&1 >/dev/null && [ -L $d/ure-link ]; then
       HOME=$INSTDIR \
 	/usr/lib/libreoffice/program/unopkg sync -v --bundled \
@@ -20,8 +21,8 @@ sync_extensions() {
         "-env:UserInstallation=file://$INSTDIR" \
         "-env:UNO_JAVA_JFW_INSTALL_DATA=file://$d/share/config/javasettingsunopkginstall.xml" \
         "-env:JFW_PLUGIN_DO_NOT_CHECK_ACCESSIBILITY=1"
-      rm -rf $INSTDIR
     fi
   fi
+  rm -rf $INSTDIR
 }
 
