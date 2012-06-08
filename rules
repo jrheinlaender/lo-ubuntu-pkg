@@ -79,8 +79,8 @@ ifeq "$(USE_SOURCE_TARBALLS)" "y"
 lo_sources_ver=$(shell cat $(CURDIR)/sources.ver | cut -d= -f2)
 endif
 
-ifeq "$(DISTREL)" "squeeze"
- SQUEEZE_BACKPORT=y
+ifeq "$(DISTREL)" "wheezy"
+ WHEEZY_BACKPORT=y
 endif
 
 #########
@@ -313,7 +313,6 @@ CONFIGURE_FLAGS= \
                 --with-install-dirname=$(OODIRNAME) \
                 --prefix=/usr --mandir=/usr/share/man \
                 --docdir=/usr/share/doc/libreoffice \
-                --disable-strip-solver \
                 --enable-lockdown \
 		--libdir=/usr/lib \
 		--host=$(DEB_HOST_GNU_TYPE) --build=$(DEB_BUILD_GNU_TYPE) \
@@ -485,12 +484,9 @@ ifeq "$(DEB_VENDOR)" "Debian"
 endif
 
 # Debian Squeeze
-ifeq "$(SQUEEZE_BACKPORT)" "y"
+ifeq "$(WHEEZY_BACKPORT)" "y"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out libwpd libwpg libwps mythes mdds libexttextcat graphite jfreereport libvisio poppler libcmis libcdr, $(SYSTEM_STUFF))
-  JUNIT_MIN_VER=
-  PARALLEL_BUILD=n
-  ENABLE_PDFIMPORT=n
+  SYSTEM_STUFF := $(filter-out libcmis libcdr clucene, $(SYSTEM_STUFF))
 endif
 
 CONFIGURE_FLAGS += $(foreach i, $(SYSTEM_STUFF),--with-system-$(i))
@@ -595,11 +591,7 @@ endif
 
 ifneq (,$(filter openssl, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libssl-dev
-  ifeq "$(SQUEEZE_BACKPORT)" "y"
-	DBG_DBG_SUGGESTS += , libssl$(shell readlink /usr/lib/libssl.so | cut -d"." -f3,4,5)-dbg
-  else
 	DBG_DBG_SUGGESTS += , libssl$(shell readlink /usr/lib/`dpkg-architecture -qDEB_HOST_MULTIARCH`/libssl.so | cut -d"." -f3,4,5)-dbg
-  endif
 endif
 
 ifneq "$(ENABLE_RSVG)" "y"
@@ -750,21 +742,16 @@ ifeq "$(ENABLE_JAVA)" "y"
 	BUILD_DEPS += , gcj-jdk$(OOO_NO_JAVA_ARCHS)
   endif
   ifeq "$(JDK)" "openjdk"
-    ifeq "$(SQUEEZE_BACKPORT)" "y"
-	BUILD_DEPS += , openjdk-$(JAVA_MAINVER)-jdk [$(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))]
-	JAVA_HOME=/usr/lib/jvm/java-$(JAVA_MAINVER)-openjdk
-    else
-      ifeq "$(JAVA_MAINVER)" "6"
+    ifeq "$(JAVA_MAINVER)" "6"
 	BUILD_DEPS += , openjdk-$(JAVA_MAINVER)-jdk (>= 6b23~pre8-2) [$(filter-out ia64,$(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))])
 	BUILD_DEPS += , openjdk-7-jdk [ia64]
-        ifeq "$(DEB_HOST_ARCH)" "ia64"
+      ifeq "$(DEB_HOST_ARCH)" "ia64"
 	JAVA_MAINVER=7
-        endif
-      else
-	BUILD_DEPS += , openjdk-$(JAVA_MAINVER)-jdk [$(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))]
       endif
-	JAVA_HOME=/usr/lib/jvm/java-$(JAVA_MAINVER)-openjdk-$(DEB_HOST_ARCH)
+    else
+	BUILD_DEPS += , openjdk-$(JAVA_MAINVER)-jdk [$(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))]
     endif
+	JAVA_HOME=/usr/lib/jvm/java-$(JAVA_MAINVER)-openjdk-$(DEB_HOST_ARCH)
 	CONFIGURE_FLAGS += --with-java-target-version=1.5
   endif
         TEST_JAVA_HOME=$(JAVA_HOME)
@@ -778,11 +765,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 	BUILD_DEPS += , ant (>= 1.6.5)$(OOO_NO_JAVA_ARCHS)
   endif
 	GCJ_VERSION = $(shell basename `readlink $(JAVA_HOME)/bin/gcj` | sed -e s/gcj-//)
-ifeq "$(SQUEEZE_BACKPORT)" "y"
-	GCJ_JAWT_DEPENDS= $(shell dpkg -S /usr/lib/`readlink /usr/lib/libgcj_bc.so.1` | cut -d: -f1 | sed -e s/$$/-awt/)
-else
 	GCJ_JAWT_DEPENDS= $(shell dpkg -S /usr/lib/`dpkg-architecture -qDEB_HOST_MULTIARCH`/gcj-$(GCJ_JDK_VERSION)-*/libgcj_bc.so.1 | cut -d: -f1 | sed -e s/$$/-awt/)
-endif
 	DBG_DBG_SUGGESTS+= , $(shell echo $(GCJ_AWT_DEPENDS) | sed -e s/awt/dbg/)
 	JAVA_RUNTIME_DEPENDS = default-jre | gcj-jre | java-gcj-compat
 #  ifneq (,$(GCJ_JAWT_DEPENDS))
@@ -814,13 +797,8 @@ export JAVA_HOME
     ifeq "$(PACKAGE_UNOWINREG_DLL)" "y"
       ifeq "$(BUILD_UNOWINREG_DLL)" "y"
 	CONFIGURE_FLAGS += --enable-build-unowinreg
-        ifeq "$(SQUEEZE_BACKPORT)" "y"
-	BUILD_DEPS += , gcc-mingw32 [$(OOO_UNOWINREG_DLL_ARCHS)], mingw32-runtime[$(OOO_UNOWINREG_DLL_ARCHS)]
-	CONFIGURE_FLAGS += --with-mingw-cross-compiler=i586-mingw32msvc-g++
-        else
 	BUILD_DEPS += , g++-mingw-w64-i686 [$(OOO_UNOWINREG_DLL_ARCHS)]
 	CONFIGURE_FLAGS += --with-mingw-cross-compiler=i686-w64-mingw32-g++
-        endif
       endif
     endif
   endif
@@ -832,13 +810,8 @@ export JAVA_HOME
 	BUILD_DEPS += $(MEDIAWIKI_BUILD_DEPS)
 	CONFIGURE_FLAGS += --with-commons-codec-jar=/usr/share/java/commons-codec.jar --with-commons-lang-jar=/usr/share/java/commons-lang.jar --with-commons-httpclient-jar=/usr/share/java/commons-httpclient.jar --with-commons-logging-jar=/usr/share/java/commons-logging.jar
 	CONFIGURE_FLAGS += --with-system-servlet-api
-      ifeq "$(SQUEEZE_BACKPORT)" "y"
-	BUILD_DEPS += (<< 1.1.1-9), $(shell dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }')
-	CONFIGURE_FLAGS += --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }'` | grep servlet-api.*\.jar$ | head -n 1)
-      else
 	BUILD_DEPS += (>= 1.1.1-9), $(shell dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f5 | sed -e s/^\ // | awk '{ print $$1 }')
 	CONFIGURE_FLAGS += --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f5 | sed -e s/^\ // | awk '{ print $$1 }'` | grep servlet-api.*\.jar$ | head -n 1)
-      endif
     endif
   endif
   ifeq "$(ENABLE_REPORTDESIGN)" "y"
@@ -853,13 +826,8 @@ export JAVA_HOME
 	REPORT_BUILDER_BUILD_DEPS += , libcommons-logging-java$(OOO_NO_JAVA_ARCHS)
 	REPORT_BUILDER_JAR_DEPENDS += , libcommons-logging-java
 	CONFIGURE_FLAGS += --with-commons-logging-jar=/usr/share/java/commons-logging.jar
-      ifeq "$(SQUEEZE_BACKPORT)" "y"
-	BUILD_DEPS += (<< 1.1.1-9), $(shell dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }')
-	CONFIGURE_FLAGS += --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f1 | sed -e s/^\ // | awk '{ print $$2 }'` | grep servlet-api.*\.jar$ | head -n 1)
-      else
 	BUILD_DEPS += (>= 1.1.1-9), $(shell dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f5 | sed -e s/^\ // | awk '{ print $$1 }')
 	CONFIGURE_FLAGS += --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f5 | sed -e s/^\ // | awk '{ print $$1 }'` | grep servlet-api.*\.jar$ | head -n 1)
-      endif
     endif
   else
 	CONFIGURE_FLAGS += --disable-ext-report-builder
@@ -1339,9 +1307,7 @@ endif
 			FONT_SUGGESTS=", ttf-dzongkha"; \
 			;; \
 		th) \
-			if [ "$(SQUEEZE_BACKPORT)" != "y" ]; then \
-			FONT_SUGGESTS=", fonts-thai-tlwg"; else \
-			FONT_SUGGESTS=", ttf-thai-tlwg"; fi; \
+			FONT_SUGGESTS=", fonts-thai-tlwg"; \
 			;; \
 		*) \
 			FONT_SUGGESTS= ;; \
@@ -1500,8 +1466,8 @@ ifeq "$(ENABLE_GIO)" "y"
 	perl -pi -e 's/GNOME GIO/GIO/' debian/control
 endif
 
-ifneq "$(SQUEEZE_BACKPORT)" "y"	
-	perl -pi -e "s/(Build-Conflicts: .*)/\1, base-files (= 6.0), base-files (= 6.0squeeze1)/" debian/control
+ifneq "$(WHEEZY_BACKPORT)" "y"	
+	perl -pi -e "s/(Build-Conflicts: .*)/\1, base-files (= 7.0)/" debian/control
 endif
 
 ifneq (,$(filter hsqldb, $(SYSTEM_STUFF)))
