@@ -297,6 +297,7 @@ PACKAGE_UNOWINREG_DLL=y
 ifeq "$(DEB_VENDOR)" "Debian"
 BUILD_UNOWINREG_DLL=y
 endif
+FAKEROOT_LIBDIR=/usr/lib/`dpkg-architecture -qDEB_HOST_MULTIARCH`/libfakeroot
 
 # Default flags to pass to configure
 CONFIGURE_FLAGS= \
@@ -2799,7 +2800,7 @@ endif
 	# /usr/lib/libgcj-bc.so when specifying -l$(GCJ_JAWT_DIR)
 	# and therefore we must not use it for -gcj. But we *do* need it
 	# for -officebean (libjawt.so is referenced there)
-	LD_LIBRARY_PATH="debian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program:$(PKGDIR)-base-core/$(OODIR)/program:$(PKGDIR)-base/$(OODIR)/program:$(PKGDIR)-writer/$(OODIR)/program" \
+	LD_LIBRARY_PATH="$(FAKEROOT_LIBDIR):debian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program:$(PKGDIR)-base-core/$(OODIR)/program:$(PKGDIR)-base/$(OODIR)/program:$(PKGDIR)-writer/$(OODIR)/program" \
 		dh_shlibdeps -s -Nlibreoffice$(VER)-officebean \
 			-Lure -Luno-libs3 \
 			-ldebian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program:$(PKGDIR)-base/$(OODIR)/program:$(shell dirname $(shell dpkg -L `echo $(GCJ_JAWT_DEPENDS) | sed -e s/-awt//` | grep _bc)) \
@@ -2823,7 +2824,7 @@ endif
 	# .. and prevent ure to depend on itself..
 	perl -pi -e 's/, ure \(.*\)$$//' debian/ure.substvars
 ifeq "$(ENABLE_JAVA)" "y"
-	LD_LIBRARY_PATH="debian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program" \
+	LD_LIBRARY_PATH="$(FAKEROOT_LIBDIR):debian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program" \
 		dh_shlibdeps -plibreoffice$(VER)-officebean \
 			-Lure -Luno-libs3 \
 			-ldebian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program:$(GCJ_JAWT_DIR) \
@@ -2833,7 +2834,10 @@ ifeq "$(LINK_TO_STLPORT)" "y"
 	perl -pi -e 's/(shlibs.*$$)/$$1, $(shell cat /var/lib/dpkg/info/libstlport4.6*.shlibs | awk '{ print $$3,$$4,$$5 }')/' debian/ure.substvars
 endif
 ifeq "$(ENABLE_JAVA)" "y"
-	jh_depends -s -Xlibreoffice$(VER)-gcj -Xlibreoffice$(VER)-dbg -Xure
+	for p in $(ARCH_DEP_PACKAGES); do \
+		if [ "$$p" = "libreoffice$(VER)-presentation-console" ]; then continue; fi; \
+		jh_depends -p$$p -Xlibreoffice$(VER)-gcj -Xlibreoffice$(VER)-dbg -Xure; \
+	done
   ifeq "$(PACKAGE_BASE)" "y"
 	perl -pi -e "s/libhsqldb-java/$(BASE_HSQLDB_DEPENDS)/" \
 		debian/libreoffice$(VER)-base.substvars
@@ -2981,7 +2985,10 @@ endif
 	dh_compress -i -X.py -X.mk -X.sxd -X.xcd.sample
 	dh_installdeb -i
 ifeq "$(ENABLE_JAVA)" "y"
-	jh_depends -i -Xlibreoffice$(VER)-gcj -Xlibreoffice$(VER)-dbg
+	for p in $(ARCH_INDEP_PACKAGES); do \
+                if echo "$$p" | grep -q help; then continue; fi; \
+                jh_depends -p$$p -Xlibreoffice$(VER)-gcj -Xlibreoffice$(VER)-dbg; \
+        done
 endif
 	dh_gencontrol -i $(DEBHELPER_OPTIONS) \
 		-Nlibreoffice$(VER)-report-builder \
