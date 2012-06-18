@@ -125,7 +125,7 @@ BUILD_BINFILTERS=n
 BUILD_ONLY_EN_US=y
 ENABLE_JAVA=y
 ifeq "$(ENABLE_JAVA)" "y"
-  JDK=openjdk
+  JDK=default
   JAVA_MAINVER=6
   ifneq (,$(filter hppa kfreebsd%, $(DEB_HOST_ARCH)))
     JDK=gcj-jdk
@@ -201,9 +201,19 @@ SYSTEM_STUFF += redland
 PACKAGE_SDK=y
 PACKAGE_SDK_DOCS=y
 ifeq "$(ENABLE_JAVA)" "y"
-  ifeq "$(JDK)" "openjdk"
-    RUN_MAKE_CHECK=y
-    ENABLE_JUNIT4=y
+  ifeq "$(JDK)" "default"
+    ifeq "$(shell LANG=C /usr/lib/jvm/default-java/bin/java -version 2>&1 | tail -n 1 | awk '{ print $$1 }')" "OpenJDK"
+      RUN_MAKE_CHECK=y
+      ENABLE_JUNIT4=y
+    endif
+  else
+    ifeq "$(JDK)" "openjdk"
+      RUN_MAKE_CHECK=y
+      ENABLE_JUNIT4=y
+    else
+      RUN_MAKE_CHECK=n
+      ENABLE_JUNIT4=n
+    endif
   endif
 else
   RUN_MAKE_CHECK=n
@@ -721,7 +731,10 @@ endif
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(JDK)" "default"
 	JAVA_HOME=/usr/lib/jvm/default-java
-	BUILD_DEPS += , default-jdk$(OOO_NO_JAVA_ARCHS)
+	BUILD_DEPS += , default-jdk$(filter-out !ia64,$(OOO_NO_JAVA_ARCHS))
+    ifneq (,$(findstring ia64,$(OOO_JAVA_ARCHS)))
+	BUILD_DEPS += , default-jdk (>= 1.7-48) [ia64]
+    endif
   endif
   ifeq "$(JDK)" "java-gcj-compat"
 	JAVA_HOME=/usr/lib/jvm/java-gcj
@@ -736,9 +749,12 @@ ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(JDK)" "openjdk"
     ifeq "$(JAVA_MAINVER)" "6"
 	BUILD_DEPS += , openjdk-$(JAVA_MAINVER)-jdk (>= 6b23~pre8-2) [$(filter-out ia64,$(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))])
+      # except on ia64, which doesn't build with 6...
+      ifneq (,$(findstring ia64,$(OOO_JAVA_ARCHS)))
 	BUILD_DEPS += , openjdk-7-jdk [ia64]
-      ifeq "$(DEB_HOST_ARCH)" "ia64"
-	JAVA_MAINVER=7
+        ifeq "$(DEB_HOST_ARCH)" "ia64"
+          JAVA_MAINVER=7
+        endif
       endif
     else
 	BUILD_DEPS += , openjdk-$(JAVA_MAINVER)-jdk [$(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))]
