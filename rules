@@ -123,6 +123,7 @@ endif
 PACKAGE_TTF_OPENSYMBOL=y
 BUILD_BINFILTERS=n
 BUILD_ONLY_EN_US=y
+ENABLE_HELP=y
 ENABLE_JAVA=y
 ifeq "$(ENABLE_JAVA)" "y"
   JDK=default
@@ -318,7 +319,6 @@ CONFIGURE_FLAGS= \
                 --enable-lockdown \
 		--libdir=/usr/lib \
 		--host=$(DEB_HOST_GNU_TYPE) --build=$(DEB_BUILD_GNU_TYPE) \
-		--enable-extension-integration \
 		--disable-online-update \
 		--disable-fetch-external \
 		--enable-release-build \
@@ -410,6 +410,7 @@ ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
 	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-evolution -Nlibreoffice$(VER)-kab
 	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-sdbc-postgresql -Nlibreoffice$(VER)-mysql-connector
 	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-report-builder-bin -Nlibreoffice$(VER)-report-builder
+	CONFIGURE_FLAGS += --disable-database-connectivity
   endif
 endif
 
@@ -428,6 +429,9 @@ ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
 	ENABLE_REPORTDESIGN=n
 	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-report-builder-bin -Nlibreoffice$(VER)-report-builder
 	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-wiki-publisher -Nlibreoffice$(VER)-script-provider-python
+	CONFIGURE_FLAGS += --disable-extension-integration --disable-extensions
+else
+	CONFIGURE_FLAGS += --enable-extension-integration
 endif
 
 ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_JAVA_ARCHS)))
@@ -691,7 +695,11 @@ endif
 ifneq "$(BUILD_ONLY_EN_US)" "y"
   ifeq (lang=,$(findstring lang=,$(DEB_BUILD_OPTIONS)))
 	ISOS=$(shell echo "$(DEB_BUILD_OPTIONS) " | sed -n 's/^.*lang=\([^\s].*\)\s.*/\1/p' | awk '{ print $$1 }' | sed -e 's/,/ /g')
+    ifeq "$(ENABLE_HELP)" "n"
+	HELPISOS=
+    else
 	HELPISOS=$(shell echo "$(DEB_BUILD_OPTIONS) " | sed -n 's/^.*lang=\([^\s].*\)\s.*/\1/p' | awk '{ print $$1 }' | sed -e 's/,/ /g')
+    endif
 	LANGPACKISOS=$(shell echo "$(DEB_BUILD_OPTIONS) " | sed -n 's/^.*lang=\([^\s].*\)\s.*/\1/p' | awk '{ print $$1 }' | sed -e 's/,/ /g')
   else
 	# Note that the first one here *has to be* en-US. the first one gets
@@ -705,9 +713,13 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	  ka km ko ku lt lv mk mn ml mr nb ne nl nn nr nso oc om or \
 	  pa-IN pl pt pt-BR ro ru rw si sk sl sr ss st sv \
 	  ta te tg th tn tr ts ug uk uz ve vi xh zh-CN zh-TW zu
+    ifeq "$(ENABLE_HELP)" "n"
+	HELPISOS:=
+    else
 	#HELPISOS:=$(shell $(SOURCE_TREE)/bin/lo-xlate-lang -i all') 
 	HELPISOS:=en-US ca ca-XV cs da de dz el en-GB es et eu fi fr gl hi hu it \
 	  ja km ko nl om pl pt pt-BR ru sk sl sv zh-CN zh-TW
+    endif
 	#LANGPACKISOS:=$(shell $(SOURCE_TREE)/bin/lo-xlate-lang -i all')
 	LANGPACKISOS:=en-US af ar as ast be bg bn br bs ca ca-XV cs cy da de dz el \
 	  en-GB en-ZA eo es et eu fa fi fr ga gl gu he hi hr hu id is it ja \
@@ -717,7 +729,11 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
   endif
 else
 	ISOS=en-US
+    ifeq "$(ENABLE_HELP)" "n"
+    	HELPISOS=
+    else
 	HELPISOS=en-US
+    endif
 	LANGPACKISOS=en-US
 endif
 BUILD_ISOS = $(ISOS)
@@ -1112,8 +1128,8 @@ ifneq (,$(filter neon, $(SYSTEM_STUFF)))
   endif
 endif
 
-ifeq "$(HELPISOS)" ""
-	CONFIGURE_FLAGS += --without-helppack-integration
+ifeq "$(ENABLE_HELP)" "n"
+	CONFIGURE_FLAGS += --without-helppack-integration --without-help
 endif
 
 ifneq (,$(filter redland, $(SYSTEM_STUFF)))
@@ -1349,7 +1365,7 @@ endif
 	        >> debian/control < debian/control.lang.in; \
 	done
 
-ifneq "$(HELPISOS)" ""
+ifneq "$(ENABLE_HELP)" "n"
 	for LNUM in $(HELPISOS) ; do \
 	    LNAME=`$(SOURCE_TREE)/bin/lo-xlate-lang -l $$LNUM | perl -e 'print ucfirst(<STDIN>);'`; \
 	    LCODE=`$(SOURCE_TREE)/bin/lo-xlate-lang -i $$LNUM | tr A-Z a-z`; \
@@ -1718,7 +1734,7 @@ endif
 	perl -pi -e 's,\./,,' debian/libreoffice$(VER)-common.install
 	perl -pi -e 's,\./,,' debian/ure.install
 
-ifneq "$(HELPISOS)" ""
+ifneq "$(ENABLE_HELP)" "n"
 	# remove non-packaged localized help. This a) saves space 
 	# and b) we need this for the following dh_install as there will be
 	# no .install files created and dh_install will warn/fail due
@@ -2402,15 +2418,15 @@ endif
 	install -m755 $(SOURCE_TREE)/bin/lo-xlate-lang \
 		$(PKGDIR)-common/usr/share/$(OODIRNAME)/bin
 
-ifeq "$(HELPISOS)" ""
+ifeq "$(ENABLE_HELP)" "n"
 	# when we don't build helpcontent2 here we are missing helpxsl.zip so
 	# this file doesn't get installed either. Do it manually..
 	mkdir -p -m755 $(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/help && \
-	cp $(SOURCE_TREE)/helpcontent2/source/auxiliary/main_transform.xsl \
+	cp $(SOURCE_TREE)/xmlhelp/util/main_transform.xsl \
 		$(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/help
-	cp $(SOURCE_TREE)/helpcontent2/source/auxiliary/idxcaption.xsl \
+	cp $(SOURCE_TREE)/xmlhelp/util/idxcaption.xsl \
 		$(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/help
-	cp $(SOURCE_TREE)/helpcontent2/source/auxiliary/idxcontent.xsl \
+	cp $(SOURCE_TREE)/xmlhelp/util/idxcontent.xsl \
 		$(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/help
 endif
 
@@ -2555,7 +2571,7 @@ endif
 	install -m 644 debian/soffice.sh \
 	  $(PKGDIR)-common/etc/$(OODIRNAME)/soffice.sh
 
-ifeq "$(HELPISOS)" ""
+ifeq "$(ENABLE_HELP)" "n"
 	# the helpimgs are not included when we don't build with help here.
 	# Add them now because libreoffice-help-* packaged in contrib or so
 	# will need them
@@ -2690,10 +2706,12 @@ endif
 	install -D -m644 debian/shell-lib-extensions.sh \
 		$(PKGDIR)-common/usr/share/$(OODIRNAME)/shell-lib-extensions.sh
 
+ifneq "$(ENABLE_HELP)" "n"
 	# those are needed in /usr/share, too
 	mkdir -p $(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)
 	mv $(PKGDIR)-common/$(OODIR)/help \
 		$(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)
+endif
 	# help is in /usr/share
 	sed -i 's,$$(instpath)/help,/$(shell echo $(OODIR) | sed -e s/lib/share/)/help,' \
 		$(PKGDIR)-common/$(OODIR)/share/registry/main.xcd

@@ -136,7 +136,9 @@ for l in `echo $OOO_LANGS_LIST`; do
         create_package_directory gid_Module_Langpack_Basis_`echo $l | sed -e s/-/_/g`   pkg/libreoffice-l10n-$l
         create_package_directory gid_Module_Langpack_Brand_`echo $l | sed -e s/-/_/g`   pkg/libreoffice-l10n-$l
         create_package_directory gid_Module_Langpack_Resource_`echo $l | sed -e s/-/_/g`        pkg/libreoffice-l10n-$l
-        create_package_directory gid_Module_Helppack_Help_`echo $l | sed -e s/-/_/g`    pkg/libreoffice-help-$l
+	if [ -f gid_Module_Helppack_Help_`echo $l | sed -e s/-/_/g` ]; then
+        	create_package_directory gid_Module_Helppack_Help_`echo $l | sed -e s/-/_/g`    pkg/libreoffice-help-$l
+	fi
         if [ -f gid_Module_Optional_Binfilter ]; then
                 if [ "$l" = "en-US" ]; then
                         create_package_directory gid_Module_Langpack_Binfilter_en_US    pkg/libreoffice-filter-binfilter
