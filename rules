@@ -511,6 +511,11 @@ ifeq "$(DEB_VENDOR)" "Ubuntu"
 
   #temp. hacks
   ENABLE_EVO2:=n
+  # temp. force libservlet versio for lp#1023405
+  FORCE_LIBSERVLET3:=n
+  ifeq ($(DISTREL),quantal)
+    FORCE_LIBSERVLET3:=y
+  endif
 endif
 
 CONFIGURE_FLAGS += $(foreach i, $(SYSTEM_STUFF),--with-system-$(i))
@@ -861,8 +866,13 @@ export JAVA_HOME
 	BUILD_DEPS_INDEP += $(MEDIAWIKI_BUILD_DEPS)
 	CONFIGURE_FLAGS += --with-commons-codec-jar=/usr/share/java/commons-codec.jar --with-commons-lang-jar=/usr/share/java/commons-lang.jar --with-commons-httpclient-jar=/usr/share/java/commons-httpclient.jar --with-commons-logging-jar=/usr/share/java/commons-logging.jar
 	CONFIGURE_FLAGS += --with-system-servlet-api
+      ifeq ($(FORCE_LIBSERVLET3),y)
+	BUILD_DEPS_INDEP += (>= 1.1.1-9), libservlet3.0-java
+	CONFIGURE_FLAGS += --with-servlet-api-jar=/usr/share/java/servlet-api-3.0.jar
+      else
 	BUILD_DEPS_INDEP += (>= 1.1.1-9), $(shell dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f5 | sed -e s/^\ // | awk '{ print $$1 }')
 	CONFIGURE_FLAGS += --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f5 | sed -e s/^\ // | awk '{ print $$1 }'` | grep servlet-api.*\.jar$ | head -n 1)
+      endif
     endif
   endif
   ifeq "$(ENABLE_REPORTDESIGN)" "y"
