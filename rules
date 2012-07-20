@@ -304,6 +304,7 @@ SYSTEM_STUFF += nss
 # http://bugs.debian.org/cgi-bin/bugreport.cgi?bug=661703
 #SYSTEM_STUFF += clucene
 SYSTEM_STUFF += lcms2
+SYSTEM_STUFF += openldap
 PACKAGE_UNOWINREG_DLL=y
 ifeq "$(DEB_VENDOR)" "Debian"
 BUILD_UNOWINREG_DLL=y
@@ -968,6 +969,10 @@ ifneq (,$(filter lcms2, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , liblcms2-dev
 endif
 
+ifneq (,$(filter openldap, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libldap2-dev
+endif
+
 ifneq (,$(filter icu, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libicu-dev $(ICU_MINVER)
 endif
@@ -1198,16 +1203,6 @@ endif
 BUILD_PATH := $(CURDIR)/debian/usr/bin:$(BUILD_PATH)
 BUILD_LD_LIBRARY_PATH := $(BUILD_LD_LIBRARY_PATH):$(GCJ_JAWT_DIR)
 
-ifeq "$(ENABLE_LDAP)" "y"
-  ifeq "$(USE_OPENLDAP)" "y"
-    BUILD_DEPS += , libldap2-dev
-    LDAP_LIB := $(shell echo libldap-`grep LDAP_VENDOR_VERSION_M /usr/include/ldap_features.h | cut -d: -f2 | awk '{ print $$3 }' | xargs | sed -e "s/ /\./"`-`grep LDAP_VENDOR_VERSION_MAJOR /usr/include/ldap_features.h | cut -d: -f2 | awk '{ print $$3 }'`)
-    CONFIGURE_FLAGS += --with-openldap
-   endif
-else
-  CONFIGURE_FLAGS += --disable-ldap
-endif
-
 # Because of the stampdir magic, when you actually want to run a rule
 # over, you would have to remove the stamp manually.  Now, just do
 # 'debian/rules <target> <target> ... FORCE=1', and the stamp files
@@ -1295,16 +1290,6 @@ debian/control: $(wildcard debian/control*in) $(SOURCE_TREE)/bin/lo-xlate-lang  
 	    -e "s#@PYTHON_VERSION@#$(PYTHON_VERSION)#g" \
 	    -e "s#@BUGS@#$(BUGS)#g" \
 	    < debian/control.in > debian/control
-
-ifeq "$(ENABLE_LDAP)" "y"
-	# build-depends might not be satified when running debian/rules control. prevent bad subsitition with
-	# nothing (libldap--)
-	if [ ! -f /usr/include/ldap_features.h ]; then \
-		echo "/usr/include/ldap_features.h not found. Is libldap2-dev installed?"; \
-		echo 'Needed for properly setting $$(LDAP_LIB). Stopping,'; \
-		exit 1; \
-	fi
-endif
 
 	for LNUM in $(filter-out en-US,$(LANGPACKISOS)) ; do \
 	    LNAME=`$(SOURCE_TREE)/bin/lo-xlate-lang -l $$LNUM | perl -e 'print ucfirst(<STDIN>);'`; \
@@ -1522,10 +1507,6 @@ endif
 
 ifeq "$(BUILD_KDE)" "y"
 	perl -pi -e 's/GConf backend$$/GConf backend\n  * libreoffice$(VER)-kde: KDE UI Plugin and KDE File Picker support/' debian/control
-endif
-
-ifeq "$(ENABLE_LDAP)" "y"
-	perl -pi -e 's/paperconf$$/paperconf\n  * $(LDAP_LIB): LDAP client library; needed for LibreOffice getting its\n    profiles from LDAP/' debian/control
 endif
 
 ifneq "$(DICT_DIR)" "/usr/share/hunspell"
@@ -2910,7 +2891,6 @@ endif
 		-V'lpsolve-dep=$(LPSOLVE_DEP)' \
 		-V'gstreamer-plugins-suggests=$(GSTREAMER_PLUGINS_SUGGESTS)' \
 		-V'libebook-dep=$(shell debian/scripts/get_libebook_dep.sh)' \
-		-V'libldap-suggests=$(LDAP_LIB)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-v$(BINARY_VERSION)
 ifeq "$(ENABLE_JAVA)" "y"
