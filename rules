@@ -480,11 +480,6 @@ OOO_BINFILTER_ARCHS:=$(filter-out arm% mips% m68k, $(OOO_ARCHS))
 
 # Debian
 ifeq "$(DEB_VENDOR)" "Debian"
-  # we don't need to build all languages and the thesaurus on the buildds;
-  # they do binary-only builds anyway
-  ifeq ($(ON_BUILDD),y)
-       BUILD_ONLY_EN_US=y
-  endif
   CONFIGURE_FLAGS += --with-intro-progressbar-color=215,7,81
 endif
 
@@ -742,7 +737,7 @@ BUILD_ISOS = $(ISOS)
 
 ifneq "$(BUILD_ONLY_EN_US)" "y"
   ifneq "$(BUILD_ISOS)" "en-US"
-	CONFIGURE_FLAGS += --with-lang="$(BUILD_ISOS)"
+	CONFIGURE_FLAGS_LANG += --with-lang="$(BUILD_ISOS)"
   endif
 endif
 
@@ -1610,6 +1605,17 @@ ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 	$(CURDIR)/debian/rules check
 endif
 
+ifneq "$(BUILD_ISOS)" "en-US"
+	# build some extensions again with all languages; as it contains language-specific help
+	# and/or descriptions...
+	$(MAKE) translations.clean
+	$(MAKE) sdext.clean
+	$(MAKE) mysqlc.clean
+	make cmd cmd="cd translations; export WITH_LANG='$(LANGPACKISOS)'; export WITH_LANG_LIST='$(LANGPACKISOS)'; $(MAKE)"
+	make cmd cmd="cd sdext; export WITH_LANG='$(LANGPACKISOS)'; export WITH_LANG_LIST='$(LANGPACKISOS)'; $(MAKE)"
+	make cmd cmd="cd mysqlc; export WITH_LANG='$(LANGPACKISOS)'; export WITH_LANG_LIST='$(LANGPACKISOS)'; ../solenv/bin/build.pl && ../solenv/bin/deliver.pl"
+endif
+
 	touch $@
 
 build-indep: $(STAMP_DIR)/prepare $(STAMP_DIR)/build-arch $(STAMP_DIR)/build-indep
@@ -1621,7 +1627,7 @@ $(STAMP_DIR)/build-indep:
 	$(MAKE) scp2.clean
 	rm -f config.status autogen.lastrun
 
-	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ./autogen.sh $(CONFIGURE_FLAGS)
+	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ./autogen.sh $(CONFIGURE_FLAGS) $(CONFIGURE_FLAGS_LANG)
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` CFLAGS="$(CFLAGS)" CXXFLAGS="$(CXXFLAGS)" $(MAKE) build gb_FULLDEPS= gb_Deliver_HARDLINK=T
 
