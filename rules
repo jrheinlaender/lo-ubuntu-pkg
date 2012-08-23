@@ -69,11 +69,11 @@ USE_SOURCE_TARBALLS=y
 USE_GIT_TARBALLS=n
 ifeq "$(USE_GIT_TARBALLS)" "y"
 GIT_BASEURL:=git://anongit.freedesktop.org/libreoffice
-lo_sources_ver=3.6.0.4
+lo_sources_ver=3.6.1.2
 # NOT in proper libreoffice-3-6 branch
-# use ./g checkout -b tag-libreoffice-3.6.0.4 libreoffice-3.6.0.4
+# use ./g checkout -b tag-libreoffice-3.6.1.2 libreoffice-3.6.1.2
 GIT_TAG=libreoffice-$(lo_sources_ver)
-GIT_BRANCH=libreoffice-3-6-0
+GIT_BRANCH=libreoffice-3-6-1
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
 lo_sources_ver=$(shell cat $(CURDIR)/sources.ver | cut -d= -f2)
@@ -484,11 +484,6 @@ OOO_BINFILTER_ARCHS:=$(filter-out arm% mips% m68k, $(OOO_ARCHS))
 
 # Debian
 ifeq "$(DEB_VENDOR)" "Debian"
-  # we don't need to build all languages and the thesaurus on the buildds;
-  # they do binary-only builds anyway
-  ifeq ($(ON_BUILDD),y)
-       BUILD_ONLY_EN_US=y
-  endif
   CONFIGURE_FLAGS += --with-intro-progressbar-color=215,7,81
 endif
 
@@ -594,7 +589,7 @@ ifneq (,$(filter xextensions-headers, $(SYSTEM_STUFF)))
        BUILD_DEPS += , libxrender-dev
 endif
 ifneq (,$(filter libpng, $(SYSTEM_STUFF)))
-       BUILD_DEPS += , libpng-dev
+       BUILD_DEPS += , libpng12-dev
 endif
 
 ifeq (,$(filter curl, $(SYSTEM_STUFF)))
@@ -746,7 +741,7 @@ BUILD_ISOS = $(ISOS)
 
 ifneq "$(BUILD_ONLY_EN_US)" "y"
   ifneq "$(BUILD_ISOS)" "en-US"
-	CONFIGURE_FLAGS += --with-lang="$(BUILD_ISOS)"
+	CONFIGURE_FLAGS_LANG += --with-lang="$(BUILD_ISOS)"
   endif
 endif
 
@@ -936,7 +931,7 @@ ifneq (,$(filter vigra, $(SYSTEM_STUFF)))
 endif
 
 ifneq (,$(filter clucene, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libclucene-dev (>= 2.3.3.4)
+	BUILD_DEPS += , libclucene-dev (>= 2.3.3.4-2)
 endif
 
 ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
@@ -1220,10 +1215,10 @@ BUILD_LD_LIBRARY_PATH := $(BUILD_LD_LIBRARY_PATH):$(GCJ_JAWT_DIR)
 # over, you would have to remove the stamp manually.  Now, just do
 # 'debian/rules <target> <target> ... FORCE=1', and the stamp files
 # that match the given targets will be removed automagically.
-stampdir_targets=files.backup icons.scale patch.apply build.prepare.artwork 
-stampdir_targets+=build.prepare configure
-stampdir_targets+=setupins setup install install-arch install-indep
-stampdir_targets+=langpacks binary-common binary-arch binary-indep
+stampdir_targets+=prepare
+stampdir_targets+=build build-arch build-indep maintscripts
+stampdir_targets+=install-common install-arch install-indep langpacks
+stampdir_targets+=binary-arch binary-indep
 ifdef FORCE
  DUMMY:=$(shell rm -f $(patsubst %,$(STAMP_DIR)/%,$(filter $(stampdir_targets),$(MAKECMDGOALS))))
 endif
@@ -1258,7 +1253,7 @@ clean:
 
 	rm -rf $(SOURCE_TREE)/file-lists
 	rm -rf $(SOURCE_TREE)/pyuno-py3
-	rm -f configure aclocal.m4
+	rm -f configure aclocal.m4 autogen.lastrun
 	rm -f build_error.log
 
 ifeq "$(HELPISOS)" ""
@@ -1573,7 +1568,7 @@ build:
 	$(CURDIR)/debian/rules build-indep
 	touch $(STAMP_DIR)/$@
 
-build-arch: $(STAMP_DIR)/prepare
+build-arch: $(STAMP_DIR)/prepare $(STAMP_DIR)/build-arch
 $(STAMP_DIR)/build-arch:
 #build-arch: ENABLE_HELP = n PACKAGE_SDK_DOCS = n ENABLE_MEDIAWIKI = n ENABLE_REPORTDESIGN = n ENABLE_SCRIPT_PROVIDER_BSH = n ENABLE_SCRIPT_PROVIDER_JS = n
 	dh_testdir
@@ -1605,6 +1600,17 @@ ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 	$(CURDIR)/debian/rules check
 endif
 
+ifneq "$(BUILD_ISOS)" "en-US"
+	# build some extensions again with all languages; as it contains language-specific help
+	# and/or descriptions...
+	$(MAKE) translations.clean
+	$(MAKE) sdext.clean
+	$(MAKE) mysqlc.clean
+	make cmd cmd="cd translations; export WITH_LANG='$(LANGPACKISOS)'; export WITH_LANG_LIST='$(LANGPACKISOS)'; $(MAKE)"
+	make cmd cmd="cd sdext; export WITH_LANG='$(LANGPACKISOS)'; export WITH_LANG_LIST='$(LANGPACKISOS)'; $(MAKE)"
+	make cmd cmd="cd mysqlc; export WITH_LANG='$(LANGPACKISOS)'; export WITH_LANG_LIST='$(LANGPACKISOS)'; ../solenv/bin/build.pl && ../solenv/bin/deliver.pl"
+endif
+
 	touch $@
 
 build-indep: $(STAMP_DIR)/prepare $(STAMP_DIR)/build-arch $(STAMP_DIR)/build-indep
@@ -1616,7 +1622,7 @@ $(STAMP_DIR)/build-indep:
 	$(MAKE) scp2.clean
 	rm -f config.status autogen.lastrun
 
-	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ./autogen.sh $(CONFIGURE_FLAGS)
+	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ./autogen.sh $(CONFIGURE_FLAGS) $(CONFIGURE_FLAGS_LANG)
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` CFLAGS="$(CFLAGS)" CXXFLAGS="$(CXXFLAGS)" $(MAKE) build gb_FULLDEPS= gb_Deliver_HARDLINK=T
 
@@ -1651,8 +1657,10 @@ ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
 endif
 endif
 
-install: $(STAMP_DIR)/install
-$(STAMP_DIR)/install: $(STAMP_DIR)/build
+install: $(STAMP_DIR)/install-common $(STAMP_DIR)/install-arch $(STAMP_DIR)/install-indep
+
+install-common: $(STAMP_DIR)/install-common
+$(STAMP_DIR)/install-common:
 	dh_testdir
 	dh_testroot
 
@@ -1870,7 +1878,7 @@ $(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*.sh) $(wildcard debian/*.
 	        grep PLATFORMID debian/vars.$(DEB_HOST_ARCH) >> $$MAINTSCRIPT; \
 	      fi; \
 	      echo "" >> $$MAINTSCRIPT; \
-	      if egrep -q "(add|remove|validate|sync)_extension" $$MAINTSCRIPT.in; then \
+	      if egrep -q "validate_extension" $$MAINTSCRIPT.in; then \
 		 cat debian/shell-lib-extensions.sh >> $$MAINTSCRIPT; \
 	      fi; \
 	      sed -n '/^#INCLUDE_SHELL_LIB#$$/,$$p' < $$MAINTSCRIPT.in | sed -e '/^#INCLUDE_SHELL_LIB#$$/d' >> $$MAINTSCRIPT; \
@@ -1885,7 +1893,7 @@ $(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*.sh) $(wildcard debian/*.
 
 # Install files generated by setup into package directories
 langpacks: $(STAMP_DIR)/langpacks
-$(STAMP_DIR)/langpacks: $(STAMP_DIR)/build-indep $(STAMP_DIR)/install $(STAMP_DIR)/install-indep $(SOURCE_TREE)/bin/lo-xlate-lang
+$(STAMP_DIR)/langpacks: $(STAMP_DIR)/build-indep $(STAMP_DIR)/install-indep $(SOURCE_TREE)/bin/lo-xlate-lang
 
 	# remove empty uno_packages dirs somehow in the langpacks(?)
 	for iso in `echo $(LANGPACKISOS) | tr A-Z a-z`; do \
@@ -2002,7 +2010,7 @@ endif
 
 # Install files generated by setup into arch-dependent package directories
 install-arch: $(STAMP_DIR)/install-arch
-$(STAMP_DIR)/install-arch: $(STAMP_DIR)/install $(STAMP_NATIVE_JARS)
+$(STAMP_DIR)/install-arch: $(STAMP_DIR)/install-common $(STAMP_NATIVE_JARS)
 	dh_testdir
 	dh_testroot
 	umask 022
@@ -2391,7 +2399,7 @@ install-indep: $(STAMP_DIR)/install-indep
 #$(STAMP_DIR)/install-indep: debian/libreoffice$(VER).install 
 #$(STAMP_DIR)/install-indep: debian/libreoffice$(VER)-mimelnk.install 
 #$(STAMP_DIR)/install-indep: debian/libreoffice$(VER).dirs
-$(STAMP_DIR)/install-indep: $(STAMP_DIR)/build-indep $(STAMP_DIR)/install
+$(STAMP_DIR)/install-indep: $(STAMP_DIR)/build-indep $(STAMP_DIR)/install-common
 	dh_testdir
 	dh_testroot
 
@@ -2489,12 +2497,6 @@ endif
 	# share/uno_packages/cache...
 	rm -rf $(PKGDIR)-common/$(OODIR)/presets/uno_packages
 
-	# move javasettingsunopkginstall.xml to /var/lib
-	mkdir -p $(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/usr/var/)/share/config
-	mv $(PKGDIR)-common/$(OODIR)/share/config/javasettingsunopkginstall.xml \
-		$(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/usr/var/)/share/config/javasettingsunopkginstall.xml
-	ln -s /$(shell echo $(OODIR) | sed -e s/usr/var/)/share/config/javasettingsunopkginstall.xml \
-		$(PKGDIR)-common/$(OODIR)/share/config/javasettingsunopkginstall.xml
 	# set PYTHONPATH in unopkg
 	perl -pi -e 's,unset XENVIRONMENT,unset XENVIRONMENT\n\nexport PYTHONPATH=\"/$(OODIR)/program\"\n\n,' \
 		$(PKGDIR)-common/$(OODIR)/program/unopkg
@@ -2689,7 +2691,7 @@ endif
 	done
 	for PKG in $(ARCH_INDEP_PACKAGES); do \
 		case $$PKG in \
-		ttf-opensymbol|openoffice.org-dtd-officedocument1.0) \
+		openoffice.org-dtd-officedocument1.0) \
 			;; \
 		*) \
 			cat debian/changelog \
@@ -2749,7 +2751,7 @@ endif
 	touch $@
 
 binary-arch: $(STAMP_DIR)/binary-arch
-$(STAMP_DIR)/binary-arch: $(STAMP_DIR)/build-arch $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/maintscripts
+$(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/maintscripts
 	dh_testdir
 	dh_testroot
 
@@ -3023,7 +3025,6 @@ endif
 	dh_gencontrol -i $(DEBHELPER_OPTIONS) \
 		-Nlibreoffice$(VER)-report-builder \
 		-Nlibreoffice$(VER)-wiki-publisher \
-		-Nttf-opensymbol \
 		-Nfonts-opensymbol \
 		-Nopenoffice.org-dtd-officedocument1.0 -- \
 		-V'base-version=$(BASE_VERSION)' \
@@ -3039,7 +3040,7 @@ endif
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-v$(BINARY_VERSION)
 ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
-	dh_gencontrol -pttf-opensymbol -pfonts-opensymbol -- \
+	dh_gencontrol -pfonts-opensymbol -- \
 		-v$(shell echo `echo $(BINARY_VERSION) | cut -d: -f1` + 1 | bc):$(shell fontforge -lang=ff -c 'Open($$1); Print ($$fontversion); Quit(0);' debian/fonts-opensymbol/usr/share/fonts/truetype/openoffice/opens___.ttf)+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
 endif
 ifeq "$(ENABLE_MEDIAWIKI)" "y"
@@ -3057,7 +3058,7 @@ ifeq "$(ENABLE_REPORTDESIGN)" "y"
 endif
 	dh_gencontrol -popenoffice.org-dtd-officedocument1.0 -- \
 		-v$(shell echo `echo $(BINARY_VERSION) | cut -d: -f1` + 1 | bc):1.0+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
-	dh_md5sums -i -Xjavasettingsunopkginstall.xml
+	dh_md5sums -i
 	dh_builddeb -i $(DEBHELPER_OPTIONS) $(BUILDDEB_OPTIONS)
 
 	touch $@
