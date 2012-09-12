@@ -69,11 +69,11 @@ USE_SOURCE_TARBALLS=y
 USE_GIT_TARBALLS=n
 ifeq "$(USE_GIT_TARBALLS)" "y"
 GIT_BASEURL:=git://anongit.freedesktop.org/libreoffice
-lo_sources_ver=3.6.1.2
+lo_sources_ver=3.6.2.1
 # NOT in proper libreoffice-3-6 branch
-# use ./g checkout -b tag-libreoffice-3.6.1.2 libreoffice-3.6.1.2
+# use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
 GIT_TAG=libreoffice-$(lo_sources_ver)
-GIT_BRANCH=libreoffice-3-6-1
+GIT_BRANCH=libreoffice-3-6-2
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
 lo_sources_ver=$(shell cat $(CURDIR)/sources.ver | cut -d= -f2)
@@ -465,7 +465,7 @@ ifeq (ia64,$(findstring ia64,$(OOO_OPENJDK_ARCHS)))
   endif
 endif
 ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_GCJ_ARCHS)))
-	BUILD_JARS_NATIVE=y
+	BUILD_JARS_NATIVE=n
 endif
 
 ifeq "$(PACKAGE_NSPLUGIN)" "y"
@@ -508,7 +508,7 @@ ifneq "$(GCC_VERSION)" ""
   endif
 endif
 
-	BUILDDEB_OPTIONS = -- -Zbzip2
+	BUILDDEB_OPTIONS = -- -Zxz
 
 ifneq "$(OOO_OGLTRANS_ARCHS)" ""
   ifneq (,$(findstring mesa-headers,$(SYSTEM_STUFF)))
@@ -620,14 +620,11 @@ ifneq (,$(findstring db,$(SYSTEM_STUFF)))
 endif
 
 ifeq "$(BUILD_DBG_PACKAGE)" "y"
-  # {,kfreebsd-}{i386,amd64} should be big and fast (xz!) enough for this
   ifneq (,$(findstring i386,$(DEB_HOST_ARCH)))
 	SMALL_SYMBOLS = n
-        USE_XZ_COMPRESS = y
   else
     ifneq (,$(findstring amd64,$(DEB_HOST_ARCH)))
 	SMALL_SYMBOLS = n
-        USE_XZ_COMPRESS = y
     endif
   endif
 	DBG_DBG_SUGGESTS+= , libc6.1-dbg [alpha ia64], libc0.1-dbg [kfreebsd-i386 kfreebsd-amd64], libc0.3-dbg [hurd-i386], libc6-dbg [!ia64 !alpha !kfreebsd-i386 !kfreebsd-amd64 !hurd-i386], libatk1.0-dbg, libglib2.0-0-dbg, libgnomevfs2-0-dbg, libstdc++6-$(SYSTEM_GCC_VERSION)-dbg, libx11-6-dbg, libxext6-dbg, libxaw7-dbg, libxml2-dbg, libgtk2.0-0-dbg, libxau6-dbg, libice6-dbg, libsm6-dbg, libxinerama1-dbg, libfontconfig1-dbg, libhunspell-$(shell pkg-config --modversion hunspell | cut -d. -f1,2)-0-dbg, libcurl4-dbg
@@ -1395,10 +1392,10 @@ endif
 		>> debian/control < debian/control.ure.in
 ifeq "$(ENABLE_JAVA)" "y"
   ifneq "$(OOO_GCJ_JDK_ARCHS)" ""
-#    ifeq "$(BUILD_JARS_NATIVE)" "y"
+    ifeq "$(BUILD_JARS_NATIVE)" "y"
 	sed -e "s|libreofficeVER|libreoffice$(VER)|g" \
 		>> debian/control < debian/control.gcj.in
- #   endif
+    endif
   endif
 endif
 ifneq "$(OOO_NSPLUGIN_ARCHS)" ""
@@ -1701,6 +1698,11 @@ $(STAMP_DIR)/install-common:
 	export OOINSTBASE=$(OODIR); \
 	export OOO_LANGS_LIST="$(ISOS)"; \
 	$(CURDIR)/debian/scripts/gid2pkgdirs.sh
+
+	# FIXME
+	if echo $(DEB_HOST_ARCH) | grep -q kfreebsd; then \
+		cd $(CURDIR)/debian/tmp/pkg && rm -rf \*; \
+	fi
 	
 	# prepare install/dir files for dh
 	for i in `cd $(CURDIR)/debian/tmp/pkg; ls -1 | xargs`; do \
@@ -1984,7 +1986,7 @@ endif
 	touch $@
 
 native-jars: $(STAMP_NATIVE_JARS)
-$(STAMP_NATIVE_JARS): $(STAMP_DIR)/install
+$(STAMP_NATIVE_JARS): $(STAMP_DIR)/install-common
 ifeq "$(BUILD_JARS_NATIVE)" "y"
 	rm -rf debian/tmp/native-jars
 	mkdir -p debian/tmp/native-jars/gcj
@@ -2958,12 +2960,7 @@ endif
 		-V"ure:Version=`echo $(BINARY_VERSION) | cut -d: -f2`" \
 		-v"`echo $(BINARY_VERSION) | cut -d: -f2`"
 	dh_md5sums -s
-ifeq "$(USE_XZ_COMPRESS)" "y"
-	dh_builddeb -Nlibreoffice$(VER)-dbg -s $(DEBHELPER_OPTIONS) $(BUILDDEB_OPTIONS)
-	dh_builddeb -plibreoffice$(VER)-dbg $(DEBHELPER_OPTIONS) $(filter-out -Zbzip2 -Zlzma,$(BUILDDEB_OPTIONS)) -Zxz
-else
 	dh_builddeb -s $(DEBHELPER_OPTIONS) $(BUILDDEB_OPTIONS)
-endif
 
 	touch $@
 
