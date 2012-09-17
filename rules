@@ -1278,7 +1278,7 @@ clean:
 	rm -f solenv/bin/concat-deps
 
 	rm -rf $(SOURCE_TREE)/file-lists
-	rm -rf $(SOURCE_TREE)/pyuno-py3
+	rm -rf $(SOURCE_TREE)/py3uno
 	rm -f configure aclocal.m4 autogen.lastrun
 	rm -f build_error.log
 
@@ -1599,14 +1599,11 @@ $(STAMP_DIR)/build-arch:
 
 ifeq "$(BUILD_PYUNO)" "y"
   ifeq "$(ENABLE_PYTHON3)" "y"
-	# FIXME: won't work when pyuno is migrated to gbuild as all is directly in solver
-	# then...
-	rm -rf $(SOURCE_TREE)/pyuno-py3
-	cp -ra $(SOURCE_TREE)/pyuno $(SOURCE_TREE)/pyuno-py3
-	. $(SOURCE_TREE)/config_host.mk.source; \
-	cd pyuno-py3 && \
-		rm -rf $$OUTPATH$$PROEXT; \
-		PYTHON=$(PYTHON3) PYTHON_CFLAGS=$(shell pkg-config --cflags python$(PY3MAJOR)) PYTHON_LIBS=$(shell pkg-config --libs python$(PY3MAJOR)) ../solenv/bin/build.pl
+	rm -rf $(SOURCE_TREE)/py3uno
+	cp -ra $(SOURCE_TREE)/pyuno $(SOURCE_TREE)/py3uno
+	cd py3uno && \
+		patch -p1 < $(CURDIR)/debian/patches/pyuno-copy-for-python3.diff
+	make cmd cmd="cd py3uno; export PYTHON=$(PYTHON3); export PYTHON_CFLAGS=$(shell pkg-config --cflags python$(PY3MAJOR)); export PYTHON_LIBS=$(shell pkg-config --libs python$(PY3MAJOR)); $(MAKE)"
   endif
 endif
 
@@ -2213,10 +2210,13 @@ ifeq "$(BUILD_PYUNO)" "y"
 	cat debian/python-uno/$(OODIR)/program/pythonloader.unorc \
 		| sed -e "s/$(PYMAJOR).$(PYMINOR)/$(PY3MAJOR).$(PY3MINOR)/" \
 		> debian/python3-uno/$(OODIR)/program/pythonloader.unorc
-	for i in pyuno.so pythonloader.uno.so libpyuno.so; do \
-		install -m644 $(SOURCE_TREE)/pyuno-py3/$(shell . $(SOURCE_TREE)/config_host.mk.source; echo $$OUTPATH$$PROEXT)/lib/$$i \
-			debian/python3-uno/$(OODIR)/program/$$i; \
+	for i in py3uno.so python3loader.uno.so lib3pyuno.so; do \
+		install -m644 $(SOURCE_TREE)/workdir/$(shell . $(SOURCE_TREE)/config_host.mk.source; echo $$OUTPATH$$PROEXT)/LinkTarget/Library/$$i \
+			debian/python3-uno/$(OODIR)/program/`echo $$i | sed -e s/py3/py/`; \
+			ln -s `echo $$i | sed -e s/3//` debian/python3-uno/$(OODIR)/program/$$i; \
 	done
+	install -m644 $(SOURCE_TREE)/workdir/$(shell . $(SOURCE_TREE)/config_host.mk.source; echo $$OUTPATH$$PROEXT)/LinkTarget/Library/python3loader.uno.so \
+		debian/python3-uno/$(OODIR)/program/pythonloader.uno.so
 	cp debian/python-uno/$(OODIR)/program/pythonloader.py \
 		debian/python3-uno/$(OODIR)/program
 	cp debian/python-uno/$(OODIR)/share/registry/pyuno.xcd \
