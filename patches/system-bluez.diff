@@ -1,0 +1,75 @@
+diff --git a/configure.in b/configure.in
+index 563bcdc..fcdd59b8 100644
+--- a/configure.in
++++ b/configure.in
+@@ -1576,6 +1576,11 @@ AC_ARG_WITH(system-sane,
+         [Use sane.h already on system.]),,
+     [with_system_sane="$with_system_headers"])
+ 
++AC_ARG_WITH(system-bluez,
++    AS_HELP_STRING([--with-system-bluez],
++        [Use bluetooth.h already on system.]),,
++    [with_system_bluez="$with_system_headers"])
++
+ AC_ARG_WITH(system-xextensions-headers,
+     AS_HELP_STRING([--with-system-xextensions-headers],
+         [To build without system X11 extensions headers, use
+@@ -8234,6 +8246,19 @@ else
+ fi
+ 
+ dnl ===================================================================
++dnl Check for system bluez
++dnl ===================================================================
++AC_MSG_CHECKING([which bluetooth header to use])
++if test "$with_system_bluez" = "yes"; then
++    AC_MSG_RESULT([external])
++    AC_CHECK_HEADER(bluetooth/bluetooth.h, [],
++      [AC_MSG_ERROR(bluetooth.h not found. install bluez)], [])
++else
++    AC_MSG_RESULT([internal])
++    BUILD_TYPE="$BUILD_TYPE BLUEZ"
++fi
++
++dnl ===================================================================
+ dnl Check for system icu
+ dnl ===================================================================
+ SYSTEM_GENBRK=
+diff --git a/sd/prj/build.lst b/sd/prj/build.lst
+index b4dc93d..b340431 100644
+--- a/sd/prj/build.lst
++++ b/sd/prj/build.lst
+@@ -1,3 +1,3 @@
+-sd      sd      :    filter TRANSLATIONS:translations animations configmgr svx sfx2 stoc canvas embeddedobj LIBXSLT:libxslt oox ure test xmloff fileaccess unoxml dbaccess NULL
++sd      sd      :    filter TRANSLATIONS:translations animations configmgr svx sfx2 stoc canvas embeddedobj LIBXSLT:libxslt oox ure test xmloff fileaccess unoxml dbaccess BLUEZ:bluez_bluetooth NULL
+ sd	sd										usr1	-	all	sd_mkout NULL
+ sd	sd\prj									nmake		-	all	sd_prj NULL
+diff --git a/sd/source/ui/remotecontrol/BluetoothServer.cxx b/sd/source/ui/remotecontrol/BluetoothServer.cxx
+index 01adb96..ebfdd3c 100644
+--- a/sd/source/ui/remotecontrol/BluetoothServer.cxx
++++ b/sd/source/ui/remotecontrol/BluetoothServer.cxx
+@@ -14,8 +14,8 @@
+ #include <dbus/dbus-glib.h>
+ #include <sys/unistd.h>
+ #include <sys/socket.h>
+-#include "bluetooth/bluetooth.h"
+-#include "bluetooth/rfcomm.h"
++#include <bluetooth/bluetooth.h>
++#include <bluetooth/rfcomm.h>
+ #endif
+ 
+ #ifdef WIN32
+diff --git a/Module_tail_build.mk b/Module_tail_build.mk
+index ec9e006..c2d6c5d 100644
+--- a/Module_tail_build.mk
++++ b/Module_tail_build.mk
+@@ -36,7 +36,9 @@ $(eval $(call gb_Module_add_moduledirs,tail_end,\
+     basic \
+     bean \
+ 	binaryurp \
+-	bluez_bluetooth \
++	$(if $(filter BLUEZ,$(BUILD_TYPE)),\
++		bluez_bluetooth \
++	) \
+     canvas \
+     chart2 \
+     configmgr \
