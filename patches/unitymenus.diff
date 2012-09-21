@@ -1,10 +1,10 @@
-commit b999fa88dd114693be3e2db6581eefacaaa637ea
+commit b6a6cf9ae5fb25b19865fc283e16a379dac68e59
 Author: Antonio Fernandez <antonio.fernandez@aentos.es>
-Date:   Tue Sep 11 12:21:28 2012 +0100
+Date:   Wed Sep 19 20:05:56 2012 +0100
 
-    Fixed crashes when executing some menu actions.
+    Fixed a crash updating the menu after opening an application from main screen.
     
-    Change-Id: I80bb1ed74e823d4b66df05eb15c9b5ed2e58b7f6
+    Change-Id: If7b603dca5aa33e50a63e04fda3bce594840cc57
  framework/inc/classes/menumanager.hxx         |   22 +-
  framework/inc/uielement/menubarmanager.hxx    |   24 +-
  framework/inc/uielement/menubarmerger.hxx     |   16 +-
@@ -17,23 +17,23 @@ Date:   Tue Sep 11 12:21:28 2012 +0100
  vcl/Library_vclplug_gtk.mk                    |   11 +-
  vcl/Library_vclplug_gtk3.mk                   |    3 +
  vcl/inc/salmenu.hxx                           |    7 +-
- vcl/inc/unx/gtk/gloactiongroup.h              |   93 ++++
- vcl/inc/unx/gtk/glomenu.h                     |  138 ++++++
+ vcl/inc/unx/gtk/gloactiongroup.h              |   95 +++
+ vcl/inc/unx/gtk/glomenu.h                     |  144 +++++
  vcl/inc/unx/gtk/gtkframe.hxx                  |    5 +
  vcl/inc/unx/gtk/gtkinst.hxx                   |    5 +-
- vcl/inc/unx/gtk/gtksalmenu.hxx                |  117 +++++
+ vcl/inc/unx/gtk/gtksalmenu.hxx                |  123 ++++
  vcl/inc/unx/salmenu.h                         |    8 +-
- vcl/inc/vcl/menu.hxx                          |  156 +++++--
- vcl/source/window/menu.cxx                    |   21 +-
- vcl/unx/gtk/app/gtkinst.cxx                   |   30 ++
- vcl/unx/gtk/window/gloactiongroup.cxx         |  378 +++++++++++++++
- vcl/unx/gtk/window/glomenu.cxx                |  590 ++++++++++++++++++++++++
+ vcl/inc/vcl/menu.hxx                          |  156 ++++-
+ vcl/source/window/menu.cxx                    |   16 +-
+ vcl/unx/gtk/app/gtkinst.cxx                   |   30 +
+ vcl/unx/gtk/window/gloactiongroup.cxx         |  408 +++++++++++++
+ vcl/unx/gtk/window/glomenu.cxx                |  653 ++++++++++++++++++++
  vcl/unx/gtk/window/gtkframe.cxx               |   18 +-
- vcl/unx/gtk/window/gtksalmenu.cxx             |  612 +++++++++++++++++++++++++
+ vcl/unx/gtk/window/gtksalmenu.cxx             |  789 +++++++++++++++++++++++++
  vcl/unx/gtk3/window/gtk3gloactiongroup.cxx    |    2 +
  vcl/unx/gtk3/window/gtk3glomenu.cxx           |    2 +
  vcl/unx/gtk3/window/gtk3gtksalmenu.cxx        |    2 +
- 28 files changed, 2240 insertions(+), 112 deletions(-)
+ 28 files changed, 2521 insertions(+), 110 deletions(-)
 diff --git a/framework/inc/classes/menumanager.hxx b/framework/inc/classes/menumanager.hxx
 index 3ac4588..56ecc90 100644
 --- a/framework/inc/classes/menumanager.hxx
@@ -642,7 +642,7 @@ diff --git a/vcl/Library_vclplug_gtk3.mk b/vcl/Library_vclplug_gtk3.mk
 index 120199c..fd66689 100644
 --- a/vcl/Library_vclplug_gtk3.mk
 +++ b/vcl/Library_vclplug_gtk3.mk
-@@ -111,6 +111,9 @@ $(eval $(call gb_Library_add_exception_objects,vclplug_gtk3,\
+@@ -110,6 +110,9 @@ $(eval $(call gb_Library_add_exception_objects,vclplug_gtk3,\
      vcl/unx/gtk3/gdi/gtk3salprn-gtk \
      vcl/unx/gtk3/window/gtk3gtkframe \
      vcl/unx/gtk3/window/gtk3gtkobject \
@@ -686,10 +686,10 @@ index 1d14a7e..2f8d680 100644
      // but rectangle cannot be determined
 diff --git a/vcl/inc/unx/gtk/gloactiongroup.h b/vcl/inc/unx/gtk/gloactiongroup.h
 new file mode 100644
-index 0000000..e0d783f
+index 0000000..61ec718
 --- /dev/null
 +++ b/vcl/inc/unx/gtk/gloactiongroup.h
-@@ -0,0 +1,93 @@
+@@ -0,0 +1,95 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +
 +/*
@@ -759,11 +759,13 @@ index 0000000..e0d783f
 +
 +void                g_lo_action_group_insert                (GLOActionGroup     *group,
 +                                                             const gchar        *action_name,
-+                                                             gint                item_id);
++                                                             gint                item_id,
++                                                             gboolean            submenu);
 +
 +void                g_lo_action_group_insert_stateful       (GLOActionGroup     *group,
 +                                                             const gchar        *action_name,
 +                                                             gint                item_id,
++                                                             gboolean            submenu,
 +                                                             const GVariantType *parameter_type,
 +                                                             const GVariantType *state_type,
 +                                                             GVariant           *state_hint,
@@ -785,10 +787,10 @@ index 0000000..e0d783f
 +/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
 diff --git a/vcl/inc/unx/gtk/glomenu.h b/vcl/inc/unx/gtk/glomenu.h
 new file mode 100644
-index 0000000..c45be50
+index 0000000..4c7c3e5
 --- /dev/null
 +++ b/vcl/inc/unx/gtk/glomenu.h
-@@ -0,0 +1,138 @@
+@@ -0,0 +1,144 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +
 +/*
@@ -819,6 +821,7 @@ index 0000000..c45be50
 +
 +#define G_LO_MENU_ATTRIBUTE_ACCELERATOR     "accel"
 +#define G_LO_MENU_ATTRIBUTE_COMMAND         "command"
++#define G_LO_MENU_ATTRIBUTE_SUBMENU_ACTION  "submenu-action"
 +
 +G_BEGIN_DECLS
 +
@@ -919,6 +922,11 @@ index 0000000..c45be50
 +                                                                         gint         section,
 +                                                                         gint         position);
 +
++void        g_lo_menu_set_submenu_action_to_item_in_section             (GLOMenu     *menu,
++                                                                         gint         section,
++                                                                         gint         position,
++                                                                         const gchar *action);
++
 +GLOMenu *   g_lo_menu_get_menu_containing_item                          (GLOMenu     *menu,
 +                                                                         gint         item_id);
 +
@@ -976,10 +984,10 @@ index 89743ca..efe8f16 100644
      bool                        IsTimerExpired();
 diff --git a/vcl/inc/unx/gtk/gtksalmenu.hxx b/vcl/inc/unx/gtk/gtksalmenu.hxx
 new file mode 100644
-index 0000000..f746b4b
+index 0000000..56aed28
 --- /dev/null
 +++ b/vcl/inc/unx/gtk/gtksalmenu.hxx
-@@ -0,0 +1,117 @@
+@@ -0,0 +1,123 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +
 +/*
@@ -1037,14 +1045,12 @@ index 0000000..f746b4b
 +    GMenuModel*                     mpMenuModel;
 +    GActionGroup*                   mpActionGroup;
 +
-+    sal_Int32                   GetPositionFromItem( GtkSalMenuItem* pSalMenuItem );
-+    void                        GetItemSectionAndPosition( unsigned nPos, unsigned *insertSection, unsigned *insertPos );
++    GtkSalMenu*                 GetMenuForItemCommand( gchar* aCommand, gboolean bGetSubmenu );
 +
 +public:
 +    GtkSalMenu( sal_Bool bMenuBar );
 +    virtual ~GtkSalMenu();
 +
-+    virtual void                SetVisibleMenuBar( sal_Bool bVisible );
 +    virtual sal_Bool            VisibleMenuBar();   // must return TRUE to actually DISPLAY native menu bars
 +                                                    // otherwise only menu messages are processed (eg, OLE on Windows)
 +
@@ -1071,13 +1077,22 @@ index 0000000..f746b4b
 +    virtual GtkSalMenuItem*     GetItemAtPos( unsigned nPos ) { return maItems[ nPos ]; }
 +    virtual void                SetActionGroup( GActionGroup* pActionGroup ) { mpActionGroup = pActionGroup; }
 +    virtual GActionGroup*       GetActionGroup() { return mpActionGroup; }
-+    GtkSalMenu*                 GetMenuForItemCommand( gchar* aCommand );
 +
 +    void                        NativeSetItemText( unsigned nSection, unsigned nItemPos, const rtl::OUString& rText );
-+    void                        NativeSetItemCommand( unsigned nSection, unsigned nItemPos, GtkSalMenuItem* pItem, const gchar* aCommandStr );
++    void                        NativeSetItemCommand( unsigned nSection,
++                                                      unsigned nItemPos,
++                                                      sal_uInt16 nId,
++                                                      const gchar* aCommand,
++                                                      MenuItemBits nBits,
++                                                      gboolean bChecked,
++                                                      gboolean bIsSubmenu );
 +    void                        NativeSetEnableItem( gchar* aCommand, gboolean bEnable );
 +    void                        NativeCheckItem( unsigned nSection, unsigned nItemPos, MenuItemBits bits, gboolean bCheck );
 +    void                        NativeSetAccelerator( unsigned nSection, unsigned nItemPos, const KeyCode& rKeyCode, const rtl::OUString& rKeyName );
++
++    void                        DispatchCommand( gint itemId, const gchar* aCommand );
++    void                        Activate( const gchar* aMenuCommand );
++    void                        Deactivate( const gchar* aMenuCommand );
 +};
 +
 +class GtkSalMenuItem : public SalMenuItem
@@ -1087,7 +1102,6 @@ index 0000000..f746b4b
 +    virtual ~GtkSalMenuItem();
 +
 +    sal_uInt16          mnId;               // Item ID
-+    MenuItemBits        mnBits;             // Item bits
 +    MenuItemType        mnType;             // Item type
 +    Menu*               mpVCLMenu;          // VCL Menu into which this MenuItem is inserted
 +    GtkSalMenu*         mpParentMenu;       // The menu in which this menu item is inserted
@@ -1387,29 +1401,10 @@ index c9388ee..7538faf 100644
      // highlight link will be called with a MenuBarButtonHighlightArg
      // the bHighlight member of that struct shall contain the new state
 diff --git a/vcl/source/window/menu.cxx b/vcl/source/window/menu.cxx
-index 3b4ac0d..e921805 100644
+index 3b4ac0d..7fc74e4 100644
 --- a/vcl/source/window/menu.cxx
 +++ b/vcl/source/window/menu.cxx
-@@ -1146,7 +1146,8 @@ void Menu::Select()
-     }
- }
- 
--#if defined(QUARTZ)
-+// FIXME: Workaround to make GLOMenu without defining macros.
-+//#if defined(QUARTZ)
- void Menu::ImplSelectWithStart( Menu* pSMenu )
- {
-     Menu* pOldStartedFrom = pStartedFrom;
-@@ -1157,7 +1158,7 @@ void Menu::ImplSelectWithStart( Menu* pSMenu )
-         pOldStartedFrom->pStartedFrom = pOldStartedStarted;
-     pStartedFrom = pOldStartedFrom;
- }
--#endif
-+//#endif
- 
- void Menu::RequestHelp( const HelpEvent& )
- {
-@@ -1958,10 +1959,15 @@ sal_Bool Menu::GetItemImageMirrorMode( sal_uInt16 nItemId ) const
+@@ -1958,10 +1958,15 @@ sal_Bool Menu::GetItemImageMirrorMode( sal_uInt16 nItemId ) const
  
  void Menu::SetItemCommand( sal_uInt16 nItemId, const String& rCommand )
  {
@@ -1426,7 +1421,7 @@ index 3b4ac0d..e921805 100644
  }
  
  const XubString& Menu::GetItemCommand( sal_uInt16 nItemId ) const
-@@ -3238,6 +3244,15 @@ void Menu::HighlightItem( sal_uInt16 nItemPos )
+@@ -3238,6 +3243,15 @@ void Menu::HighlightItem( sal_uInt16 nItemPos )
      }
  }
  
@@ -1492,10 +1487,10 @@ index 845e2fc..2738e20 100644
      GtkSalTimer *pTimer = new GtkSalTimer();
 diff --git a/vcl/unx/gtk/window/gloactiongroup.cxx b/vcl/unx/gtk/window/gloactiongroup.cxx
 new file mode 100644
-index 0000000..33e756c
+index 0000000..d083703
 --- /dev/null
 +++ b/vcl/unx/gtk/window/gloactiongroup.cxx
-@@ -0,0 +1,378 @@
+@@ -0,0 +1,408 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +
 +/*
@@ -1524,7 +1519,6 @@ index 0000000..33e756c
 +#include <unx/gtk/gtkinst.hxx>
 +#include <unx/gtk/gtkframe.hxx>
 +#include <unx/gtk/gtksalmenu.hxx>
-+#include <vcl/menu.hxx>
 +
 +
 +/*
@@ -1542,7 +1536,8 @@ index 0000000..33e756c
 +    GObject         parent_instance;
 +
 +    gint            item_id;            // Menu item ID.
-+    gboolean        enabled;            // TRUE if action is enabled, FALSE otherwise.
++    gboolean        submenu;            // TRUE if action is a submenu action.
++    gboolean        enabled;            // TRUE if action is enabled.
 +    GVariantType*   parameter_type;     // A GVariantType with the action parameter type.
 +    GVariantType*   state_type;         // A GVariantType with item state type
 +    GVariant*       state_hint;         // A GVariant with state hints.
@@ -1564,6 +1559,7 @@ index 0000000..33e756c
 +g_lo_action_init (GLOAction *action)
 +{
 +    action->item_id = -1;
++    action->submenu = FALSE;
 +    action->enabled = TRUE;
 +    action->parameter_type = NULL;
 +    action->state_type = NULL;
@@ -1657,23 +1653,43 @@ index 0000000..33e756c
 +    if (enabled)
 +        *enabled = action->enabled;
 +
-+    if (parameter_type) {
++    if (parameter_type)
 +        *parameter_type = action->parameter_type;
-+    }
 +
-+    if (state_type) {
++    if (state_type)
 +        *state_type = action->state_type;
-+    }
 +
-+    if (state_hint) {
-+        *state_hint = (action->state_hint) ? g_variant_ref(action->state_hint) : NULL;
-+    }
++    if (state_hint)
++        *state_hint = (action->state_hint) ? g_variant_ref (action->state_hint) : NULL;
 +
-+    if (state) {
-+        *state = (action->state) ? g_variant_ref(action->state) : NULL;
-+    }
++    if (state)
++        *state = (action->state) ? g_variant_ref (action->state) : NULL;
 +
 +    return TRUE;
++}
++
++static void
++g_lo_action_group_perform_submenu_action (GLOActionGroup *group,
++                                          const gchar    *action_name,
++                                          GVariant       *state)
++{
++    GTK_YIELD_GRAB();
++
++    GtkSalFrame* pFrame = group->priv->frame;
++
++    if (pFrame == NULL)
++        return;
++
++    GtkSalMenu* pSalMenu = static_cast<GtkSalMenu*> (pFrame->GetMenu());
++
++    if (pSalMenu != NULL) {
++        gboolean bState = g_variant_get_boolean (state);
++
++        if (bState == TRUE)
++            pSalMenu->Activate (action_name);
++        else
++            pSalMenu->Deactivate (action_name);
++    }
 +}
 +
 +static void
@@ -1681,27 +1697,38 @@ index 0000000..33e756c
 +                                const gchar  *action_name,
 +                                GVariant     *value)
 +{
-+    if (!action_name || !value)
-+        return;
++    g_return_if_fail (value != NULL);
 +
-+    GLOActionGroup* lo_group = G_LO_ACTION_GROUP (group);
++    g_variant_ref_sink (value);
 +
-+    GLOAction* action = G_LO_ACTION (g_hash_table_lookup (lo_group->priv->table, action_name));
++    if (action_name != NULL)
++    {
++        GLOActionGroup* lo_group = G_LO_ACTION_GROUP (group);
++        GLOAction* action = G_LO_ACTION (g_hash_table_lookup (lo_group->priv->table, action_name));
 +
-+    if (action == NULL)
-+        return;
++        if (action != NULL)
++        {
++            if (action->submenu == TRUE)
++                g_lo_action_group_perform_submenu_action (lo_group, action_name, value);
++            else
++            {
++                if (action->state_type == NULL)
++                    action->state_type = g_variant_type_copy (g_variant_get_type(value));
 +
-+    if (action->state_type == NULL)
-+        action->state_type = g_variant_type_copy(g_variant_get_type(value));
++                if (g_variant_is_of_type (value, action->state_type) == TRUE)
++                {
++                    if (action->state)
++                        g_variant_unref(action->state);
 +
-+    g_return_if_fail (g_variant_is_of_type(value, action->state_type) == TRUE);
++                    action->state = g_variant_ref (value);
 +
-+    if (action->state)
-+        g_variant_unref(action->state);
++                    g_action_group_action_state_changed (group, action_name, value);
++                }
++            }
++        }
++    }
 +
-+    action->state = g_variant_take_ref(value);
-+
-+    g_action_group_action_state_changed(group, action_name, value);
++    g_variant_unref (value);
 +}
 +
 +static void
@@ -1712,38 +1739,34 @@ index 0000000..33e756c
 +    GTK_YIELD_GRAB();
 +
 +    GLOActionGroup *lo_group = G_LO_ACTION_GROUP (group);
-+    GLOAction* action = G_LO_ACTION (g_hash_table_lookup (lo_group->priv->table, action_name));
-+
 +    GtkSalFrame *pFrame = lo_group->priv->frame;
 +
-+    if ( pFrame == NULL )
-+        return;
++    if ( pFrame != NULL )
++    {
++        GtkSalMenu* pSalMenu = static_cast< GtkSalMenu* >( pFrame->GetMenu() );
 +
-+    GtkSalMenu* pSalMenu = static_cast< GtkSalMenu* >( pFrame->GetMenu() );
-+
-+    if ( pSalMenu == NULL )
-+        return;
-+
-+    GtkSalMenu* pSalSubMenu = pSalMenu->GetMenuForItemCommand( (gchar*) action_name );
-+    Menu* pSubMenu = ( pSalMenu != NULL ) ? pSalSubMenu->GetMenu() : NULL;
-+
-+    MenuBar* pMenuBar = static_cast< MenuBar* >( pSalMenu->GetMenu() );
-+
-+    pMenuBar->HandleMenuCommandEvent( pSubMenu, action->item_id );
++        if ( pSalMenu != NULL )
++        {
++            GLOAction* action = G_LO_ACTION (g_hash_table_lookup (lo_group->priv->table, action_name));
++            pSalMenu->DispatchCommand( action->item_id, action_name );
++        }
++    }
 +}
 +
 +void
 +g_lo_action_group_insert (GLOActionGroup *group,
 +                          const gchar    *action_name,
-+                          gint            item_id)
++                          gint            item_id,
++                          gboolean        submenu)
 +{
-+    g_lo_action_group_insert_stateful (group, action_name, item_id, NULL, NULL, NULL, NULL);
++    g_lo_action_group_insert_stateful (group, action_name, item_id, submenu, NULL, NULL, NULL, NULL);
 +}
 +
 +void
 +g_lo_action_group_insert_stateful (GLOActionGroup     *group,
 +                                   const gchar        *action_name,
 +                                   gint                item_id,
++                                   gboolean            submenu,
 +                                   const GVariantType *parameter_type,
 +                                   const GVariantType *state_type,
 +                                   GVariant           *state_hint,
@@ -1756,13 +1779,15 @@ index 0000000..33e756c
 +    if (old_action == NULL || old_action->item_id != item_id)
 +    {
 +        if (old_action != NULL)
-+            g_action_group_action_removed (G_ACTION_GROUP (group), action_name);
++            g_lo_action_group_remove (group, action_name);
++//            g_action_group_action_removed (G_ACTION_GROUP (group), action_name);
 +
 +        GLOAction* action = g_lo_action_new();
 +
 +        g_hash_table_insert (group->priv->table, g_strdup (action_name), action);
 +
 +        action->item_id = item_id;
++        action->submenu = submenu;
 +
 +        if (parameter_type)
 +            action->parameter_type = (GVariantType*) parameter_type;
@@ -1771,10 +1796,10 @@ index 0000000..33e756c
 +            action->state_type = (GVariantType*) state_type;
 +
 +        if (state_hint)
-+            action->state_hint = g_variant_take_ref (state_hint);
++            action->state_hint = g_variant_ref_sink (state_hint);
 +
 +        if (state)
-+            action->state = g_variant_take_ref (state);
++            action->state = g_variant_ref_sink (state);
 +
 +        g_action_group_action_added (G_ACTION_GROUP (group), action_name);
 +    }
@@ -1876,10 +1901,10 @@ index 0000000..33e756c
 +/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
 diff --git a/vcl/unx/gtk/window/glomenu.cxx b/vcl/unx/gtk/window/glomenu.cxx
 new file mode 100644
-index 0000000..9c0f835
+index 0000000..2ecf23a
 --- /dev/null
 +++ b/vcl/unx/gtk/window/glomenu.cxx
-@@ -0,0 +1,590 @@
+@@ -0,0 +1,653 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +
 +/*
@@ -1988,13 +2013,20 @@ index 0000000..9c0f835
 +}
 +
 +gint
-+g_lo_menu_get_n_items_from_section (GLOMenu     *menu,
-+                                    gint         section)
++g_lo_menu_get_n_items_from_section (GLOMenu *menu,
++                                    gint     section)
 +{
-+    GLOMenu *model = G_LO_MENU (G_MENU_MODEL_CLASS (g_lo_menu_parent_class)
-+                                ->get_item_link (G_MENU_MODEL (menu), section, G_MENU_LINK_SECTION));
++    g_return_val_if_fail (0 <= section && section < (gint) menu->items->len, -1);
 +
-+    return model->items->len;
++    GLOMenu *model = g_lo_menu_get_section (menu, section);
++
++    g_return_val_if_fail (model != NULL, -1);
++
++    gint length = model->items->len;
++
++    g_object_unref (model);
++
++    return length;
 +}
 +
 +static void
@@ -2018,9 +2050,9 @@ index 0000000..9c0f835
 +}
 +
 +void
-+g_lo_menu_insert (GLOMenu        *menu,
-+                  gint            position,
-+                  const gchar    *label)
++g_lo_menu_insert (GLOMenu     *menu,
++                  gint         position,
++                  const gchar *label)
 +{
 +    g_return_if_fail (G_IS_LO_MENU (menu));
 +
@@ -2039,20 +2071,21 @@ index 0000000..9c0f835
 +}
 +
 +void
-+g_lo_menu_insert_in_section (GLOMenu        *menu,
-+                             gint            section,
-+                             gint            position,
-+                             const gchar    *label)
++g_lo_menu_insert_in_section (GLOMenu     *menu,
++                             gint         section,
++                             gint         position,
++                             const gchar *label)
 +{
 +    g_return_if_fail (G_IS_LO_MENU (menu));
 +    g_return_if_fail (0 <= section && section < (gint) menu->items->len);
 +
-+    GLOMenu *model = G_LO_MENU (G_MENU_MODEL_CLASS (g_lo_menu_parent_class)
-+                                ->get_item_link (G_MENU_MODEL (menu), section, G_MENU_LINK_SECTION));
++    GLOMenu *model = g_lo_menu_get_section (menu, section);
 +
 +    g_return_if_fail (model != NULL);
 +
 +    g_lo_menu_insert (model, position, label);
++
++    g_object_unref (model);
 +}
 +
 +GLOMenu *
@@ -2071,7 +2104,7 @@ index 0000000..9c0f835
 +    g_return_if_fail (attribute != NULL);
 +    g_return_if_fail (valid_attribute_name (attribute));
 +
-+    if (position >= menu->items->len)
++    if (position >= (gint) menu->items->len)
 +        return;
 +
 +    struct item menu_item = g_array_index (menu->items, struct item, position);
@@ -2080,7 +2113,27 @@ index 0000000..9c0f835
 +        g_hash_table_insert (menu_item.attributes, g_strdup (attribute), g_variant_ref_sink (value));
 +    else
 +        g_hash_table_remove (menu_item.attributes, attribute);
++}
 +
++GVariant*
++g_lo_menu_get_attribute_value_from_item_in_section (GLOMenu            *menu,
++                                                    gint                section,
++                                                    gint                position,
++                                                    const gchar        *attribute,
++                                                    const GVariantType *type)
++{
++    GMenuModel *model = G_MENU_MODEL (g_lo_menu_get_section (menu, section));
++
++    g_return_val_if_fail (model != NULL, NULL);
++
++    GVariant *value = g_menu_model_get_item_attribute_value (model,
++                                                             position,
++                                                             attribute,
++                                                             type);
++
++    g_object_unref (model);
++
++    return value;
 +}
 +
 +void
@@ -2108,8 +2161,7 @@ index 0000000..9c0f835
 +{
 +    g_return_if_fail (G_IS_LO_MENU (menu));
 +
-+    GLOMenu *model = G_LO_MENU (G_MENU_MODEL_CLASS (g_lo_menu_parent_class)
-+                                ->get_item_link (G_MENU_MODEL (menu), section, G_MENU_LINK_SECTION));
++    GLOMenu *model = g_lo_menu_get_section (menu, section);
 +
 +    g_return_if_fail (model != NULL);
 +
@@ -2117,29 +2169,32 @@ index 0000000..9c0f835
 +
 +    // Notify the update.
 +    g_menu_model_items_changed (G_MENU_MODEL (model), position, 1, 1);
++
++    g_object_unref (model);
 +}
 +
 +gchar *
-+g_lo_menu_get_label_from_item_in_section (GLOMenu     *menu,
-+                                          gint         section,
-+                                          gint         position)
++g_lo_menu_get_label_from_item_in_section (GLOMenu *menu,
++                                          gint     section,
++                                          gint     position)
 +{
 +    g_return_val_if_fail (G_IS_LO_MENU (menu), NULL);
 +
-+    GMenuModel *model = G_MENU_MODEL_CLASS (g_lo_menu_parent_class)
-+                        ->get_item_link (G_MENU_MODEL (menu), section, G_MENU_LINK_SECTION);
++    GVariant *label_value = g_lo_menu_get_attribute_value_from_item_in_section (menu,
++                                                                                section,
++                                                                                position,
++                                                                                G_MENU_ATTRIBUTE_LABEL,
++                                                                                G_VARIANT_TYPE_STRING);
 +
-+    g_return_val_if_fail (model != NULL, NULL);
++    gchar *label = NULL;
 +
-+    GVariant *current_label = g_menu_model_get_item_attribute_value (G_MENU_MODEL(model),
-+                                                                     position,
-+                                                                     G_MENU_ATTRIBUTE_LABEL,
-+                                                                     G_VARIANT_TYPE_STRING);
++    if (label_value)
++    {
++        label = g_variant_dup_string (label_value, NULL);
++        g_variant_unref (label_value);
++    }
 +
-+    if (current_label)
-+        return g_strdup (g_variant_get_string (current_label, NULL));
-+    else
-+        return NULL;
++    return label;
 +}
 +
 +void
@@ -2164,6 +2219,8 @@ index 0000000..9c0f835
 +
 +    g_lo_menu_set_attribute_value (menu, position, G_MENU_ATTRIBUTE_ACTION, action_value);
 +    g_lo_menu_set_attribute_value (menu, position, G_MENU_ATTRIBUTE_TARGET, target_value);
++
++    g_menu_model_items_changed (G_MENU_MODEL (menu), position, 1, 1);
 +}
 +
 +void
@@ -2175,16 +2232,13 @@ index 0000000..9c0f835
 +{
 +    g_return_if_fail (G_IS_LO_MENU (menu));
 +
-+    struct item menu_item = g_array_index (menu->items, struct item, section);
-+
-+    GLOMenu *model = G_LO_MENU (g_hash_table_lookup (menu_item.links, G_MENU_LINK_SECTION));
++    GLOMenu *model = g_lo_menu_get_section (menu, section);
 +
 +    g_return_if_fail (model != NULL);
 +
 +    g_lo_menu_set_action_and_target_value (model, position, command, target_value);
 +
-+    // Notify the update.
-+    g_menu_model_items_changed (G_MENU_MODEL (model), position, 1, 1);
++    g_object_unref (model);
 +}
 +
 +void
@@ -2195,8 +2249,7 @@ index 0000000..9c0f835
 +{
 +    g_return_if_fail (G_IS_LO_MENU (menu));
 +
-+    GMenuModel *model = G_MENU_MODEL_CLASS (g_lo_menu_parent_class)
-+                        ->get_item_link (G_MENU_MODEL (menu), section, G_MENU_LINK_SECTION);
++    GLOMenu *model = g_lo_menu_get_section (menu, section);
 +
 +    g_return_if_fail (model != NULL);
 +
@@ -2207,33 +2260,36 @@ index 0000000..9c0f835
 +    else
 +        value = NULL;
 +
-+    g_lo_menu_set_attribute_value (G_LO_MENU (model), position, G_LO_MENU_ATTRIBUTE_ACCELERATOR, value);
++    g_lo_menu_set_attribute_value (model, position, G_LO_MENU_ATTRIBUTE_ACCELERATOR, value);
 +
 +    // Notify the update.
-+    g_menu_model_items_changed (model, position, 1, 1);
++    g_menu_model_items_changed (G_MENU_MODEL (model), position, 1, 1);
++
++    g_object_unref (model);
 +}
 +
 +gchar *
-+g_lo_menu_get_accelerator_from_item_in_section (GLOMenu     *menu,
-+                                                gint         section,
-+                                                gint         position)
++g_lo_menu_get_accelerator_from_item_in_section (GLOMenu *menu,
++                                                gint     section,
++                                                gint     position)
 +{
 +    g_return_val_if_fail (G_IS_LO_MENU (menu), NULL);
 +
-+    GMenuModel *model = G_MENU_MODEL_CLASS (g_lo_menu_parent_class)
-+                        ->get_item_link (G_MENU_MODEL (menu), section, G_MENU_LINK_SECTION);
++    GVariant *accel_value = g_lo_menu_get_attribute_value_from_item_in_section (menu,
++                                                                                section,
++                                                                                position,
++                                                                                G_LO_MENU_ATTRIBUTE_ACCELERATOR,
++                                                                                G_VARIANT_TYPE_STRING);
 +
-+    g_return_val_if_fail (model != NULL, NULL);
++    gchar *accel = NULL;
 +
-+    GVariant *current_accel = g_menu_model_get_item_attribute_value (model,
-+                                                                     position,
-+                                                                     G_LO_MENU_ATTRIBUTE_ACCELERATOR,
-+                                                                     G_VARIANT_TYPE_STRING);
++    if (accel_value != NULL)
++    {
++        accel = g_variant_dup_string (accel_value, NULL);
++        g_variant_unref (accel_value);
++    }
 +
-+    if (current_accel)
-+        return g_strdup (g_variant_get_string (current_accel, NULL));
-+    else
-+        return NULL;
++    return accel;
 +}
 +
 +void
@@ -2244,8 +2300,7 @@ index 0000000..9c0f835
 +{
 +    g_return_if_fail (G_IS_LO_MENU (menu));
 +
-+    GMenuModel *model = G_MENU_MODEL_CLASS (g_lo_menu_parent_class)
-+                        ->get_item_link (G_MENU_MODEL (menu), section, G_MENU_LINK_SECTION);
++    GLOMenu *model = g_lo_menu_get_section (menu, section);
 +
 +    g_return_if_fail (model != NULL);
 +
@@ -2256,33 +2311,36 @@ index 0000000..9c0f835
 +    else
 +        value = NULL;
 +
-+    g_lo_menu_set_attribute_value (G_LO_MENU (model), position, G_LO_MENU_ATTRIBUTE_COMMAND, value);
++    g_lo_menu_set_attribute_value (model, position, G_LO_MENU_ATTRIBUTE_COMMAND, value);
 +
 +    // Notify the update.
-+    g_menu_model_items_changed (model, position, 1, 1);
++    g_menu_model_items_changed (G_MENU_MODEL (model), position, 1, 1);
++
++    g_object_unref (model);
 +}
 +
 +gchar *
-+g_lo_menu_get_command_from_item_in_section (GLOMenu     *menu,
-+                                            gint         section,
-+                                            gint         position)
++g_lo_menu_get_command_from_item_in_section (GLOMenu *menu,
++                                            gint     section,
++                                            gint     position)
 +{
 +    g_return_val_if_fail (G_IS_LO_MENU (menu), NULL);
 +
-+    GMenuModel *model = G_MENU_MODEL_CLASS (g_lo_menu_parent_class)
-+                        ->get_item_link (G_MENU_MODEL (menu), section, G_MENU_LINK_SECTION);
++    GVariant *command_value = g_lo_menu_get_attribute_value_from_item_in_section (menu,
++                                                                                  section,
++                                                                                  position,
++                                                                                  G_LO_MENU_ATTRIBUTE_COMMAND,
++                                                                                  G_VARIANT_TYPE_STRING);
 +
-+    g_return_val_if_fail (model != NULL, NULL);
++    gchar *command = NULL;
 +
-+    GVariant *command = g_menu_model_get_item_attribute_value (model,
-+                                                               position,
-+                                                               G_LO_MENU_ATTRIBUTE_COMMAND,
-+                                                               G_VARIANT_TYPE_STRING);
++    if (command_value != NULL)
++    {
++        command = g_variant_dup_string (command_value, NULL);
++        g_variant_unref (command_value);
++    }
 +
-+    if (command)
-+        return g_strdup (g_variant_get_string (command, NULL));
-+    else
-+        return NULL;
++    return command;
 +}
 +
 +void
@@ -2307,10 +2365,10 @@ index 0000000..9c0f835
 +}
 +
 +void
-+g_lo_menu_insert_section (GLOMenu *menu,
-+                          gint position,
++g_lo_menu_insert_section (GLOMenu     *menu,
++                          gint         position,
 +                          const gchar *label,
-+                          GMenuModel* section)
++                          GMenuModel  *section)
 +{
 +    g_return_if_fail (G_IS_LO_MENU (menu));
 +
@@ -2319,7 +2377,7 @@ index 0000000..9c0f835
 +
 +    struct item menu_item;
 +
-+    g_lo_menu_struct_item_init(&menu_item);
++    g_lo_menu_struct_item_init (&menu_item);
 +
 +    g_array_insert_val (menu->items, position, menu_item);
 +
@@ -2362,8 +2420,7 @@ index 0000000..9c0f835
 +    g_return_if_fail (G_IS_LO_MENU (menu));
 +    g_return_if_fail (0 <= section && section < (gint) menu->items->len);
 +
-+    GLOMenu *model = G_LO_MENU (G_MENU_MODEL_CLASS (g_lo_menu_parent_class)
-+                                ->get_item_link (G_MENU_MODEL (menu), section, G_MENU_LINK_SECTION));
++    GLOMenu *model = g_lo_menu_get_section (menu, section);
 +
 +    g_return_if_fail (model != NULL);
 +
@@ -2371,18 +2428,19 @@ index 0000000..9c0f835
 +
 +    // Notify the update.
 +    g_menu_model_items_changed (G_MENU_MODEL (model), position, 1, 1);
++
++    g_object_unref (model);
 +}
 +
 +GLOMenu *
-+g_lo_menu_get_submenu_from_item_in_section (GLOMenu     *menu,
-+                                            gint         section,
-+                                            gint         position)
++g_lo_menu_get_submenu_from_item_in_section (GLOMenu *menu,
++                                            gint     section,
++                                            gint     position)
 +{
 +    g_return_val_if_fail (G_IS_LO_MENU (menu), NULL);
 +    g_return_val_if_fail (0 <= section && section < (gint) menu->items->len, NULL);
 +
-+    GLOMenu *model = G_LO_MENU (G_MENU_MODEL_CLASS (g_lo_menu_parent_class)
-+                                ->get_item_link (G_MENU_MODEL (menu), section, G_MENU_LINK_SECTION));
++    GLOMenu *model = g_lo_menu_get_section (menu, section);
 +
 +    g_return_val_if_fail (model != NULL, NULL);
 +
@@ -2391,7 +2449,36 @@ index 0000000..9c0f835
 +    if (0 <= position && position < (gint) model->items->len)
 +        submenu = g_menu_model_get_item_link (G_MENU_MODEL (model), position, G_MENU_LINK_SUBMENU);
 +
++    g_object_unref (model);
++
 +    return G_LO_MENU (submenu);
++}
++
++void
++g_lo_menu_set_submenu_action_to_item_in_section (GLOMenu     *menu,
++                                                 gint         section,
++                                                 gint         position,
++                                                 const gchar *action)
++{
++    g_return_if_fail (G_IS_LO_MENU (menu));
++
++    GMenuModel *model = G_MENU_MODEL (g_lo_menu_get_section (menu, section));
++
++    g_return_if_fail (model != NULL);
++
++    GVariant *value;
++
++    if (action != NULL)
++        value = g_variant_new_string (action);
++    else
++        value = NULL;
++
++    g_lo_menu_set_attribute_value (G_LO_MENU (model), position, G_LO_MENU_ATTRIBUTE_SUBMENU_ACTION, value);
++
++    // Notify the update.
++    g_menu_model_items_changed (model, position, 1, 1);
++
++    g_object_unref (model);
 +}
 +
 +static void
@@ -2410,9 +2497,9 @@ index 0000000..9c0f835
 +    g_return_if_fail (G_IS_LO_MENU (menu));
 +    g_return_if_fail (0 <= position && position < (gint) menu->items->len);
 +
++    g_menu_model_items_changed (G_MENU_MODEL (menu), position, 1, 0);
 +    g_lo_menu_clear_item (&g_array_index (menu->items, struct item, position));
 +    g_array_remove_index (menu->items, position);
-+    g_menu_model_items_changed (G_MENU_MODEL (menu), position, 1, 0);
 +}
 +
 +void
@@ -2423,12 +2510,13 @@ index 0000000..9c0f835
 +    g_return_if_fail (G_IS_LO_MENU (menu));
 +    g_return_if_fail (0 <= section && section < (gint) menu->items->len);
 +
-+    GLOMenu *model = G_LO_MENU (G_MENU_MODEL_CLASS (g_lo_menu_parent_class)
-+                                ->get_item_link (G_MENU_MODEL (menu), section, G_MENU_LINK_SECTION));
++    GLOMenu *model = g_lo_menu_get_section (menu, section);
 +
 +    g_return_if_fail (model != NULL);
 +
 +    g_lo_menu_remove (model, position);
++
++    g_object_unref (model);
 +}
 +
 +static void
@@ -2522,10 +2610,10 @@ index 36be0b2..d43371c 100644
      long nX, nY;
 diff --git a/vcl/unx/gtk/window/gtksalmenu.cxx b/vcl/unx/gtk/window/gtksalmenu.cxx
 new file mode 100644
-index 0000000..b61af31
+index 0000000..60942a5
 --- /dev/null
 +++ b/vcl/unx/gtk/window/gtksalmenu.cxx
-@@ -0,0 +1,612 @@
+@@ -0,0 +1,789 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +/*
 + * Copyright © 2011 Canonical Ltd.
@@ -2548,7 +2636,7 @@ index 0000000..b61af31
 + * Author: Antonio Fernández <antonio.fernandez@aentos.es>
 + */
 +
-+#include "unx/gtk/gtksalmenu.hxx"
++#include <unx/gtk/gtksalmenu.hxx>
 +
 +//#include <gtk/gtk.h>
 +#include <unx/gtk/glomenu.h>
@@ -2556,10 +2644,130 @@ index 0000000..b61af31
 +#include <vcl/menu.hxx>
 +#include <unx/gtk/gtkinst.hxx>
 +
++#include <framework/menuconfiguration.hxx>
++
 +#include <iostream>
 +
 +using namespace std;
 +
++
++static gchar* GetCommandForSpecialItem( GtkSalMenuItem* pSalMenuItem )
++{
++    gchar* aCommand = NULL;
++
++    sal_uInt16 nId = pSalMenuItem->mnId;
++
++    // If item belongs to window list, generate a command with "window-(id)" format.
++    if ( ( nId >= START_ITEMID_WINDOWLIST ) && ( nId <= END_ITEMID_WINDOWLIST ) )
++    {
++        aCommand = g_strdup_printf( "window-%d", nId );
++    }
++
++    return aCommand;
++}
++
++static void UpdateNativeMenu2( GtkSalMenu *pMenu )
++{
++    if ( pMenu == NULL )
++        return;
++
++    Menu* pVCLMenu = pMenu->GetMenu();
++    GLOMenu* pLOMenu = G_LO_MENU( pMenu->GetMenuModel() );
++    GActionGroup* pActionGroup = pMenu->GetActionGroup();
++
++    sal_uInt16 nLOMenuSize = g_menu_model_get_n_items( G_MENU_MODEL( pLOMenu ) );
++
++    if ( nLOMenuSize == 0 )
++        g_lo_menu_new_section( pLOMenu, 0, NULL );
++
++    sal_uInt16 nSection = 0;
++    sal_uInt16 nItemPos = 0;
++    sal_uInt16 validItems = 0;
++    sal_uInt16 nItem;
++
++    for ( nItem = 0; nItem < pMenu->GetItemCount(); nItem++ ) {
++        GtkSalMenuItem *pSalMenuItem = pMenu->GetItemAtPos( nItem );
++        sal_uInt16 nId = pSalMenuItem->mnId;
++
++        if ( pSalMenuItem->mnType == MENUITEM_SEPARATOR )
++        {
++            nSection++;
++            nItemPos = 0;
++
++            if ( nLOMenuSize <= nSection )
++            {
++                g_lo_menu_new_section( pLOMenu, nSection, NULL );
++                nLOMenuSize++;
++            }
++
++            continue;
++        }
++
++        if ( nItemPos >= g_lo_menu_get_n_items_from_section( pLOMenu, nSection ) )
++            g_lo_menu_insert_in_section( pLOMenu, nSection, nItemPos, "EMPTY STRING" );
++
++        // Get internal menu item values.
++        String aText = pVCLMenu->GetItemText( nId );
++        rtl::OUString aCommand( pVCLMenu->GetItemCommand( nId ) );
++        sal_Bool itemEnabled = pVCLMenu->IsItemEnabled( nId );
++        KeyCode nAccelKey = pVCLMenu->GetAccelKey( nId );
++        sal_Bool itemChecked = pVCLMenu->IsItemChecked( nId );
++        MenuItemBits itemBits = pVCLMenu->GetItemBits( nId );
++
++        // Convert internal values to native values.
++        gboolean bChecked = ( itemChecked == sal_True ) ? TRUE : FALSE;
++        gboolean bEnabled = ( itemEnabled == sal_True ) ? TRUE : FALSE;
++        gchar* aNativeCommand = g_strdup( rtl::OUStringToOString( aCommand, RTL_TEXTENCODING_UTF8 ).getStr() );
++
++        // Force updating of native menu labels.
++        pMenu->NativeSetItemText( nSection, nItemPos, aText );
++        pMenu->NativeSetAccelerator( nSection, nItemPos, nAccelKey, nAccelKey.GetName( pMenu->GetFrame()->GetWindow() ) );
++
++        // Some items are special, so they have different commands.
++        if ( g_strcmp0( aNativeCommand, "" ) == 0 )
++        {
++            gchar *aSpecialItemCmd = GetCommandForSpecialItem( pSalMenuItem );
++
++            if ( aSpecialItemCmd != NULL )
++            {
++                g_free( aNativeCommand );
++                aNativeCommand = aSpecialItemCmd;
++            }
++        }
++
++        if ( g_strcmp0( aNativeCommand, "" ) != 0 && pSalMenuItem->mpSubMenu == NULL )
++        {
++            pMenu->NativeSetItemCommand( nSection, nItemPos, nId, aNativeCommand, itemBits, bChecked, FALSE );
++            pMenu->NativeCheckItem( nSection, nItemPos, itemBits, bChecked );
++            pMenu->NativeSetEnableItem( aNativeCommand, bEnabled );
++        }
++
++        GtkSalMenu* pSubmenu = pSalMenuItem->mpSubMenu;
++
++        if ( pSubmenu && pSubmenu->GetMenu() )
++        {
++            pMenu->NativeSetItemCommand( nSection, nItemPos, nId, aNativeCommand, itemBits, FALSE, TRUE );
++
++            GLOMenu* pSubMenuModel = g_lo_menu_get_submenu_from_item_in_section( pLOMenu, nSection, nItemPos );
++
++            if ( pSubMenuModel == NULL )
++            {
++                pSubMenuModel = g_lo_menu_new();
++                g_lo_menu_set_submenu_to_item_in_section( pLOMenu, nSection, nItemPos, G_MENU_MODEL( pSubMenuModel ) );
++            }
++
++            g_object_unref( pSubMenuModel );
++
++            pSubmenu->SetMenuModel( G_MENU_MODEL( pSubMenuModel ) );
++            pSubmenu->SetActionGroup( pActionGroup );
++        }
++
++        g_free( aNativeCommand );
++
++        nItemPos++;
++        validItems++;
++    }
++}
 +
 +static void UpdateNativeMenu( GtkSalMenu* pMenu )
 +{
@@ -2618,21 +2826,31 @@ index 0000000..b61af31
 +        pMenu->NativeSetItemText( nSection, nItemPos, aText );
 +        pMenu->NativeSetAccelerator( nSection, nItemPos, nAccelKey, nAccelKey.GetName( pMenu->GetFrame()->GetWindow() ) );
 +
-+        if ( g_strcmp0( aNativeCommand, "" ) != 0 && pSalMenuItem->mpSubMenu == NULL )
++        // Some items are special, so they have different commands.
++        if ( g_strcmp0( aNativeCommand, "" ) == 0 )
 +        {
-+            pMenu->NativeSetItemCommand( nSection, nItemPos, pSalMenuItem, aNativeCommand );
-+            pMenu->NativeSetEnableItem( aNativeCommand, bEnabled );
++            gchar *aSpecialItemCmd = GetCommandForSpecialItem( pSalMenuItem );
 +
-+            if ( ( itemBits & MIB_CHECKABLE ) || ( itemBits & MIB_RADIOCHECK ) )
-+                pMenu->NativeCheckItem( nSection, nItemPos, itemBits, bChecked );
++            if ( aSpecialItemCmd != NULL )
++            {
++                g_free( aNativeCommand );
++                aNativeCommand = aSpecialItemCmd;
++            }
 +        }
 +
-+        g_free( aNativeCommand );
++        if ( g_strcmp0( aNativeCommand, "" ) != 0 && pSalMenuItem->mpSubMenu == NULL )
++        {
++            pMenu->NativeSetItemCommand( nSection, nItemPos, nId, aNativeCommand, itemBits, bChecked, FALSE );
++            pMenu->NativeCheckItem( nSection, nItemPos, itemBits, bChecked );
++            pMenu->NativeSetEnableItem( aNativeCommand, bEnabled );
++        }
 +
 +        GtkSalMenu* pSubmenu = pSalMenuItem->mpSubMenu;
 +
 +        if ( pSubmenu && pSubmenu->GetMenu() )
 +        {
++            pMenu->NativeSetItemCommand( nSection, nItemPos, nId, aNativeCommand, itemBits, FALSE, TRUE );
++
 +            GLOMenu* pSubMenuModel = g_lo_menu_get_submenu_from_item_in_section( pLOMenu, nSection, nItemPos );
 +
 +            if ( pSubMenuModel == NULL )
@@ -2641,14 +2859,17 @@ index 0000000..b61af31
 +                g_lo_menu_set_submenu_to_item_in_section( pLOMenu, nSection, nItemPos, G_MENU_MODEL( pSubMenuModel ) );
 +            }
 +
++            g_object_unref( pSubMenuModel );
++
 +            pSubmenu->GetMenu()->Activate();
++            pSubmenu->GetMenu()->Deactivate();
 +
 +            pSubmenu->SetMenuModel( G_MENU_MODEL( pSubMenuModel ) );
 +            pSubmenu->SetActionGroup( pActionGroup );
 +            UpdateNativeMenu( pSubmenu );
-+
-+            pSubmenu->GetMenu()->Deactivate();
 +        }
++
++        g_free( aNativeCommand );
 +
 +        nItemPos++;
 +        validItems++;
@@ -2746,6 +2967,9 @@ index 0000000..b61af31
 +
 +        if ( gdkWindow != NULL )
 +        {
++            GMenuModel* pMenuModel = G_MENU_MODEL( g_object_get_data( G_OBJECT( gdkWindow ), "g-lo-menubar" ) );
++            GActionGroup* pActionGroup = G_ACTION_GROUP( g_object_get_data( G_OBJECT( gdkWindow ), "g-lo-action-group" ) );
++
 +            XLIB_Window windowId = GDK_WINDOW_XID( gdkWindow );
 +
 +            gchar* aDBusPath = g_strdup_printf("/window/%lu", windowId);
@@ -2759,11 +2983,11 @@ index 0000000..b61af31
 +                return;
 +
 +            // Publish the menu.
-+            if ( aDBusMenubarPath != NULL )
-+                g_dbus_connection_export_menu_model (pSessionBus, aDBusMenubarPath, pSalMenu->GetMenuModel(), NULL);
++            if ( aDBusMenubarPath != NULL && pMenuModel != NULL )
++                g_dbus_connection_export_menu_model (pSessionBus, aDBusMenubarPath, pMenuModel, NULL);
 +
-+            if ( aDBusPath != NULL )
-+                g_dbus_connection_export_action_group( pSessionBus, aDBusPath, pSalMenu->GetActionGroup(), NULL);
++            if ( aDBusPath != NULL && pActionGroup != NULL )
++                g_dbus_connection_export_action_group( pSessionBus, aDBusPath, pActionGroup, NULL);
 +
 +            // Set window properties.
 +            gdk_x11_window_set_utf8_property ( gdkWindow, "_GTK_UNIQUE_BUS_NAME", g_dbus_connection_get_unique_name( pSessionBus ) );
@@ -2776,8 +3000,9 @@ index 0000000..b61af31
 +            g_free( aDBusMenubarPath );
 +
 +            bDBusIsAvailable = sal_True;
-+            pSalMenu->SetVisibleMenuBar( sal_True );
-+            pMenuBar->SetDisplayable( sal_False );
++
++            if ( pMenuBar )
++                pMenuBar->SetDisplayable( sal_False );
 +        }
 +    }
 +
@@ -2797,7 +3022,6 @@ index 0000000..b61af31
 +        MenuBar* pMenuBar = static_cast< MenuBar* >( pSalMenu->GetMenu() );
 +
 +        bDBusIsAvailable = sal_False;
-+        pSalMenu->SetVisibleMenuBar( sal_False );
 +        pMenuBar->SetDisplayable( sal_True );
 +    }
 +
@@ -2823,7 +3047,7 @@ index 0000000..b61af31
 +GtkSalMenu::~GtkSalMenu()
 +{
 +    if ( mbMenuBar == sal_True ) {
-+        g_source_remove_by_user_data( this );
++//        g_source_remove_by_user_data( this );
 +
 +        ((GtkSalFrame*) mpFrame)->SetMenu( NULL );
 +
@@ -2839,14 +3063,8 @@ index 0000000..b61af31
 +    maItems.clear();
 +}
 +
-+void GtkSalMenu::SetVisibleMenuBar( sal_Bool bVisible )
-+{
-+//    mbVisible = bVisible;
-+}
-+
 +sal_Bool GtkSalMenu::VisibleMenuBar()
 +{
-+//    return mbVisible;
 +    return bDBusIsAvailable;
 +}
 +
@@ -2889,7 +3107,7 @@ index 0000000..b61af31
 +
 +    GdkWindow *gdkWindow = gtk_widget_get_window( widget );
 +
-+    if (gdkWindow) {
++    if ( gdkWindow != NULL ) {
 +        mpMenuModel = G_MENU_MODEL( g_object_get_data( G_OBJECT( gdkWindow ), "g-lo-menubar" ) );
 +        mpActionGroup = G_ACTION_GROUP( g_object_get_data( G_OBJECT( gdkWindow ), "g-lo-action-group" ) );
 +
@@ -2913,11 +3131,12 @@ index 0000000..b61af31
 +        }
 +
 +        // Generate the main menu structure.
-+//        GenerateMenu( this );
++        GenerateMenu( this );
++//        UpdateNativeMenu2( this );
 +
 +        // Refresh the menu every second.
 +        // This code is a workaround until required modifications in Gtk+ are available.
-+        g_timeout_add_seconds( 1, GenerateMenu, this );
++//        g_timeout_add_seconds( 1, GenerateMenu, this );
 +    }
 +}
 +
@@ -2927,10 +3146,6 @@ index 0000000..b61af31
 +    while( pMenu && ! pMenu->mpFrame )
 +        pMenu = pMenu->mpParentSalMenu;
 +    return pMenu ? pMenu->mpFrame : NULL;
-+}
-+
-+void GtkSalMenu::CheckItem( unsigned nPos, sal_Bool bCheck )
-+{
 +}
 +
 +void GtkSalMenu::NativeCheckItem( unsigned nSection, unsigned nItemPos, MenuItemBits bits, gboolean bCheck )
@@ -2945,25 +3160,26 @@ index 0000000..b61af31
 +        GVariant *pCheckValue = NULL;
 +        GVariant *pCurrentState = g_action_group_get_action_state( mpActionGroup, aCommand );
 +
-+        if ( bits & MIB_CHECKABLE )
-+        {
-+            pCheckValue = g_variant_new_boolean( bCheck );
-+        }
-+        else if ( bits & MIB_RADIOCHECK )
++        if ( bits & MIB_RADIOCHECK )
 +        {
 +            pCheckValue = ( bCheck == TRUE ) ? g_variant_new_string( aCommand ) : g_variant_new_string( "" );
 +        }
++        else
++        {
++            // By default, all checked items are checkmark buttons.
++            if ( bCheck == TRUE || ( ( bCheck == FALSE ) && pCurrentState != NULL ) )
++                pCheckValue = g_variant_new_boolean( bCheck );
++        }
 +
-+        if ( pCurrentState == NULL || g_variant_equal( pCurrentState, pCheckValue) == FALSE )
++        if ( pCheckValue != NULL && ( pCurrentState == NULL || g_variant_equal( pCurrentState, pCheckValue ) == FALSE ) )
 +            g_action_group_change_action_state( mpActionGroup, aCommand, pCheckValue );
++
++        if ( pCurrentState )
++            g_variant_unref( pCurrentState );
 +    }
 +
 +    if ( aCommand )
 +        g_free( aCommand );
-+}
-+
-+void GtkSalMenu::EnableItem( unsigned nPos, sal_Bool bEnable )
-+{
 +}
 +
 +void GtkSalMenu::NativeSetEnableItem( gchar* aCommand, gboolean bEnable )
@@ -2974,13 +3190,9 @@ index 0000000..b61af31
 +        g_lo_action_group_set_action_enabled( pActionGroup, aCommand, bEnable );
 +}
 +
-+void GtkSalMenu::SetItemText( unsigned nPos, SalMenuItem* pSalMenuItem, const rtl::OUString& rText )
-+{
-+}
-+
 +void GtkSalMenu::NativeSetItemText( unsigned nSection, unsigned nItemPos, const rtl::OUString& rText )
 +{
-+    // Replace the "~" character with "_".
++    // Replace the '~' character with '_'.
 +    rtl::OUString aText = rText.replace( '~', '_' );
 +    rtl::OString aConvertedText = OUStringToOString( aText, RTL_TEXTENCODING_UTF8 );
 +
@@ -2992,14 +3204,6 @@ index 0000000..b61af31
 +
 +    if ( aLabel )
 +        g_free( aLabel );
-+}
-+
-+void GtkSalMenu::SetItemImage( unsigned nPos, SalMenuItem* pSalMenuItem, const Image& rImage)
-+{
-+}
-+
-+void GtkSalMenu::SetAccelerator( unsigned nPos, SalMenuItem* pSalMenuItem, const KeyCode& rKeyCode, const rtl::OUString& rKeyName )
-+{
 +}
 +
 +void GtkSalMenu::NativeSetAccelerator( unsigned nSection, unsigned nItemPos, const KeyCode& rKeyCode, const rtl::OUString& rKeyName )
@@ -3018,31 +3222,28 @@ index 0000000..b61af31
 +        g_free( aCurrentAccel );
 +}
 +
-+void GtkSalMenu::SetItemCommand( unsigned nPos, SalMenuItem* pSalMenuItem, const rtl::OUString& aCommandStr )
-+{
-+}
-+
-+void GtkSalMenu::NativeSetItemCommand( unsigned nSection, unsigned nItemPos, GtkSalMenuItem* pItem, const gchar* aCommand )
++void GtkSalMenu::NativeSetItemCommand( unsigned nSection,
++                                       unsigned nItemPos,
++                                       sal_uInt16 nId,
++                                       const gchar* aCommand,
++                                       MenuItemBits nBits,
++                                       gboolean bChecked,
++                                       gboolean bIsSubmenu )
 +{
 +    GLOActionGroup* pActionGroup = G_LO_ACTION_GROUP( mpActionGroup );
 +
 +    GVariant *pTarget = NULL;
 +
 +    if ( g_action_group_has_action( mpActionGroup, aCommand ) == FALSE ) {
-+        gboolean bChecked = ( pItem->mpVCLMenu->IsItemChecked( pItem->mnId ) ) ? TRUE : FALSE;
-+
-+        // FIXME: Why pItem->mnBits differs from GetItemBits value?
-+        MenuItemBits bits = pItem->mpVCLMenu->GetItemBits( pItem->mnId );
-+
-+        if ( bits & MIB_CHECKABLE )
++        if ( ( nBits & MIB_CHECKABLE ) || ( bIsSubmenu == TRUE ) )
 +        {
 +            // Item is a checkmark button.
 +            GVariantType* pStateType = g_variant_type_new( (gchar*) G_VARIANT_TYPE_BOOLEAN );
 +            GVariant* pState = g_variant_new_boolean( bChecked );
 +
-+            g_lo_action_group_insert_stateful( pActionGroup, aCommand, pItem->mnId, NULL, pStateType, NULL, pState );
++            g_lo_action_group_insert_stateful( pActionGroup, aCommand, nId, bIsSubmenu, NULL, pStateType, NULL, pState );
 +        }
-+        else if ( bits & MIB_RADIOCHECK )
++        else if ( nBits & MIB_RADIOCHECK )
 +        {
 +            // Item is a radio button.
 +            GVariantType* pParameterType = g_variant_type_new( (gchar*) G_VARIANT_TYPE_STRING );
@@ -3050,12 +3251,12 @@ index 0000000..b61af31
 +            GVariant* pState = g_variant_new_string( "" );
 +            pTarget = g_variant_new_string( aCommand );
 +
-+            g_lo_action_group_insert_stateful( pActionGroup, aCommand, pItem->mnId, pParameterType, pStateType, NULL, pState );
++            g_lo_action_group_insert_stateful( pActionGroup, aCommand, nId, FALSE, pParameterType, pStateType, NULL, pState );
 +        }
 +        else
 +        {
 +            // Item is not special, so insert a stateless action.
-+            g_lo_action_group_insert( pActionGroup, aCommand, pItem->mnId );
++            g_lo_action_group_insert( pActionGroup, aCommand, nId, FALSE );
 +        }
 +    }
 +
@@ -3070,7 +3271,10 @@ index 0000000..b61af31
 +
 +        gchar* aItemCommand = g_strconcat("win.", aCommand, NULL );
 +
-+        g_lo_menu_set_action_and_target_value_to_item_in_section( pMenu, nSection, nItemPos, aItemCommand, pTarget );
++        if ( bIsSubmenu == TRUE )
++            g_lo_menu_set_submenu_action_to_item_in_section( pMenu, nSection, nItemPos, aItemCommand );
++        else
++            g_lo_menu_set_action_and_target_value_to_item_in_section( pMenu, nSection, nItemPos, aItemCommand, pTarget );
 +
 +        g_free( aItemCommand );
 +    }
@@ -3079,11 +3283,7 @@ index 0000000..b61af31
 +        g_free( aCurrentCommand );
 +}
 +
-+void GtkSalMenu::GetSystemMenuData( SystemMenuData* pData )
-+{
-+}
-+
-+GtkSalMenu* GtkSalMenu::GetMenuForItemCommand( gchar* aCommand )
++GtkSalMenu* GtkSalMenu::GetMenuForItemCommand( gchar* aCommand, gboolean bGetSubmenu )
 +{
 +    GtkSalMenu* pMenu = NULL;
 +
@@ -3092,18 +3292,17 @@ index 0000000..b61af31
 +        GtkSalMenuItem *pSalItem = maItems[ nPos ];
 +
 +        String aItemCommand = mpVCLMenu->GetItemCommand( pSalItem->mnId );
-+
 +        gchar* aItemCommandStr = (gchar*) rtl::OUStringToOString( aItemCommand, RTL_TEXTENCODING_UTF8 ).getStr();
 +
 +        if ( g_strcmp0( aItemCommandStr, aCommand ) == 0 )
 +        {
-+            pMenu = this;
++            pMenu = ( bGetSubmenu == TRUE ) ? pSalItem->mpSubMenu : this;
 +            break;
 +        }
 +        else
 +        {
 +            if ( pSalItem->mpSubMenu != NULL )
-+                pMenu = pSalItem->mpSubMenu->GetMenuForItemCommand( aCommand );
++                pMenu = pSalItem->mpSubMenu->GetMenuForItemCommand( aCommand, bGetSubmenu );
 +
 +            if ( pMenu != NULL )
 +               break;
@@ -3111,6 +3310,73 @@ index 0000000..b61af31
 +    }
 +
 +    return pMenu;
++}
++
++void GtkSalMenu::DispatchCommand( gint itemId, const gchar *aCommand )
++{
++    // Only the menubar is allowed to dispatch commands.
++    if ( mbMenuBar != TRUE )
++        return;
++
++    GtkSalMenu* pSalSubMenu = GetMenuForItemCommand( (gchar*) aCommand, FALSE );
++    Menu* pSubMenu = ( pSalSubMenu != NULL ) ? pSalSubMenu->GetMenu() : NULL;
++
++    MenuBar* pMenuBar = static_cast< MenuBar* >( mpVCLMenu );
++
++    pMenuBar->HandleMenuCommandEvent( pSubMenu, itemId );
++}
++
++void GtkSalMenu::Activate( const gchar* aMenuCommand )
++{
++    if ( mbMenuBar != TRUE )
++        return;
++
++    GtkSalMenu* pSalSubMenu = GetMenuForItemCommand( (gchar*) aMenuCommand, TRUE );
++
++    if ( pSalSubMenu != NULL ) {
++        pSalSubMenu->mpVCLMenu->Activate();
++        UpdateNativeMenu2( pSalSubMenu );
++    }
++}
++
++void GtkSalMenu::Deactivate( const gchar* aMenuCommand )
++{
++    if ( mbMenuBar != TRUE )
++        return;
++
++    GtkSalMenu* pSalSubMenu = GetMenuForItemCommand( (gchar*) aMenuCommand, TRUE );
++
++    if ( pSalSubMenu != NULL ) {
++        pSalSubMenu->mpVCLMenu->Deactivate();
++    }
++}
++
++void GtkSalMenu::CheckItem( unsigned nPos, sal_Bool bCheck )
++{
++}
++
++void GtkSalMenu::EnableItem( unsigned nPos, sal_Bool bEnable )
++{
++}
++
++void GtkSalMenu::SetItemText( unsigned nPos, SalMenuItem* pSalMenuItem, const rtl::OUString& rText )
++{
++}
++
++void GtkSalMenu::SetItemImage( unsigned nPos, SalMenuItem* pSalMenuItem, const Image& rImage)
++{
++}
++
++void GtkSalMenu::SetAccelerator( unsigned nPos, SalMenuItem* pSalMenuItem, const KeyCode& rKeyCode, const rtl::OUString& rKeyName )
++{
++}
++
++void GtkSalMenu::SetItemCommand( unsigned nPos, SalMenuItem* pSalMenuItem, const rtl::OUString& aCommandStr )
++{
++}
++
++void GtkSalMenu::GetSystemMenuData( SystemMenuData* pData )
++{
 +}
 +
 +void GtkSalMenu::Freeze()
@@ -3125,7 +3391,6 @@ index 0000000..b61af31
 +
 +GtkSalMenuItem::GtkSalMenuItem( const SalItemParams* pItemData ) :
 +    mnId( pItemData->nId ),
-+    mnBits( pItemData->nBits ),
 +    mnType( pItemData->eType ),
 +    mpVCLMenu( pItemData->pMenu ),
 +    mpParentMenu( NULL ),
