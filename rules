@@ -34,6 +34,7 @@ include /usr/share/dpkg/architecture.mk
 include /usr/share/dpkg/vendor.mk
 DISTREL := $(shell lsb_release -cs)
 SHELL:=/bin/bash
+export gb_SHELL:=$(SHELL)
 
 SYSTEM_GCC_VERSION = $(shell gcc --version | sed -n '/^gcc/s/.*\(.\..\)\..$$/\1/p')
 
@@ -322,6 +323,10 @@ FAKEROOT_LIBDIR=/usr/lib/`dpkg-architecture -qDEB_HOST_MULTIARCH`/libfakeroot
 ENABLE_TELEPATHY=y
 SYSTEM_STUFF += liblangtag
 SYSTEM_STUFF += orcus
+USE_UCPP=n
+ifeq "$(USE_UCPP)" "y"
+  SYSTEM_STUFF += ucpp
+endif
 
 # Default flags to pass to configure
 CONFIGURE_FLAGS= \
@@ -886,6 +891,15 @@ endif
 
 ifeq "$(USE_SYSTEM_DMAKE)" "y"
 	BUILD_DEPS += , dmake (>= 1:4.11)
+endif
+ifeq "$(USE_UCPP)" "y"
+  ifneq (,$(filter ucpp, $(SYSTEM_STUFF)))
+	IDLC_CPP_DEPENDS := ucpp
+	BUILD_DEPS += , $(UCPP_DEPENDS)
+  endif
+else
+	IDLC_CPP_DEPENDS := cpp
+	CONFIGURE_FLAGS += --with-idlc-cpp=cpp
 endif
 
 ifneq (,$(filter hunspell, $(SYSTEM_STUFF)))
@@ -2944,6 +2958,7 @@ endif
 		-V'lpsolve-dep=$(LPSOLVE_DEP)' \
 		-V'gstreamer-plugins-suggests=$(GSTREAMER_PLUGINS_SUGGESTS)' \
 		-V'libebook-dep=$(shell debian/scripts/get_libebook_dep.sh)' \
+		-V'idlc-cpp-depends=$(IDLC_CPP_DEPENDS)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-v$(BINARY_VERSION)
 ifeq "$(ENABLE_JAVA)" "y"
