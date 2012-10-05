@@ -1,8 +1,8 @@
-commit 5eb311a2246642c558f25fc331173d6f2ffe7af7
-Author: Antonio Fernandez <antonio.fernandez@aentos.es>
-Date:   Thu Oct 4 21:23:17 2012 +0200
+commit 7ffc24eb76325afef89c25e8a7fe13124ed5a041
+Author: Bjoern Michaelsen <bjoern.michaelsen@canonical.com>
+Date:   Fri Oct 5 14:19:37 2012 +0200
 
-    antonios fixes
+    more SolarMutexes
  framework/inc/classes/menumanager.hxx         |   22 +-
  framework/inc/uielement/menubarmanager.hxx    |   24 +-
  framework/inc/uielement/menubarmerger.hxx     |   16 +-
@@ -22,16 +22,16 @@ Date:   Thu Oct 4 21:23:17 2012 +0200
  vcl/inc/unx/gtk/gtksalmenu.hxx                |  127 ++++
  vcl/inc/unx/salmenu.h                         |    8 +-
  vcl/inc/vcl/menu.hxx                          |  156 ++++-
- vcl/source/window/menu.cxx                    |   19 +-
+ vcl/source/window/menu.cxx                    |   20 +-
  vcl/unx/gtk/app/gtkinst.cxx                   |   30 +
  vcl/unx/gtk/window/gloactiongroup.cxx         |  421 +++++++++++++
  vcl/unx/gtk/window/glomenu.cxx                |  653 ++++++++++++++++++++
  vcl/unx/gtk/window/gtkframe.cxx               |  193 +++++-
- vcl/unx/gtk/window/gtksalmenu.cxx             |  786 +++++++++++++++++++++++++
+ vcl/unx/gtk/window/gtksalmenu.cxx             |  793 +++++++++++++++++++++++++
  vcl/unx/gtk3/window/gtk3gloactiongroup.cxx    |    2 +
  vcl/unx/gtk3/window/gtk3glomenu.cxx           |    2 +
  vcl/unx/gtk3/window/gtk3gtksalmenu.cxx        |    2 +
- 28 files changed, 2717 insertions(+), 115 deletions(-)
+ 28 files changed, 2725 insertions(+), 115 deletions(-)
 diff --git a/framework/inc/classes/menumanager.hxx b/framework/inc/classes/menumanager.hxx
 index 3ac4588..56ecc90 100644
 --- a/framework/inc/classes/menumanager.hxx
@@ -1419,7 +1419,7 @@ index c9388ee..7538faf 100644
      // highlight link will be called with a MenuBarButtonHighlightArg
      // the bHighlight member of that struct shall contain the new state
 diff --git a/vcl/source/window/menu.cxx b/vcl/source/window/menu.cxx
-index 3b4ac0d..bf41af8 100644
+index 3b4ac0d..1115111 100644
 --- a/vcl/source/window/menu.cxx
 +++ b/vcl/source/window/menu.cxx
 @@ -1811,7 +1811,8 @@ void Menu::ShowItem( sal_uInt16 nItemId, sal_Bool bVisible )
@@ -1449,11 +1449,12 @@ index 3b4ac0d..bf41af8 100644
  }
  
  const XubString& Menu::GetItemCommand( sal_uInt16 nItemId ) const
-@@ -3238,6 +3244,15 @@ void Menu::HighlightItem( sal_uInt16 nItemPos )
+@@ -3238,6 +3244,16 @@ void Menu::HighlightItem( sal_uInt16 nItemPos )
      }
  }
  
-+void Menu::Freeze() {
++void Menu::Freeze(void)
++{
 +    SalMenu *pSalMenu = ImplGetSalMenu();
 +
 +    if ( pSalMenu ) {
@@ -2849,10 +2850,10 @@ index 36be0b2..3a8a79e 100644
  void GtkSalFrame::DrawMenuBar()
 diff --git a/vcl/unx/gtk/window/gtksalmenu.cxx b/vcl/unx/gtk/window/gtksalmenu.cxx
 new file mode 100644
-index 0000000..4047872
+index 0000000..5a9ac3d
 --- /dev/null
 +++ b/vcl/unx/gtk/window/gtksalmenu.cxx
-@@ -0,0 +1,786 @@
+@@ -0,0 +1,793 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +/*
 + * Copyright © 2011 Canonical Ltd.
@@ -3262,6 +3263,7 @@ index 0000000..4047872
 +
 +GtkSalMenu::~GtkSalMenu()
 +{
++    SolarMutexGuard aGuard;
 +    if ( mbMenuBar == sal_True )
 +        ((GtkSalFrame*) mpFrame)->SetMenu( NULL );
 +
@@ -3275,6 +3277,7 @@ index 0000000..4047872
 +
 +void GtkSalMenu::InsertItem( SalMenuItem* pSalMenuItem, unsigned nPos )
 +{
++    SolarMutexGuard aGuard;
 +    GtkSalMenuItem *pItem = static_cast<GtkSalMenuItem*>( pSalMenuItem );
 +
 +    if ( nPos == MENU_APPEND )
@@ -3287,11 +3290,13 @@ index 0000000..4047872
 +
 +void GtkSalMenu::RemoveItem( unsigned nPos )
 +{
++    SolarMutexGuard aGuard;
 +    maItems.erase( maItems.begin() + nPos );
 +}
 +
 +void GtkSalMenu::SetSubMenu( SalMenuItem* pSalMenuItem, SalMenu* pSubMenu, unsigned nPos )
 +{
++    SolarMutexGuard aGuard;
 +    GtkSalMenuItem *pItem = static_cast< GtkSalMenuItem* >( pSalMenuItem );
 +    GtkSalMenu *pGtkSubMenu = static_cast< GtkSalMenu* >( pSubMenu );
 +
@@ -3347,6 +3352,7 @@ index 0000000..4047872
 +
 +const GtkSalFrame* GtkSalMenu::GetFrame() const
 +{
++    SolarMutexGuard aGuard;
 +    const GtkSalMenu* pMenu = this;
 +    while( pMenu && ! pMenu->mpFrame )
 +        pMenu = pMenu->mpParentSalMenu;
@@ -3571,6 +3577,7 @@ index 0000000..4047872
 +
 +sal_Bool GtkSalMenu::IsItemVisible( unsigned nPos )
 +{
++    SolarMutexGuard aGuard;
 +    sal_Bool bVisible = sal_False;
 +
 +    if ( nPos < maItems.size() )
@@ -3589,6 +3596,7 @@ index 0000000..4047872
 +
 +void GtkSalMenu::ShowItem( unsigned nPos, sal_Bool bShow )
 +{
++    SolarMutexGuard aGuard;
 +    if ( nPos < maItems.size() )
 +        ( ( GtkSalMenuItem* ) maItems[ nPos ] )->mbVisible = bShow;
 +}
