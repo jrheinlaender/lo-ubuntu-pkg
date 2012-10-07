@@ -1,8 +1,10 @@
-commit 7ffc24eb76325afef89c25e8a7fe13124ed5a041
-Author: Bjoern Michaelsen <bjoern.michaelsen@canonical.com>
-Date:   Fri Oct 5 14:19:37 2012 +0200
+commit dcbb294362cbfb30721defd2096896ed579fa564
+Author: Antonio Fernandez <antonio.fernandez@aentos.es>
+Date:   Sat Oct 6 14:59:47 2012 +0100
 
-    more SolarMutexes
+    Fixed a crash on non-Unity WM.
+    
+    Change-Id: Ia8f82024e56ad83c8979d60df3c94e8209fe2552
  framework/inc/classes/menumanager.hxx         |   22 +-
  framework/inc/uielement/menubarmanager.hxx    |   24 +-
  framework/inc/uielement/menubarmerger.hxx     |   16 +-
@@ -19,19 +21,19 @@ Date:   Fri Oct 5 14:19:37 2012 +0200
  vcl/inc/unx/gtk/glomenu.h                     |  144 +++++
  vcl/inc/unx/gtk/gtkframe.hxx                  |   10 +
  vcl/inc/unx/gtk/gtkinst.hxx                   |    5 +-
- vcl/inc/unx/gtk/gtksalmenu.hxx                |  127 ++++
+ vcl/inc/unx/gtk/gtksalmenu.hxx                |  128 ++++
  vcl/inc/unx/salmenu.h                         |    8 +-
  vcl/inc/vcl/menu.hxx                          |  156 ++++-
  vcl/source/window/menu.cxx                    |   20 +-
  vcl/unx/gtk/app/gtkinst.cxx                   |   30 +
  vcl/unx/gtk/window/gloactiongroup.cxx         |  421 +++++++++++++
  vcl/unx/gtk/window/glomenu.cxx                |  653 ++++++++++++++++++++
- vcl/unx/gtk/window/gtkframe.cxx               |  193 +++++-
- vcl/unx/gtk/window/gtksalmenu.cxx             |  793 +++++++++++++++++++++++++
+ vcl/unx/gtk/window/gtkframe.cxx               |  197 +++++-
+ vcl/unx/gtk/window/gtksalmenu.cxx             |  808 +++++++++++++++++++++++++
  vcl/unx/gtk3/window/gtk3gloactiongroup.cxx    |    2 +
  vcl/unx/gtk3/window/gtk3glomenu.cxx           |    2 +
  vcl/unx/gtk3/window/gtk3gtksalmenu.cxx        |    2 +
- 28 files changed, 2725 insertions(+), 115 deletions(-)
+ 28 files changed, 2745 insertions(+), 115 deletions(-)
 diff --git a/framework/inc/classes/menumanager.hxx b/framework/inc/classes/menumanager.hxx
 index 3ac4588..56ecc90 100644
 --- a/framework/inc/classes/menumanager.hxx
@@ -998,10 +1000,10 @@ index 89743ca..efe8f16 100644
      bool                        IsTimerExpired();
 diff --git a/vcl/inc/unx/gtk/gtksalmenu.hxx b/vcl/inc/unx/gtk/gtksalmenu.hxx
 new file mode 100644
-index 0000000..7dadbfc
+index 0000000..6e7084b
 --- /dev/null
 +++ b/vcl/inc/unx/gtk/gtksalmenu.hxx
-@@ -0,0 +1,127 @@
+@@ -0,0 +1,128 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +
 +/*
@@ -1106,7 +1108,8 @@ index 0000000..7dadbfc
 +    void                        DispatchCommand( gint itemId, const gchar* aCommand );
 +    void                        Activate( const gchar* aMenuCommand );
 +    void                        Deactivate( const gchar* aMenuCommand );
-+    void DisconnectFrame();
++    void                        DisconnectFrame();
++    void                        Display( sal_Bool bVisible );
 +    void UpdateNativeMenu();
 +//    void UpdateNativeSubMenu();
 +    bool PrepUpdate();
@@ -2601,7 +2604,7 @@ index 0000000..2ecf23a
 +
 +/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
 diff --git a/vcl/unx/gtk/window/gtkframe.cxx b/vcl/unx/gtk/window/gtkframe.cxx
-index 36be0b2..3a8a79e 100644
+index 36be0b2..7e944c6 100644
 --- a/vcl/unx/gtk/window/gtkframe.cxx
 +++ b/vcl/unx/gtk/window/gtkframe.cxx
 @@ -31,6 +31,9 @@
@@ -2630,7 +2633,7 @@ index 36be0b2..3a8a79e 100644
  static sal_uInt16 GetKeyModCode( guint state )
  {
      sal_uInt16 nCode = 0;
-@@ -482,6 +487,149 @@ GtkSalFrame::GtkSalFrame( SystemParentData* pSysData )
+@@ -482,6 +487,153 @@ GtkSalFrame::GtkSalFrame( SystemParentData* pSysData )
      Init( pSysData );
  }
  
@@ -2714,36 +2717,40 @@ index 36be0b2..3a8a79e 100644
 +                             gpointer         user_data )
 +{
 +    SolarMutexGuard aGuard;
++
 +    GtkSalFrame* pSalFrame = reinterpret_cast< GtkSalFrame* >( user_data );
 +    GdkWindow* gdkWindow = gtk_widget_get_window( pSalFrame->getWindow() );
++
 +    ensure_dbus_setup(gdkWindow, pSalFrame);
++
 +    SalMenu* pSalMenu = pSalFrame->GetMenu();
++
 +    if ( pSalMenu != NULL )
 +    {
 +        GtkSalMenu* pGtkSalMenu = static_cast<GtkSalMenu*>(pSalMenu);
 +        pGtkSalMenu->UpdateNativeMenu();
-+        MenuBar* pMenuBar = static_cast< MenuBar* >( pGtkSalMenu->GetMenu() );
-+        if(pMenuBar)
-+            pMenuBar->SetDisplayable(false);           
++        pGtkSalMenu->Display( sal_True );
 +    }
 +}
 +
-+//This is called when the registrar becomes unavailable. It shows the menubar.
-+void on_registrar_unavailable (GDBusConnection * /*connection*/,
-+                          const gchar     * /*name*/,
-+                          gpointer         user_data)
++// This is called when the registrar becomes unavailable. It shows the menubar.
++void on_registrar_unavailable( GDBusConnection * /*connection*/,
++                               const gchar     * /*name*/,
++                               gpointer         user_data )
 +{
 +    SolarMutexGuard aGuard;
++
 +    SAL_INFO("vcl.unity", "on_registrar_unavailable");
++
 +    pSessionBus = NULL;
 +    GtkSalFrame* pSalFrame = reinterpret_cast< GtkSalFrame* >( user_data );
++
 +    SalMenu* pSalMenu = pSalFrame->GetMenu();
 +
 +    if ( pSalMenu ) {
-+        GtkSalMenu* pGtkSalMenu = static_cast<GtkSalMenu*>(pSalMenu);
++        GtkSalMenu* pGtkSalMenu = static_cast< GtkSalMenu* >( pSalMenu );
 +        pGtkSalMenu->DisconnectFrame();
-+        MenuBar* pMenuBar = static_cast< MenuBar* >( pGtkSalMenu->GetMenu() );
-+        pMenuBar->SetDisplayable( false );
++        pGtkSalMenu->Display( sal_False );
 +    }
 +}
 +
@@ -2780,7 +2787,7 @@ index 36be0b2..3a8a79e 100644
  GtkSalFrame::~GtkSalFrame()
  {
      for( unsigned int i = 0; i < SAL_N_ELEMENTS(m_aGraphics); ++i )
-@@ -523,10 +671,35 @@ GtkSalFrame::~GtkSalFrame()
+@@ -523,10 +675,35 @@ GtkSalFrame::~GtkSalFrame()
  
      if( m_pFixedContainer )
          gtk_widget_destroy( GTK_WIDGET( m_pFixedContainer ) );
@@ -2819,7 +2826,7 @@ index 36be0b2..3a8a79e 100644
      }
      if( m_pForeignParent )
          g_object_unref( G_OBJECT( m_pForeignParent ) );
-@@ -639,6 +812,8 @@ void GtkSalFrame::InitCommon()
+@@ -639,6 +816,8 @@ void GtkSalFrame::InitCommon()
      m_pRegion           = NULL;
      m_ePointerStyle     = 0xffff;
      m_bSetFocusOnMap    = false;
@@ -2828,7 +2835,7 @@ index 36be0b2..3a8a79e 100644
  
      gtk_widget_set_app_paintable( m_pWindow, TRUE );
      gtk_widget_set_double_buffered( m_pWindow, FALSE );
-@@ -1288,8 +1463,18 @@ void GtkSalFrame::SetIcon( sal_uInt16 nIcon )
+@@ -1288,8 +1467,18 @@ void GtkSalFrame::SetIcon( sal_uInt16 nIcon )
      g_list_free( pIcons );
  }
  
@@ -2850,10 +2857,10 @@ index 36be0b2..3a8a79e 100644
  void GtkSalFrame::DrawMenuBar()
 diff --git a/vcl/unx/gtk/window/gtksalmenu.cxx b/vcl/unx/gtk/window/gtksalmenu.cxx
 new file mode 100644
-index 0000000..5a9ac3d
+index 0000000..65ee72b
 --- /dev/null
 +++ b/vcl/unx/gtk/window/gtksalmenu.cxx
-@@ -0,0 +1,793 @@
+@@ -0,0 +1,808 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +/*
 + * Copyright © 2011 Canonical Ltd.
@@ -2892,6 +2899,8 @@ index 0000000..5a9ac3d
 +#include <framework/menuconfiguration.hxx>
 +
 +#include <sal/log.hxx>
++
++static sal_Bool bMenuVisibility = sal_False;
 +
 +static gchar* GetCommandForSpecialItem( GtkSalMenuItem* pSalMenuItem )
 +{
@@ -3236,16 +3245,6 @@ index 0000000..5a9ac3d
 +    RemoveUnusedCommands( pActionGroup, pOldCommandList, pNewCommandList );
 +}
 +
-+void GtkSalMenu::DisconnectFrame()
-+{
-+    if(mbMenuBar)
-+    {
-+        mpMenuModel = NULL;
-+        mpActionGroup = NULL;
-+        mpFrame = NULL;
-+    }
-+}
-+
 +
 +/*
 + * GtkSalMenu
@@ -3265,14 +3264,15 @@ index 0000000..5a9ac3d
 +{
 +    SolarMutexGuard aGuard;
 +    if ( mbMenuBar == sal_True )
-+        ((GtkSalFrame*) mpFrame)->SetMenu( NULL );
++        if ( mpFrame )
++            ((GtkSalFrame*) mpFrame)->SetMenu( NULL );
 +
 +    maItems.clear();
 +}
 +
 +sal_Bool GtkSalMenu::VisibleMenuBar()
 +{
-+    return true;
++    return bMenuVisibility;
 +}
 +
 +void GtkSalMenu::InsertItem( SalMenuItem* pSalMenuItem, unsigned nPos )
@@ -3347,7 +3347,6 @@ index 0000000..5a9ac3d
 +
 +    // Generate the main menu structure.
 +    UpdateNativeMenu();
-+
 +}
 +
 +const GtkSalFrame* GtkSalMenu::GetFrame() const
@@ -3564,7 +3563,7 @@ index 0000000..5a9ac3d
 +
 +void GtkSalMenu::Deactivate( const gchar* aMenuCommand )
 +{
-+    if ( mbMenuBar != TRUE )
++    if ( mbMenuBar == sal_False )
 +        return;
 +
 +    GtkSalMenu* pSalSubMenu = GetMenuForItemCommand( (gchar*) aMenuCommand, TRUE );
@@ -3573,6 +3572,29 @@ index 0000000..5a9ac3d
 +        MenuBar* pMenuBar = static_cast< MenuBar* >( mpVCLMenu );
 +        pMenuBar->HandleMenuDeActivateEvent( pSalSubMenu->mpVCLMenu );
 +    }
++}
++
++void GtkSalMenu::DisconnectFrame()
++{
++    if( mbMenuBar == sal_True )
++    {
++        mpMenuModel = NULL;
++        mpActionGroup = NULL;
++        mpFrame = NULL;
++    }
++}
++
++void GtkSalMenu::Display( sal_Bool bVisible )
++{
++    if ( mbMenuBar == sal_False || mpVCLMenu == NULL )
++        return;
++
++    bMenuVisibility = bVisible;
++
++    sal_Bool bVCLMenuVisible = ( bVisible == sal_True ) ? sal_False : sal_True;
++
++    MenuBar* pMenuBar = static_cast< MenuBar* >( mpVCLMenu );
++    pMenuBar->SetDisplayable( bVCLMenuVisible );
 +}
 +
 +sal_Bool GtkSalMenu::IsItemVisible( unsigned nPos )
