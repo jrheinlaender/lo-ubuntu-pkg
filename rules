@@ -186,11 +186,6 @@ ifeq "$(ENABLE_JAVA)" "y"
   SYSTEM_STUFF += hsqldb
   HSQLDB_MINVER= (>> 1.8.0.10)
   HSQLDB_TOONEWVER=1.8.1
-  # disabled because system-saxon breaks all kinds exports using XSLT transforms
-  # (e.g. M$ Word/Excel 2003 XML, Mediawiki, XHTML, UOF, ...)
-  # It does *NOT* fail with _plain_ saxon 9.0.0.8 built with OOos build.xml
-  # for UOF, but still for e.g. M$.
-  #SYSTEM_STUFF += saxon
 endif
 SYSTEM_STUFF += lpsolve
 USE_SHARED_LPSOLVE=y
@@ -818,10 +813,6 @@ export JAVA_HOME
 	CONFIGURE_FLAGS += --with-jdk-home=$(JAVA_HOME)
 	JAVA_COMMON_DEPENDS= , libreoffice$(VER)-java-common
 	JAVA_COMMON_DEPENDS_VERSION:= (>= $(BASE_VERSION)~)
-  ifneq (,$(filter saxon, $(SYSTEM_STUFF)))
-	CONFIGURE_FLAGS += --with-system-saxon --with-saxon-jar=/usr/share/java/saxonb.jar
-	BUILD_DEPS += , libsaxonb-java$(OOO_NO_JAVA_ARCHS)
-  endif
   ifeq "$(PACKAGE_SDK)" "y"
     ifeq "$(PACKAGE_UNOWINREG_DLL)" "y"
       ifeq "$(BUILD_UNOWINREG_DLL)" "y"
@@ -1217,10 +1208,10 @@ ifeq "$(PARALLEL_BUILD)" "y"
 	# http://bugs.debian.org/622644
 	BUILD_DEPS += , make (>= 3.81-8.2)
   ifneq "$(NUM_CPUS)" "$(AVAIL_CPUS)"
-	CONFIGURE_FLAGS += --with-num-cpus=$(NUM_CPUS)
+	CONFIGURE_FLAGS += --with-parallelism=$(NUM_CPUS)
   endif
 else
-	CONFIGURE_FLAGS += --with-num-cpus=1
+	CONFIGURE_FLAGS += --with-parallelism=1
 endif
 
 
@@ -1655,7 +1646,7 @@ $(STAMP_DIR)/build-indep:
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ./autogen.sh $(CONFIGURE_FLAGS) $(CONFIGURE_FLAGS_LANG)
 
-	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` CFLAGS="$(CFLAGS)" CXXFLAGS="$(CXXFLAGS)" $(MAKE) build gb_FULLDEPS= gb_Deliver_HARDLINK=T
+	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` CFLAGS="$(CFLAGS)" CXXFLAGS="$(CXXFLAGS)" $(MAKE) -d build gb_FULLDEPS= gb_Deliver_HARDLINK=T
 
 	touch $@
 
@@ -2020,9 +2011,6 @@ ifeq "$(PACKAGE_BASE)" "y"
 endif
 	: # remove problematic ones
 	rm -f debian/tmp/native-jars/ridl.jar
-ifneq "$(USE_SYSTEM_SAXON)" "y"
-	rm -f debian/tmp/native-jars/saxon9.jar
-endif
 	: # compile the others
 	# the Debian i386 buildd, although having much ram still OOMs without
 	# this (at unoil.jar).
@@ -2558,12 +2546,6 @@ endif
 	cd $(PKGDIR)-common/usr/share/icons/hicolor/32x32/apps && \
 	  for x in *.png; do convert $$x `basename $$x .png`.xpm; done
 
-ifeq "$(ENABLE_JAVA)" "y"
-  ifneq (,$(filter saxon, $(SYSTEM_STUFF)))
-	ln -sf /usr/share/java/saxonb.jar \
-		$(PKGDIR)-java-common/$(OODIR)/program/classes/saxon9.jar
-  endif
-endif
 	# remove extra license files
 	rm -rf $(PKGDIR)-common/$(OODIR)/licenses
 	rm -f $(PKGDIR)-common/$(OODIR)/share/readme/LICENSE*
