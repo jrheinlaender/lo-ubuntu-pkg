@@ -606,17 +606,6 @@ ifneq (,$(filter openssl, $(SYSTEM_STUFF)))
 	DBG_DBG_SUGGESTS += , libssl$(shell readlink /usr/lib/`dpkg-architecture -qDEB_HOST_MULTIARCH`/libssl.so | cut -d"." -f3,4,5)-dbg
 endif
 
-ifneq "$(ENABLE_RSVG)" "y"
-  ifeq "$(SYSTEM_LIBRSVG)" "y"
-	BUILD_DEPS += , librsvg2-dev
-	CONFIGURE_FLAGS += --enable-librsvg=auto
-  else
-	CONFIGURE_FLAGS += --enable-librsvg=internal
-  endif
-else
-	CONFIGURE_FLAGS += --enable-librsvg=no
-endif
-
 ifneq (,$(findstring db,$(SYSTEM_STUFF)))
 	BUILD_DEPS += , libdb-dev
 	DBG_DBG_SUGGESTS += , $(shell dpkg -s libdb-dev | grep Depends | awk '{ print $$2 }' | sed -e s/dev/dbg/)
@@ -1292,7 +1281,6 @@ clean:
 	fi
 	find $(SOURCE_TREE)/solenv/gdb -name "*.pyc" -exec rm {} \;
 	rm -rf */*.pro.obsolete
-	rm -f solenv/bin/concat-deps
 
 	rm -rf $(SOURCE_TREE)/file-lists
 	rm -rf $(SOURCE_TREE)/py3uno
@@ -2879,12 +2867,6 @@ ifneq (,$(filter redland, $(SYSTEM_STUFF)))
 	# manually. Saves us a versioned build-conflict with ourselves
 	# which quickly can get outdated
 	perl -pi -e 's/(shlibs.*$$)/$$1, $(shell cat /var/lib/dpkg/info/$(shell dpkg -S /usr/lib/`objdump -p $(PKGDIR)-core/$(OODIR)/program/libunordf*.so | grep NEEDED | grep librdf | awk '{ print $$2 }'` | cut -d: -f1).shlibs | awk '{ print $$3,$$4,$$5 }')/' $(PKGDIR)-core.substvars
-endif
-ifeq "$(ENABLE_LIBRSVG)" "y"
-  ifeq "$(SYSTEM_LIBRSVG)" "y"
-	# dlopen()'ed only for some weird reason (even when --with-librsvg=internal!)
-	perl -pi -e 's/(shlibs.*$$)/$$1, $(shell cat /var/lib/dpkg/info/librsvg*.shlibs | awk '{ print $$3 }')/' $(PKGDIR)-core.substvars
-  endif
 endif
 	# don't make uno-libs3 depend on ure...
 	perl -pi -e 's/, ure$$//' debian/uno-libs3.substvars
