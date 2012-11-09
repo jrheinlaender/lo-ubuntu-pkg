@@ -123,7 +123,6 @@ ifeq "$(ENABLE_PYTHON3)" "y"
   endif
 endif
 PACKAGE_TTF_OPENSYMBOL=y
-BUILD_BINFILTERS=n
 BUILD_ONLY_EN_US=y
 ENABLE_HELP=y
 ENABLE_JAVA=y
@@ -482,12 +481,6 @@ else
 OOO_NSPLUGIN_ARCHS=
 endif
 $(eval $(call gen_no_archs,OOO_NSPLUGIN_ARCHS))
-
-# builds long and is for legacy filters. probably not needed on {arm,mips}{,el}
-ifneq (,$(filter arm% mips% m68k, $(DEB_HOST_ARCH)))
-	BUILD_BINFILTERS=n
-endif
-OOO_BINFILTER_ARCHS:=$(filter-out arm% mips% m68k, $(OOO_ARCHS))
 
 #############
 # Distro-specific overrides
@@ -1070,11 +1063,6 @@ else
 	CONFIGURE_FLAGS += --disable-randr
 endif
 
-ifeq "$(BUILD_BINFILTERS)" "y"
-	CONFIGURE_FLAGS+= --enable-binfilter
-	OOO_BINFILTER_DEP = libreoffice$(VER)-filter-binfilter
-endif
-
 ifneq "$(BUILD_PYUNO)" "y"
 	DEBHELPER_OPTIONS+= -Npython-uno -Npython3-uno -Nlibreoffice-script-provider-python
 	CONFIGURE_FLAGS += --disable-python
@@ -1463,10 +1451,6 @@ ifeq "$(ENABLE_EVO2)" "y"
 	sed -e "s|libreofficeVER|libreoffice$(VER)|g" \
 		>> debian/control < debian/control.evolution.in
 endif
-ifeq "$(BUILD_BINFILTERS)" "y"
-	sed -e "s|libreofficeVER|libreoffice$(VER)|g" \
-		>> debian/control < debian/control.binfilter.in
-endif
 ifeq "$(ENABLE_KDEAB)" "y"
 	sed -e "s|libreofficeVER|libreoffice$(VER)|g" \
 		>> debian/control < debian/control.kab.in
@@ -1483,7 +1467,6 @@ endif
 	perl -pi -e "s,%OOO_GCJ_ARCHS%,$(OOO_GCJ_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_NSPLUGIN_ARCHS%,$(OOO_NSPLUGIN_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_OGLTRANS_ARCHS%,$(OOO_OGLTRANS_ARCHS),g" debian/control
-	perl -pi -e "s,%OOO_BINFILTER_ARCHS%,$(OOO_BINFILTER_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_STLPORT_ARCHS%,$(OOO_STLPORT_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_GCJ_JDK_ARCHS%,$(OOO_GCJ_JDK_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_ARCH_DEP_EXTENSIONS_ARCHS%,$(OOO_ARCH_DEP_EXTENSIONS_ARCHS),g" debian/control
@@ -1785,20 +1768,13 @@ ifneq "$(ENABLE_HELP)" "n"
 	done
 endif
 
-ifneq "$(BUILD_BINFILTERS)" "y"
-	# somewhow there's a libreoffice-filter-binfilter here even when binfilter disabled.
-	# go sure.
-	rm -rf debian/tmp/pkg/libreoffice-filter-binfilter/usr/share/applications
-endif
-
 	dh_installdirs -A
 	dh_install -A --sourcedir=debian/tmp/pkg --fail-missing
 
 	rm -rf debian/tmp/pkg
 
 	# move desktop files to their correct packages
-	for i in base calc draw impress math writer binfilter; do \
-		if [ "$$i" = "binfilter" ]; then j=filter-binfilter; else j=$$i; fi; \
+	for i in base calc draw impress math writer; do \
 		mkdir -p $(PKGDIR)-$$j/$(OODIR)/share/xdg; \
 		mv $(PKGDIR)-common/$(OODIR)/share/xdg/$$i.desktop \
 			$(PKGDIR)-$$j/$(OODIR)/share/xdg; \
@@ -2929,7 +2905,6 @@ endif
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-V'java-gcj-depends=$(JAVA_GCJ_DEPENDS)' \
 		-V'Binary-Version=$(BINARY_VERSION)' \
-		-V'ooo-binfilter-dep=$(OOO_BINFILTER_DEP)' \
 		-V'ooo-officebean-dep=$(OOO_OFFICEBEAN_DEP)' \
 		-V'kde-iconset-dep=$(KDE_ICONSET_DEP)' \
 		-V'lpsolve-dep=$(LPSOLVE_DEP)' \
@@ -3070,7 +3045,6 @@ endif
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-V'textcat-data-recommends=$(TEXTCAT_DATA_RECOMMENDS)' \
 		-V'Binary-Version=$(BINARY_VERSION)' \
-		-V'ooo-binfilter-dep=$(OOO_BINFILTER_DEP)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-v$(BINARY_VERSION)
 ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
@@ -3144,7 +3118,7 @@ $(call get_orig_tarball,-%):
 	$(call pack_gittarball,$*,$@,libreoffice-$(DEB_VERSION_UPSTREAM)/$*)
 
 # Get upstream external sources
-$(call get_orig_tarball,-src): binfilter/no_localization dictionaries/en/README.txt helpcontent2/makefile.pmk translations/makefile.mk .gitignore
+$(call get_orig_tarball,-src): dictionaries/en/README.txt helpcontent2/makefile.pmk translations/makefile.mk .gitignore
 	dh_testdir
 	rm -rf $(TARFIILE_LOCATION)
 	mkdir -p $(TARFILE_LOCATION)
@@ -3155,9 +3129,6 @@ $(call get_orig_tarball,-src): binfilter/no_localization dictionaries/en/README.
 # using flag files for unpacking
 .gitignore: $(call get_orig_tarball)
 	$(call unpack_gittarball,,$<,--strip-components=1)
-
-binfilter/no_localization: $(call get_orig_tarball,-binfilter)
-	$(call unpack_gittarball,binfilter,$<,)
 
 dictionaries/en/README.txt: $(call get_orig_tarball,-dictionaries)
 	$(call unpack_gittarball,dictionaries,$<,)
