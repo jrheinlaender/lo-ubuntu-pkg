@@ -67,8 +67,7 @@ mv ./usr/share/mimelnk/application/* \
 for i in ./usr/share/applications/*.desktop; do \
 	if [ "`basename $i`" = "libreoffice-startcenter.desktop" ]; then p=libreoffice-common; \
 	elif [ "`basename $i`" = "libreoffice-xsltfilter.desktop" ]; then p=libreoffice-common; \
-	elif [ "`basename $i`" = "libreoffice-binfilter.desktop" ]; then p=libreoffice-filter-binfilter; else \
-	p=`basename $i .desktop`; fi
+	else p=`basename $i .desktop`; fi
 	mkdir -p pkg/$p/usr/share/applications
 	mv $i \
 		pkg/$p/usr/share/applications
@@ -85,7 +84,6 @@ create_package_directory gid_Module_Root_Files_Images           pkg/libreoffice-
 create_package_directory gid_Module_Oo_Linguistic               pkg/libreoffice-common
 create_package_directory gid_Module_Optional_Xsltfiltersamples  pkg/libreoffice-common
 create_package_directory gid_Module_Optional_Javafilter         pkg/libreoffice-common
-create_package_directory gid_Module_Optional_Binfilter          pkg/libreoffice-filter-binfilter
 create_package_directory gid_Module_Optional_Grfflt             pkg/libreoffice-draw
 create_package_directory gid_Module_Prg_Calc_Bin                pkg/libreoffice-calc
 create_package_directory gid_Module_Prg_Math_Bin                pkg/libreoffice-math
@@ -139,13 +137,6 @@ for l in `echo $OOO_LANGS_LIST`; do
 	if [ -f gid_Module_Helppack_Help_`echo $l | sed -e s/-/_/g` ]; then
         	create_package_directory gid_Module_Helppack_Help_`echo $l | sed -e s/-/_/g`    pkg/libreoffice-help-$l
 	fi
-        if [ -f gid_Module_Optional_Binfilter ]; then
-                if [ "$l" = "en-US" ]; then
-                        create_package_directory gid_Module_Langpack_Binfilter_en_US    pkg/libreoffice-filter-binfilter
-                else
-                        create_package_directory gid_Module_Langpack_Binfilter_`echo $l | sed -e s/-/_/g`    pkg/libreoffice-l10n-$l
-                fi
-        fi
         # some help files are in _Langpack_{Writer,Impress,...}_<lang>
         # move them from -l10n to -help
         if [ "$l" = "en-US" ]; then d=en; else d=$l; fi

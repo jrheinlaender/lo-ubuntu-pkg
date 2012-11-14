@@ -15,47 +15,37 @@ diff --git a/Makefile.top b/Makefile.top
 index 7362bbc..ae849fb 100644
 --- a/Makefile.top
 +++ b/Makefile.top
-@@ -243,7 +243,7 @@ xsltml\
- zlib\
+@@ -249,7 +249,7 @@ stlport\
+ sysui\
+ xpdf\
  
- gb_TAILBUILDMODULES := $(shell $(GNUMAKE) -r -f $(SRCDIR)/tail_build/Makefile showmodules)
 -export gb_TAILBUILDTARGET=all slowcheck
 +export gb_TAILBUILDTARGET=all
  
  define gbuild_module_rules
- .PHONY: $(1) $(1).all $(1).clean $(1).deliver
-@@ -480,11 +480,17 @@ findunusedcode:
-               | grep -v WPX \
+ .PHONY: $(1) $(1).all $(1).build $(1).check $(1).clean $(1).subsequentcheck $(1).deliver
+@@ -553,7 +553,7 @@ findunusedcode:
+               | grep -v ^WSObject \
                > unusedcode.easy
  
 -check: dev-install subsequentcheck
 +check: unitcheck slowcheck dev-install subsequentcheck
  
  subsequentcheck :| $(if $(filter-out subsequentcheck,$(MAKECMDGOALS)),dev-install)
- 	$(GNUMAKE) -j $(GMAKE_PARALLELISM) $(GMAKE_OPTIONS) -f Makefile.post $@
- 
-+unitcheck:
-+	$(GNUMAKE) -j $(GMAKE_PARALLELISM) $(GMAKE_OPTIONS) -f Makefile.post $@
-+
-+slowcheck:
-+	$(GNUMAKE) -j $(GMAKE_PARALLELISM) $(GMAKE_OPTIONS) -f Makefile.post $@
-+
- debugrun:
- 	$(GNUMAKE) -j $(GMAKE_PARALLELISM) $(GMAKE_OPTIONS) -f Makefile.post $@
- 
+ 	$(GNUMAKE) -j $(CHECK_PARALLELISM) $(GMAKE_OPTIONS) -f Makefile.post $@
 diff --git a/solenv/bin/build.pl b/solenv/bin/build.pl
 index 74d0f32..daa4ae0 100755
 --- a/solenv/bin/build.pl
 +++ b/solenv/bin/build.pl
-@@ -1901,7 +1901,7 @@ sub run_job {
+@@ -1902,7 +1902,7 @@ sub run_job {
              return 1 if (! $path =~ /prj$/ );
              mkpath("$workdir/Logs");
-             my $gbuild_flags = '-j' . $ENV{GMAKE_MODULE_PARALLELISM};
+             my $gbuild_flags = '-j' . $ENV{PARALLELISM};
 -            my $gbuild_target = 'all slowcheck';
 +            my $gbuild_target = 'all';
              if ($registered_name =~ /tail_build\/prj$/ )
              {
-                 $gbuild_flags = '-j' . $ENV{GMAKE_PARALLELISM};
+                 $gbuild_target = $ENV{gb_TAILBUILDTARGET};
 diff --git a/solenv/gbuild/Module.mk b/solenv/gbuild/Module.mk
 index e5f87f0..9c2608c 100644
 --- a/solenv/gbuild/Module.mk
@@ -72,3 +62,14 @@ index e5f87f0..9c2608c 100644
 -- 
 1.7.9.5
 
+--- a/Makefile-old	2012-10-28 16:25:49.016468687 +0100
++++ b/Makefile	2012-10-28 16:25:59.440520356 +0100
+@@ -9,7 +9,7 @@
+ 
+ # must not be empty so we can have a target for it
+ ifeq ($(MAKECMDGOALS),)
+-MAKECMDGOALS:=all
++MAKECMDGOALS:=build
+ endif
+ 
+ SHELL=/usr/bin/env bash
