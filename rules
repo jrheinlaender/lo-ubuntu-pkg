@@ -70,10 +70,10 @@ USE_SOURCE_TARBALLS=y
 USE_GIT_TARBALLS=n
 ifeq "$(USE_GIT_TARBALLS)" "y"
 GIT_BASEURL:=git://anongit.freedesktop.org/libreoffice
-lo_sources_ver=4.0.0.0.alpha
+lo_sources_ver=4.0.0.0.alpha1
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
-#GIT_TAG=libreoffice-$(lo_sources_ver)
+GIT_TAG=libreoffice-$(lo_sources_ver)
 #GIT_BRANCH=libreoffice-3-6-2
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
@@ -340,9 +340,12 @@ CONFIGURE_FLAGS= \
 		--host=$(DEB_HOST_GNU_TYPE) --build=$(DEB_BUILD_GNU_TYPE) \
 		--disable-online-update \
 		--disable-fetch-external \
-		--enable-release-build \
 		--without-fonts \
 		--without-myspell-dicts
+
+ifeq "$(shell echo $(DEB_VERSION_UPSTREAM) | grep -E '(alpha|beta)'; echo $$?)" "0"
+CONFIGURE_FLAGS += --enable-release-build
+endif
 
 ifneq ($(ON_BUILDD),y)
 CONFIGURE_FLAGS += --enable-verbose
@@ -2280,18 +2283,6 @@ ifeq "$(PACKAGE_SDK)" "y"
         # remove symlink, it should be in -dev-doc
 	cd $(PKGDIR)-dev/$(OOSDKDIR) && \
 		rm docs
-
-	# install gsicheck into -dev
-	mkdir -p $(PKGDIR)-dev/$(OODIR)/program
-	install -m755 $(SOURCE_TREE)/solver/$(shell .  $(SOURCE_TREE)/bin/get_config_variables OUTPATH PROEXT; echo $$OUTPATH$$PROEXT)/bin/gsicheck \
-		$(PKGDIR)-dev/$(OODIR)/program/gsicheck.bin
-	( \
-	  echo '#! /bin/sh'; \
-	  echo 'LD_LIBRARY_PATH=$${LD_LIBRARY_PATH:+$$LD_LIBRARY_PATH:}/$(OODIR)/program'; \
-	  echo 'export LD_LIBRARY_PATH'; \
-	  echo 'exec /$(OODIR)/program/gsicheck.bin "$$@"'; \
-	) > $(PKGDIR)-dev/$(OODIR)/program/gsicheck
-	chmod 755 $(PKGDIR)-dev/$(OODIR)/program/gsicheck
 
 	# fix permissions
 	find $(PKGDIR)-dev/usr/share/idl/$(OODIRNAME) -type f -exec chmod 644 {} \;
