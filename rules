@@ -430,11 +430,10 @@ endif
 
 ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
 	ENABLE_MINIMIZER=n
-	ENABLE_PDFIMPORT=n
 	ENABLE_MYSQLNATIVE=n
 	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-mysql-connector
 	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-report-builder-bin -Nlibreoffice$(VER)-report-builder
-	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-pdfimport -Nlibreoffice$(VER)-presentation-minimizer
+	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-presentation-minimizer
 endif
 ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
 	ENABLE_MEDIAWIKI=n
@@ -537,7 +536,7 @@ endif
 ifeq "$(ENABLE_PDFIMPORT)" "y"
 	BUILD_DEPS += , libpoppler-dev (>= 0.8.0), libpoppler-private-dev, libpoppler-cpp-dev
 else
-	CONFIGURE_FLAGS += --disable-ext-pdfimport
+	CONFIGURE_FLAGS += --disable-pdfimport
 endif
 
 # fails their tests
@@ -2336,10 +2335,6 @@ ifeq "$(ENABLE_MYSQLNATIVE)" "y"
 	rm -f $(PKGDIR)-mysql-connector/$(OODIR)/share/extensions/mysql-connector-ooo/registration/LICENSE
 endif
 
-ifeq "$(ENABLE_PDFIMPORT)" "y"
-	rm -f $(PKGDIR)-pdfimport/$(OODIR)/share/extensions/pdfimport/registration/LICENSE
-endif
-
 ifeq "$(ENABLE_MEDIAWIKI)" "y"
 	rm -f $(PKGDIR)-wiki-publisher/$(OODIR)/share/extensions/wiki-publisher/registration/LICENSE
 endif
@@ -2352,6 +2347,15 @@ endif
 #	install -m755 $(SOURCE_TREE)/svx/$(shell .  $(SOURCE_TREE)/bin/get_config_variables OUTPATH PROEXT; echo $$OUTPATH$$PROEXT)/bin/gengal.bin \
 #		$(PKGDIR)-dev/$(OODIR)/program/gengal.bin
 #endif
+
+ifeq "$(ENABLE_PDFIMPORT)" "y"
+	rm -rf $(PKGDIR)-pdfimport
+	mkdir -p $(PKGDIR)-pdfimport/$(OODIR)/program
+	for i in xpdfimport xpdfimport_err.pdf pdfimport.uno.so; do \
+		mv $(PKGDIR)-core/$(OODIR)/program/$$i \
+			$(PKGDIR)-pdfimport/$(OODIR)/program; \
+	done
+endif
 
 	for i in $(ARCH_DEP_PACKAGES); do \
 		if [ -e debian/$$i.bug-script.in ]; then \
@@ -2874,7 +2878,6 @@ endif
 #          -l $(PKGDIR)-core/$(OPENOFFICEDIR)/program
 	dh_gencontrol -s $(DEBHELPER_OPTIONS) -Nure -Nure-dbg -Nuno-libs3 -Nuno-libs3-dbg \
 		-Nlibreoffice$(VER)-presentation-minimizer \
-		-Nlibreoffice$(VER)-pdfimport \
 		-Nlibreoffice$(VER)-mysql-connector -- \
 		-V"ure:Version=$(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }')" \
 		-V'base-version=$(BASE_VERSION)' \
@@ -2899,10 +2902,6 @@ ifeq "$(ENABLE_JAVA)" "y"
 		debian/libreoffice$(VER)-officebean/DEBIAN/control
 endif
 ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
-ifeq "$(ENABLE_PDFIMPORT)" "y"
-	dh_gencontrol -plibreoffice$(VER)-pdfimport -- \
-		-v$(shell grep "<version" $(SOURCE_TREE)/sdext/source/pdfimport/description.xml | perl -pi -e 's,<version.*value=\"(.*)\" />,\1,; s/^\s+//')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
-endif
 ifeq "$(ENABLE_MINIMIZER)" "y"
 	dh_gencontrol -plibreoffice$(VER)-presentation-minimizer -- \
 		-v$(shell grep "<version" $(SOURCE_TREE)/sdext/source/minimizer/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
