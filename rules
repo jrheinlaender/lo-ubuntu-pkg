@@ -106,7 +106,7 @@ endif
 # uses pythonX.Y directly (and the dh_pycentral-created dependencies allow
 # also the non-working default python then) - see e.g. #587402. Also
 # note we are NOT working with python < 2.6 anymore!
-PYTHON_VERSION=3.3
+PYTHON_VERSION=current
 ifeq "$(PYTHON_VERSION)" "current"
   PYTHON=python3
 export PYTHON=python3
@@ -625,11 +625,17 @@ endif
 PYMAJOR:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[0])")
 PYMINOR:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[1])")
 PYMINORPLUS1:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[1]+1)")
-PYTHON_SITE:=debian/python3.3-uno/$(shell $(PYTHON) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
+PYTHON_SITE:=debian/python3-uno/$(shell $(PYTHON) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
 PY2MAJOR:=$(shell $(PYTHON2) -c "import sys; print sys.version_info[0]")
 PY2MINOR:=$(shell $(PYTHON2) -c "import sys; print sys.version_info[1]")
 PY2MINORPLUS1:=$(shell $(PYTHON2) -c "import sys; print sys.version_info[1]+1")
 PYTHON2_SITE:=debian/python-uno/$(shell $(PYTHON2) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
+
+ifeq "$(PYTHON_VERSION)" "current"
+	PYTHON_VERSION_CONTROL := $(PYMAJOR).$(PYMINOR)
+else
+	PYTHON_VERSION_CONTROL := $(PYTHON_VERSION)
+endif
 
 ifeq "$(BUILD_PYUNO)" "y"
 	BUILD_DEPS += , python (>= 2.6.6-3+squeeze4)
@@ -1053,7 +1059,7 @@ else
 endif
 
 ifneq "$(BUILD_PYUNO)" "y"
-	DEBHELPER_OPTIONS+= -Npython-uno -Npython3.3-uno -Nlibreoffice-script-provider-python
+	DEBHELPER_OPTIONS+= -Npython-uno -Npython3-uno -Nlibreoffice-script-provider-python
 	CONFIGURE_FLAGS += --disable-python
 endif
 
@@ -1290,7 +1296,8 @@ debian/control: $(wildcard debian/control*in) $(SOURCE_TREE)/bin/lo-xlate-lang  
 	    -e "s#%[A-Za-z]*=[^%]*%##g#" \
 	    -e "s#%BUILD_DEPS%#$(strip $(BUILD_DEPS))#g" \
 	    -e "s#%BUILD_DEPS_INDEP%#$(strip $(BUILD_DEPS_INDEP))#g" \
-	    -e "s#@PYTHON_VERSION@#$(PYTHON_VERSION)#g" \
+	    -e "s#@PYTHON_VERSION_CONTROL@#$(PYTHON_VERSION_CONTROL)#g" \
+	    -e "s#@PYTHON2_VERSION@#$(PYTHON2_VERSION)#g" \
 	    -e "s#@BUGS@#$(BUGS)#g" \
 	    < debian/control.in > debian/control
 
@@ -2174,15 +2181,15 @@ endif
 ifeq "$(BUILD_PYUNO)" "y"
 	# PyUNO packaging
 	install -d $(PYTHON_SITE)
-	mv debian/python3.3-uno/$(OODIR)/program/uno.py $(PYTHON_SITE)
-	mv debian/python3.3-uno/$(OODIR)/program/unohelper.py $(PYTHON_SITE)
-	touch debian/python3.3-uno/$(OODIR)/program/pythonloader.unorc
-	chmod u+w debian/python3.3-uno/$(OODIR)/program/pythonloader.unorc
+	mv debian/python3-uno/$(OODIR)/program/uno.py $(PYTHON_SITE)
+	mv debian/python3-uno/$(OODIR)/program/unohelper.py $(PYTHON_SITE)
+	touch debian/python3-uno/$(OODIR)/program/pythonloader.unorc
+	chmod u+w debian/python3-uno/$(OODIR)/program/pythonloader.unorc
 	( echo '[Bootstrap]'; \
 	  echo 'PYTHONHOME=file:///usr/lib/python$(PYMAJOR).$(PYMINOR)' ;\
 	  echo 'PYTHONPATH=$$PYTHONHOME $$PYTHONHOME/site-packages $$PYTHONHOME/lib-dynload $$PYTHONHOME/lib-tk $$ORIGIN' \
-	) > debian/python3.3-uno/$(OODIR)/program/pythonloader.unorc
-	chmod u-w debian/python3.3-uno/$(OODIR)/program/pythonloader.unorc
+	) > debian/python3-uno/$(OODIR)/program/pythonloader.unorc
+	chmod u-w debian/python3-uno/$(OODIR)/program/pythonloader.unorc
   ifeq "$(ENABLE_PYTHON2)" "y"
 	install -d $(PYTHON2_SITE)
 	cp $(PYTHON_SITE)/uno.py \
@@ -2192,7 +2199,7 @@ ifeq "$(BUILD_PYUNO)" "y"
 	mkdir -p debian/python-uno/$(OODIR)/program
 	mkdir -p debian/python-uno/$(OODIR)/share/registry
 	mkdir -p debian/python-uno/$(OODIR)/share/Scripts
-	cat debian/python3.3-uno/$(OODIR)/program/pythonloader.unorc \
+	cat debian/python3-uno/$(OODIR)/program/pythonloader.unorc \
 		| sed -e "s/$(PYMAJOR).$(PYMINOR)/$(PY2MAJOR).$(PY2MINOR)/" \
 		> debian/python-uno/$(OODIR)/program/pythonloader.unorc
 	for i in py2uno.so libpy2uno.so; do \
@@ -2203,24 +2210,24 @@ ifeq "$(BUILD_PYUNO)" "y"
 	install -m644 $(SOURCE_TREE)/workdir/$(shell .  $(SOURCE_TREE)/bin/get_config_variables OUTPATH PROEXT; echo $$OUTPATH$$PROEXT)/LinkTarget/Library/python2loader.uno.so \
 		debian/python-uno/$(OODIR)/program/python2loader.uno.so
 	ln -s python2loader.uno.so debian/python-uno/$(OODIR)/program/pythonloader.uno.so
-	cp debian/python3.3-uno/$(OODIR)/program/pythonloader.py \
+	cp debian/python3-uno/$(OODIR)/program/pythonloader.py \
 		debian/python-uno/$(OODIR)/program
-	cp debian/python3.3-uno/$(OODIR)/share/registry/pyuno.xcd \
+	cp debian/python3-uno/$(OODIR)/share/registry/pyuno.xcd \
 		debian/python-uno/$(OODIR)/share/registry
-	cp -r debian/python3.3-uno/$(OODIR)/share/Scripts/python \
+	cp -r debian/python3-uno/$(OODIR)/share/Scripts/python \
 		debian/python-uno/$(OODIR)/share/Scripts
   endif
   ifeq "$(ENABLE_SCRIPT_PROVIDER_PYTHON)" "y"
 	rm -f debian/libreoffice$(VER)-script-provider-python/$(OODIR)/share/extensions/script-provider-for-python/registration/LICENSE
   endif
 
-	mkdir -p debian/python3.3-uno/usr/share/doc/python3.3-uno
+	mkdir -p debian/python3-uno/usr/share/doc/python3-uno
 	cp -r $(SOURCE_TREE)/pyuno/demo \
-	  debian/python3.3-uno/usr/share/doc/python3.3-uno; \
+	  debian/python3-uno/usr/share/doc/python3-uno; \
 	for i in $(SOURCE_TREE)/pyuno/doc/*; do \
-		cp $$i debian/python3.3-uno/usr/share/doc/python-uno; \
+		cp $$i debian/python3-uno/usr/share/doc/python-uno; \
 	done
-	cd debian/python3.3-uno/usr/share/doc/python3.3-uno && \
+	cd debian/python3-uno/usr/share/doc/python3-uno && \
 		find . -type d -name "CVS" | xargs -r rm -rf
   ifeq "$(ENABLE_PYTHON2)" "y"
 	mkdir -p debian/python-uno/usr/share/doc/python-uno
@@ -2782,10 +2789,10 @@ ifeq "$(ENABLE_JAVA)" "y"
 	dh_nativejava -plibreoffice$(VER)-gcj -o
   endif
 endif
-	dh_python3 -ppython3.3-uno --no-guessing-deps
+	dh_python3 -ppython3-uno --no-guessing-deps
 ifneq "$(PYTHON_VERSION)" "current"
 	sed -i -e 's/python$(PYMAJOR) (>= .*)/python$(PYMAJOR).$(PYMINOR)/g' \
-		debian/python3.3-uno.substvars
+		debian/python3-uno.substvars
 endif
 ifeq "$(ENABLE_PYTHON2)" "y"
 	dh_python2 -ppython-uno --no-guessing-versions --no-guessing-deps
