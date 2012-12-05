@@ -97,7 +97,7 @@ create_package_directory gid_Module_Brand_Prg_Draw              pkg/libreoffice-
 create_package_directory gid_Module_Brand_Prg_Wrt               pkg/libreoffice-writer
 create_package_directory gid_Module_Brand_Prg_Impress           pkg/libreoffice-impress
 create_package_directory gid_Module_Brand_Prg_Base              pkg/libreoffice-base
-create_package_directory gid_Module_Optional_Pyuno              pkg/python-uno
+create_package_directory gid_Module_Optional_Pyuno              pkg/python3-uno
 create_package_directory gid_Module_Optional_Extensions_Script_Provider_For_Python		pkg/libreoffice-script-provider-python
 create_package_directory gid_Module_Optional_Gnome              pkg/libreoffice-gnome
 create_package_directory gid_Module_Optional_Kde                pkg/libreoffice-kde
@@ -114,7 +114,7 @@ create_package_directory gid_Module_Optional_Extensions_Script_Provider_For_Java
 create_package_directory gid_Module_Optional_Extensions_MEDIAWIKI	pkg/libreoffice-wiki-publisher
 create_package_directory gid_Module_Optional_Extensions_MINIMIZER	pkg/libreoffice-presentation-minimizer
 create_package_directory gid_Module_Optional_Extensions_MySQLConnector  pkg/libreoffice-mysql-connector
-create_package_directory gid_Module_Optional_Extensions_PDFIMPORT	pkg/libreoffice-pdfimport
+create_package_directory gid_Module_Pdfimport     pkg/libreoffice-pdfimport
 create_package_directory gid_Module_Optional_Extensions_PRESENTER_SCREEN	pkg/libreoffice-presenter-console
 create_package_directory gid_Module_Optional_Extensions_REPORTDESIGN	pkg/libreoffice-report-builder
 create_package_directory gid_Module_Optional_PostgresqlSdbc     pkg/libreoffice-sdbc-postgresql
@@ -151,7 +151,7 @@ mkdir -p $OODESTDIR/pkg/libreoffice-core/$OOINSTBASE/program; \
 fi &&
 ( cd pkg/libreoffice-common/$OOINSTBASE/program
   find -maxdepth 1 \
-     -regex '\./\(.*\.so.*\|.*\.bin\|pagein\|nsplugin\|kdefilepicker\|msfontextract\|.*\.rdb\|javaldx\|oosplash\|uri-encode\)' \
+     -regex '\./\(.*\.so.*\|.*\.bin\|pagein\|nsplugin\|kdefilepicker\|msfontextract\|.*\.rdb\|javaldx\|oosplash\|uri-encode\|xpdfimport\)' \
      -exec mv {} $OODESTDIR/pkg/libreoffice-core/$OOINSTBASE/program \;
 );
 
