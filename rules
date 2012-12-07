@@ -124,7 +124,11 @@ ifeq "$(ENABLE_PYTHON2)" "y"
 endif
 PACKAGE_TTF_OPENSYMBOL=y
 BUILD_ONLY_EN_US=y
-ENABLE_HELP=y
+ifeq (,$(filter armel armhf,$(DEB_HOST_ARCH)))
+    ENABLE_HELP=y
+else
+    ENABLE_HELP=y
+endif
 ENABLE_JAVA=y
 ifeq "$(ENABLE_JAVA)" "y"
   JDK=default
@@ -403,7 +407,11 @@ ifneq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_UNOWINREG_DLL_ARCHS)
 	PACKAGE_UNOWINREG_DLL=n
 endif
 
-OOO_ARCH_DEP_EXTENSIONS_ARCHS := $(OOO_ARCHS)
+ifeq (,$(filter clucene, $(SYSTEM_STUFF)))
+  OOO_ARCH_DEP_EXTENSIONS_ARCHS := $(filter-out armel armhf,$(OOO_ARCHS))
+else
+  OOO_ARCH_DEP_EXTENSIONS_ARCHS := $(OOO_ARCHS)
+endif
 OOO_EXTENSIONS_ARCHS := $(OOO_ARCH_DEP_EXTENSIONS_ARCHS)
 
 OOO_BASE_ARCHS := $(OOO_JAVA_ARCHS)
@@ -920,6 +928,12 @@ endif
 
 ifneq (,$(filter clucene, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libclucene-dev (>= 2.3.3.4-2)
+else
+ ifneq (,$(findstring arm,$(DEB_HOST_ARCH))
+	# FIXME. If you really want this, comment this out then help stuff will
+	# be disabled on arm*
+	$(error internal clucene makes HelpIndexer segfault on ARM!)
+ endif
 endif
 
 ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
