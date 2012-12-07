@@ -4,3 +4,4 @@ validate_extensions() {
 	HOME=$INSTDIR /usr/lib/libreoffice/program/unopkg validate -v --bundled
   fi
 }
+
