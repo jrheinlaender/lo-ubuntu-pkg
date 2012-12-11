@@ -71,6 +71,8 @@ USE_GIT_TARBALLS=n
 ifeq "$(USE_GIT_TARBALLS)" "y"
 GIT_BASEURL:=git://anongit.freedesktop.org/libreoffice
 lo_sources_ver:=4.0.0.0.beta1
+# NOT in proper libreoffice-3-6 branch
+# use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
 GIT_TAG:=libreoffice-$(lo_sources_ver)
 GIT_BRANCH=libreoffice-4-0
 endif
@@ -122,7 +124,6 @@ ifeq "$(ENABLE_PYTHON2)" "y"
 endif
 PACKAGE_TTF_OPENSYMBOL=y
 BUILD_ONLY_EN_US=y
-ENABLE_HELP=y
 ENABLE_JAVA=y
 ifeq "$(ENABLE_JAVA)" "y"
   JDK=default
@@ -307,6 +308,15 @@ SYSTEM_STUFF += poppler
 SYSTEM_STUFF += libpng
 SYSTEM_STUFF += nss
 SYSTEM_STUFF += clucene
+ifneq (,$(filter clucene, $(SYSTEM_STUFF)))
+  ENABLE_HELP=y
+else
+  ifeq (,$(filter armel armhf,$(DEB_HOST_ARCH)))
+    ENABLE_HELP=n
+  else
+    ENABLE_HELP=y
+  endif
+endif
 SYSTEM_STUFF += lcms2
 SYSTEM_STUFF += openldap
 PACKAGE_UNOWINREG_DLL=y
@@ -317,13 +327,14 @@ FAKEROOT_LIBDIR=/usr/lib/`dpkg-architecture -qDEB_HOST_MULTIARCH`/libfakeroot
 # upstream says: "it's 'highly experimental'", I wouldn't enable it for
 # distros"
 ENABLE_TELEPATHY=n
+ENABLE_LIBLANGTAG=y
 SYSTEM_STUFF += liblangtag
 SYSTEM_STUFF += orcus
 USE_UCPP=n
 ifeq "$(USE_UCPP)" "y"
   SYSTEM_STUFF += ucpp
 endif
-ENABLE_MERGEDLIBS=n
+ENABLE_MERGELIBS=n
 
 # Default flags to pass to configure
 CONFIGURE_FLAGS= \
@@ -402,7 +413,11 @@ ifneq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_UNOWINREG_DLL_ARCHS)
 	PACKAGE_UNOWINREG_DLL=n
 endif
 
-OOO_ARCH_DEP_EXTENSIONS_ARCHS := $(filter-out armel armhf, $(OOO_ARCHS))
+ifeq (,$(filter clucene, $(SYSTEM_STUFF)))
+  OOO_ARCH_DEP_EXTENSIONS_ARCHS := $(filter-out armel armhf,$(OOO_ARCHS))
+else
+  OOO_ARCH_DEP_EXTENSIONS_ARCHS := $(OOO_ARCHS)
+endif
 OOO_EXTENSIONS_ARCHS := $(OOO_ARCH_DEP_EXTENSIONS_ARCHS)
 
 OOO_BASE_ARCHS := $(OOO_JAVA_ARCHS)
@@ -492,6 +507,9 @@ ifeq "$(WHEEZY_BACKPORT)" "y"
   BUGS=mailto:debian-backports@lists.debian.org
   SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub mdds liblangtag orcus, $(SYSTEM_STUFF))
 endif
+ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "UNRELEASED"
+  BUGS=mailto:debian-openoffice@lists.debian.org
+endif
 
 ifeq "$(DEB_VENDOR)" "Ubuntu"
   IMAGES+=human
@@ -562,6 +580,12 @@ endif
 ifeq "$(DEB_HOST_ARCH)" "armel"
 ENABLE_GRAPHITE=n
 SYSTEM_STUFF := $(filter-out graphite, $(SYSTEM_STUFF))
+ENABLE_LIBLANGTAG=n
+SYSTEM_STUFF := $(filter-out liblangtag, $(SYSTEM_STUFF))
+endif
+ifeq "$(DEB_HOST_ARCH)" "armhf"
+ENABLE_LIBLANGTAG=n
+SYSTEM_STUFF := $(filter-out liblangtag, $(SYSTEM_STUFF))
 endif
 ifeq "$(DEB_HOST_ARCH)" "sparc"
 ENABLE_GRAPHITE=n
@@ -945,6 +969,12 @@ endif
 
 ifneq (,$(filter clucene, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libclucene-dev (>= 2.3.3.4-2)
+else
+  ifneq (,$(findstring arm,$(DEB_HOST_ARCH)))
+	# FIXME. If you really want this, comment this out then help stuff will
+	# be disabled on arm*
+	$(error internal clucene makes HelpIndexer segfault on ARM!)
+  endif
 endif
 
 ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
@@ -991,8 +1021,12 @@ ifeq ($(ENABLE_TELEPATHY),y)
 	CONFIGURE_FLAGS += --enable-telepathy
 endif
 
-ifneq (,$(filter liblangtag, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , liblangtag-dev (>= 0.3)
+ifeq ($(ENABLE_LIBLANGTAG),y)
+  ifneq (,$(filter liblangtag, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , liblangtag-dev (>= 0.4) [!armel !armhf]
+  endif
+else
+	CONFIGRUE_FLAGS += --disable-liblangtag
 endif
 
 ifneq (,$(filter icu, $(SYSTEM_STUFF)))
@@ -1193,6 +1227,10 @@ endif
 
 ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 	BUILD_DEPS_INDEP += , fontforge
+endif
+
+ifeq ($(ENABLE_MERGELIBS),y)
+	CONFIGURE_FLAGS += --enable-mergelibs
 endif
 
 # Use compiler cache?  Include ccache in DEB_BUILD_OPTIONS for much faster rebuild times
@@ -1843,7 +1881,11 @@ ifeq "$(ENABLE_JAVA)" "y"
 		$(PKGDIR)-base/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes; \
 	ln -s $(shell echo /$(OODIR) | sed -e s/lib/share/)/program/classes/sdbc_hsqldb.jar \
 		$(PKGDIR)-base/$(OODIR)/program/classes/sdbc_hsqldb.jar
-
+    ifneq (,$(filter hsqldb, $(SYSTEM_STUFF)))
+	# fix the classpath (file:// breaks javahelper)
+	jh_classpath --classpath="/usr/share/java/hsqldb.jar .." \
+		$(PKGDIR)-base/$(shell echo /$(OODIR) | sed -e s/lib/share/)/program/classes/sdbc_hsqldb.jar
+    endif
     ifeq (,$(filter hsqldb, $(SYSTEM_STUFF)))
 	# we need this in -base. Otherwise we get unwanted package differences
 	# in the unstable version and backports which might use internal hsqldb
@@ -2684,19 +2726,17 @@ ifeq "$(PACKAGE_SDK)" "y"
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
-  ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
-    ifeq "$(ENABLE_SCRIPT_PROVIDER_BSH)" "y"
+  ifeq "$(ENABLE_SCRIPT_PROVIDER_BSH)" "y"
 	mkdir -p $(PKGDIR)-script-provider-bsh/$(OODIR)/share/Scripts
 	mv $(PKGDIR)-common/$(OODIR)/share/Scripts/beanshell \
 		$(PKGDIR)-script-provider-bsh/$(OODIR)/share/Scripts
-    endif
+  endif
 
-    ifeq "$(ENABLE_SCRIPT_PROVIDER_JS)" "y"
+  ifeq "$(ENABLE_SCRIPT_PROVIDER_JS)" "y"
 	mkdir -p $(PKGDIR)-script-provider-js/$(OODIR)/share/Scripts
 	mv $(PKGDIR)-common/$(OODIR)/share/Scripts/javascript \
 		$(PKGDIR)-script-provider-js/$(OODIR)/share/Scripts
-    endif
- endif
+  endif
 endif
 
 ifeq "$(ENABLE_REPORTDESIGN)" "y"
