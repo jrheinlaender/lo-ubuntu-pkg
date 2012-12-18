@@ -372,13 +372,6 @@ endef
 
 PLATFORMID := $(shell grep PLATFORMID debian/vars.$(DEB_HOST_ARCH) | cut -d"=" -f2)
 
-# ./configure defaults to STLport on i386 and we should keep it for
-# ABI-compatability
-OOO_STLPORT_ARCHS= i386
-ifeq "$(DEB_HOST_ARCH)" "i386"
-	LINK_TO_STLPORT=y
-endif
-
 ifeq "$(ENABLE_OPENGL)" "y"
   # doesn't make that much sense on armel and mips(el), does it? :)
   OOO_OGLTRANS_ARCHS = $(filter-out armel mips%, $(OOO_ARCHS))
@@ -895,12 +888,6 @@ ifneq (,$(filter altlinuxhyph, $(SYSTEM_STUFF)))
   endif
 endif
 	CONFIGURE_FLAGS += --with-external-hyph-dir=$(HYPH_DIR)
-
-ifneq "$(OOO_STLPORT_ARCHS)" ""
-	LIBSTLPORT_MINVER= (>= 4.6.2-3)
-	BUILD_DEPS += , libstlport4.6-dev $(LIBSTLPORT_MINVER) [$(OOO_STLPORT_ARCHS)]
-	CONFIGURE_FLAGS += --without-stlport
-endif
 
 ifneq (,$(filter boost, $(SYSTEM_STUFF)))
   ifeq "$(BOOST_VERSION)" "1.34"
@@ -1486,7 +1473,6 @@ endif
 	perl -pi -e "s,%OOO_GCJ_ARCHS%,$(OOO_GCJ_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_NSPLUGIN_ARCHS%,$(OOO_NSPLUGIN_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_OGLTRANS_ARCHS%,$(OOO_OGLTRANS_ARCHS),g" debian/control
-	perl -pi -e "s,%OOO_STLPORT_ARCHS%,$(OOO_STLPORT_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_GCJ_JDK_ARCHS%,$(OOO_GCJ_JDK_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_ARCH_DEP_EXTENSIONS_ARCHS%,$(OOO_ARCH_DEP_EXTENSIONS_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_REPORTDESIGN_ARCHS%,$(OOO_REPORTDESIGN_ARCHS),g" debian/control
@@ -2328,12 +2314,6 @@ ifeq "$(PACKAGE_SDK)" "y"
 	rm -f $(PKGDIR)-dev//usr/share/doc/libreoffice/sdk/readme/LICENSE.gz
 endif
 
-ifeq "$(LINK_TO_STLPORT)" "y"
-	rm -f debian/ure/$(OOUREDIR)/lib/libstlport*
-	ln -s `readlink -f /usr/lib/libstlport_gcc.so` \
-		debian/ure/$(OOUREDIR)/lib/libstlport_gcc.so
-endif
-
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(BUILD_JARS_NATIVE)" "y"
 	rm -rf $(PKGDIR)-gcj/usr/lib/gcj
@@ -2911,9 +2891,6 @@ ifeq "$(ENABLE_JAVA)" "y"
 			-Lure -Luno-libs3 \
 			-ldebian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program:$(GCJ_JAWT_DIR) \
 			$(SHLIBS_OVERRIDE)
-endif
-ifeq "$(LINK_TO_STLPORT)" "y"
-	perl -pi -e 's/(shlibs.*$$)/$$1, $(shell cat /var/lib/dpkg/info/libstlport4.6*.shlibs | awk '{ print $$3,$$4,$$5 }')/' debian/ure.substvars
 endif
 ifeq "$(ENABLE_JAVA)" "y"
 	for p in $(ARCH_DEP_PACKAGES); do \
