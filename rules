@@ -1784,6 +1784,10 @@ ifneq "$(ENABLE_HELP)" "n"
 	done
 endif
 
+ifneq "$(PACKAGE_LIBRELOGO)" "y"
+	rm -rf debian/tmp/pkg/libreoffice-librelogo
+endif
+
 	dh_installdirs -A
 	dh_install -A --sourcedir=debian/tmp/pkg --fail-missing
 
@@ -2771,13 +2775,6 @@ endif
 #		$(PKGDIR)-common/$(OODIR)/program/gengalrc
 #endif
 
-ifeq "$(PACKAGE_LIBRELOGO)" "y"
-	rm -rf $(PKGDIR)-librelogo
-	mkdir -p $(PKGDIR)-librelogo/$(OODIR)/share/extensions/librelogo
-	cd $(PKGDIR)-librelogo/$(OODIR)/share/extensions/librelogo && \
-		unzip $(CURDIR)/solver/$(shell .  $(SOURCE_TREE)/bin/get_config_variables OUTPATH PROEXT; echo $$OUTPATH$$PROEXT)/bin/librelogo.oxt 
-endif
-
 	touch $@
 
 binary-arch: $(STAMP_DIR)/binary-arch
@@ -3022,7 +3019,10 @@ endif
 			ln -sf libreoffice.1.gz $$i.gz; \
 		fi; \
 	done
-	dh_installchangelogs -i -k
+	dh_installchangelogs -i -Nlibreoffice$(VER)-librelogo -k
+ifeq "$(PACKAGE_LIBRELOGO)" "y"
+	 dh_installchangelogs -plibreoffice$(VER)-librelogo -k librelogo/source/ChangeLog
+endif
 	dh_installmime -i
 	dh_lintian -i
 	dh_bugfiles -i -A
@@ -3046,7 +3046,6 @@ endif
 	dh_gencontrol -i $(DEBHELPER_OPTIONS) \
 		-Nlibreoffice$(VER)-report-builder \
 		-Nlibreoffice$(VER)-wiki-publisher \
-		-Nlibreoffice$(VER)-librelogo \
 		-Nfonts-opensymbol \
 		-Nopenoffice.org-dtd-officedocument1.0 -- \
 		-V'base-version=$(BASE_VERSION)' \
@@ -3076,10 +3075,6 @@ ifeq "$(ENABLE_REPORTDESIGN)" "y"
 		-V'report-builder-jar-depends=$(REPORT_BUILDER_JAR_DEPENDS)' \
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep "<version" $(SOURCE_TREE)/reportbuilder/util/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
-endif
-ifeq "$(PACKAGE_LIBRELOGO)" "y"
-	dh_gencontrol -plibreoffice$(VER)-librelogo -- \
-		-v$(shell grep "<version" $(SOURCE_TREE)/librelogo/source/description.xml | perl -pi -e 's,<version value=\"(.*)\" />,\1,; s/^\s+//; s/\s+$$//')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
 endif
 	dh_gencontrol -popenoffice.org-dtd-officedocument1.0 -- \
 		-v$(shell echo `echo $(BINARY_VERSION) | cut -d: -f1` + 1 | bc):1.0+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
