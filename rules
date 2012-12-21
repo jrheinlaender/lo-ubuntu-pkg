@@ -71,7 +71,7 @@ USE_SOURCE_TARBALLS=y
 USE_GIT_TARBALLS=n
 ifeq "$(USE_GIT_TARBALLS)" "y"
 GIT_BASEURL:=git://anongit.freedesktop.org/libreoffice
-lo_sources_ver:=4.0.0.0.beta1
+lo_sources_ver=4.0.0.0.beta2
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
 GIT_TAG:=libreoffice-$(lo_sources_ver)
@@ -100,7 +100,7 @@ BUILD_PYUNO=y
 ENABLE_PYTHON2=y
 ifeq "$(BUILD_PYUNO)" "y"
   ENABLE_SCRIPT_PROVIDER_PYTHON=y
-  PACKAGE_LIBRELOGO=n
+  PACKAGE_LIBRELOGO=y
 endif
 # THIS IS ONLY FOR TESTING. When building against a specified pythonX.Y
 # this will work inside OOo but *not* from outside OOo unless the user
@@ -124,7 +124,7 @@ ifeq "$(ENABLE_PYTHON2)" "y"
   endif
 endif
 PACKAGE_TTF_OPENSYMBOL=y
-BUILD_ONLY_EN_US=y
+BUILD_ONLY_EN_US=n
 ENABLE_JAVA=y
 ifeq "$(ENABLE_JAVA)" "y"
   JDK=default
@@ -373,13 +373,6 @@ define gen_no_archs
 endef
 
 PLATFORMID := $(shell grep PLATFORMID debian/vars.$(DEB_HOST_ARCH) | cut -d"=" -f2)
-
-# ./configure defaults to STLport on i386 and we should keep it for
-# ABI-compatability
-OOO_STLPORT_ARCHS= i386
-ifeq "$(DEB_HOST_ARCH)" "i386"
-	LINK_TO_STLPORT=y
-endif
 
 ifeq "$(ENABLE_OPENGL)" "y"
   # doesn't make that much sense on armel and mips(el), does it? :)
@@ -933,12 +926,6 @@ ifneq (,$(filter altlinuxhyph, $(SYSTEM_STUFF)))
 endif
 	CONFIGURE_FLAGS += --with-external-hyph-dir=$(HYPH_DIR)
 
-ifneq "$(OOO_STLPORT_ARCHS)" ""
-	LIBSTLPORT_MINVER= (>= 4.6.2-3)
-	BUILD_DEPS += , libstlport4.6-dev $(LIBSTLPORT_MINVER) [$(OOO_STLPORT_ARCHS)]
-	CONFIGURE_FLAGS += --without-stlport
-endif
-
 ifneq (,$(filter boost, $(SYSTEM_STUFF)))
   ifeq "$(BOOST_VERSION)" "1.34"
     ifeq "$(SYSTEM_GCC_VERSION)" "4.4"
@@ -1031,7 +1018,7 @@ ifeq ($(ENABLE_LIBLANGTAG),y)
 	BUILD_DEPS += , liblangtag-dev (>= 0.4) [!armel !armhf]
   endif
 else
-	CONFIGRUE_FLAGS += --disable-liblangtag
+	CONFIGURE_FLAGS += --disable-liblangtag
 endif
 
 ifneq (,$(filter icu, $(SYSTEM_STUFF)))
@@ -1530,7 +1517,6 @@ endif
 	perl -pi -e "s,%OOO_GCJ_ARCHS%,$(OOO_GCJ_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_NSPLUGIN_ARCHS%,$(OOO_NSPLUGIN_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_OGLTRANS_ARCHS%,$(OOO_OGLTRANS_ARCHS),g" debian/control
-	perl -pi -e "s,%OOO_STLPORT_ARCHS%,$(OOO_STLPORT_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_GCJ_JDK_ARCHS%,$(OOO_GCJ_JDK_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_ARCH_DEP_EXTENSIONS_ARCHS%,$(OOO_ARCH_DEP_EXTENSIONS_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_REPORTDESIGN_ARCHS%,$(OOO_REPORTDESIGN_ARCHS),g" debian/control
@@ -1553,7 +1539,7 @@ ifeq "$(ENABLE_GIO)" "y"
 endif
 
 ifneq "$(WHEEZY_BACKPORT)" "y"	
-	perl -pi -e "s/(Build-Conflicts: .*)/\1, base-files (= 7.0)/" debian/control
+	perl -pi -e "s/(Build-Conflicts: .*)/\1, base-files (= 7.0), base-files (= 7.1)/" debian/control
 endif
 
 ifneq (,$(filter hsqldb, $(SYSTEM_STUFF)))
@@ -1695,6 +1681,11 @@ $(STAMP_DIR)/build-indep:
 
 	$(MAKE) odk.clean
 	$(MAKE) scp2.clean
+	# FIXME: those are arch-indep but somehow fail in the second run
+ 	# with all languages - handle it like the ones in binary-arch. The
+	# rebuild automatically will be done, though.
+	$(MAKE) swext.clean
+	$(MAKE) reportbuilder.clean
 	rm -f config.status autogen.lastrun
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ./autogen.sh $(CONFIGURE_FLAGS) $(CONFIGURE_FLAGS_LANG)
@@ -1835,6 +1826,10 @@ ifneq "$(ENABLE_HELP)" "n"
 			rm -f debian/libreoffice-help-$$pkgiso.install; \
 		fi; \
 	done
+endif
+
+ifneq "$(PACKAGE_LIBRELOGO)" "y"
+	rm -rf debian/tmp/pkg/libreoffice-librelogo
 endif
 
 	dh_installdirs -A
@@ -2373,12 +2368,6 @@ ifeq "$(PACKAGE_SDK)" "y"
 	rm -f $(PKGDIR)-dev//usr/share/doc/libreoffice/sdk/readme/LICENSE.gz
 endif
 
-ifeq "$(LINK_TO_STLPORT)" "y"
-	rm -f debian/ure/$(OOUREDIR)/lib/libstlport*
-	ln -s `readlink -f /usr/lib/libstlport_gcc.so` \
-		debian/ure/$(OOUREDIR)/lib/libstlport_gcc.so
-endif
-
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(BUILD_JARS_NATIVE)" "y"
 	rm -rf $(PKGDIR)-gcj/usr/lib/gcj
@@ -2837,13 +2826,6 @@ endif
 #		$(PKGDIR)-common/$(OODIR)/program/gengalrc
 #endif
 
-ifeq "$(PACKAGE_LIBRELOGO)" "y"
-	rm -rf $(PKGDIR)-librelogo
-	mkdir -p $(PKGDIR)-librelogo/$(OODIR)/share/extensions/librelogo
-	cd $(PKGDIR)-librelogo/$(OODIR)/share/extensions/librelogo && \
-		unzip $(CURDIR)/solver/$(shell .  $(SOURCE_TREE)/bin/get_config_variables OUTPATH PROEXT; echo $$OUTPATH$$PROEXT)/bin/librelogo.oxt 
-endif
-
 	touch $@
 
 binary-arch: $(STAMP_DIR)/binary-arch
@@ -2961,9 +2943,6 @@ ifeq "$(ENABLE_JAVA)" "y"
 			-Lure -Luno-libs3 \
 			-ldebian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program:$(GCJ_JAWT_DIR) \
 			$(SHLIBS_OVERRIDE)
-endif
-ifeq "$(LINK_TO_STLPORT)" "y"
-	perl -pi -e 's/(shlibs.*$$)/$$1, $(shell cat /var/lib/dpkg/info/libstlport4.6*.shlibs | awk '{ print $$3,$$4,$$5 }')/' debian/ure.substvars
 endif
 ifeq "$(ENABLE_JAVA)" "y"
 	for p in $(ARCH_DEP_PACKAGES); do \
@@ -3091,7 +3070,10 @@ endif
 			ln -sf libreoffice.1.gz $$i.gz; \
 		fi; \
 	done
-	dh_installchangelogs -i -k
+	dh_installchangelogs -i -Nlibreoffice$(VER)-librelogo -k
+ifeq "$(PACKAGE_LIBRELOGO)" "y"
+	 dh_installchangelogs -plibreoffice$(VER)-librelogo -k librelogo/source/ChangeLog
+endif
 	dh_installmime -i
 	dh_lintian -i
 	dh_bugfiles -i -A
@@ -3115,7 +3097,6 @@ endif
 	dh_gencontrol -i $(DEBHELPER_OPTIONS) \
 		-Nlibreoffice$(VER)-report-builder \
 		-Nlibreoffice$(VER)-wiki-publisher \
-		-Nlibreoffice$(VER)-librelogo \
 		-Nfonts-opensymbol \
 		-Nopenoffice.org-dtd-officedocument1.0 -- \
 		-V'base-version=$(BASE_VERSION)' \
@@ -3145,10 +3126,6 @@ ifeq "$(ENABLE_REPORTDESIGN)" "y"
 		-V'report-builder-jar-depends=$(REPORT_BUILDER_JAR_DEPENDS)' \
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep "<version" $(SOURCE_TREE)/reportbuilder/util/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
-endif
-ifeq "$(PACKAGE_LIBRELOGO)" "y"
-	dh_gencontrol -plibreoffice$(VER)-librelogo -- \
-		-v$(shell grep "<version" $(SOURCE_TREE)/librelogo/source/description.xml | perl -pi -e 's,<version value=\"(.*)\" />,\1,; s/^\s+//; s/\s+$$//')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
 endif
 	dh_gencontrol -popenoffice.org-dtd-officedocument1.0 -- \
 		-v$(shell echo `echo $(BINARY_VERSION) | cut -d: -f1` + 1 | bc):1.0+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
