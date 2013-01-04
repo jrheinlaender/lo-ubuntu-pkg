@@ -1684,6 +1684,9 @@ $(STAMP_DIR)/install-common:
 	export OOINSTBASE=$(OODIR); \
 	export OOO_LANGS_LIST="$(ISOS)"; \
 	$(CURDIR)/debian/scripts/gid2pkgdirs.sh
+ifeq "$(BUILD_DBG_PACKAGE)" "y"
+	make cmd cmd="export DESTDIR=$(CURDIR)/debian/tmp; install-gdb-printers -a /usr/share/gdb/auto-load/$(OODIR) -c -i /$(OODIR) -p /usr/share/libreoffice/gdb"
+endif
 
 	# FIXME
 	if echo $(DEB_HOST_ARCH) | grep -q kfreebsd; then \
@@ -2816,13 +2819,26 @@ ifeq "$(BUILD_DBG_PACKAGE)" "y"
 	# dh_strip --dbg-package= is not idempotent, force copying of the binaries
 	# again...
 	rm -f $(STAMP_DIR)/install-arch
-	# install .gdb-py
-	for i in `find $(SOURCE_TREE)/solver/ -name "*-gdb.py"`; do \
-		if echo $$i | grep -q uno_; then pkg=uno-libs3; path=usr/lib/ure/lib; \
-		else pkg=libreoffice; path=usr/lib/libreoffice/program; fi; \
-		mkdir -p debian/$$pkg-dbg/usr/lib/debug/$$path && \
-		install -m644 $$i debian/$$pkg-dbg/usr/lib/debug/$$path/`basename $$i`; \
-	done
+ifeq "$(BUILD_DBG_PACKAGE)" "y"
+	mkdir -p $(PKGDIR)-dbg/usr/share/gdb/auto-load/$(OODIR)
+	mv $(CURDIR)/debian/tmp/usr/share/gdb/auto-load/$(OODIR)/program \
+		$(PKGDIR)-dbg/usr/share/gdb/auto-load/$(OODIR)
+	# I think a -dbg-common is overkill. Although this means that this all only
+	# will work if libreoffice-dbg is installed..
+	mkdir -p $(PKGDIR)-dbg/usr/share/libreoffice/gdb
+	mv $(CURDIR)/debian/tmp/usr/share/libreoffice/gdb/libreoffice \
+		$(PKGDIR)-dbg/usr/share/libreoffice/gdb
+	# FIXME: or better ure-dbg (ure/lib?). Then again ure-link is a link which is in -common
+	# anyways...
+	mkdir -p debian/uno-libs3-dbg/usr/share/gdb/auto-load/$(OODIR)/ure-link/
+	mv $(CURDIR)/debian/tmp//usr/share/gdb/auto-load/$(OODIR)/ure-link/lib \
+		debian/uno-libs3-dbg/usr/share/gdb/auto-load/$(OODIR)/ure-link
+	mkdir -p debian/uno-libs3-dbg/usr/share/libreoffice/gdb/libreoffice
+	mv $(PKGDIR)-dbg/usr/share/libreoffice/gdb/libreoffice/cppu.py \
+		debian/uno-libs3-dbg/usr/share/libreoffice/gdb/libreoffice
+	mv $(PKGDIR)-dbg/usr/share/libreoffice/gdb/libreoffice/sal.py \
+		debian/uno-libs3-dbg/usr/share/libreoffice/gdb/libreoffice
+endif
 else
 	dh_strip -s
 endif
