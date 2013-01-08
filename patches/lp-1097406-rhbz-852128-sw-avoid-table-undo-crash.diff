@@ -1,0 +1,99 @@
+From a5fe2ba44914e5779f3907cde76bc0df830e4de4 Mon Sep 17 00:00:00 2001
+From: Michael Stahl <mst@openoffice.org>
+Date: Tue, 18 Sep 2012 14:19:50 +0200
+Subject: [PATCH] rhbz#852128: sw: avoid table undo crash:
+
+SwUndoTblNdsChg::UndoImpl: to prevent access of deleted table box start
+node, disconnect the SwTableBox from the start node before removing the
+table box nodes.
+This problem was probably introduced with CWS swnewtable
+db4de0817df6906db2743239d45f9f0834ab1e91, which changed the order of the
+removal operations for unknown reasons.
+
+(cherry picked from commit cf842d7c7f9559bfdbb3924cd05a3a50d1dff5e3)
+
+Conflicts:
+	sw/source/core/table/swtable.cxx
+
+Change-Id: Ic59823a84082cc6ff453b2b512cbb8253886ecf3
+Reviewed-on: https://gerrit.libreoffice.org/641
+Reviewed-by: Miklos Vajna <vmiklos@suse.cz>
+Tested-by: Miklos Vajna <vmiklos@suse.cz>
+---
+ sw/inc/swtable.hxx               |    1 +
+ sw/source/core/table/swtable.cxx |   14 +++++++++++---
+ sw/source/core/undo/untbl.cxx    |    5 +++++
+ 3 files changed, 17 insertions(+), 3 deletions(-)
+
+diff --git a/sw/inc/swtable.hxx b/sw/inc/swtable.hxx
+index 56cba82..27126c6 100644
+--- a/sw/inc/swtable.hxx
++++ b/sw/inc/swtable.hxx
+@@ -413,6 +413,7 @@ public:
+     SwFrmFmt* ClaimFrmFmt();
+     void ChgFrmFmt( SwTableBoxFmt *pNewFmt );
+ 
++    void RemoveFromTable();
+     const SwStartNode *GetSttNd() const { return pSttNd; }
+     sal_uLong GetSttIdx() const;
+ 
+diff --git a/sw/source/core/table/swtable.cxx b/sw/source/core/table/swtable.cxx
+index d961289..031899c 100644
+--- a/sw/source/core/table/swtable.cxx
++++ b/sw/source/core/table/swtable.cxx
+@@ -1748,10 +1748,9 @@ SwTableBox::SwTableBox( SwTableBoxFmt* pFmt, const SwStartNode& rSttNd, SwTableL
+     rSrtArr.Insert( p );        // eintragen
+ }
+ 
+-SwTableBox::~SwTableBox()
++void SwTableBox::RemoveFromTable()
+ {
+-    // Inhaltstragende Box ?
+-    if( !GetFrmFmt()->GetDoc()->IsInDtor() && pSttNd )
++    if (pSttNd) // box containing contents?
+     {
+         // an der Table austragen
+         const SwTableNode* pTblNd = pSttNd->FindTableNode();
+@@ -1760,6 +1759,15 @@ SwTableBox::~SwTableBox()
+                                     GetTabSortBoxes();
+         SwTableBox *p = this;   // error: &this
+         rSrtArr.Remove( p );        // austragen
++        pSttNd = 0; // clear it so this is only run once
++    }
++}
++
++SwTableBox::~SwTableBox()
++{
++    if (!GetFrmFmt()->GetDoc()->IsInDtor())
++    {
++        RemoveFromTable();
+     }
+ 
+     // ist die TabelleBox der letzte Client im FrameFormat, kann dieses
+diff --git a/sw/source/core/undo/untbl.cxx b/sw/source/core/undo/untbl.cxx
+index 641c000..ec85cfe 100644
+--- a/sw/source/core/undo/untbl.cxx
++++ b/sw/source/core/undo/untbl.cxx
+@@ -1818,7 +1818,11 @@ void SwUndoTblNdsChg::UndoImpl(::sw::UndoRedoContext & rContext)
+                 rDoc.GetNodes()._MoveNodes( aRg, rDoc.GetNodes(), aInsPos, sal_False );
+             }
+             else
++            {   // first disconnect box from node, otherwise ~SwTableBox would
++                // access pBox->pSttNd, deleted by DeleteSection
++                pBox->RemoveFromTable();
+                 rDoc.DeleteSection( rDoc.GetNodes()[ nIdx ] );
++            }
+             aDelBoxes.insert( aDelBoxes.end(), pBox );
+         }
+     }
+@@ -1834,6 +1838,7 @@ void SwUndoTblNdsChg::UndoImpl(::sw::UndoRedoContext & rContext)
+             // TL_CHART2: notify chart about box to be removed
+             if (pPCD)
+                 pPCD->DeleteBox( &pTblNd->GetTable(), *pBox );
++            pBox->RemoveFromTable(); // ~SwTableBox would access pBox->pSttNd
+             aDelBoxes.insert( aDelBoxes.end(), pBox );
+             rDoc.DeleteSection( rDoc.GetNodes()[ nIdx ] );
+         }
+-- 
+1.7.10.4
+
