@@ -1,0 +1,74 @@
+From d32f17fd4826fb0cc703cef7d208f32f17c7a76c Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Caol=C3=A1n=20McNamara?= <caolanm@redhat.com>
+Date: Wed, 12 Sep 2012 13:44:09 +0100
+Subject: [PATCH] Resolves: rhbz#855541 XIOError handler multithread woes
+
+We have two threads using X, on an XIOError both
+threads call their XIOError handlers and two
+calls to exit trample all over eachother.
+
+Change-Id: I20defc6f84cc6ea2372a0d6c979e8078fe920a88
+---
+ vcl/unx/generic/app/saldata.cxx |    6 ++++++
+ vcl/unx/gtk/app/gtkdata.cxx     |   14 ++++++++++++++
+ 2 files changed, 20 insertions(+)
+
+diff --git a/vcl/unx/generic/app/saldata.cxx b/vcl/unx/generic/app/saldata.cxx
+index 306fc4e..1629d47 100644
+--- a/vcl/unx/generic/app/saldata.cxx
++++ b/vcl/unx/generic/app/saldata.cxx
+@@ -332,6 +332,12 @@ int X11SalData::XErrorHdl( Display *pDisplay, XErrorEvent *pEvent )
+ 
+ int X11SalData::XIOErrorHdl( Display * )
+ {
++    if (::osl::Thread::getCurrentIdentifier() != Application::GetMainThreadIdentifier())
++    {
++        pthread_exit(NULL);
++        return 0;
++    }
++
+     /*  #106197# hack: until a real shutdown procedure exists
+      *  _exit ASAP
+      */
+diff --git a/vcl/unx/gtk/app/gtkdata.cxx b/vcl/unx/gtk/app/gtkdata.cxx
+index fbc3b22..3fb09b7 100644
+--- a/vcl/unx/gtk/app/gtkdata.cxx
++++ b/vcl/unx/gtk/app/gtkdata.cxx
+@@ -535,6 +535,18 @@ GtkData::GtkData( SalInstance *pInstance )
+     m_aDispatchCondition = osl_createCondition();
+ }
+ 
++XIOErrorHandler aOrigXIOErrorHandler = NULL;
++
++int XIOErrorHdl(Display *pDisplay)
++{
++    if (::osl::Thread::getCurrentIdentifier() != Application::GetMainThreadIdentifier())
++    {
++        pthread_exit(NULL);
++        return 0;
++    }
++    return aOrigXIOErrorHandler ? aOrigXIOErrorHandler(pDisplay) : 0;
++}
++
+ GtkData::~GtkData()
+ {
+     Yield( true, true );
+@@ -554,6 +566,7 @@ GtkData::~GtkData()
+     osl_destroyCondition( m_aDispatchCondition );
+     osl_releaseMutex( m_aDispatchMutex );
+     osl_destroyMutex( m_aDispatchMutex );
++    XSetIOErrorHandler(aOrigXIOErrorHandler);
+ }
+ 
+ void GtkData::Yield( bool bWait, bool bHandleAllCurrentEvents )
+@@ -668,6 +681,7 @@ void GtkData::Init()
+     // init gtk/gdk
+     gtk_init_check( &nParams, &pCmdLineAry );
+     gdk_error_trap_push();
++    aOrigXIOErrorHandler = XSetIOErrorHandler(XIOErrorHdl);
+ 
+     for (i = 0; i < nParams; i++ )
+         g_free( pCmdLineAry[i] );
+-- 
+1.7.10.4
+
