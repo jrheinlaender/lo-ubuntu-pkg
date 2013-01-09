@@ -1,0 +1,165 @@
+From f3694954e67250d403b86cc892f802f4b14a7f57 Mon Sep 17 00:00:00 2001
+From: Stephan Bergmann <sbergman@redhat.com>
+Date: Mon, 12 Nov 2012 16:59:50 +0100
+Subject: [PATCH 02/14] Enable NPP_Initialize/Shutdown again
+
+...calling which had erroneously been dropped in
+bdead69dd3c947743907681c8a2f16ca1f50cd9c "Add switch for system/internal
+npapi.h."  This makes the npsoplugin browser plugin work again.
+
+(Also, init write_fd to -1 instead of 0, so that a missing do_init_pipe does not
+accidentally cause writing to write_fd succeed in writing to stdin.)
+
+(cherry picked from commit 9081e07c9c92267d86a90752b28bd42b592782a8 plus follow-
+up 6ce21d57d9a627a95bfb2f10519ae3cd032f521b "Typo")
+
+Conflicts:
+	extensions/Library_npsoplugin.mk
+
+Change-Id: Iced734512a43c8dfea46088f7ac16f159e7dd807
+Reviewed-on: https://gerrit.libreoffice.org/1042
+Reviewed-by: Tor Lillqvist <tml@iki.fi>
+Tested-by: Tor Lillqvist <tml@iki.fi>
+
+Conflicts:
+	extensions/Library_npsoplugin.mk
+	np_sdk/Package_inc.mk
+---
+ extensions/source/nsplugin/source/npshell.cxx |    4 ++-
+ np_sdk/mozsrc/npunix.c                        |    4 ++-
+ np_sdk/mozsrc/npwin.cpp                       |    4 ++-
+ np_sdk/mozsrc/plugin.h                        |   44 +++++++++++++++++++++++++
+ 4 files changed, 53 insertions(+), 3 deletions(-)
+ create mode 100644 np_sdk/mozsrc/plugin.h
+
+diff --git a/extensions/source/nsplugin/source/npshell.cxx b/extensions/source/nsplugin/source/npshell.cxx
+index be8ea84..7eb7aa58 100644
+--- a/extensions/source/nsplugin/source/npshell.cxx
++++ b/extensions/source/nsplugin/source/npshell.cxx
+@@ -78,6 +78,8 @@
+ 
+ #include "nsp_func.hxx"
+ 
++#include "npsdk/plugin.h"
++
+ #include <comphelper/documentconstants.hxx>
+ 
+ /***********************************************************************
+@@ -87,7 +89,7 @@
+  ***********************************************************************/
+ 
+ static NSP_Mute_Obj send_lock = NSP_New_Mute_Obj();
+-static NSP_PIPE_FD write_fd = 0;
++static NSP_PIPE_FD write_fd = -1;
+ 
+ 
+ long int NSP_WriteToPipe(NSP_PIPE_FD fp, void* buf, unsigned long int len)
+diff --git a/np_sdk/mozsrc/npunix.c b/np_sdk/mozsrc/npunix.c
+index b99a545..25aa468 100644
+--- a/np_sdk/mozsrc/npunix.c
++++ b/np_sdk/mozsrc/npunix.c
+@@ -56,6 +56,7 @@
+ #include <stdio.h>
+ #include "npapi.h"
+ #include "npupp.h"
++#include "plugin.h"
+ 
+ /*
+  * Define PLUGIN_TRACE to have the wrapper functions print
+@@ -483,7 +484,7 @@ NP_Initialize(NPNetscapeFuncs* nsTable, NPPluginFuncs* pluginFuncs)
+         pluginFuncs->javaClass  = Private_GetJavaClass();
+ #endif
+ 
+-        err = NPERR_NO_ERROR;
++        err = NPP_Initialize();
+     }
+ 
+     return err;
+@@ -500,4 +501,5 @@ void
+ NP_Shutdown(void)
+ {
+     PLUGINDEBUGSTR("NP_Shutdown");
++    NPP_Shutdown();
+ }
+diff --git a/np_sdk/mozsrc/npwin.cpp b/np_sdk/mozsrc/npwin.cpp
+index 204f5d1..9021c63 100644
+--- a/np_sdk/mozsrc/npwin.cpp
++++ b/np_sdk/mozsrc/npwin.cpp
+@@ -37,6 +37,7 @@
+ 
+ #include "npapi.h"
+ #include "npupp.h"
++#include "plugin.h"
+ 
+ //\\// DEFINE
+ #define NP_EXPORT
+@@ -149,7 +150,7 @@ NP_Initialize(NPNetscapeFuncs* pFuncs)
+     }
+ #endif
+ 
+-    return NPERR_NO_ERROR;
++    return NPP_Initialize();
+ }
+ 
+ //\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\.
+@@ -163,6 +164,7 @@ NP_Initialize(NPNetscapeFuncs* pFuncs)
+ void WINAPI NP_EXPORT
+ NP_Shutdown()
+ {
++    NPP_Shutdown();
+     g_pNavigatorFuncs = NULL;
+ }
+ 
+diff --git a/np_sdk/mozsrc/plugin.h b/np_sdk/mozsrc/plugin.h
+new file mode 100644
+index 0000000..67e049e
+--- /dev/null
++++ b/np_sdk/mozsrc/plugin.h
+@@ -0,0 +1,44 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#ifndef INCLUDED_NP_SDK_MOZSRC_PLUGIN_H
++#define INCLUDED_NP_SDK_MOZSRC_PLUGIN_H
++
++#include "npapi.h"
++
++/* OpenOffice.org/LibreOffice modified the implementations of NP_Initialize and
++   NP_Shutdown in np_sdk/mozsrc/ to call NPP_Initialize and NPP_Shutdown, resp.,
++   defined in extensions/source/nsplugin/source/npshell.cxx:
++*/
++
++#if defined __cplusplus
++extern "C" {
++#endif
++
++NPError NPP_Initialize(void);
++
++void NPP_Shutdown(void);
++
++#if defined __cplusplus
++}
++#endif
++
++#endif
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+-- 
+1.7.10.4
+
