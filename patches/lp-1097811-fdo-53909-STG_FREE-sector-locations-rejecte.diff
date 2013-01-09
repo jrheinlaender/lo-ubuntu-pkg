@@ -1,0 +1,60 @@
+From 7e806b0a2db59eb461d80b2933baba95e93114ce Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Caol=C3=A1n=20McNamara?= <caolanm@redhat.com>
+Date: Thu, 22 Nov 2012 22:29:11 +0000
+Subject: [PATCH 11/14] Resolves: fdo#53909 STG_FREE sector locations rejected
+
+(cherry picked from commit ef9f9b750eac2966634c385a2021716c4de0e4cd)
+
+Conflicts:
+	sot/source/sdstor/stgelem.cxx
+
+Change-Id: I6f71c7e3cfeeba8a76096d5be68838b8d401c580
+Reviewed-on: https://gerrit.libreoffice.org/1150
+Reviewed-by: Stephan Bergmann <sbergman@redhat.com>
+Tested-by: Stephan Bergmann <sbergman@redhat.com>
+---
+ sot/source/sdstor/stgelem.cxx |   14 +++++++++++---
+ 1 file changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/sot/source/sdstor/stgelem.cxx b/sot/source/sdstor/stgelem.cxx
+index 90f1e2d..e0d738a 100644
+--- a/sot/source/sdstor/stgelem.cxx
++++ b/sot/source/sdstor/stgelem.cxx
+@@ -191,6 +191,14 @@ static bool lcl_wontoverflow(short shift)
+     return shift >= 0 && shift < (short)sizeof(short) * 8 - 1;
+ }
+ 
++static bool isKnownSpecial(sal_Int32 nLocation)
++{
++    return (nLocation == STG_FREE ||
++            nLocation == STG_EOF ||
++            nLocation == STG_FAT ||
++            nLocation == STG_MASTER);
++}
++
+ // Perform thorough checks also on unknown variables
+ sal_Bool StgHeader::Check()
+ {
+@@ -202,8 +210,8 @@ sal_Bool StgHeader::Check()
+             && nFATSize > 0
+             && nTOCstrm >= 0
+             && nThreshold > 0
+-            && ( nDataFAT == -2 || ( nDataFAT >= 0 && nDataFATSize > 0 ) )
+-            && ( nMasterChain == -2 || nMasterChain >=0 )
++            && ( isKnownSpecial(nDataFAT) || ( nDataFAT >= 0 && nDataFATSize > 0 ) )
++            && ( isKnownSpecial(nMasterChain) || nMasterChain >=0 )
+             && nMaster >= 0;
+ }
+ 
+@@ -404,7 +412,7 @@ sal_Bool StgEntry::Load( const void* pFrom, sal_uInt32 nBufSize )
+     if (n > nMaxLegalStr)
+         return sal_False;
+ 
+-	if ((nSize < 0 && cType != STG_STORAGE) || (nPage1 < 0 && nPage1 != -2))
++    if ((nSize < 0 && cType != STG_STORAGE) || (nPage1 < 0 && !isKnownSpecial(nPage1)))
+     {
+         // the size makes no sense for the substorage
+         // TODO/LATER: actually the size should be an unsigned value, but in this case it would mean a stream of more than 2Gb
+-- 
+1.7.10.4
+
