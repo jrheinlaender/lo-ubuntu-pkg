@@ -1,0 +1,67 @@
+From fc091c3190c52e41d7f3360d1f85023e038543df Mon Sep 17 00:00:00 2001
+From: Michael Stahl <mstahl@redhat.com>
+Date: Wed, 19 Sep 2012 20:47:48 +0200
+Subject: [PATCH 12/14] rhbz#689053: fix crash following delete at last table
+ cell:
+
+The IsSelOvr() in SwCrsrShell::Combine() detects that the PaM with mark
+in the last table cell and point ouside the table is invalid, but
+unfortunatley restores the wrong position, which does not actually
+correct the PaM; the deletion on the invalid PaM then removes the
+last SwTxtNode in the document, which leads to crash later.
+
+(cherry picked from commit af4b6c94c68b5f67b931cde8d0acda6ec8b288bb)
+
+Conflicts:
+	sw/source/core/crsr/crsrsh.cxx
+
+Change-Id: Ib2ae0b54e6c15dbe5b6811d8696531bf2022e1a4
+Reviewed-on: https://gerrit.libreoffice.org/652
+Reviewed-by: Miklos Vajna <vmiklos@suse.cz>
+Tested-by: Miklos Vajna <vmiklos@suse.cz>
+---
+ sw/source/core/crsr/crsrsh.cxx |   15 ++++++++-------
+ 1 file changed, 8 insertions(+), 7 deletions(-)
+
+diff --git a/sw/source/core/crsr/crsrsh.cxx b/sw/source/core/crsr/crsrsh.cxx
+index 36fe86d..626557c 100644
+--- a/sw/source/core/crsr/crsrsh.cxx
++++ b/sw/source/core/crsr/crsrsh.cxx
+@@ -1994,26 +1994,27 @@ void SwCrsrShell::Combine()
+         return;
+ 
+     SwCallLink aLk( *this );        // Crsr-Moves ueberwachen, evt. Link callen
+-    SwCrsrSaveState aSaveState( *pCurCrsr );
++    // rhbz#689053: IsSelOvr must restore the saved stack position, not the
++    // current one, because current point + stack mark may be invalid PaM
++    SwCrsrSaveState aSaveState(*pCrsrStk);
+     if( pCrsrStk->HasMark() )           // nur wenn GetMark gesetzt wurde
+     {
+         bool const bResult =
+         CheckNodesRange( pCrsrStk->GetMark()->nNode, pCurCrsr->GetPoint()->nNode, sal_True );
+         OSL_ENSURE(bResult, "StackCrsr & act. Crsr not in same Section.");
+         (void) bResult; // non-debug: unused
+-        // kopiere das GetMark
+-        if( !pCurCrsr->HasMark() )
+-            pCurCrsr->SetMark();
+-        *pCurCrsr->GetMark() = *pCrsrStk->GetMark();
+-        pCurCrsr->GetMkPos() = pCrsrStk->GetMkPos();
+     }
++    *pCrsrStk->GetPoint() = *pCurCrsr->GetPoint();
++    pCrsrStk->GetPtPos() = pCurCrsr->GetPtPos();
+ 
+     SwShellCrsr * pTmp = 0;
+     if( pCrsrStk->GetNext() != pCrsrStk )
+     {
+         pTmp = dynamic_cast<SwShellCrsr*>(pCrsrStk->GetNext());
+     }
+-    delete pCrsrStk;
++    delete pCurCrsr;
++    pCurCrsr = pCrsrStk;
++    pCrsrStk->MoveTo(0); // remove from ring
+     pCrsrStk = pTmp;
+     if( !pCurCrsr->IsInProtectTable( sal_True ) &&
+         !pCurCrsr->IsSelOvr( nsSwCursorSelOverFlags::SELOVER_TOGGLE |
+-- 
+1.7.10.4
+
