@@ -1,0 +1,223 @@
+From fce3a57779fa4e776f36b7c1a0fc67ab392c8f3c Mon Sep 17 00:00:00 2001
+From: Stephan Bergmann <sbergman@redhat.com>
+Date: Fri, 26 Oct 2012 16:22:16 +0200
+Subject: [PATCH 07/14] fdo#49517: Revert "fdo#46102: Load Java scripts with
+ class loaders [...]"
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+This reverts commit dd6c4f4db1d62268d73e09ae52d23f760a967dcc "fdo#46102: Load
+Java scripts with class loaders that actually find them."  That commit broke
+support for macros embedded in documents (as
+new java.net.URL("vnd.sun.star.tdoc:...") throws a MalformedURLExcetpion), and
+it looks like that commit was not necessary after all -- or rather that what it
+tried to work around must have been some other problem that has been fixed
+meanwhile.  "It is unclear to me how the Java script provider shall ever have
+found the script jars in the past" indicates that something must have been
+fishy, and what I failed to notice back then is that createURL creates
+java.net.URL instances with a UCBStreamHandler that does allow to obtain content
+from weird-looking URLs.
+
+Anyway, with that reverted, all three following scenarios work on both current
+master (towards LO 3.7) and libreoffice-3-6 (towards LO 3.6.4); I haven't yet
+come around to test on libreoffice-3-5:
+
+1  Stock macros, "Tools - Macros - Run Macro... - LibreOffice Macros -
+HelloWorld", running all of the four "helloworld.bsh", "helloworld.js",
+"HelloWorldPyhton", and
+"org.libreoffice.example.java_scripts.HelloWorld.printHW".
+
+2  Per-document macros, loading test.odt attached to fdo#49517, then "Tools -
+Macros - Run Macro... - test.odt - HelloWorld", running
+"org.libreoffice.example.java_scripts.HelloWorld.printHW".
+
+3  Extension macros, installing ScriptDispatch.oxt attached to fdo#46012 as
+shared extension, then loading StartScriptDispatch.odt attached to fdo#46012 and
+pressing the "Start Java via ScriptProvider" button.
+
+Change-Id: I31cd16b3720ffeb1058722d4d1fdffb773f8a067
+(cherry picked from commit 7ea7fb009ddcfb0723e88ba0c5778b5fdbe2b553)
+Reviewed-on: https://gerrit.libreoffice.org/922
+Reviewed-by: Caolán McNamara <caolanm@redhat.com>
+Tested-by: Caolán McNamara <caolanm@redhat.com>
+---
+ .../script/framework/container/ScriptMetaData.java |   46 ++------------------
+ .../framework/provider/ClassLoaderFactory.java     |    6 +--
+ .../beanshell/ScriptEditorForBeanShell.java        |    3 +-
+ .../beanshell/ScriptProviderForBeanShell.java      |    3 +-
+ .../provider/java/ScriptProviderForJava.java       |    2 +-
+ .../javascript/ScriptProviderForJavaScript.java    |    3 +-
+ 6 files changed, 9 insertions(+), 54 deletions(-)
+
+diff --git a/scripting/java/com/sun/star/script/framework/container/ScriptMetaData.java b/scripting/java/com/sun/star/script/framework/container/ScriptMetaData.java
+index 178f480..1cf99d7 100755
+--- a/scripting/java/com/sun/star/script/framework/container/ScriptMetaData.java
++++ b/scripting/java/com/sun/star/script/framework/container/ScriptMetaData.java
+@@ -50,14 +50,7 @@ import com.sun.star.script.framework.io.UCBStreamHandler;
+ 
+ import com.sun.star.ucb.XSimpleFileAccess2;
+ 
+-import com.sun.star.uno.AnyConverter;
+ import com.sun.star.uno.UnoRuntime;
+-import com.sun.star.uno.XComponentContext;
+-
+-import com.sun.star.uri.UriReferenceFactory;
+-import com.sun.star.uri.XVndSunStarExpandUrl;
+-
+-import com.sun.star.util.XMacroExpander;
+ 
+ public class ScriptMetaData extends ScriptEntry implements Cloneable {
+     private boolean hasSource = false;
+@@ -253,8 +246,7 @@ public class ScriptMetaData extends ScriptEntry implements Cloneable {
+         return "\nParcelLocation = " + getParcelLocation() + "\nLocationPlaceHolder = " + locationPlaceHolder + super.toString();
+     }
+ 
+-    public URL[] getClassPath(XComponentContext context)
+-        throws java.net.MalformedURLException
++    public URL[] getClassPath() throws java.net.MalformedURLException
+     {
+     try
+     {
+@@ -282,7 +274,7 @@ public class ScriptMetaData extends ScriptEntry implements Cloneable {
+         {
+             String relativeClasspath =  (String)stk.nextElement();
+             String pathToProcess  = PathUtils.make_url( parcelPath, relativeClasspath);
+-            URL url = expandURL( context, pathToProcess );
++            URL url = createURL( pathToProcess );
+             if ( url != null )
+             {
+                 classPathVec.add (  url  );
+@@ -291,7 +283,7 @@ public class ScriptMetaData extends ScriptEntry implements Cloneable {
+         }
+         if ( classPathVec.size() == 0)
+         {
+-            URL url = expandURL( context, parcelPath );
++            URL url = createURL( parcelPath );
+             if ( url != null )
+             {
+                 classPathVec.add(url);
+@@ -308,38 +300,6 @@ public class ScriptMetaData extends ScriptEntry implements Cloneable {
+     }
+ 
+     }
+-
+-    private URL expandURL(XComponentContext context, String url)
+-        throws java.net.MalformedURLException
+-    {
+-        XVndSunStarExpandUrl exp = UnoRuntime.queryInterface(
+-            XVndSunStarExpandUrl.class,
+-            UriReferenceFactory.create(context).parse(url));
+-        String expurl;
+-        if (exp == null) {
+-            expurl = url;
+-        } else {
+-            XMacroExpander expander;
+-            try {
+-                expander = (XMacroExpander) AnyConverter.toObject(
+-                    XMacroExpander.class,
+-                    context.getValueByName(
+-                        "/singletons/com.sun.star.util.theMacroExpander"));
+-            } catch (com.sun.star.lang.IllegalArgumentException e) {
+-                throw new RuntimeException(e);
+-            }
+-            try {
+-                expurl = exp.expand(expander);
+-            } catch (com.sun.star.lang.IllegalArgumentException e) {
+-                java.net.MalformedURLException e2 =
+-                    new java.net.MalformedURLException(e.toString());
+-                e2.initCause(e);
+-                throw e2;
+-            }
+-        }
+-        return new URL(expurl);
+-    }
+-
+     private URL createURL( String path ) throws java.net.MalformedURLException
+     {
+         URL url = null;
+diff --git a/scripting/java/com/sun/star/script/framework/provider/ClassLoaderFactory.java b/scripting/java/com/sun/star/script/framework/provider/ClassLoaderFactory.java
+index 081204f..641ca58 100755
+--- a/scripting/java/com/sun/star/script/framework/provider/ClassLoaderFactory.java
++++ b/scripting/java/com/sun/star/script/framework/provider/ClassLoaderFactory.java
+@@ -31,7 +31,6 @@ import java.net.*;
+ 
+ import com.sun.star.script.framework.log.LogUtils;
+ import com.sun.star.script.framework.container.ScriptMetaData;
+-import com.sun.star.uno.XComponentContext;
+ 
+ /**
+  *  Class Loader Factory
+@@ -43,12 +42,11 @@ public class ClassLoaderFactory
+ {
+     private ClassLoaderFactory() {}
+ 
+-    public static ClassLoader getURLClassLoader(
+-        XComponentContext context, ScriptMetaData scriptData )
++    public static ClassLoader getURLClassLoader( ScriptMetaData scriptData )
+         throws NoSuitableClassLoaderException, MalformedURLException
+     {
+         ClassLoader parent = scriptData.getClass().getClassLoader();
+-        URL[] classPath = scriptData.getClassPath(context);
++        URL[] classPath = scriptData.getClassPath();
+         LogUtils.DEBUG("Classpath has length " + classPath.length );
+         for ( int i=0; i < classPath.length; i++ )
+         {
+diff --git a/scripting/java/com/sun/star/script/framework/provider/beanshell/ScriptEditorForBeanShell.java b/scripting/java/com/sun/star/script/framework/provider/beanshell/ScriptEditorForBeanShell.java
+index 9f6739d..cbbcfc3 100755
+--- a/scripting/java/com/sun/star/script/framework/provider/beanshell/ScriptEditorForBeanShell.java
++++ b/scripting/java/com/sun/star/script/framework/provider/beanshell/ScriptEditorForBeanShell.java
+@@ -202,8 +202,7 @@ public class ScriptEditorForBeanShell
+             try {
+                 ClassLoader cl = null;
+                 try {
+-                    cl = ClassLoaderFactory.getURLClassLoader(
+-                        context.getComponentContext(), entry );
++                    cl = ClassLoaderFactory.getURLClassLoader( entry );
+                 }
+                 catch (Exception ignore) // TODO re-examine error handling
+                 {
+diff --git a/scripting/java/com/sun/star/script/framework/provider/beanshell/ScriptProviderForBeanShell.java b/scripting/java/com/sun/star/script/framework/provider/beanshell/ScriptProviderForBeanShell.java
+index 22a9ea8..95c7278 100755
+--- a/scripting/java/com/sun/star/script/framework/provider/beanshell/ScriptProviderForBeanShell.java
++++ b/scripting/java/com/sun/star/script/framework/provider/beanshell/ScriptProviderForBeanShell.java
+@@ -196,8 +196,7 @@ class ScriptImpl implements XScript
+             ClassLoader cl = null;
+             URL sourceUrl = null;
+             try {
+-                cl = ClassLoaderFactory.getURLClassLoader(
+-                    m_xContext, metaData );
++                cl = ClassLoaderFactory.getURLClassLoader( metaData );
+                 sourceUrl = metaData.getSourceURL();
+             }
+             catch ( java.net.MalformedURLException mfu )
+diff --git a/scripting/java/com/sun/star/script/framework/provider/java/ScriptProviderForJava.java b/scripting/java/com/sun/star/script/framework/provider/java/ScriptProviderForJava.java
+index 3f392f7..707ea05 100755
+--- a/scripting/java/com/sun/star/script/framework/provider/java/ScriptProviderForJava.java
++++ b/scripting/java/com/sun/star/script/framework/provider/java/ScriptProviderForJava.java
+@@ -205,7 +205,7 @@ class ScriptImpl implements XScript
+             try {
+                 LogUtils.DEBUG( "Classloader starting..." );
+                 scriptLoader = ClassLoaderFactory.getURLClassLoader(
+-                    m_xContext, metaData );
++                        metaData );
+                 LogUtils.DEBUG( "Classloader finished..." );
+             }
+             catch (MalformedURLException mfe )
+diff --git a/scripting/java/com/sun/star/script/framework/provider/javascript/ScriptProviderForJavaScript.java b/scripting/java/com/sun/star/script/framework/provider/javascript/ScriptProviderForJavaScript.java
+index 39205d4..9f04d91 100755
+--- a/scripting/java/com/sun/star/script/framework/provider/javascript/ScriptProviderForJavaScript.java
++++ b/scripting/java/com/sun/star/script/framework/provider/javascript/ScriptProviderForJavaScript.java
+@@ -195,8 +195,7 @@ class ScriptImpl implements XScript
+             ClassLoader cl = null;
+             URL sourceUrl = null;
+             try {
+-                cl = ClassLoaderFactory.getURLClassLoader(
+-                    m_xContext, metaData );
++                cl = ClassLoaderFactory.getURLClassLoader( metaData );
+                 sourceUrl = metaData.getSourceURL();
+             }
+             catch ( java.net.MalformedURLException mfu )
+-- 
+1.7.10.4
+
