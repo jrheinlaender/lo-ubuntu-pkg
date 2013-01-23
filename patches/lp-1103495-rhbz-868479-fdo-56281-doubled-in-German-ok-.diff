@@ -1,0 +1,49 @@
+From 1141d04daea3a0091c2d7533018dbe17e5b5a8bd Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Caol=C3=A1n=20McNamara?= <caolanm@redhat.com>
+Date: Mon, 22 Oct 2012 13:31:38 +0100
+Subject: [PATCH] Resolves: rhbz#868479 / fdo#56281 doubled ~ in German
+ ok/cancel translations
+
+We have unix-specific code adding ~ to OK/Cancel. So don't add ~ if
+string already contains those.
+
+Though its an open question if the presence of ~ is a bad thing
+for the Windows case. i.e. if we should have tooling to not
+allow the OK/Cancel translations to contain ~ in the first place,
+of if we should drop the ifdef UNX and do it globally now
+
+Change-Id: I461c6ac9ca574ed188f51472919be82ec582e389
+
+Signed-off-by: Petr Mladek <pmladek@suse.cz>
+---
+ vcl/source/control/button.cxx |   13 ++++++++-----
+ 1 file changed, 8 insertions(+), 5 deletions(-)
+
+diff --git a/vcl/source/control/button.cxx b/vcl/source/control/button.cxx
+index ac88195..4647490 100644
+--- a/vcl/source/control/button.cxx
++++ b/vcl/source/control/button.cxx
+@@ -153,12 +153,15 @@ XubString Button::GetStandardText( StandardButtonType eButton )
+         ResId aResId( nResId, *pResMgr );
+         aText = String( aResId );
+ 
+-        // Windows (apparently) has some magic auto-accelerator evil around
+-        // ok / cancel so add this only for Unix
+-#ifdef UNX
+-        if( nResId == SV_BUTTONTEXT_OK || nResId == SV_BUTTONTEXT_CANCEL )
+-            aText.Insert( String::CreateFromAscii("~"), 0 );
++        if (nResId == SV_BUTTONTEXT_OK || nResId == SV_BUTTONTEXT_CANCEL)
++        {
++#ifndef WNT
++            // Windows (apparently) has some magic auto-accelerator evil around
++            // ok / cancel so add accelerators only for Unix
++            if (aText.Search('~') == STRING_NOTFOUND)
++                aText.Insert(String::CreateFromAscii("~"), 0);
+ #endif
++        }
+     }
+     else
+     {
+-- 
+1.7.10.4
+
