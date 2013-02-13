@@ -5,3 +5,6 @@ validate_extensions() {
   fi
 }
 
+make_lo_sync_extensions() {
+	touch /usr/lib/libreoffice/share/extensions
+}

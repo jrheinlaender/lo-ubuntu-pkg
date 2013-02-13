@@ -33,7 +33,6 @@ PACKAGES := $(ARCH_INDEP_PACKAGES) $(ARCH_DEP_PACKAGES)
 
 include /usr/share/dpkg/architecture.mk
 include /usr/share/dpkg/vendor.mk
-DISTREL := $(shell lsb_release -cs)
 SHELL:=/bin/bash
 export gb_SHELL:=$(SHELL)
 
@@ -71,18 +70,14 @@ USE_SOURCE_TARBALLS=y
 USE_GIT_TARBALLS=n
 ifeq "$(USE_GIT_TARBALLS)" "y"
 GIT_BASEURL:=git://anongit.freedesktop.org/libreoffice
-lo_sources_ver=4.0.0.0.beta2
+lo_sources_ver=4.0.0.3
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
-GIT_TAG:=libreoffice-$(lo_sources_ver)
+GIT_TAG:=libreoffice-$(lo_sources_ver)-hotfixes1
 GIT_BRANCH=libreoffice-4-0
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
 lo_sources_ver=$(shell cat $(CURDIR)/sources.ver | cut -d= -f2)
-endif
-
-ifeq "$(DISTREL)" "wheezy"
- WHEEZY_BACKPORT=y
 endif
 
 #########
@@ -154,7 +149,7 @@ USE_EXTERNAL_CXXLIBS=y
 #SYSTEM_STUFF += sablot
 SYSTEM_STUFF += mythes
 SYSTEM_STUFF += icu
-ICU_MINVER= (>= 4.0)
+ICU_MINVER= (>= 4.6)
 SYSTEM_STUFF += libwpd libwpg libwps
 SYSTEM_STUFF += libvisio
 SYSTEM_STUFF += libcdr
@@ -349,9 +344,10 @@ CONFIGURE_FLAGS= \
 		--disable-fetch-external \
 		--without-fonts \
 		--without-myspell-dicts \
-		--disable-dependency-tracking
+		--disable-dependency-tracking \
+		--enable-hardlink-deliver
 
-ifeq "$(shell echo $(DEB_VERSION_UPSTREAM) | grep -E '(alpha|beta)'; echo $$?)" "0"
+ifeq "$(shell echo $(DEB_VERSION_UPSTREAM) | grep -E '(alpha|beta)'; echo $$?)" "1"
 CONFIGURE_FLAGS += --enable-release-build
 endif
 
@@ -496,8 +492,8 @@ ifeq "$(DEB_VENDOR)" "Debian"
   CONFIGURE_FLAGS += --with-intro-progressbar-color=215,7,81
 endif
 
-# Debian Squeeze
-ifeq "$(WHEEZY_BACKPORT)" "y"
+# Debian WHeezy
+ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "wheezy-backports"
   BUGS=mailto:debian-backports@lists.debian.org
   SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub mdds liblangtag orcus, $(SYSTEM_STUFF))
 endif
@@ -740,7 +736,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
     else
 	#HELPISOS:=$(shell $(SOURCE_TREE)/bin/lo-xlate-lang -i all') 
 	HELPISOS:=en-US ca ca-XV cs da de dz el en-GB es et eu fi fr gl hi hu it \
-	  ja km ko nl om pl pt pt-BR ru sk sl sv zh-CN zh-TW
+	  ja km ko nl om pl pt pt-BR ru sk sl sv tr vi zh-CN zh-TW
     endif
 	#LANGPACKISOS:=$(shell $(SOURCE_TREE)/bin/lo-xlate-lang -i all')
 	LANGPACKISOS:=en-US af ar as ast be bg bn br bs ca ca-XV cs cy da de dz el \
@@ -1325,8 +1321,9 @@ clean:
 
 	rm -rf $(SOURCE_TREE)/file-lists
 	rm -rf $(SOURCE_TREE)/py2uno
-	rm -f configure aclocal.m4 autogen.lastrun
+	rm -f autogen.lastrun
 	rm -f build_error.log
+	rm -f config/config_version.h
 
 ifeq "$(HELPISOS)" ""
 	rm -rf images*
@@ -1530,15 +1527,12 @@ ifeq (pt-BR,$(findstring pt-BR,$(LANGPACKISOS)))
 	perl -pi -e 's/libreoffice2-l10n-pt-br$$/libreoffice2-l10n-pt-br, broffice/' debian/control
 endif
 	perl -pi -e 's/Package: libreoffice$(VER)-help-en-us/Package: libreoffice$(VER)-help-en-us\nReplaces: libreoffice$(VER)-common (<< 1:3.0.0~dev300m28)/' debian/control
+	perl -pi -e 's/Package: libreoffice$(VER)-help-en-us/Package: libreoffice$(VER)-help-en-us\nBreaks: $(foreach d,$(shell echo $(filter-out en-US,$(HELPISOS)) | tr A-Z a-z),libreoffice$(VER)-help-$(d),)/' debian/control
 
 ifeq "$(ENABLE_GIO)" "y"
 	perl -pi -e 's/VFS/GIO/' debian/control
 	# fix up "GNOME GIO"
 	perl -pi -e 's/GNOME GIO/GIO/' debian/control
-endif
-
-ifneq "$(WHEEZY_BACKPORT)" "y"	
-	perl -pi -e "s/(Build-Conflicts: .*)/\1, base-files (= 7.0), base-files (= 7.1)/" debian/control
 endif
 
 ifneq (,$(filter hsqldb, $(SYSTEM_STUFF)))
@@ -1648,7 +1642,7 @@ $(STAMP_DIR)/build-arch:
 		--disable-ext-report-builder --disable-scripting-javascript \
 		--disable-scripting-beanshell
 
-	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` CFLAGS="$(CFLAGS)" CXXFLAGS="$(CXXFLAGS)" $(MAKE) build gb_Deliver_HARDLINK=T
+	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` CFLAGS="$(CFLAGS)" CXXFLAGS="$(CXXFLAGS)" $(MAKE) build
 
 ifeq "$(BUILD_PYUNO)" "y"
   ifeq "$(ENABLE_PYTHON2)" "y"
@@ -1664,10 +1658,8 @@ endif
 ifneq "$(BUILD_ISOS)" "en-US"
 	# build some extensions again with all languages; as it contains language-specific help
 	# and/or descriptions...
-	$(MAKE) translations.clean
 	$(MAKE) sdext.clean
 	$(MAKE) mysqlc.clean
-	make cmd cmd="cd translations; export WITH_LANG='$(LANGPACKISOS)'; export WITH_LANG_LIST='$(LANGPACKISOS)'; $(MAKE)"
 	make cmd cmd="cd sdext; export WITH_LANG='$(LANGPACKISOS)'; export WITH_LANG_LIST='$(LANGPACKISOS)'; $(MAKE)"
 	make cmd cmd="cd mysqlc; export WITH_LANG='$(LANGPACKISOS)'; export WITH_LANG_LIST='$(LANGPACKISOS)'; ../solenv/bin/build.pl && ../solenv/bin/deliver.pl"
 endif
@@ -1689,7 +1681,7 @@ $(STAMP_DIR)/build-indep:
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ./autogen.sh $(CONFIGURE_FLAGS) $(CONFIGURE_FLAGS_LANG)
 
-	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` CFLAGS="$(CFLAGS)" CXXFLAGS="$(CXXFLAGS)" $(MAKE) build gb_Deliver_HARDLINK=T
+	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` CFLAGS="$(CFLAGS)" CXXFLAGS="$(CXXFLAGS)" $(MAKE) build
 
 	touch $@
 
@@ -1710,7 +1702,7 @@ endif
 		export HOME=$$t; \
 		export SAL_USE_VCLPLUGIN="svp"; \
 		if [ -x /usr/bin/gdb ]; then ulimit -c unlimited; fi && \
-		CHECK_PARALLELISM=1 $(MAKE) -k check gb_FULLDEPS= gb_Deliver_HARDLINK=T && \
+		CHECK_PARALLELISM=1 $(MAKE) -k check && \
 	rm -rf $$t
 ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
 	patch -p1 -R < $(CURDIR)/debian/patches/disable-db-tests.diff
@@ -1748,6 +1740,9 @@ $(STAMP_DIR)/install-common:
 	export OOINSTBASE=$(OODIR); \
 	export OOO_LANGS_LIST="$(ISOS)"; \
 	$(CURDIR)/debian/scripts/gid2pkgdirs.sh
+ifeq "$(BUILD_DBG_PACKAGE)" "y"
+	make cmd cmd="export DESTDIR=$(CURDIR)/debian/tmp; install-gdb-printers -a /usr/share/gdb/auto-load/$(OODIR) -c -i /$(OODIR) -p /usr/share/libreoffice/gdb"
+endif
 
 	# FIXME
 	if echo $(DEB_HOST_ARCH) | grep -q kfreebsd; then \
@@ -1968,7 +1963,7 @@ $(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*.sh) $(wildcard debian/*.
 	        grep PLATFORMID debian/vars.$(DEB_HOST_ARCH) >> $$MAINTSCRIPT; \
 	      fi; \
 	      echo "" >> $$MAINTSCRIPT; \
-	      if egrep -q "validate_extension" $$MAINTSCRIPT.in; then \
+	      if egrep -q "(validate_extension|sync_extension)" $$MAINTSCRIPT.in; then \
 		 cat debian/shell-lib-extensions.sh >> $$MAINTSCRIPT; \
 	      fi; \
 	      sed -n '/^#INCLUDE_SHELL_LIB#$$/,$$p' < $$MAINTSCRIPT.in | sed -e '/^#INCLUDE_SHELL_LIB#$$/d' >> $$MAINTSCRIPT; \
@@ -2440,6 +2435,14 @@ endif
 #	install -m755 $(SOURCE_TREE)/svx/$(shell .  $(SOURCE_TREE)/bin/get_config_variables OUTPATH PROEXT; echo $$OUTPATH$$PROEXT)/bin/gengal.bin \
 #		$(PKGDIR)-dev/$(OODIR)/program/gengal.bin
 #endif
+ifeq "$(PACKAGE_SDK)" "y"
+	# move ui-previewer into -dev
+	mkdir -p $(PKGDIR)-dev/$(OODIR)/program
+	mv $(PKGDIR)-core/$(OODIR)/program/ui-previewer \
+		$(PKGDIR)-dev/$(OODIR)/program
+else
+	rm -f $(PKGDIR)-core/$(OODIR)/program/ui-previewer
+endif
 
 	for i in $(ARCH_DEP_PACKAGES); do \
 		if [ -e debian/$$i.bug-script.in ]; then \
@@ -2887,13 +2890,26 @@ ifeq "$(BUILD_DBG_PACKAGE)" "y"
 	# dh_strip --dbg-package= is not idempotent, force copying of the binaries
 	# again...
 	rm -f $(STAMP_DIR)/install-arch
-	# install .gdb-py
-	for i in `find $(SOURCE_TREE)/solver/ -name "*-gdb.py"`; do \
-		if echo $$i | grep -q uno_; then pkg=uno-libs3; path=usr/lib/ure/lib; \
-		else pkg=libreoffice; path=usr/lib/libreoffice/program; fi; \
-		mkdir -p debian/$$pkg-dbg/usr/lib/debug/$$path && \
-		install -m644 $$i debian/$$pkg-dbg/usr/lib/debug/$$path/`basename $$i`; \
-	done
+ifeq "$(BUILD_DBG_PACKAGE)" "y"
+	mkdir -p $(PKGDIR)-dbg/usr/share/gdb/auto-load/$(OODIR)
+	mv $(CURDIR)/debian/tmp/usr/share/gdb/auto-load/$(OODIR)/program \
+		$(PKGDIR)-dbg/usr/share/gdb/auto-load/$(OODIR)
+	# I think a -dbg-common is overkill. Although this means that this all only
+	# will work if libreoffice-dbg is installed..
+	mkdir -p $(PKGDIR)-dbg/usr/share/libreoffice/gdb
+	mv $(CURDIR)/debian/tmp/usr/share/libreoffice/gdb/libreoffice \
+		$(PKGDIR)-dbg/usr/share/libreoffice/gdb
+	# FIXME: or better ure-dbg (ure/lib?). Then again ure-link is a link which is in -common
+	# anyways...
+	mkdir -p debian/uno-libs3-dbg/usr/share/gdb/auto-load/$(OODIR)/ure-link/
+	mv $(CURDIR)/debian/tmp//usr/share/gdb/auto-load/$(OODIR)/ure-link/lib \
+		debian/uno-libs3-dbg/usr/share/gdb/auto-load/$(OODIR)/ure-link
+	mkdir -p debian/uno-libs3-dbg/usr/share/libreoffice/gdb/libreoffice
+	mv $(PKGDIR)-dbg/usr/share/libreoffice/gdb/libreoffice/cppu.py \
+		debian/uno-libs3-dbg/usr/share/libreoffice/gdb/libreoffice
+	mv $(PKGDIR)-dbg/usr/share/libreoffice/gdb/libreoffice/sal.py \
+		debian/uno-libs3-dbg/usr/share/libreoffice/gdb/libreoffice
+endif
 else
 	dh_strip -s
 endif
