@@ -494,6 +494,7 @@ endif
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "wheezy-backports"
   BUGS=mailto:debian-backports@lists.debian.org
   SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub mdds liblangtag orcus, $(SYSTEM_STUFF))
+  WHEEZY_BACKPORT=y
 endif
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "UNRELEASED"
   BUGS=mailto:debian-openoffice@lists.debian.org
@@ -631,6 +632,7 @@ ifeq (debug,$(findstring debug,$(DEB_BUILD_OPTIONS)))
 endif
 
 
+ifneq "$(WHEEZY_BACKPORT)" "y"
 PYMAJOR:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[0])")
 PYMINOR:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[1])")
 PYMINORPLUS1:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[1]+1)")
@@ -639,6 +641,14 @@ PY2MAJOR:=$(shell $(PYTHON2) -c "import sys; print sys.version_info[0]")
 PY2MINOR:=$(shell $(PYTHON2) -c "import sys; print sys.version_info[1]")
 PY2MINORPLUS1:=$(shell $(PYTHON2) -c "import sys; print sys.version_info[1]+1")
 PYTHON2_SITE:=debian/python-uno/$(shell $(PYTHON2) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
+else
+PYMAJOR:=$(shell $(PYTHON2) -c "import sys; print (sys.version_info[0])")
+PYMINOR:=$(shell $(PYTHON2) -c "import sys; print (sys.version_info[1])")
+PYMINORPLUS1:=$(shell $(PYTHON2) -c "import sys; print (sys.version_info[1]+1)")
+# YES, really! python3-uno. see "OMG!" below :-)
+PYTHON_SITE:=debian/python3-uno/$(shell $(PYTHON2) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
+PYTHON:=$(PYTHON2)
+endif
 
 ifeq "$(PYTHON_VERSION)" "current"
 	PYTHON_VERSION_CONTROL := $(PYMAJOR).$(PYMINOR)
@@ -649,9 +659,13 @@ endif
 ifeq "$(BUILD_PYUNO)" "y"
 	BUILD_DEPS += , python (>= 2.6.6-3+squeeze4)
 	DBG_DBG_SUGGESTS+= , python-dbg
+  ifneq "$(WHEEZY_BACKPORT)" "y"
 	BUILD_DEPS += , $(PYTHON)-dev (>= 3.3)
-  ifeq "$(ENABLE_PYTHON2)" "y"
+    ifeq "$(ENABLE_PYTHON2)" "y"
 	BUILD_DEPS += , $(PYTHON2)-dev (>= 2.6)
+    endif
+  else
+	BUILD_DEPS += , $(PYTHON2)-dev (>= 2.7)
   endif
 else
 	BUILD_DEPS += , python
@@ -1072,6 +1086,13 @@ endif
 ifneq "$(BUILD_PYUNO)" "y"
 	DEBHELPER_OPTIONS+= -Npython-uno -Npython3-uno -Nlibreoffice-script-provider-python
 	CONFIGURE_FLAGS += --disable-python
+else
+  ifeq "$(WHEEZY_BACKPORT)" "y"
+	DEBHELPER_OPTIONS+= -Npython3-uno
+	PYUNO_DEPENDS = python-uno
+  else
+	PYUNO_DEPENDS = python3-uno (>= 4.0~) | python-uno
+  endif
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
@@ -1571,12 +1592,14 @@ ifneq "$(PACKAGE_UNOWINREG_DLL)" "y"
   endif
 endif
 
-ifeq "$(BUILD_PYUNO)" "y"
-  ifeq "$(ENABLE_PYTHON2)" "y"
+ifneq "$(WHEEZY_BACKPORT)" "y"
+   ifeq "$(BUILD_PYUNO)" "y"
+    ifeq "$(ENABLE_PYTHON2)" "y"
 	rm -rf $(SOURCE_TREE)/py2uno
 	cp -ra $(SOURCE_TREE)/pyuno $(SOURCE_TREE)/py2uno
 	cd py2uno && \
 		patch -p1 < $(CURDIR)/debian/patches/pyuno-copy-for-python2.diff
+    endif
   endif
 endif
 
@@ -1604,10 +1627,12 @@ $(STAMP_DIR)/build-arch:
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build
 
-ifeq "$(BUILD_PYUNO)" "y"
-  ifeq "$(ENABLE_PYTHON2)" "y"
+ifneq "$(WHEEZY_BACKPORT)" "y"
+  ifeq "$(BUILD_PYUNO)" "y"
+    ifeq "$(ENABLE_PYTHON2)" "y"
 	$(MAKE) py2uno.clean
 	make cmd cmd='cd py2uno; export PYTHON=$(PYTHON2); export PYTHON_CFLAGS="$(shell pkg-config --cflags python-$(PY2MAJOR).$(PY2MINOR))"; export PYTHON_LIBS="$(shell pkg-config --libs python-$(PY2MAJOR).$(PY2MINOR))"; $(MAKE)'
+    endif
   endif
 endif
 
@@ -2221,7 +2246,8 @@ ifeq "$(BUILD_PYUNO)" "y"
 	  echo 'PYTHONPATH=$$PYTHONHOME $$PYTHONHOME/site-packages $$PYTHONHOME/lib-dynload $$PYTHONHOME/lib-tk $$ORIGIN' \
 	) > debian/python3-uno/$(OODIR)/program/pythonloader.unorc
 	chmod u-w debian/python3-uno/$(OODIR)/program/pythonloader.unorc
-  ifeq "$(ENABLE_PYTHON2)" "y"
+  ifneq "$(WHEEZY_BACKPORT)" "y"
+    ifeq "$(ENABLE_PYTHON2)" "y"
 	install -d $(PYTHON2_SITE)
 	cp $(PYTHON_SITE)/uno.py \
 		$(PYTHON2_SITE)
@@ -2247,6 +2273,7 @@ ifeq "$(BUILD_PYUNO)" "y"
 		debian/python-uno/$(OODIR)/share/registry
 	cp -r debian/python3-uno/$(OODIR)/share/Scripts/python \
 		debian/python-uno/$(OODIR)/share/Scripts
+    endif
   endif
   ifeq "$(ENABLE_SCRIPT_PROVIDER_PYTHON)" "y"
 	rm -f debian/libreoffice$(VER)-script-provider-python/$(OODIR)/share/extensions/script-provider-for-python/registration/LICENSE
@@ -2260,7 +2287,8 @@ ifeq "$(BUILD_PYUNO)" "y"
 	done
 	cd debian/python3-uno/usr/share/doc/python3-uno && \
 		find . -type d -name "CVS" | xargs -r rm -rf
-  ifeq "$(ENABLE_PYTHON2)" "y"
+  ifneq "$(WHEEZY_BACKPORT)" "y"
+    ifeq "$(ENABLE_PYTHON2)" "y"
 	mkdir -p debian/python-uno/usr/share/doc/python-uno
 	cp -r $(SOURCE_TREE)/pyuno/demo \
 	  debian/python-uno/usr/share/doc/python-uno; \
@@ -2269,7 +2297,14 @@ ifeq "$(BUILD_PYUNO)" "y"
 	done
 	cd debian/python-uno/usr/share/doc/python-uno && \
 		find . -type d -name "CVS" | xargs -r rm -rf
+    endif
   endif
+endif
+
+ifeq "$(WHEEZY_BACKPORT)" "y"
+	# OMG!!
+	rm -rf debian/python-uno
+	mv debian/python3-uno debian/python-uno
 endif
 
 	# should be empty now, remove if there
@@ -2821,17 +2856,21 @@ ifeq "$(ENABLE_JAVA)" "y"
 	dh_nativejava -plibreoffice$(VER)-gcj -o
   endif
 endif
+ifeq "$(WHEEZY_BACKPORT)" "y"
+	dh_python2 -ppython-uno --no-guessing-versions --no-guessing-deps
+else
 	dh_python3 -ppython3-uno --no-guessing-deps
 	# adds a python3 (>= 3.2.3-3~)
-ifeq "$(PYTHON_VERSION)" "current"
+  ifeq "$(PYTHON_VERSION)" "current"
 	sed -i -e 's/python$(PYMAJOR) (>= .*)/python$(PYMAJOR) (>= 3.3~)/g' \
 		debian/python3-uno.substvars
-else
+  else
 	sed -i -e 's/python$(PYMAJOR) (>= .*)/python$(PYMAJOR).$(PYMINOR)/g' \
 		debian/python3-uno.substvars
-endif
-ifeq "$(ENABLE_PYTHON2)" "y"
+  endif
+  ifeq "$(ENABLE_PYTHON2)" "y"
 	dh_python2 -ppython-uno --no-guessing-versions --no-guessing-deps
+  endif
 endif
 	dh_lintian -s
 	dh_bugfiles -s -A
@@ -2953,6 +2992,7 @@ endif
 		-V'gstreamer-plugins-suggests=$(GSTREAMER_PLUGINS_SUGGESTS)' \
 		-V'libebook-dep=$(shell debian/scripts/get_libebook_dep.sh)' \
 		-V'idlc-cpp-depends=$(IDLC_CPP_DEPENDS)' \
+		-V'pyuno-depends=$(PYUNO_DEPENDS)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-v$(BINARY_VERSION)
 ifeq "$(ENABLE_JAVA)" "y"
@@ -3077,6 +3117,7 @@ endif
 		-V'java-common-depends=$(JAVA_COMMON_DEPENDS)' \
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-V'textcat-data-recommends=$(TEXTCAT_DATA_RECOMMENDS)' \
+		-V'pyuno-depends=$(PYUNO_DEPENDS)' \
 		-V'Binary-Version=$(BINARY_VERSION)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-v$(BINARY_VERSION)
