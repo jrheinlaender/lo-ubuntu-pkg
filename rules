@@ -90,9 +90,9 @@ BUILD_DEPS=
 # distribution. See configure --help for valid values (--with-system-<value>).
 SYSTEM_STUFF = dicts
 
-BUILD_PYUNO=y
+ENABLE_PYTHON=n
 ENABLE_PYTHON2=y
-ifeq "$(BUILD_PYUNO)" "y"
+ifeq "$(ENABLE_PYTHON)" "y"
   ENABLE_SCRIPT_PROVIDER_PYTHON=y
   PACKAGE_LIBRELOGO=y
 endif
@@ -649,7 +649,7 @@ else
 	PYTHON_VERSION_CONTROL := $(PYTHON_VERSION)
 endif
 
-ifeq "$(BUILD_PYUNO)" "y"
+ifeq "$(ENABLE_PYTHON)" "y"
 	BUILD_DEPS += , python (>= 2.6.6-3+squeeze4)
 	DBG_DBG_SUGGESTS+= , python-dbg
   ifneq "$(WHEEZY_BACKPORT)" "y"
@@ -1080,9 +1080,13 @@ else
 	CONFIGURE_FLAGS += --disable-randr
 endif
 
-ifneq "$(BUILD_PYUNO)" "y"
+ifneq "$(ENABLE_PYTHON)" "y"
 	DEBHELPER_OPTIONS+= -Npython-uno -Npython3-uno -Nlibreoffice-script-provider-python
+  ifeq "$(BUILD_ISOS)" "en-US"
 	CONFIGURE_FLAGS += --disable-python
+  else
+	$(error you can not disable python when building with translations)
+  endif
 else
   ifeq "$(WHEEZY_BACKPORT)" "y"
 	DEBHELPER_OPTIONS+= -Npython3-uno
@@ -1589,7 +1593,7 @@ ifneq "$(PACKAGE_UNOWINREG_DLL)" "y"
 endif
 
 ifneq "$(WHEEZY_BACKPORT)" "y"
-   ifeq "$(BUILD_PYUNO)" "y"
+   ifeq "$(ENABLE_PYTHON)" "y"
     ifeq "$(ENABLE_PYTHON2)" "y"
 	rm -rf $(SOURCE_TREE)/py2uno
 	cp -ra $(SOURCE_TREE)/pyuno $(SOURCE_TREE)/py2uno
@@ -1624,7 +1628,7 @@ $(STAMP_DIR)/build-arch:
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build
 
 ifneq "$(WHEEZY_BACKPORT)" "y"
-  ifeq "$(BUILD_PYUNO)" "y"
+  ifeq "$(ENABLE_PYTHON)" "y"
     ifeq "$(ENABLE_PYTHON2)" "y"
 	$(MAKE) py2uno.clean
 	make cmd cmd='cd py2uno; export PYTHON=$(PYTHON2); export PYTHON_CFLAGS="$(shell pkg-config --cflags python-$(PY2MAJOR).$(PY2MINOR))"; export PYTHON_LIBS="$(shell pkg-config --libs python-$(PY2MAJOR).$(PY2MINOR))"; $(MAKE)'
@@ -2230,7 +2234,7 @@ endif
 			> debian/libreoffice$(VER)-$$i.lintian-overrides; \
 	done
 
-ifeq "$(BUILD_PYUNO)" "y"
+ifeq "$(ENABLE_PYTHON)" "y"
 	# PyUNO packaging
 	install -d $(PYTHON_SITE)
 	mv debian/python3-uno/$(OODIR)/program/uno.py $(PYTHON_SITE)
