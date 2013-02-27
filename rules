@@ -229,7 +229,6 @@ ifeq "$(ENABLE_JUNIT4)" "y"
 endif
 USE_LIBCURL4=y
 CURL_SECTYPE=gnutls
-USE_SYSTEM_DMAKE=y
 USE_LIBSUITESPARSE=y
 SUITESPARSE_MIN_VERSION= (>= 1:3.4.0)
 PARALLEL_BUILD=y
@@ -853,7 +852,7 @@ export JAVA_HOME
 	BUILD_DEPS += , javahelper $(JAVAHELPER_MIN_VERSION)
 else
 	CONFIGURE_FLAGS += --without-java
-	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-officebean -Nlibreoffice$(VER)-java-common -Nlibreoffice$(VER)-filter-mobiledev -Nlibreoffice$(VER)-gcj -Nlibreoffice$(VER)-script-provider-bsh -Nlibreoffice$(VER)-script-provider-js
+	DEBHELPER_OPTIONS += -Nlibreoffice$(VER)-officebean -Nlibreoffice$(VER)-java-common -Nlibreoffice$(VER)-gcj -Nlibreoffice$(VER)-script-provider-bsh -Nlibreoffice$(VER)-script-provider-js
 endif
 
 ifneq (,$(filter nss, $(SYSTEM_STUFF)))
@@ -868,9 +867,6 @@ ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NSPLUGIN_ARCHS)))
 	CONFIGURE_FLAGS += --disable-nsplugin
 endif
 
-ifeq "$(USE_SYSTEM_DMAKE)" "y"
-	BUILD_DEPS += , dmake (>= 1:4.11)
-endif
 ifeq "$(USE_UCPP)" "y"
   ifneq (,$(filter ucpp, $(SYSTEM_STUFF)))
 	IDLC_CPP_DEPENDS := ucpp
@@ -1623,11 +1619,11 @@ $(STAMP_DIR)/build-arch:
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
 	PYTHON=$(PYTHON) PYTHON_CFLAGS="$(shell pkg-config --cflags python-$(PYMAJOR).$(PYMINOR))" PYTHON_LIBS="$(shell pkg-config --libs python-$(PYMAJOR).$(PYMINOR))" \
 	./autogen.sh $(CONFIGURE_FLAGS) \
-		--without-help --without-doxygen --disable-ext-wiki-publisher \
+		--without-doxygen --disable-ext-wiki-publisher \
 		--disable-ext-report-builder --disable-scripting-javascript \
 		--disable-scripting-beanshell
 
-	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build
+	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build-nocheck
 
 ifneq "$(WHEEZY_BACKPORT)" "y"
   ifeq "$(ENABLE_PYTHON)" "y"
@@ -1648,7 +1644,7 @@ ifneq "$(BUILD_ISOS)" "en-US"
 	$(MAKE) sdext.clean
 	$(MAKE) mysqlc.clean
 	make cmd cmd="cd sdext; export WITH_LANG='$(LANGPACKISOS)'; export WITH_LANG_LIST='$(LANGPACKISOS)'; $(MAKE)"
-	make cmd cmd="cd mysqlc; export WITH_LANG='$(LANGPACKISOS)'; export WITH_LANG_LIST='$(LANGPACKISOS)'; ../solenv/bin/build.pl && ../solenv/bin/deliver.pl"
+	make cmd cmd="cd mysqlc; export WITH_LANG='$(LANGPACKISOS)'; export WITH_LANG_LIST='$(LANGPACKISOS)'; $(MAKE)"
 endif
 
 	touch $@
@@ -1666,9 +1662,9 @@ $(STAMP_DIR)/build-indep:
 	$(MAKE) reportbuilder.clean
 	rm -f config.status autogen.lastrun
 
-	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ./autogen.sh $(CONFIGURE_FLAGS) $(CONFIGURE_FLAGS_LANG)
+	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ./autogen.sh $(CONFIGURE_FLAGS) --with-help $(CONFIGURE_FLAGS_LANG)
 
-	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build
+	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build-nocheck
 
 	touch $@
 
@@ -2532,22 +2528,6 @@ ifeq "$(ENABLE_JAVA)" "y"
 		for i in $(CURDIR)/$(PKGDIR)-java-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes/*; do \
 			case "`basename $$i`" in aportisdoc.jar|pexcel.jar|pocketword.jar) continue ;; \
 			*) ln -s `echo $$i | sed -e 's,$(CURDIR)/$(PKGDIR)-java-common,,'` `basename $$i` ;; esac; \
-	done
-
-	# move into extra package
-	rm -rf $(PKGDIR)-filter-mobiledev
-	mkdir -p $(PKGDIR)-filter-mobiledev/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes
-	mkdir -p $(PKGDIR)-filter-mobiledev/$(OODIR)/program/classes
-	for i in aportisdoc pexcel pocketword; do \
-	  mv $(PKGDIR)-java-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes/$$i.jar \
-		$(PKGDIR)-filter-mobiledev/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes; \
-	  ln -s /$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes/$$i.jar \
-		$(PKGDIR)-filter-mobiledev/$(OODIR)/program/classes; \
-	done
-	for i in pocketexcel palm pocketword; do \
-	  mkdir -p $(PKGDIR)-filter-mobiledev/$(OODIR)/share/registry && \
-	  mv $(PKGDIR)-common/$(OODIR)/share/registry/$$i.xcd \
-		$(PKGDIR)-filter-mobiledev/$(OODIR)/share/registry; \
 	done
 endif
 
