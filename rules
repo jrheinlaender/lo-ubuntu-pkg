@@ -10,7 +10,7 @@
 # Rene Engelhard <rene@debian.org>
 # Copyright 2002-2011 Software in the Public Interest, Inc.
 # Portions Copyright 2010 Canonical Ltd. Author: Matthias Klose
-# Portions Copyright 2011-2012 Canonical Ltd. Author: Bjoern Michaelsen
+# Portions Copyright 2011-2013 Canonical Ltd. Author: Bjoern Michaelsen
 # Licensed under the GNU General Public License, version 2.  See the file
 # /usr/share/common-licenses/GPL or <http://www.gnu.org/copyleft/gpl.txt>.
 ################################################################################
@@ -70,7 +70,7 @@ USE_SOURCE_TARBALLS=y
 USE_GIT_TARBALLS=n
 ifeq "$(USE_GIT_TARBALLS)" "y"
 GIT_BASEURL:=git://anongit.freedesktop.org/libreoffice
-lo_sources_ver=4.0.0.3
+lo_sources_ver=4.0.1.1
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
 GIT_TAG:=libreoffice-$(lo_sources_ver)
@@ -83,7 +83,7 @@ endif
 #########
 # Default package configuration
 #
-OOO_ARCHS = amd64 armel armhf hppa i386 ia64 mips mipsel powerpc powerpcspe ppc64 s390 s390x sparc kfreebsd-amd64 kfreebsd-i386
+OOO_ARCHS = amd64 armel armhf hppa i386 ia64 kfreebsd-amd64 kfreebsd-i386 mips mipsel powerpc powerpcspe ppc64 s390 s390x sparc
 PATCHSET=$(DEB_VENDOR)
 BUILD_DEPS=
 
@@ -91,9 +91,9 @@ BUILD_DEPS=
 # distribution. See configure --help for valid values (--with-system-<value>).
 SYSTEM_STUFF = dicts
 
-BUILD_PYUNO=y
+ENABLE_PYTHON=y
 ENABLE_PYTHON2=y
-ifeq "$(BUILD_PYUNO)" "y"
+ifeq "$(ENABLE_PYTHON)" "y"
   ENABLE_SCRIPT_PROVIDER_PYTHON=y
   PACKAGE_LIBRELOGO=y
 endif
@@ -280,7 +280,6 @@ SYSTEM_LIBRSVG=y
 # when we have a package we want to have to be installed on older things with some older
 # C++ ABI (like it was the case with libreoffice2), we need to set this. Don't touch
 # otherwise
-SYSTEM_STUFF += stdlibs
 DEFAULT_IMAGE=galaxy
 IMAGES:=$(DEFAULT_IMAGE) crystal hicontrast tango oxygen
 ENABLE_MYSQLNATIVE=y
@@ -357,7 +356,6 @@ endif
 
 CONFIGURE_FLAGS += --with-alloc=$(ALLOC)
 
-
 #############
 # Architecture-specific changes
 
@@ -377,12 +375,6 @@ ifeq "$(ENABLE_OPENGL)" "y"
        ENABLE_OPENGL=n
   endif
   $(eval $(call gen_no_archs,OOO_OGLTRANS_ARCHS))
-endif
-
-ifneq (,$(findstring arm,$(DEB_HOST_ARCH)))
-  ifneq (stdlibs,$(findstring stdlibs,$(SYSTEM_STUFF)))
-  $(error sal does not build on arm with internal stdlibs!)
-  endif
 endif
 
 OOO_64BIT_ARCHS = $(filter amd64 ia64 kfreebsd-amd64 ppc64 s390x, $(OOO_ARCHS))
@@ -496,6 +488,7 @@ endif
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "wheezy-backports"
   BUGS=mailto:debian-backports@lists.debian.org
   SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub mdds liblangtag orcus, $(SYSTEM_STUFF))
+  WHEEZY_BACKPORT=y
 endif
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "UNRELEASED"
   BUGS=mailto:debian-openoffice@lists.debian.org
@@ -642,6 +635,9 @@ ifeq "$(BUILD_DBG_PACKAGE)" "y"
   endif
 	DBG_DBG_SUGGESTS+= , libc6.1-dbg [ia64], libc0.1-dbg [kfreebsd-i386 kfreebsd-amd64], libc0.3-dbg [hurd-i386], libc6-dbg [!ia64 !kfreebsd-i386 !kfreebsd-amd64 !hurd-i386], libatk1.0-dbg, libglib2.0-0-dbg, libgnomevfs2-0-dbg, libstdc++6-$(SYSTEM_GCC_VERSION)-dbg, libx11-6-dbg, libxext6-dbg, libxaw7-dbg, libxml2-dbg, libgtk2.0-0-dbg, libxau6-dbg, libice6-dbg, libsm6-dbg, libxinerama1-dbg, libfontconfig1-dbg, libhunspell-$(shell pkg-config --modversion hunspell | cut -d. -f1,2)-0-dbg, libcurl4-dbg
 endif
+
+export DPKG_EXPORT_BUILDFLAGS=y 
+include /usr/share/dpkg/buildflags.mk
 ifeq "$(ENABLE_SYMBOLS)" "y"
   # Small symbols?
   ifeq "$(SMALL_SYMBOLS)" "y"
@@ -658,6 +654,7 @@ ifeq (debug,$(findstring debug,$(DEB_BUILD_OPTIONS)))
 endif
 
 
+ifneq "$(WHEEZY_BACKPORT)" "y"
 PYMAJOR:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[0])")
 PYMINOR:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[1])")
 PYMINORPLUS1:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[1]+1)")
@@ -666,6 +663,14 @@ PY2MAJOR:=$(shell $(PYTHON2) -c "import sys; print sys.version_info[0]")
 PY2MINOR:=$(shell $(PYTHON2) -c "import sys; print sys.version_info[1]")
 PY2MINORPLUS1:=$(shell $(PYTHON2) -c "import sys; print sys.version_info[1]+1")
 PYTHON2_SITE:=debian/python-uno/$(shell $(PYTHON2) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
+else
+PYMAJOR:=$(shell $(PYTHON2) -c "import sys; print (sys.version_info[0])")
+PYMINOR:=$(shell $(PYTHON2) -c "import sys; print (sys.version_info[1])")
+PYMINORPLUS1:=$(shell $(PYTHON2) -c "import sys; print (sys.version_info[1]+1)")
+# YES, really! python3-uno. see "OMG!" below :-)
+PYTHON_SITE:=debian/python3-uno/$(shell $(PYTHON2) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
+PYTHON:=$(PYTHON2)
+endif
 
 ifeq "$(PYTHON_VERSION)" "current"
 	PYTHON_VERSION_CONTROL := $(PYMAJOR).$(PYMINOR)
@@ -673,12 +678,16 @@ else
 	PYTHON_VERSION_CONTROL := $(PYTHON_VERSION)
 endif
 
-ifeq "$(BUILD_PYUNO)" "y"
+ifeq "$(ENABLE_PYTHON)" "y"
 	BUILD_DEPS += , python (>= 2.6.6-3+squeeze4)
 	DBG_DBG_SUGGESTS+= , python-dbg
+  ifneq "$(WHEEZY_BACKPORT)" "y"
 	BUILD_DEPS += , $(PYTHON)-dev (>= 3.3)
-  ifeq "$(ENABLE_PYTHON2)" "y"
+    ifeq "$(ENABLE_PYTHON2)" "y"
 	BUILD_DEPS += , $(PYTHON2)-dev (>= 2.6)
+    endif
+  else
+	BUILD_DEPS += , $(PYTHON2)-dev (>= 2.7)
   endif
 else
 	BUILD_DEPS += , python
@@ -903,8 +912,12 @@ ifeq "$(USE_UCPP)" "y"
 	BUILD_DEPS += , $(UCPP_DEPENDS)
   endif
 else
-	IDLC_CPP_DEPENDS := cpp
-	CONFIGURE_FLAGS += --with-idlc-cpp=cpp
+# hardcode 4.7 as 4.8 fails:
+# 14:17 <@caolan> ah, "build fails with cpp 4.8.0, this is fixable by passing 
+#                -P, but then idlc produces empty urd files"
+	IDLC_CPP_DEPENDS := cpp-4.7
+	CONFIGURE_FLAGS += --with-idlc-cpp=cpp-4.7
+	BUILD_DEPS += , cpp-4.7
 endif
 
 ifneq (,$(filter hunspell, $(SYSTEM_STUFF)))
@@ -1102,9 +1115,20 @@ else
 	CONFIGURE_FLAGS += --disable-randr
 endif
 
-ifneq "$(BUILD_PYUNO)" "y"
+ifneq "$(ENABLE_PYTHON)" "y"
 	DEBHELPER_OPTIONS+= -Npython-uno -Npython3-uno -Nlibreoffice-script-provider-python
+  ifeq "$(BUILD_ISOS)" "en-US"
 	CONFIGURE_FLAGS += --disable-python
+  else
+	$(error you can not disable python when building with translations)
+  endif
+else
+  ifeq "$(WHEEZY_BACKPORT)" "y"
+	DEBHELPER_OPTIONS+= -Npython3-uno
+	PYUNO_DEPENDS = python-uno
+  else
+	PYUNO_DEPENDS = python3-uno (>= 4.0~) | python-uno
+  endif
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
@@ -1236,7 +1260,7 @@ NUM_CPUS=$(shell echo "$(DEB_BUILD_OPTIONS) " | sed -n 's/^\(.* \)\?parallel=\([
 AVAIL_CPUS := $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
 ifeq "$(PARALLEL_BUILD)" "y"
 	# http://bugs.debian.org/622644
-	BUILD_DEPS += , make (>= 3.81-8.1ubuntu1)
+	BUILD_DEPS += , make (>= 3.81-8.2)
   # we need to specify it only if it differs, otherwise configure autodetects
   # it.
   ifneq "$(NUM_CPUS)" "$(AVAIL_CPUS)"
@@ -1288,7 +1312,6 @@ clean-debdir:
 
 	find debian -name "*.links" -exec rm {} \;
 	if [ -d "$(STAMP_DIR)" ]; then rm -rf "$(STAMP_DIR)"; fi
-	rm -f debian/shlibs.override.stdlibs
 	rm -f debian/*.bug-script
 	rm -f debian/scripts/aotcompile.py*
 
@@ -1538,7 +1561,7 @@ ifeq "$(ENABLE_GIO)" "y"
 endif
 
 ifneq (,$(filter hsqldb, $(SYSTEM_STUFF)))
-	perl -pi -e "s/(Build-Conflicts: .*)/\1, libhsqldb-java (>= $(HSQLDB_TOONEWVER)~)/" debian/control
+	perl -pi -e "s/(Build-Conflicts: .*)/\1,libhsqldb-java (>= $(HSQLDB_TOONEWVER)~),/" debian/control
 endif
 
 ifeq (4.4,$(SYSTEM_GCC_VERSION))
@@ -1613,12 +1636,14 @@ ifneq "$(PACKAGE_UNOWINREG_DLL)" "y"
   endif
 endif
 
-ifeq "$(BUILD_PYUNO)" "y"
-  ifeq "$(ENABLE_PYTHON2)" "y"
+ifneq "$(WHEEZY_BACKPORT)" "y"
+   ifeq "$(ENABLE_PYTHON)" "y"
+    ifeq "$(ENABLE_PYTHON2)" "y"
 	rm -rf $(SOURCE_TREE)/py2uno
 	cp -ra $(SOURCE_TREE)/pyuno $(SOURCE_TREE)/py2uno
 	cd py2uno && \
 		patch -p1 < $(CURDIR)/debian/patches/pyuno-copy-for-python2.diff
+    endif
   endif
 endif
 
@@ -1644,12 +1669,14 @@ $(STAMP_DIR)/build-arch:
 		--disable-ext-report-builder --disable-scripting-javascript \
 		--disable-scripting-beanshell
 
-	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` CFLAGS="$(CFLAGS)" CXXFLAGS="$(CXXFLAGS)" $(MAKE) build
+	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build
 
-ifeq "$(BUILD_PYUNO)" "y"
-  ifeq "$(ENABLE_PYTHON2)" "y"
+ifneq "$(WHEEZY_BACKPORT)" "y"
+  ifeq "$(ENABLE_PYTHON)" "y"
+    ifeq "$(ENABLE_PYTHON2)" "y"
 	$(MAKE) py2uno.clean
 	make cmd cmd='cd py2uno; export PYTHON=$(PYTHON2); export PYTHON_CFLAGS="$(shell pkg-config --cflags python-$(PY2MAJOR).$(PY2MINOR))"; export PYTHON_LIBS="$(shell pkg-config --libs python-$(PY2MAJOR).$(PY2MINOR))"; $(MAKE)'
+    endif
   endif
 endif
 
@@ -1683,7 +1710,7 @@ $(STAMP_DIR)/build-indep:
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ./autogen.sh $(CONFIGURE_FLAGS) $(CONFIGURE_FLAGS_LANG)
 
-	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` CFLAGS="$(CFLAGS)" CXXFLAGS="$(CXXFLAGS)" $(MAKE) build
+	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build
 
 	touch $@
 
@@ -1706,6 +1733,7 @@ endif
 		if [ -x /usr/bin/gdb ]; then ulimit -c unlimited; fi && \
 		CHECK_PARALLELISM=1 $(MAKE) -k check && \
 	rm -rf $$t
+
 ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
 	patch -p1 -R < $(CURDIR)/debian/patches/disable-db-tests.diff
 endif
@@ -2252,7 +2280,7 @@ endif
 			> debian/libreoffice$(VER)-$$i.lintian-overrides; \
 	done
 
-ifeq "$(BUILD_PYUNO)" "y"
+ifeq "$(ENABLE_PYTHON)" "y"
 	# PyUNO packaging
 	install -d $(PYTHON_SITE)
 	mv debian/python3-uno/$(OODIR)/program/uno.py $(PYTHON_SITE)
@@ -2264,7 +2292,8 @@ ifeq "$(BUILD_PYUNO)" "y"
 	  echo 'PYTHONPATH=$$PYTHONHOME $$PYTHONHOME/site-packages $$PYTHONHOME/lib-dynload $$PYTHONHOME/lib-tk $$ORIGIN' \
 	) > debian/python3-uno/$(OODIR)/program/pythonloader.unorc
 	chmod u-w debian/python3-uno/$(OODIR)/program/pythonloader.unorc
-  ifeq "$(ENABLE_PYTHON2)" "y"
+  ifneq "$(WHEEZY_BACKPORT)" "y"
+    ifeq "$(ENABLE_PYTHON2)" "y"
 	install -d $(PYTHON2_SITE)
 	cp $(PYTHON_SITE)/uno.py \
 		$(PYTHON2_SITE)
@@ -2290,6 +2319,7 @@ ifeq "$(BUILD_PYUNO)" "y"
 		debian/python-uno/$(OODIR)/share/registry
 	cp -r debian/python3-uno/$(OODIR)/share/Scripts/python \
 		debian/python-uno/$(OODIR)/share/Scripts
+    endif
   endif
   ifeq "$(ENABLE_SCRIPT_PROVIDER_PYTHON)" "y"
 	rm -f debian/libreoffice$(VER)-script-provider-python/$(OODIR)/share/extensions/script-provider-for-python/registration/LICENSE
@@ -2303,7 +2333,8 @@ ifeq "$(BUILD_PYUNO)" "y"
 	done
 	cd debian/python3-uno/usr/share/doc/python3-uno && \
 		find . -type d -name "CVS" | xargs -r rm -rf
-  ifeq "$(ENABLE_PYTHON2)" "y"
+  ifneq "$(WHEEZY_BACKPORT)" "y"
+    ifeq "$(ENABLE_PYTHON2)" "y"
 	mkdir -p debian/python-uno/usr/share/doc/python-uno
 	cp -r $(SOURCE_TREE)/pyuno/demo \
 	  debian/python-uno/usr/share/doc/python-uno; \
@@ -2312,7 +2343,14 @@ ifeq "$(BUILD_PYUNO)" "y"
 	done
 	cd debian/python-uno/usr/share/doc/python-uno && \
 		find . -type d -name "CVS" | xargs -r rm -rf
+    endif
   endif
+endif
+
+ifeq "$(WHEEZY_BACKPORT)" "y"
+	# OMG!!
+	rm -rf debian/python-uno
+	mv debian/python3-uno debian/python-uno
 endif
 
 	# should be empty now, remove if there
@@ -2869,17 +2907,21 @@ ifeq "$(ENABLE_JAVA)" "y"
 	dh_nativejava -plibreoffice$(VER)-gcj -o
   endif
 endif
+ifeq "$(WHEEZY_BACKPORT)" "y"
+	dh_python2 -ppython-uno --no-guessing-versions --no-guessing-deps
+else
 	dh_python3 -ppython3-uno --no-guessing-deps
 	# adds a python3 (>= 3.2.3-3~)
-ifeq "$(PYTHON_VERSION)" "current"
+  ifeq "$(PYTHON_VERSION)" "current"
 	sed -i -e 's/python$(PYMAJOR) (>= .*)/python$(PYMAJOR) (>= 3.3~)/g' \
 		debian/python3-uno.substvars
-else
+  else
 	sed -i -e 's/python$(PYMAJOR) (>= .*)/python$(PYMAJOR).$(PYMINOR)/g' \
 		debian/python3-uno.substvars
-endif
-ifeq "$(ENABLE_PYTHON2)" "y"
+  endif
+  ifeq "$(ENABLE_PYTHON2)" "y"
 	dh_python2 -ppython-uno --no-guessing-versions --no-guessing-deps
+  endif
 endif
 	dh_lintian -s
 	dh_bugfiles -s -A
@@ -2930,9 +2972,6 @@ ifeq "$(BUILD_KFREEBSD)" "y"
 endif
 ifeq (,$(filter icu, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.icu >> debian/shlibs.local
-endif
-ifeq (,$(filter stdlibs, $(SYSTEM_STUFF)))
-	cat debian/shlibs.override.stdlibs >> debian/shlibs.local
 endif
 	# we need to do it in two steps. The new dpkg-shlibdeps doesn't find
 	# /usr/lib/libgcj-bc.so when specifying -l$(GCJ_JAWT_DIR)
@@ -3001,6 +3040,7 @@ endif
 		-V'gstreamer-plugins-suggests=$(GSTREAMER_PLUGINS_SUGGESTS)' \
 		-V'libebook-dep=$(shell debian/scripts/get_libebook_dep.sh)' \
 		-V'idlc-cpp-depends=$(IDLC_CPP_DEPENDS)' \
+		-V'pyuno-depends=$(PYUNO_DEPENDS)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-v$(BINARY_VERSION)
 ifeq "$(ENABLE_JAVA)" "y"
@@ -3125,6 +3165,7 @@ endif
 		-V'java-common-depends=$(JAVA_COMMON_DEPENDS)' \
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-V'textcat-data-recommends=$(TEXTCAT_DATA_RECOMMENDS)' \
+		-V'pyuno-depends=$(PYUNO_DEPENDS)' \
 		-V'Binary-Version=$(BINARY_VERSION)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-v$(BINARY_VERSION)
@@ -3177,7 +3218,7 @@ dh_testdir
 TMPD=`mktemp -d $(if $(TMP),-p $(TMP))` && \
 mkdir $${TMPD}/archive && \
 git clone --bare $(GIT_BASEURL)/$(1) $${TMPD}/repo -b $(GIT_BRANCH) && \
-git archive --remote $${TMPD}/repo --format=tar --prefix libreoffice-$(DEB_VERSION_UPSTREAM)/ $(GIT_TAG)$(if $(filter $(1),core),-hotfixes1) |tar x -C $${TMPD}/archive && \
+git archive --remote $${TMPD}/repo --format=tar --prefix libreoffice-$(DEB_VERSION_UPSTREAM)/ $(GIT_TAG) |tar x -C $${TMPD}/archive && \
 tar cvJf $(2) -C $${TMPD}/archive/$(3) --transform 's,./,,' . && \
 rm -rf $${TMPD}
 endef
@@ -3203,8 +3244,8 @@ $(call get_orig_tarball,-src): helpcontent2/makefile.pmk translations/makefile.m
 	dh_testdir
 	rm -rf $(TARFIILE_LOCATION)
 	mkdir -p $(TARFILE_LOCATION)
-	./autogen.sh $(patsubst --with-system-%,--without-system-%,$(filter-out --disable-fetch-external,$(CONFIGURE_FLAGS))) --with-system-mysql
-	make download gb_LO_VER=$(DEB_VERSION_UPSTREAM)
+	./autogen.sh --with-all-tarballs
+	$(MAKE) download
 	tar cvJf $@ -C $(TARFILE_LOCATION) --transform 's,./,,' .
 
 # using flag files for unpacking

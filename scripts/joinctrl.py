@@ -21,10 +21,14 @@ def splitlines():
         else:
             print '%s: %s' % (field, ', '.join(values))
 
-    
+def sort_list(unsorted_list):
+    packages = [x for x in unsorted_list if re.match("[a-z0-9]", x)]
+    special = [x for x in unsorted_list if not re.match("[a-z0-9]", x)]
+    return sorted(packages) + sorted(special)
+
 def joinlines():
     fields = ('Build-Depends', 'Build-Conflicts', 'Build-Depends-Indep', 'Depends', 'Replaces',
-              'Provides', 'Conflicts', 'Recommends', 'Suggests')
+              'Provides', 'Conflicts', 'Recommends', 'Suggests', 'Breaks')
     buffer = None
     for line in fileinput.input():
         line = line[:-1]
@@ -33,7 +37,17 @@ def joinlines():
                 buffer = buffer + ' ' + line.strip()
                 continue
             else:
-                print re.sub(r' *,', r',', buffer)
+                packages = sort_list(set([x.strip() for x in buffer[len(field)+1:].split(",")]))
+                if "" in packages:
+                    packages.remove("")
+                length = len(field) + sum([2 + len(package) for package in packages])
+                if length > 80:
+                    indentation = " " * (len(field) + 2)
+                    packages_with_indention = [indentation + x for x in packages]
+                    packages_with_indention = ",\n".join(packages_with_indention)
+                    print field + ": " + packages_with_indention.strip()
+                else:
+                    print field + ": " + ", ".join(packages).strip()
                 buffer = None
         field = None
         for f in fields:
