@@ -1,18 +1,18 @@
-From 472ba892d9a12c17d47c3a0b9df0c092731455da Mon Sep 17 00:00:00 2001
+From cbd105ea610f69e068b07f06a9d3a13d5d72305e Mon Sep 17 00:00:00 2001
 From: Bjoern Michaelsen <bjoern.michaelsen@canonical.com>
 Date: Fri, 22 Feb 2013 15:08:26 +0100
 Subject: [PATCH] lp#780399: sessioninstaller for remaining java wizards
 
 Change-Id: Idbf4e24440f42f5b254cd1f4305f1cba729f33a6
 ---
- framework/source/dispatch/servicehandler.cxx | 27 +++++++++++++++++++++++++++
- svtools/inc/svtools/restartdialog.hxx        |  5 ++++-
- svtools/source/dialogs/restartdialog.cxx     |  3 +++
- svtools/uiconfig/ui/restartdialog.ui         | 14 ++++++++++++++
- 4 files changed, 48 insertions(+), 1 deletion(-)
+ framework/source/dispatch/servicehandler.cxx |   34 ++++++++++++++++++++++++--
+ svtools/inc/svtools/restartdialog.hxx        |    5 +++-
+ svtools/source/dialogs/restartdialog.cxx     |    3 +++
+ svtools/uiconfig/ui/restartdialog.ui         |   14 +++++++++++
+ 4 files changed, 53 insertions(+), 3 deletions(-)
 
 diff --git a/framework/source/dispatch/servicehandler.cxx b/framework/source/dispatch/servicehandler.cxx
-index 5bba096..ce59a27 100644
+index 5bba096..5c0fe49 100644
 --- a/framework/source/dispatch/servicehandler.cxx
 +++ b/framework/source/dispatch/servicehandler.cxx
 @@ -25,8 +25,11 @@
@@ -35,12 +35,25 @@ index 5bba096..ce59a27 100644
      /* SAFE */
      ReadGuard aReadLock( m_aLock );
      css::uno::Reference< css::lang::XMultiServiceFactory > xFactory = m_xFactory;
-@@ -258,6 +262,29 @@ css::uno::Reference< css::uno::XInterface > ServiceHandler::implts_dispatch( con
-         css::uno::Reference< css::task::XJobExecutor > xExecuteable(xService, css::uno::UNO_QUERY);
-         if (xExecuteable.is())
-             xExecuteable->trigger(sArguments);
-+        else if(sServiceName.startsWith("com.sun.star.wizards."))
+@@ -244,7 +248,7 @@ css::uno::Reference< css::uno::XInterface > ServiceHandler::implts_dispatch( con
+ 
+     if (sServiceName.isEmpty())
+         return css::uno::Reference< css::uno::XInterface >();
+-
++    SAL_INFO("framework.servicehandler", "service name: " << sServiceName);
+     // If a service doesnt support an optional job executor interface - he can't get
+     // any given parameters!
+     // Because we can't know if we must call createInstanceWithArguments() or XJobExecutor::trigger() ...
+@@ -263,7 +267,33 @@ css::uno::Reference< css::uno::XInterface > ServiceHandler::implts_dispatch( con
+     // E.g. a script based service (written in phyton) could not be executed
+     // because it contains syntax errors, which was detected at runtime ...
+     catch(const css::uno::Exception&)
+-        { xService.clear(); }
++    {
++	    SAL_INFO("framework.servicehandler", "caught exception for service name: " << sServiceName);
++        if(sServiceName.startsWith("com.sun.star.wizards."))
 +        {
++            SAL_INFO("framework.servicehandler", "this is a wizard");
 +            try
 +            {
 +                using namespace org::freedesktop::PackageKit;
@@ -60,11 +73,12 @@ index 5bba096..ce59a27 100644
 +                    "framework.dispatch",
 +                    "trying to install LibreOffice Java, caught " << e.Message);
 +            }
-+            return css::uno::Reference< css::uno::XInterface >();
 +        }
-     }
-     // ignore all errors - inclusive runtime errors!
-     // E.g. a script based service (written in phyton) could not be executed
++        xService.clear();
++    }
+ 
+     return xService;
+ }
 diff --git a/svtools/inc/svtools/restartdialog.hxx b/svtools/inc/svtools/restartdialog.hxx
 index 993b099..d1a7e97 100644
 --- a/svtools/inc/svtools/restartdialog.hxx
@@ -123,5 +137,5 @@ index 624053e..febba5a 100644
            <packing>
              <property name="expand">False</property>
 -- 
-1.7.12.4
+1.7.10.4
 
