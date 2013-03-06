@@ -65,15 +65,15 @@ SOURCE_TREE=.
 STAMP_DIR=debian/stampdir
 TARFILE_LOCATION=$(CURDIR)/src
 export TARFILE_LOCATION
-USE_SOURCE_TARBALLS=y
+USE_SOURCE_TARBALLS=n
 USE_GIT_TARBALLS=n
 ifeq "$(USE_GIT_TARBALLS)" "y"
 GIT_BASEURL:=git://anongit.freedesktop.org/libreoffice
-lo_sources_ver=4.0.1.2
+lo_sources_ver=$(shell grep AC_INIT $(SOURCE_TREE)/configure.ac | grep documentfoundation | cut -d, -f2 | sed -e 's,\[,,' -e 's,\],,')
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
-GIT_TAG=libreoffice-$(lo_sources_ver)-hotfixes1
-GIT_BRANCH=libreoffice-4-0-1
+GIT_TAG=libreoffice-$(lo_sources_ver)
+GIT_BRANCH=master
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
 lo_sources_ver=$(shell cat $(CURDIR)/sources.ver | cut -d= -f2)
@@ -3000,35 +3000,31 @@ endif
 	done
 
 ifeq "$(PACKAGE_SDK)" "y"
-	. $(SOURCE_TREE)/solenv/inc/udkversion.mk && \
 	for i in common cpp java; do \
-		cat debian/udk-$$i-ref.in \
-			| sed -e "s/@UDK_MAJOR@/$$UDK_MAJOR/" \
-		      	      -e "s/@UDK_MINOR@/$$UDK_MINOR/" \
-		      	      -e "s/@UDK_MICRO@/$$UDK_MICRO/" \
-		      	      -e "s/@VER@/$(VER)/" \
-			> debian/libreoffice-dev-doc.doc-base.udk-$$i-ref; \
+		cat debian/lo-$$i-ref.in \
+			| sed -e "s/@lo_sources_ver@/$(lo_sources_ver)/" \
+			> debian/libreoffice-dev-doc.doc-base.lo-$$i-ref; \
 	done
 	# remove Autodoc_DiagnosticMessages.txt
 	find $(PKGDIR)-dev-doc/usr/share/doc/libreoffice-dev \
 		-name "Autodoc_DiagnosticMessages.txt" -exec rm {} \;
 	UDK_CPP_FILES=`find $(CURDIR)/debian/libreoffice-dev-doc/usr/share/doc/libreoffice-dev/docs/cpp/ref | sed -e 's,$(CURDIR)/debian/libreoffice-dev-doc,,g' | xargs`; \
-	echo "Files: $$UDK_CPP_FILES" >> debian/libreoffice-dev-doc.doc-base.udk-cpp-ref
+	echo "Files: $$UDK_CPP_FILES" >> debian/libreoffice-dev-doc.doc-base.lo-cpp-ref
   ifeq "$(ENABLE_JAVA)" "y"
 	UDK_JAVA_FILES=`find $(CURDIR)/debian/libreoffice-dev-doc/usr/share/doc/libreoffice-dev/docs/java/ref | sed -e 's,$(CURDIR)/debian/libreoffice-dev-doc,,g' | xargs`; \
-	echo "Files: $$UDK_JAVA_FILES" >> debian/libreoffice-dev-doc.doc-base.udk-java-ref
+	echo "Files: $$UDK_JAVA_FILES" >> debian/libreoffice-dev-doc.doc-base.lo-java-ref
   endif
 	# xargs strips the many files here so we need to post-process it.
 	UDK_COMMON_FILES=`find $(CURDIR)/debian/libreoffice-dev-doc/usr/share/doc/libreoffice-dev/docs/common/ref | sed -e 's,$(CURDIR)/debian/libreoffice-dev-doc,,g' | xargs`; \
 	TMP=`mktemp -q`; \
-	cp debian/libreoffice-dev-doc.doc-base.udk-common-ref $$TMP; \
+	cp debian/libreoffice-dev-doc.doc-base.lo-common-ref $$TMP; \
 	echo "Files: $$UDK_COMMON_FILES" >> $$TMP; \
-	cat $$TMP | perl -e 'while(<>) { if (/^Files/) {$$f=1;} if ($$f eq "1") { chomp(); } print $$_; }' > debian/libreoffice-dev-doc.doc-base.udk-common-ref; \
+	cat $$TMP | perl -e 'while(<>) { if (/^Files/) {$$f=1;} if ($$f eq "1") { chomp(); } print $$_; }' > debian/libreoffice-dev-doc.doc-base.lo-common-ref; \
 	rm -f $$TMP
 	# no idea why this happens; afais this can't come from above
 	# since it doesn't affect the files at the end of the lines...
 	# But fix it..
-	perl -pi -e 's,html/,html /,g' debian/libreoffice-dev-doc.doc-base.udk-common-ref
+	perl -pi -e 's,html/,html /,g' debian/libreoffice-dev-doc.doc-base.lo-common-ref
 endif
 	dh_installdocs -i -A 
 	for p in $(ARCH_INDEP_PACKAGES); do \
