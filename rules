@@ -281,8 +281,10 @@ SYSTEM_LIBRSVG=y
 DEFAULT_IMAGE=galaxy
 IMAGES:=$(DEFAULT_IMAGE) crystal hicontrast tango oxygen
 ENABLE_MYSQLNATIVE=y
-# cannot be disabled, unless you have a internal MySQL/PostgreSQL somewhere :-)
-SYSTEM_STUFF += mysql mysql-cppconn
+USE_MARIADB=n
+# set this also to y for system-mysql..
+SYSTEM_STUFF += mariadb
+SYSTEM_STUFF += mysql-cppconn
 MYSQLCPPCONN_MINVER= (>= 1.1.0~r791)
 SYSTEM_STUFF += postgresql
 DICT_DIR=/usr/share/hunspell
@@ -1026,12 +1028,16 @@ else
 endif
 
 ifeq "$(ENABLE_MYSQLNATIVE)" "y"
-	CONFIGURE_FLAGS += --enable-ext-mysql-connector
-  ifneq (,$(filter mysql, $(SYSTEM_STUFF)))
+	CONFIGURE_FLAGS += --enable-ext-mariadb-connector
+  ifneq "$(USE_MARIADB)" "y"
     ifneq (,$(filter mysql-cppconn, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libmysqlclient-dev
+        BUILD_DEPS += , libmysqlclient-dev
     else
-	BUILD_DEPS += , libmysqlclient-dev (>= 5.5~)
+        BUILD_DEPS += , libmysqlclient-dev (>= 5.5~)
+    endif
+  else
+    ifneq (,$(filter mariadb, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libmariadbclient-dev
     endif
   endif
   ifneq (,$(filter mysql-cppconn, $(SYSTEM_STUFF)))
@@ -1599,6 +1605,12 @@ ifneq "$(WHEEZY_BACKPORT)" "y"
 		patch -p1 < $(CURDIR)/debian/patches/pyuno-copy-for-python2.diff
     endif
   endif
+endif
+
+ifeq "$(USE_MARIADB)" "n"
+	# MARIADBCONFIG=mysql_config for autogen.sh somehow doesn't work...
+	mkdir -p debian/usr/bin && \
+	cd debian/usr/bin && ln -s /usr/bin/mysql_config mariadb_config
 endif
 
 	touch $@
