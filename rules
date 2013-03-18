@@ -167,7 +167,7 @@ else
 QT_MINVER= (>= 4:4.5)
 endif
 KDELIBS_MINVER= (>= 4:4.3.4)
-BUILD_DBG_PACKAGE=y
+BUILD_DBG_PACKAGE=n
 ifeq "$(BUILD_DBG_PACKAGE)" "y"
   ENABLE_SYMBOLS=y
   SMALL_SYMBOLS=y
@@ -428,13 +428,11 @@ ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
 	ENABLE_MINIMIZER=n
 	ENABLE_MYSQLNATIVE=n
 	DEBHELPER_OPTIONS += -Nlibreoffice-mysql-connector
-	DEBHELPER_OPTIONS += -Nlibreoffice-report-builder-bin -Nlibreoffice-report-builder
 	DEBHELPER_OPTIONS += -Nlibreoffice-presentation-minimizer
 endif
 ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
 	ENABLE_MEDIAWIKI=n
 	ENABLE_REPORTDESIGN=n
-	DEBHELPER_OPTIONS += -Nlibreoffice-report-builder-bin -Nlibreoffice-report-builder
 	DEBHELPER_OPTIONS += -Nlibreoffice-wiki-publisher -Nlibreoffice-script-provider-python
 	CONFIGURE_FLAGS += --disable-extension-integration --disable-extensions
 else
@@ -844,7 +842,7 @@ export JAVA_HOME
 	CONFIGURE_FLAGS += --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f5 | sed -e s/^\ // | awk '{ print $$1 }'` | grep servlet-api.*\.jar$ | head -n 1)
     endif
   else
-	CONFIGURE_FLAGS += --disable-ext-report-builder
+	CONFIGURE_FLAGS += --disable-report-builder
   endif
 	OOO_OFFICEBEAN_DEP = libreoffice-officebean
 	BUILD_DEPS += , javahelper $(JAVAHELPER_MIN_VERSION)
@@ -1606,7 +1604,7 @@ $(STAMP_DIR)/build-arch:
 	MARIADBCONFIG=$(MARIADBCONFIG) \
 	./autogen.sh $(CONFIGURE_FLAGS) \
 		--without-doxygen --disable-ext-wiki-publisher \
-		--disable-ext-report-builder --disable-scripting-javascript \
+		--disable-report-builder --disable-scripting-javascript \
 		--disable-scripting-beanshell
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build-nocheck
@@ -1895,22 +1893,6 @@ ifeq "$(ENABLE_EVO2)" "y"
 	mv $(PKGDIR)-common/$(OODIR)/presets/database/evolocal.odb \
 		$(PKGDIR)-evolution/$(OODIR)/presets/database
 endif
-
-	# FIXME: Should have been done in gid2pkgdirs.sh but somehow the installer
-	# doesn't create the gid_Module_Pdfimport file and so that doesn't work.
-	# Do it manually here.
-	rm -rf $(PKGDIR)-pdfimport
-	mkdir -p $(PKGDIR)-pdfimport/$(OODIR)/program
-	mkdir -p $(PKGDIR)-pdfimport/$(OODIR)/share/registry
-	mkdir -p $(PKGDIR)-pdfimport/$(OODIR)/share/xpdfimport
-	for i in program/xpdfimport share/xpdfimport share/registry/pdfimport.xcd; do \
-		mv $(PKGDIR)-common/$(OODIR)/$$i \
-			$(PKGDIR)-pdfimport/$(OODIR)/$$i; \
-	done
-	for i in program/xpdfimport program/pdfimport.uno.so; do \
-		mv $(PKGDIR)-core/$(OODIR)/$$i \
-			$(PKGDIR)-pdfimport/$(OODIR)/$$i; \
-	done
 
 	find debian/tmp ! -perm -200 | xargs -r chmod u+w
 
@@ -2355,13 +2337,13 @@ ifneq "$(ENABLE_REPORTDESIGN)" "y"
 	# unneeded. a no-Java arch, so the report-builder can't work anyway.
 	# (and we need to remove it here anyway as it otherwise would end up
 	# in -base)
-	rm -f $(PKGDIR)-base/$(OODIR)/program/librpt*
+	rm -rf $(PKGDIR)-report-builder
 else
   ifeq "$(PACKAGE_BASE)" "y"
 	# move rpt stuff into -report-builder-bin
 	rm -rf $(PKGDIR)-report-builder-bin
 	mkdir -p $(PKGDIR)-report-builder-bin/$(OODIR)/program
-	mv $(PKGDIR)-base/$(OODIR)/program/librpt* \
+	mv $(PKGDIR)-report-builder/$(OODIR)/program/librpt* \
 		$(PKGDIR)-report-builder-bin/$(OODIR)/program
   endif
 endif
@@ -2659,15 +2641,6 @@ ifeq "$(ENABLE_JAVA)" "y"
 	mkdir -p $(PKGDIR)-script-provider-js/$(OODIR)/share/Scripts
 	mv $(PKGDIR)-common/$(OODIR)/share/Scripts/javascript \
 		$(PKGDIR)-script-provider-js/$(OODIR)/share/Scripts
-  endif
-endif
-
-ifeq "$(ENABLE_REPORTDESIGN)" "y"
-  ifeq "$(ENABLE_JAVA)" "y"
-	for i in THIRDPARTYREADMELICENSE.html readme_en-US.html readme_en-US.txt \
-		registration/LICENSE; do \
-		rm -f $(PKGDIR)-report-builder/$(OODIR)/share/extensions/report-builder/$$i; \
-	done
   endif
 endif
 
@@ -3037,7 +3010,6 @@ ifeq "$(ENABLE_JAVA)" "y"
         done
 endif
 	dh_gencontrol -i $(DEBHELPER_OPTIONS) \
-		-Nlibreoffice-report-builder \
 		-Nlibreoffice-wiki-publisher \
 		-Nfonts-opensymbol \
 		-Nopenoffice.org-dtd-officedocument1.0 -- \
@@ -3067,8 +3039,7 @@ ifeq "$(ENABLE_REPORTDESIGN)" "y"
 	dh_gencontrol -plibreoffice-report-builder -- \
 		-V'base-version=$(BASE_VERSION)' \
 		-V'report-builder-jar-depends=$(REPORT_BUILDER_JAR_DEPENDS)' \
-		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
-		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell grep "<version" $(SOURCE_TREE)/reportbuilder/util/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
+		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)'
 endif
 	dh_gencontrol -popenoffice.org-dtd-officedocument1.0 -- \
 		-v$(shell echo `echo $(BINARY_VERSION) | cut -d: -f1` + 1 | bc):1.0+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
