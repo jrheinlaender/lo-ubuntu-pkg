@@ -199,6 +199,7 @@ QT_MINVER= (>= 4:4.5)
 endif
 KDELIBS_MINVER= (>= 4:4.3.4)
 BUILD_DBG_PACKAGE=y
+BUILD_TEST_PACKAGE=y
 ifeq "$(BUILD_DBG_PACKAGE)" "y"
   ENABLE_SYMBOLS=y
   SMALL_SYMBOLS=y
@@ -1493,9 +1494,11 @@ endif
 ifeq "$(ENABLE_KDEAB)" "y"
 	cat debian/control.kab.in >> debian/control
 endif
-ifneq "$(OOO_JAVA_ARCHS)" ""
+ifeq "$(BUILD_TEST_PACKAGE)" "y"
+  ifneq "$(OOO_JAVA_ARCHS)" ""
 	sed -e "s|libreofficeVER|libreoffice$(VER)|g" \
 		>> debian/control < debian/control.subsequentcheckbase.in
+  endif
 endif
 ifeq "$(PACKAGE_LIBRELOGO)" "y"
 	cat debian/control.librelogo.in >> debian/control
@@ -1513,11 +1516,13 @@ endif
 	perl -pi -e "s,%OOO_REPORTDESIGN_ARCHS%,$(OOO_REPORTDESIGN_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_NO_REPORTDESIGN_ARCHS%,$(OOO_NO_REPORTDESIGN_ARCHS),g" debian/control
 	perl -pi -e "s#%BUILD_DEPS%#$(strip $(BUILD_DEPS))#g" debian/control
+ifeq "$(BUILD_TEST_PACKAGE)" "y"
 	# we want the build deps as dep on subsequentcheckbase, but strip the arch
 	# specifics as we are arch-all
 	# for now we filter out the arch-specific libc0.1 and ia64, which is ugly,
 	# but better than manual bookkeeping
 	perl -pi -e "s#%BUILD_DEPS_ARCH_ALL%#$(strip $(shell echo '$(BUILD_DEPS), $(BUILD_DEPS_INDEP)'|sed -e 's/,/,\n /g'|grep -v libc0.1| grep -v ia64|sed -e 's/\[[^]]*\]//g'))#g" debian/control
+endif
 ifeq "$(BUILD_KDE)" "y"
 	perl -pi -e 's/%LO-DESKTOP-INTEGRATION%/libreoffice$(VER)-gnome | libreoffice$(VER)-kde/' debian/control
 else
@@ -1546,6 +1551,10 @@ endif
 
 ifeq (4.4,$(SYSTEM_GCC_VERSION))
 	perl -pi -e 's/flex \|/flex (>= 2.5.25-7) |/' debian/control
+endif
+
+ifeq "$(BUILD_TEST_PACKAGE)" "y"
+	perl -pi -e 's/Vcs-Git:/XS-Testsuite: autopkgtest\nVcs-Git:/' debian/control
 endif
 
 	python debian/scripts/joinctrl.py < debian/control > debian/control.tmp
@@ -2539,11 +2548,13 @@ ifeq "$(ENABLE_JAVA)" "y"
 	  mv $(PKGDIR)-common/$(OODIR)/share/registry/$$i.xcd \
 		$(PKGDIR)-filter-mobiledev/$(OODIR)/share/registry; \
 	done
+ifeq "$(BUILD_TEST_PACKAGE)" "y"
 	mkdir -p $(PKGDIR)-subsequentcheckbase/$(OODIR)/program/classes/
 	for jar in OOoRunner.jar OOoRunnerLight.jar test.jar test-tools.jar ConnectivityTools.jar; \
 	do \
 		mv `find solver -name $$jar` $(PKGDIR)-subsequentcheckbase/$(OODIR)/program/classes/; \
 	done
+endif
 endif
 
 	# fix permissions
