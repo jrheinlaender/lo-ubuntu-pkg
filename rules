@@ -168,7 +168,12 @@ LIBHYPHEN_MINVER= (>= 2.4)
 SYSTEM_STUFF += boost
 BOOST_VERSION=default
 ifeq "$(BOOST_VERSION)" "default"
-  BOOST_MINVER= (>= 1.38)
+  ifeq "$(SYSTEM_GCC_VERSION)" "4.8"
+    # see 701310/695826
+    BOOST_MINVER= (>= 1.53)
+  else
+    BOOST_MINVER= (>= 1.38)
+  endif
 endif
 ifeq "$(BOOST_VERSION)" "1.39"
   BOOST_MINVER= (>= 1.39.0-2)
@@ -218,6 +223,11 @@ ifeq "$(ENABLE_JAVA)" "y"
   SYSTEM_STUFF += hsqldb
   HSQLDB_MINVER= (>> 1.8.0.10)
   HSQLDB_TOONEWVER=1.8.1
+  ifeq "$(WHEEZY_BACKPORT)" "y"
+    HSQLDB_JAR=/usr/share/java/hsqldb.jar
+  else
+    HSQLDB_JAR=/usr/share/java/hsqldb1.8.0.jar
+  endif
 endif
 SYSTEM_STUFF += lpsolve
 USE_SHARED_LPSOLVE=y
@@ -944,12 +954,7 @@ ifneq (,$(filter boost, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libboost$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-date-time$(BOOST_VERSION)-dev $(BOOST_MINVER)
 	#BUILD_DEPS += , libboost-thread$(BOOST_VERSION)-dev, libboost-program-options$(BOOST_VERSION)-dev
     else
-      # see 701310/695826
-      ifeq "$(SYSTEM_GCC_VERSION)" "4.8"
-	BUILD_DEPS += , libboost-dev (>= 1.53), libboost-date-time-dev (>= 1.53)
-      else
 	BUILD_DEPS += , libboost-dev $(BOOST_MINVER), libboost-date-time-dev $(BOOST_MINVER)
-      endif
 	#BUILD_DEPS += , libboost-thread-dev, libboost-program-options-dev
     endif
   endif
@@ -1144,9 +1149,16 @@ endif
 
 ifeq "$(ENABLE_JAVA)" "y"
   ifneq (,$(filter hsqldb, $(SYSTEM_STUFF)))
+    ifeq "$(WHEEZY_BACKPORT)" "y"
 	BUILD_DEPS += , libhsqldb-java $(HSQLDB_MINVER)$(OOO_NO_JAVA_ARCHS)
 	BASE_HSQLDB_DEPENDS = libhsqldb-java $(HSQLDB_MINVER), libhsqldb-java (<< $(HSQLDB_TOONEWVER)~)
 	JAVA_GCJ_DEPENDS += , libhsqldb-java-gcj [$(OOO_GCJ_ARCHS)]
+    else
+	BUILD_DEPS += , libhsqldb1.8.0-java $(HSQLDB_MINVER)$(OOO_NO_JAVA_ARCHS)
+	BASE_HSQLDB_DEPENDS = libhsqldb1.8.0-java $(HSQLDB_MINVER)
+	JAVA_GCJ_DEPENDS += , libhsqldb1.8.0-java-gcj [$(OOO_GCJ_ARCHS)]
+	CONFIGURE_FLAGS += --with-hsqldb-jar=$(HSQLDB_JAR)
+    endif
   else
 	BUILD_DEPS += , libservlet2.5-java
     ifneq "$(JDK)" "openjdk"
@@ -1509,8 +1521,7 @@ ifeq "$(ENABLE_KDEAB)" "y"
 endif
 ifeq "$(BUILD_TEST_PACKAGE)" "y"
   ifneq "$(OOO_JAVA_ARCHS)" ""
-	sed -e "s|libreofficeVER|libreoffice$(VER)|g" \
-		>> debian/control < debian/control.subsequentcheckbase.in
+	cat debian/control.subsequentcheckbase.in >> debian/control
   endif
 endif
 ifeq "$(PACKAGE_LIBRELOGO)" "y"
@@ -1561,8 +1572,10 @@ ifeq "$(ENABLE_GIO)" "y"
 	perl -pi -e 's/GNOME GIO/GIO/' debian/control
 endif
 
-ifneq (,$(filter hsqldb, $(SYSTEM_STUFF)))
+ifeq "$(WHEEZY_BACKPORT)" "y"
+  ifneq (,$(filter hsqldb, $(SYSTEM_STUFF)))
 	perl -pi -e "s/(Build-Conflicts: .*)/\1,libhsqldb-java (>= $(HSQLDB_TOONEWVER)~),/" debian/control
+  endif
 endif
 
 ifeq (4.4,$(SYSTEM_GCC_VERSION))
@@ -1916,7 +1929,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 		$(PKGDIR)-base/$(OODIR)/program/classes/sdbc_hsqldb.jar
     ifneq (,$(filter hsqldb, $(SYSTEM_STUFF)))
 	# fix the classpath (file:// breaks javahelper)
-	jh_classpath --classpath="/usr/share/java/hsqldb.jar .." \
+	jh_classpath --classpath="$(HSQLDB_JAR) .." \
 		$(PKGDIR)-base/$(shell echo /$(OODIR) | sed -e s/lib/share/)/program/classes/sdbc_hsqldb.jar
     endif
     ifeq (,$(filter hsqldb, $(SYSTEM_STUFF)))
@@ -2236,7 +2249,7 @@ ifeq "$(ENABLE_JAVA)" "y"
   ifneq (,$(filter hsqldb, $(SYSTEM_STUFF)))
 	# link to system hsqldb
 	mkdir -p $(PKGDIR)-base/$(OODIR)/program/classes
-	ln -sf /usr/share/java/hsqldb.jar \
+	ln -sf $(HSQLDB_JAR) \
 	        $(PKGDIR)-base/$(OODIR)/program/classes/hsqldb.jar
   endif
 endif
@@ -2955,8 +2968,10 @@ ifeq "$(ENABLE_JAVA)" "y"
 		jh_depends -p$$p -Xlibreoffice-gcj -Xlibreoffice-dbg -Xure; \
 	done
   ifeq "$(PACKAGE_BASE)" "y"
+    ifeq "$(WHEEZY_BACKPORT)" "y"
 	perl -pi -e "s/libhsqldb-java/$(BASE_HSQLDB_DEPENDS)/" \
 		debian/libreoffice-base.substvars
+    endif
 	perl -pi -e "s/base-files,//" \
 		debian/libreoffice-base.substvars
   endif
