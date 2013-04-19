@@ -1,0 +1,133 @@
+From 18b2ba2e6d1396c8b5c6ef5d87507d4da2eade13 Mon Sep 17 00:00:00 2001
+From: Bjoern Michaelsen <bjoern.michaelsen@canonical.com>
+Date: Fri, 19 Apr 2013 11:13:05 +0200
+Subject: [PATCH] lp#1085169: we overactivate here, as it does not seem to hurt
+
+Conflicts:
+	vcl/unx/gtk/window/gloactiongroup.cxx
+
+Change-Id: I4f6e76347c5c9b5c67a09b8c3dcd1b1708e8e703
+---
+ vcl/inc/unx/gtk/gtksalmenu.hxx        |  3 ++-
+ vcl/unx/gtk/window/gloactiongroup.cxx |  7 ++++---
+ vcl/unx/gtk/window/gtksalmenu.cxx     | 32 +++++++++++++++++---------------
+ 3 files changed, 23 insertions(+), 19 deletions(-)
+
+diff --git a/vcl/inc/unx/gtk/gtksalmenu.hxx b/vcl/inc/unx/gtk/gtksalmenu.hxx
+index fc0632f..1a55cca 100644
+--- a/vcl/inc/unx/gtk/gtksalmenu.hxx
++++ b/vcl/inc/unx/gtk/gtksalmenu.hxx
+@@ -52,6 +52,7 @@ private:
+ 
+     GtkSalMenu*                 GetMenuForItemCommand( gchar* aCommand, gboolean bGetSubmenu );
+     void                        ImplUpdate( gboolean bRecurse );
++    void                        ActivateAllSubmenus(MenuBar* pMenuBar);
+ 
+ public:
+     GtkSalMenu( sal_Bool bMenuBar );
+@@ -97,7 +98,7 @@ public:
+     void                        NativeSetAccelerator( unsigned nSection, unsigned nItemPos, const KeyCode& rKeyCode, const rtl::OUString& rKeyName );
+ 
+     void                        DispatchCommand( gint itemId, const gchar* aCommand );
+-    void                        Activate( const gchar* aMenuCommand );
++    void                        Activate();
+     void                        Deactivate( const gchar* aMenuCommand );
+     void                        Display( sal_Bool bVisible );
+     bool                        PrepUpdate();
+diff --git a/vcl/unx/gtk/window/gloactiongroup.cxx b/vcl/unx/gtk/window/gloactiongroup.cxx
+index f8132a0..f20687c 100644
+--- a/vcl/unx/gtk/window/gloactiongroup.cxx
++++ b/vcl/unx/gtk/window/gloactiongroup.cxx
+@@ -170,20 +170,21 @@ g_lo_action_group_perform_submenu_action (GLOActionGroup *group,
+                                           const gchar    *action_name,
+                                           GVariant       *state)
+ {
+-    GTK_YIELD_GRAB();
+-
+     GtkSalFrame* pFrame = group->priv->frame;
++    SAL_INFO("vcl.unity", "g_lo_action_group_perform_submenu_action on " << group << " for frame " << pFrame);
+ 
+     if (pFrame == NULL)
+         return;
+ 
+     GtkSalMenu* pSalMenu = static_cast<GtkSalMenu*> (pFrame->GetMenu());
++    SAL_INFO("vcl.unity", "g_lo_action_group_perform_submenu_action on " << group << " for menu " << pSalMenu);
+ 
+     if (pSalMenu != NULL) {
+         gboolean bState = g_variant_get_boolean (state);
++        SAL_INFO("vcl.unity", "g_lo_action_group_perform_submenu_action on " << group << " to " << bState);
+ 
+         if (bState)
+-            pSalMenu->Activate (action_name);
++            pSalMenu->Activate();
+         else
+             pSalMenu->Deactivate (action_name);
+     }
+diff --git a/vcl/unx/gtk/window/gtksalmenu.cxx b/vcl/unx/gtk/window/gtksalmenu.cxx
+index 605db0d..1db0163 100644
+--- a/vcl/unx/gtk/window/gtksalmenu.cxx
++++ b/vcl/unx/gtk/window/gtksalmenu.cxx
+@@ -351,10 +351,6 @@ void GtkSalMenu::ImplUpdate( gboolean bRecurse )
+             {
+                 pSubmenu->SetMenuModel( G_MENU_MODEL( pSubMenuModel ) );
+                 pSubmenu->SetActionGroup( G_ACTION_GROUP( pActionGroup ) );
+-
+-                pSubmenu->GetMenu()->Activate();
+-                pSubmenu->GetMenu()->Deactivate();
+-
+                 pSubmenu->ImplUpdate( bRecurse );
+             }
+         }
+@@ -657,7 +653,6 @@ GtkSalMenu* GtkSalMenu::GetMenuForItemCommand( gchar* aCommand, gboolean bGetSub
+ {
+     SolarMutexGuard aGuard;
+     GtkSalMenu* pMenu = NULL;
+-
+     for ( sal_uInt16 nPos = 0; nPos < maItems.size(); nPos++ )
+     {
+         GtkSalMenuItem *pSalItem = maItems[ nPos ];
+@@ -694,24 +689,31 @@ void GtkSalMenu::DispatchCommand( gint itemId, const gchar *aCommand )
+     Menu* pSubMenu = ( pSalSubMenu != NULL ) ? pSalSubMenu->GetMenu() : NULL;
+ 
+     MenuBar* pMenuBar = static_cast< MenuBar* >( mpVCLMenu );
+-
+     pMenuBar->HandleMenuCommandEvent( pSubMenu, itemId );
+ }
+ 
+-void GtkSalMenu::Activate( const gchar* aMenuCommand )
++void GtkSalMenu::ActivateAllSubmenus(MenuBar* pMenuBar)
++{
++    pMenuBar->HandleMenuActivateEvent(mpVCLMenu);
++    for ( sal_uInt16 nPos = 0; nPos < maItems.size(); nPos++ )
++    {
++        GtkSalMenuItem *pSalItem = maItems[ nPos ];
++        if ( pSalItem->mpSubMenu != NULL )
++        {
++            pSalItem->mpSubMenu->ActivateAllSubmenus(pMenuBar);
++            pSalItem->mpSubMenu->Update();
++        }
++    }
++}
++
++void GtkSalMenu::Activate()
+ {
+     if ( mbMenuBar != TRUE )
+         return;
+-
+-    GtkSalMenu* pSalSubMenu = GetMenuForItemCommand( (gchar*) aMenuCommand, TRUE );
+-
+-    if ( pSalSubMenu != NULL ) {
+-        MenuBar* pMenuBar = static_cast< MenuBar* >( mpVCLMenu );
+-        pMenuBar->HandleMenuActivateEvent( pSalSubMenu->mpVCLMenu );
+-        pSalSubMenu->Update();
+-    }
++    ActivateAllSubmenus(static_cast<MenuBar*>(mpVCLMenu));
+ }
+ 
++
+ void GtkSalMenu::Deactivate( const gchar* aMenuCommand )
+ {
+     if ( mbMenuBar == sal_False )
+-- 
+1.8.1.2
+
