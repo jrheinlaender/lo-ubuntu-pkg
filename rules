@@ -258,14 +258,17 @@ ifeq "$(ENABLE_JAVA)" "y"
     ifeq "$(shell LANG=C /usr/lib/jvm/default-java/bin/java -version 2>&1 | tail -n 1 | awk '{ print $$1 }')" "OpenJDK"
       RUN_MAKE_CHECK=y
       ENABLE_JUNIT4=y
+      IGNORE_MAKE_CHECK_FAILURES=
     endif
   else
     ifeq "$(JDK)" "openjdk"
       RUN_MAKE_CHECK=y
       ENABLE_JUNIT4=y
+      IGNORE_MAKE_CHECK_FAILURES=
     else
       RUN_MAKE_CHECK=n
       ENABLE_JUNIT4=n
+      IGNORE_MAKE_CHECK_FAILURES=-
     endif
   endif
 else
@@ -417,6 +420,19 @@ ifeq "$(ENABLE_OPENGL)" "y"
        ENABLE_OPENGL=n
   endif
   $(eval $(call gen_no_archs,OOO_OGLTRANS_ARCHS))
+endif
+
+ifeq (armhf,$(findstring armhf,$(DEB_HOST_ARCH)))
+IGNORE_MAKE_CHECK_FAILURES:=-
+endif
+ifeq (ia64,$(findstring ia64,$(DEB_HOST_ARCH)))
+IGNORE_MAKE_CHECK_FAILURES:=-
+endif
+ifeq (sparc,$(findstring sparc,$(DEB_HOST_ARCH)))
+IGNORE_MAKE_CHECK_FAILURES:=-
+endif
+ifneq (,$(findstring mips,$(DEB_HOST_ARCH)))
+IGNORE_MAKE_CHECK_FAILURES:=-
 endif
 
 OOO_64BIT_ARCHS = $(filter amd64 ia64 kfreebsd-amd64 ppc64 s390x, $(OOO_ARCHS))
@@ -1735,7 +1751,7 @@ endif
 		export HOME=$$t; \
 		export SAL_USE_VCLPLUGIN="svp"; \
 		if [ -x /usr/bin/gdb ]; then ulimit -c unlimited; fi && \
-		$(MAKE) -k check && \
+		$(IGNORE_MAKE_CHECK_FAILURES)$(MAKE) -k check || $(MAKE) check && \
 	rm -rf $$t
 
 ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
