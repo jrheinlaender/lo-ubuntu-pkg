@@ -257,17 +257,14 @@ ifeq "$(ENABLE_JAVA)" "y"
     ifeq "$(shell LANG=C /usr/lib/jvm/default-java/bin/java -version 2>&1 | tail -n 1 | awk '{ print $$1 }')" "OpenJDK"
       RUN_MAKE_CHECK=y
       ENABLE_JUNIT4=y
-      IGNORE_MAKE_CHECK_FAILURES=
     endif
   else
     ifeq "$(JDK)" "openjdk"
       RUN_MAKE_CHECK=y
       ENABLE_JUNIT4=y
-      IGNORE_MAKE_CHECK_FAILURES=
     else
       RUN_MAKE_CHECK=n
       ENABLE_JUNIT4=n
-      IGNORE_MAKE_CHECK_FAILURES=-
     endif
   endif
 else
@@ -418,17 +415,14 @@ ifeq "$(ENABLE_OPENGL)" "y"
   $(eval $(call gen_no_archs,OOO_OGLTRANS_ARCHS))
 endif
 
-ifeq (armhf,$(findstring armhf,$(DEB_HOST_ARCH)))
-IGNORE_MAKE_CHECK_FAILURES:=-
-endif
-ifeq (ia64,$(findstring ia64,$(DEB_HOST_ARCH)))
-IGNORE_MAKE_CHECK_FAILURES:=-
-endif
-ifeq (sparc,$(findstring sparc,$(DEB_HOST_ARCH)))
-IGNORE_MAKE_CHECK_FAILURES:=-
-endif
-ifneq (,$(findstring mips,$(DEB_HOST_ARCH)))
-IGNORE_MAKE_CHECK_FAILURES:=-
+IGNORE_MAKE_CHECK_FAILURES=-
+ifneq "$(JDK)" "gcj"
+  ifneq (,$(findstring i386,$(DEB_HOST_ARCH)))
+IGNORE_MAKE_CHECK_FAILURES:=
+  endif
+  ifneq (,$(findstring amd64,$(DEB_HOST_ARCH)))
+IGNORE_MAKE_CHECK_FAILURES:=
+  endif
 endif
 
 OOO_64BIT_ARCHS = $(filter amd64 ia64 kfreebsd-amd64 ppc64 s390x, $(OOO_ARCHS))
@@ -1736,14 +1730,14 @@ ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
 		patch -p1 < $(CURDIR)/debian/patches/smoketest-disable-extension-tests.diff
 endif
 
-	t=`mktemp -q -d`; \
+	$(IGNORE_MAKE_CHECK_FAILURES)t=`mktemp -q -d`; \
 	cd $(SOURCE_TREE) && \
 		export PATH=$(BUILD_PATH); \
 		export TMPDIR=$$t; \
 		export HOME=$$t; \
 		export SAL_USE_VCLPLUGIN="svp"; \
 		if [ -x /usr/bin/gdb ]; then ulimit -c unlimited; fi && \
-		$(IGNORE_MAKE_CHECK_FAILURES)$(MAKE) -k check || $(MAKE) check && \
+		$(MAKE) -k check || $(MAKE) check && \
 	rm -rf $$t
 
 ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
