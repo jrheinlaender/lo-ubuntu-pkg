@@ -432,6 +432,10 @@ IGNORE_MAKE_CHECK_FAILURES:=
 IGNORE_MAKE_CHECK_FAILURES:=
   endif
 endif
+# sw_python would fail anyways as it doesn't work with python2..
+ifeq "$(WHEEZY_BACKPORT)" "y"
+IGNORE_MAKE_CHECK_FAILURES=-
+endif
 
 OOO_64BIT_ARCHS = $(filter amd64 ia64 kfreebsd-amd64 ppc64 s390x, $(OOO_ARCHS))
 
@@ -1692,6 +1696,12 @@ $(STAMP_DIR)/build-arch:
 		--disable-report-builder --disable-scripting-javascript \
 		--disable-scripting-beanshell
 
+ifneq "$(WHEEZY_BACKPORT)" "y"
+	# setting PYTHON_FOR_BUILD above does NOT work and otherwise it
+	# might pick up /usr/bin/python (python 2!) which will not work.
+	perl -pi -e 's/export PYTHON_FOR_BUILD=.*/export PYTHON_FOR_BUILD=$(PYTHON)/' config_host.mk
+endif
+
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build-nocheck
 
 ifneq "$(WHEEZY_BACKPORT)" "y"
@@ -1735,6 +1745,12 @@ $(STAMP_DIR)/build-indep:
 	PYTHON=$(PYTHON) PYTHON_CFLAGS="$(shell pkg-config --cflags python-$(PYMAJOR).$(PYMINOR))" PYTHON_LIBS="$(shell pkg-config --libs python-$(PYMAJOR).$(PYMINOR))" \
 	MARIADBCONFIG=$(MARIADBCONFIG) \
 	./autogen.sh $(CONFIGURE_FLAGS) --with-help $(CONFIGURE_FLAGS_LANG)
+
+ifneq "$(WHEEZY_BACKPORT)" "y"
+	# setting PYTHON_FOR_BUILD above does NOT work and otherwise it
+	# might pick up /usr/bin/python (python 2!) which will not work.
+	perl -pi -e 's/export PYTHON_FOR_BUILD=.*/export PYTHON_FOR_BUILD=$(PYTHON)/' config_host.mk
+endif
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) DEFAULT_TO_ENGLISH_FOR_PACKING=1 ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build-nocheck
 
