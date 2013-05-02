@@ -1082,6 +1082,7 @@ ifeq "$(BUILD_GTK)" "n"
 	CONFIGURE_FLAGS+= --disable-gtk
 	DEBHELPER_OPTIONS+= -Nlibreoffice-gtk -Nlibreoffice-gnome
 	CONFIGURE_FLAGS+= --with-theme="$(patsubst galaxy,default,$(IMAGES))"
+	SHLIBS_OVERRIDE += -Xlibpllo.so
 else
 	BUILD_DEPS += , libgtk2.0-dev (>= 2.10)
 endif
@@ -2961,6 +2962,10 @@ ifneq (,$(filter redland, $(SYSTEM_STUFF)))
 	# manually. Saves us a versioned build-conflict with ourselves
 	# which quickly can get outdated
 	perl -pi -e 's/(shlibs.*$$)/$$1, $(shell cat /var/lib/dpkg/info/$(shell dpkg -S /usr/lib/`objdump -p $(PKGDIR)-core/$(OODIR)/program/libunordf*.so | grep NEEDED | grep librdf | awk '{ print $$2 }'` | cut -d: -f1).shlibs | awk '{ print $$3,$$4,$$5 }')/' $(PKGDIR)-core.substvars
+endif
+ifeq "$(BUILD_GTK)" "y"
+	dpkg-shlibdeps -dSuggests -T$(PKGDIR)-core.substvars \
+		$(PKGDIR)-core/$(OODIR)/program/libpllo.so
 endif
 	# don't make uno-libs3 depend on ure...
 	perl -pi -e 's/, ure$$//' debian/uno-libs3.substvars
