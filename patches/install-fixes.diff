@@ -2,16 +2,16 @@ diff --git a/bin/distro-install-file-lists b/bin/distro-install-file-lists
 index eaabf9c..c1b1ec6 100755
 --- libreoffice-3.5.0/bin/distro-install-file-lists
 +++ libreoffice-3.5.0/bin/distro-install-file-lists
-@@ -2,6 +2,8 @@
- 
- . ./*[Ee]nv.[Hh]ost.sh
+@@ -8,6 +8,8 @@
+     exit 1
+ fi
  
 +export OOO_VENDOR=Debian
 +
  BUILDDIR=`pwd`
  FILELISTSDIR="$BUILDDIR/file-lists"
  
-@@ -365,163 +365,6 @@
+@@ -370,154 +370,6 @@
      # the British fixes can be removed after the issue #54113 is fixed
      remove_duplicity_from_flists common_list.txt lang_en-GB_list.txt $INSTALLDIR/presets/config/standard.sog
  
@@ -44,9 +44,6 @@ index eaabf9c..c1b1ec6 100755
 -    create_package_directory gid_Module_Oo_Linguistic               pkg/libreoffice-common
 -    create_package_directory gid_Module_Optional_Xsltfiltersamples  pkg/libreoffice-common
 -    create_package_directory gid_Module_Optional_Javafilter         pkg/libreoffice-common
--    if [ -f gid_Module_Optional_Binfilter ]; then
--        create_package_directory gid_Module_Optional_Binfilter      pkg/libreoffice-filter-binfilter
--    fi
 -    create_package_directory gid_Module_Optional_Grfflt             pkg/libreoffice-draw
 -    create_package_directory gid_Module_Prg_Calc_Bin                pkg/libreoffice-calc
 -    create_package_directory gid_Module_Prg_Math_Bin                pkg/libreoffice-math
@@ -62,6 +59,7 @@ index eaabf9c..c1b1ec6 100755
 -    create_package_directory gid_Module_Brand_Prg_Base              pkg/libreoffice-base
 -    create_package_directory gid_Module_Optional_Pyuno              pkg/python-uno
 -    create_package_directory gid_Module_Optional_Gnome              pkg/libreoffice-gnome
+-    create_package_directory gid_Module_Optional_Tde                pkg/libreoffice-tde
 -    create_package_directory gid_Module_Optional_Kde                pkg/libreoffice-kde
 -
 -    create_package_directory gid_Module_Root_Files_2                pkg/libreoffice-common
@@ -70,7 +68,6 @@ index eaabf9c..c1b1ec6 100755
 -    create_package_directory gid_Module_Root_Files_5                pkg/libreoffice-common
 -    create_package_directory gid_Module_Root_Files_6                pkg/libreoffice-common
 -    create_package_directory gid_Module_Root_Files_7                pkg/libreoffice-common
--    create_package_directory gid_Module_Optional_Testtool           pkg/libreoffice-qa-tools
 -    if [ -e gid_Module_Optional_Pymailmerge ]; then
 -        create_package_directory gid_Module_Optional_Pymailmerge    pkg/libreoffice-emailmerge
 -    else # post m26
@@ -90,13 +87,7 @@ index eaabf9c..c1b1ec6 100755
 -        create_package_directory gid_Module_Langpack_Brand_`echo $l | sed -e s/-/_/g`     pkg/libreoffice-l10n-$l
 -        create_package_directory gid_Module_Langpack_Resource_`echo $l | sed -e s/-/_/g`  pkg/libreoffice-l10n-$l
 -        create_package_directory gid_Module_Helppack_Help_`echo $l | sed -e s/-/_/g`      pkg/libreoffice-help-$l
--        if [ -f gid_Module_Optional_Binfilter ]; then
--            if [ "$l" = "en-US" ]; then
--                create_package_directory gid_Module_Langpack_Binfilter_en_US    pkg/libreoffice-filter-binfilter
--            else
--                create_package_directory gid_Module_Langpack_Binfilter_`echo $l | sed -e s/-/_/g`    pkg/libreoffice-l10n-$l
--            fi
--        fi
+-
 -        # some help files are in _Langpack_{Writer,Impress,...}_<lang>
 -        # move them from -l10n to -help
 -        if [ "$l" = "en-US" ]; then d=en; else d=$l; fi
@@ -141,7 +132,7 @@ index eaabf9c..c1b1ec6 100755
 -      fi &&
 -      ( cd pkg/libreoffice-common/$d
 -        find -maxdepth 1 \
--           -regex '\./\(.*\.so.*\|.*\.bin\|pagein\|nsplugin\|kdefilepicker\|msfontextract\|.*\.rdb\|javaldx\|uri-encode\)' \
+-           -regex '\./\(.*\.so.*\|.*\.bin\|pagein\|nsplugin\|tdefilepicker\|kdefilepicker\|msfontextract\|.*\.rdb\|javaldx\|uri-encode\)' \
 -           -exec mv {} $DESTDIR/pkg/libreoffice-core/$d \;
 -      ); \
 -    done
@@ -175,16 +166,47 @@ index eaabf9c..c1b1ec6 100755
  fi
  
  # mark the config files
-diff --git a/solenv/gbuild/extensions/post_AuxTargets.mk b/solenv/gbuild/extensions/post_AuxTargets.mk
-index 7622047..9978cda 100644
---- libreoffice-3.5.0/solenv/gbuild/extensions/post_AuxTargets.mk
-+++ libreoffice-3.5.0/solenv/gbuild/extensions/post_AuxTargets.mk
-@@ -83,7 +83,7 @@
- 	desktop/scripts/soffice.sh ooo.lst post_download post_download.log \
- 	set_soenv set_soenv.last set_soenv.stamp src.downloaded warn
+From b0213e0bb4d4d81078e43dbabdefb6618a0cd8fd Mon Sep 17 00:00:00 2001
+From: Rene Engelhard <rene@debian.org>
+Date: Mon, 18 Mar 2013 17:14:08 +0000
+Subject: readd packinfo_office.txt stuff for Pdfimport
+
+... as otherwise it ends up in gid_Module_Root_Brand, NOT
+in it's own module (which is intended)
+
+Change-Id: Ic3951ccd7471793419b04f4f2fcfe90060c6d71f
+---
+--- a/scp2/source/ooo/module_pdfimport.scp-old	2013-03-18 18:34:36.121925117 +0100
++++ b/scp2/source/ooo/module_pdfimport.scp	2013-03-18 18:34:54.785924562 +0100
+@@ -26,6 +26,7 @@
+ #include "macros.inc"
  
--install: build
-+install:
- 	echo "Installing in $(INSTALLDIR)..." && \
- 	ooinstall "$(INSTALLDIR)" && \
- 	echo "" && \
+ Module gid_Module_Pdfimport
++    PackageInfo = "packinfo_office.txt";
+     ParentID = gid_Module_Root_Brand;
+     Styles = (HIDDEN_ROOT);
+     Dirs = (gid_Dir_Share_Xpdfimport);
+diff --git a/setup_native/source/packinfo/packinfo_office.txt b/setup_native/source/packinfo/packinfo_office.txt
+index 4a8a773..0f3bda1 100644
+--- a/setup_native/source/packinfo/packinfo_office.txt
++++ b/setup_native/source/packinfo/packinfo_office.txt
+@@ -1183,3 +1183,19 @@ description = "PostgreSQL Connector driver for %PRODUCTNAME %PRODUCTVERSION"
+ destpath = "/opt"
+ packageversion = "%PACKAGEVERSION"
+ End
++
++Start
++module = "gid_Module_Pdfimport"
++solarispackagename = "%BASISPACKAGEPREFIX%WITHOUTDOTPRODUCTVERSION-extension-pdf-import"
++solarisrequires = "%BASISPACKAGEPREFIX%WITHOUTDOTPRODUCTVERSION-core01 (Name="Core module for %PRODUCTNAME %PRODUCTVERSION"), %BASISPACKAGEPREFIX%WITHOUTDOTPRODUCTVERSION-core02 (Name="Core module for %PRODUCTNAME %PRODUCTVERSION"), %BASISPACKAGEPREFIX%WITHOUTDOTPRODUCTVERSION-core03 (Name="Core module for %PRODUCTNAME %PRODUCTVERSION"), %BASISPACKAGEPREFIX%WITHOUTDOTPRODUCTVERSION-core04 (Name="Core module for %PRODUCTNAME %PRODUCTVERSION"), %BASISPACKAGEPREFIX%WITHOUTDOTPRODUCTVERSION-core05 (Name="Core module for %PRODUCTNAME %PRODUCTVERSION"), %BASISPACKAGEPREFIX%WITHOUTDOTPRODUCTVERSION-core06 (Name="Core module for %PRODUCTNAME %PRODUCTVERSION"), %BASISPACKAGEPREFIX%WITHOUTDOTPRODUCTVERSION-core07 (Name="Core module for %PRODUCTNAME %PRODUCTVERSION")"
++packagename = "%BASISPACKAGEPREFIX%PRODUCTVERSION-extension-pdf-import"
++requires = "%BASISPACKAGEPREFIX%PRODUCTVERSION-core01,%BASISPACKAGEPREFIX%PRODUCTVERSION-core02,%BASISPACKAGEPREFIX%PRODUCTVERSION-core03,%BASISPACKAGEPREFIX%PRODUCTVERSION-core04,%BASISPACKAGEPREFIX%PRODUCTVERSION-core05,%BASISPACKAGEPREFIX%PRODUCTVERSION-core06,%BASISPACKAGEPREFIX%PRODUCTVERSION-core07"
++linuxpatchrequires = ""
++copyright = "2012 The Document Foundation"
++solariscopyright = "solariscopyrightfile"
++vendor = "The Document Foundation"
++description = "PDF import extension for %PRODUCTNAME %PRODUCTVERSION"
++destpath = "/opt"
++packageversion = "%PACKAGEVERSION"
++End
++

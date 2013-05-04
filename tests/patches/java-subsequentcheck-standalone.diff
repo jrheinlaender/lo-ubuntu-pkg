@@ -1,0 +1,128 @@
+From 4224d61427370149e9a9f5bd20cd9549e535398f Mon Sep 17 00:00:00 2001
+From: Bjoern Michaelsen <bjoern.michaelsen@canonical.com>
+Date: Wed Mar 20 12:50:17 CET 2013
+Subject: [PATCH] run subsequentcheck standalone against installed version as
+ integration test
+Forwarded: partially, where there is generic use for it
+
+---
+ jurt/Module_jurt.mk                        |  2 +-
+ ridljar/JunitTest_util.mk                  |  2 +-
+ solenv/gbuild/JavaClassSet.mk              |  2 +-
+ solenv/gbuild/JunitTest.mk                 |  2 +-
+ solenv/gbuild/Module.mk                    |  3 +++
+ solenv/gbuild/extensions/post_SkipBuild.mk | 17 +++++++++++++++++
+ solenv/gbuild/platform/unxgcc.mk           |  2 +-
+ 7 files changed, 25 insertions(+), 5 deletions(-)
+ create mode 100644 solenv/gbuild/extensions/post_SkipBuild.mk
+
+diff --git a/jurt/Module_jurt.mk b/jurt/Module_jurt.mk
+index e367b6f..2b73ce3 100644
+--- a/jurt/Module_jurt.mk
++++ b/jurt/Module_jurt.mk
+@@ -48,7 +48,7 @@ $(eval $(call gb_Module_add_targets,jurt,\
+ ))
+ endif
+ 
+-$(eval $(call gb_Module_add_subsequentcheck_targets,jurt,\
++#$(eval $(call gb_Module_add_subsequentcheck_targets,jurt,\
+     CustomTarget_test_urp \
+     InternalUnoApi_test_urp \
+     JunitTest_bridgefactory \
+diff --git a/ridljar/JunitTest_util.mk b/ridljar/JunitTest_util.mk
+index e29a65b..da374a7 100644
+--- a/ridljar/JunitTest_util.mk
++++ b/ridljar/JunitTest_util.mk
+@@ -28,7 +28,7 @@
+ $(eval $(call gb_JunitTest_JunitTest,ridljar_util))
+ 
+ $(eval $(call gb_JunitTest_use_jars,ridljar_util,\
+-    OOoRunnerLight \
++    OOoRunner \
+     ridl \
+ ))
+ 
+diff --git a/solenv/gbuild/JavaClassSet.mk b/solenv/gbuild/JavaClassSet.mk
+index fab3ae4..1b581a7 100644
+--- a/solenv/gbuild/JavaClassSet.mk
++++ b/solenv/gbuild/JavaClassSet.mk
+@@ -47,7 +47,7 @@ $(call gb_Helper_abbreviate_dirs,\
+ 			$(filter-out $(JARDEPS),$(4))) && \
+ 		$(if $(3),$(gb_JavaClassSet_JAVACCOMMAND) \
+ 			$(gb_JavaClassSet_JAVACDEBUG) \
+-			-classpath "$(T_CP)$(gb_CLASSPATHSEP)$(call gb_JavaClassSet_get_classdir,$(2))" \
++			-classpath "$(T_CP)$(gb_CLASSPATHSEP)$(call gb_JavaClassSet_get_classdir,$(2)):$(subst $(gb_SPACE),:,$(wildcard /usr/lib/ure/share/java/*.jar)):$(subst $(gb_SPACE),:,$(wildcard /usr/lib/libreoffice/program/classes/*.jar))" \
+ 			-d $(call gb_JavaClassSet_get_classdir,$(2)) \
+ 			@$$RESPONSEFILE &&) \
+ 		rm -f $$RESPONSEFILE &&) \
+diff --git a/solenv/gbuild/JunitTest.mk b/solenv/gbuild/JunitTest.mk
+index 6ed1f77..716d966 100644
+--- a/solenv/gbuild/JunitTest.mk
++++ b/solenv/gbuild/JunitTest.mk
+@@ -67,7 +67,7 @@ $(call gb_JunitTest_get_target,%) :
+ 	$(CLEAN_CMD)
+ 
+ define gb_JunitTest_JunitTest
+-$(call gb_JunitTest_get_target,$(1)) : T_CP := $(call gb_JavaClassSet_get_classdir,$(call gb_JunitTest_get_classsetname,$(1)))$$(gb_CLASSPATHSEP)$(OOO_JUNIT_JAR)$$(gb_CLASSPATHSEP)$(OUTDIR)/lib
++$(call gb_JunitTest_get_target,$(1)) : T_CP := $(call gb_JavaClassSet_get_classdir,$(call gb_JunitTest_get_classsetname,$(1)))$$(gb_CLASSPATHSEP)$(OOO_JUNIT_JAR)$$(gb_CLASSPATHSEP)$(OUTDIR)/lib:$(subst $(gb_SPACE),:,$(wildcard /usr/lib/ure/share/java/*.jar)):$(subst $(gb_SPACE),:,$(wildcard /usr/lib/libreoffice/program/classes/*.jar))
+ $(call gb_JunitTest_get_target,$(1)) : CLASSES :=
+ $(eval $(call gb_JunitTest_JunitTest_platform,$(1)))
+ 
+diff --git a/solenv/gbuild/Module.mk b/solenv/gbuild/Module.mk
+index 97f1a81..095212b 100644
+--- a/solenv/gbuild/Module.mk
++++ b/solenv/gbuild/Module.mk
+@@ -255,11 +255,14 @@ endef
+ endif # SKIP_TESTS
+ 
+ define gb_Module_add_subsequentcheck_target
++ifeq (,$(filter-out JavaClassSet% JunitTest%,$(2)))
+ $(call gb_Module__read_targetfile,$(1),$(2),subsequentcheck target)
+ 
+ $(call gb_Module_get_subsequentcheck_target,$(1)) : $$(gb_Module_CURRENTTARGET)
+ $(call gb_Module_get_clean_target,$(1)) : $$(gb_Module_CURRENTCLEANTARGET)
+ 
++endif
++
+ endef
+ endif
+ 
+diff --git a/solenv/gbuild/extensions/post_SkipBuild.mk b/solenv/gbuild/extensions/post_SkipBuild.mk
+new file mode 100644
+index 0000000..661d638
+--- /dev/null
++++ b/solenv/gbuild/extensions/post_SkipBuild.mk
+@@ -0,0 +1,17 @@
++# -*- Mode: makefile-gmake; tab-width: 4; indent-tabs-mode: t -*-
++#
++# This file is part of the LibreOffice project.
++#
++# This Source Code Form is subject to the terms of the Mozilla Public
++# License, v. 2.0. If a copy of the MPL was not distributed with this
++# file, You can obtain one at http://mozilla.org/MPL/2.0/.
++#
++
++# we dont want to bother with these for integration tests
++gb_Module_add_target =
++gb_Module_add_check_target =
++gb_Module_add_slowcheck_target =
++gb_JavaClassSet_use_jar =
++gb_JunitTest_use_jar =
++
++# vim: set noet sw=4 ts=4:
+diff --git a/solenv/gbuild/platform/unxgcc.mk b/solenv/gbuild/platform/unxgcc.mk
+index 53d51ac..0b88221 100644
+--- a/solenv/gbuild/platform/unxgcc.mk
++++ b/solenv/gbuild/platform/unxgcc.mk
+@@ -339,7 +339,7 @@ endef
+ # JunitTest class
+ 
+ ifneq ($(OOO_TEST_SOFFICE),)
+-gb_JunitTest_SOFFICEARG:=$(OOO_TEST_SOFFICE) 
++gb_JunitTest_SOFFICEARG:=$(OOO_TEST_SOFFICE)
+ else
+ ifneq ($(gb_JunitTest_DEBUGRUN),)
+ gb_JunitTest_SOFFICEARG:=connect:pipe,name=$(USER)
+-- 
+1.8.1.2
+
