@@ -2190,9 +2190,10 @@ endif
 		mv $$i debian/uno-libs3/$(OOUREDIR)/lib; \
 		ln -sf /$(OOUREDIR)/lib/`basename $$i` debian/uno-libs3/usr/lib/`basename $$i`; \
 	done
-	# we also need libxmlreader.so and libreg.so.3 (libuno_cppuhelpergcc3.so.3 needs it)
-	for i libxmlreader.so libreg.so; do \
-		mv debian/ure/$(OOUREDIR)/lib/$$ \
+	# we also need libxmlreader.so and libreg.so (libuno_cppuhelpergcc3.so.3 needs it)
+	# and libstore.so (libreg.so.3 needs it)
+	for i in libxmlreader.so libreg.so libstore.so; do \
+		mv debian/ure/$(OOUREDIR)/lib/$$i \
 			debian/uno-libs3/$(OOUREDIR)/lib; \
 	done
 
@@ -2977,9 +2978,10 @@ ifneq (,$(filter redland, $(SYSTEM_STUFF)))
 	# which quickly can get outdated
 	perl -pi -e 's/(shlibs.*$$)/$$1, $(shell cat /var/lib/dpkg/info/$(shell dpkg -S /usr/lib/`objdump -p $(PKGDIR)-core/$(OODIR)/program/libunordf*.so | grep NEEDED | grep librdf | awk '{ print $$2 }'` | cut -d: -f1).shlibs | awk '{ print $$3,$$4,$$5 }')/' $(PKGDIR)-core.substvars
 endif
-	# don't make uno-libs3 depend on ure...
+	# Clean up .substvars values added by uno-libs3.symbols (adds uno-libs3, ure):
+	# 1) don't make uno-libs3 depend on ure...
 	perl -pi -e 's/, ure$$//' debian/uno-libs3.substvars
-	# .. and prevent ure to depend on itself..
+	# 2) and prevent ure to depend on itself..
 	perl -pi -e 's/, ure \(.*\)$$//' debian/ure.substvars
 ifeq "$(ENABLE_JAVA)" "y"
 	LD_LIBRARY_PATH="$(FAKEROOT_LIBDIR):debian/uno-libs3/$(OOUREDIR)/lib:debian/ure/$(OOUREDIR)/lib:$(PKGDIR)-core/$(OODIR)/program" \
