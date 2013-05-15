@@ -1,0 +1,974 @@
+From b301ae799afe9c50239e504bee97c936179b7be8 Mon Sep 17 00:00:00 2001
+From: Armin Le Grand <alg@apache.org>
+Date: Thu, 3 May 2012 10:59:32 +0000
+Subject: [PATCH] Resolves: #i118905# Changed EditEngine to be able to paint to
+ overlay directly
+
+i.e. paint to VirtualDevice as well, not only to Window.
+Removed the no longer needed switch between buffered and unbuffered overlay,
+this removes the flickering white block.
+
+(cherry picked from commit 5ab32faf2426fa60f975d0b544cfd671cdc7983b)
+
+Conflicts:
+	editeng/inc/editeng/outliner.hxx
+	editeng/source/editeng/impedit.hxx
+	editeng/source/editeng/impedit3.cxx
+	editeng/source/editeng/impedit4.cxx
+	svx/inc/svx/sdr/overlay/overlaymanager.hxx
+	svx/inc/svx/sdr/overlay/overlaymanagerbuffered.hxx
+	svx/inc/svx/sdrpaintwindow.hxx
+	svx/inc/svx/svdpagv.hxx
+	svx/source/sdr/overlay/overlaymanager.cxx
+	svx/source/svdraw/sdrpaintwindow.cxx
+	svx/source/svdraw/svdedxv.cxx
+	svx/source/svdraw/svdpagv.cxx
+
+Conflicts:
+	editeng/source/editeng/impedit3.cxx
+	svx/inc/svx/svdpagv.hxx
+	svx/source/sdr/overlay/overlaymanager.cxx
+	svx/source/svdraw/svdpagv.cxx
+
+Change-Id: Ibf4fcba77b120187fbae2454d136d2acd74be119
+---
+ editeng/inc/editeng/editview.hxx                   |   3 +-
+ editeng/inc/editeng/outliner.hxx                   |   2 +-
+ editeng/source/editeng/editview.cxx                |   4 +-
+ editeng/source/editeng/impedit.cxx                 |  45 ++++---
+ editeng/source/editeng/impedit.hxx                 |   6 +-
+ editeng/source/editeng/impedit3.cxx                |  50 ++++----
+ editeng/source/editeng/impedit4.cxx                |   2 +-
+ editeng/source/outliner/outlvw.cxx                 |   4 +-
+ svx/inc/svx/sdr/overlay/overlaymanager.hxx         |  10 +-
+ svx/inc/svx/sdr/overlay/overlaymanagerbuffered.hxx |   8 +-
+ svx/inc/svx/sdrpaintwindow.hxx                     |  15 +--
+ svx/inc/svx/svdedxv.hxx                            |   7 +-
+ svx/inc/svx/svdpagv.hxx                            |   1 -
+ svx/inc/svx/svdpntv.hxx                            |   5 -
+ svx/source/sdr/overlay/overlaymanager.cxx          |  34 +-----
+ svx/source/sdr/overlay/overlaymanagerbuffered.cxx  |   6 +-
+ svx/source/svdraw/sdrpaintwindow.cxx               |  28 ++---
+ svx/source/svdraw/svdedxv.cxx                      | 129 +++++++++++++--------
+ svx/source/svdraw/svdpagv.cxx                      |  15 ---
+ svx/source/svdraw/svdpntv.cxx                      |  51 ++------
+ 20 files changed, 176 insertions(+), 249 deletions(-)
+
+diff --git a/editeng/inc/editeng/editview.hxx b/editeng/inc/editeng/editview.hxx
+index ef02fa9..89cf84a 100644
+--- a/editeng/inc/editeng/editview.hxx
++++ b/editeng/inc/editeng/editview.hxx
+@@ -58,6 +58,7 @@ class SvKeyValueIterator;
+ class SfxStyleSheet;
+ class Font;
+ class FontList;
++class OutputDevice;
+ 
+ #include <editeng/editdata.hxx>
+ #include <com/sun/star/uno/Reference.h>
+@@ -96,7 +97,7 @@ public:
+     void            SetWindow( Window* pWin );
+     Window*         GetWindow() const;
+ 
+-    void            Paint( const Rectangle& rRect );
++    void            Paint( const Rectangle& rRect, OutputDevice* pTargetDevice = 0 );
+     void            Invalidate();
+     Pair            Scroll( long nHorzScroll, long nVertScroll, sal_uInt8 nRangeCheck = RGCHK_NEG );
+ 
+diff --git a/editeng/inc/editeng/outliner.hxx b/editeng/inc/editeng/outliner.hxx
+index d2759a4..8bd623c 100644
+--- a/editeng/inc/editeng/outliner.hxx
++++ b/editeng/inc/editeng/outliner.hxx
+@@ -252,7 +252,7 @@ public:
+ 
+     void        Scroll( long nHorzScroll, long nVertScroll );
+ 
+-    void        Paint( const Rectangle& rRect );
++    void        Paint( const Rectangle& rRect, OutputDevice* pTargetDevice = 0 );
+     sal_Bool        PostKeyEvent( const KeyEvent& rKEvt, Window* pFrameWin = NULL );
+     sal_Bool        MouseButtonDown( const MouseEvent& );
+     sal_Bool        MouseButtonUp( const MouseEvent& );
+diff --git a/editeng/source/editeng/editview.cxx b/editeng/source/editeng/editview.cxx
+index ada459e..d6fae31 100644
+--- a/editeng/source/editeng/editview.cxx
++++ b/editeng/source/editeng/editview.cxx
+@@ -299,11 +299,11 @@ sal_uInt16 EditView::GetSelectedScriptType() const
+     return PIMPEE->GetScriptType( pImpEditView->GetEditSelection() );
+ }
+ 
+-void EditView::Paint( const Rectangle& rRect )
++void EditView::Paint( const Rectangle& rRect, OutputDevice* pTargetDevice )
+ {
+     DBG_CHKTHIS( EditView, 0 );
+     DBG_CHKOBJ( pImpEditView->pEditEngine, EditEngine, 0 );
+-    PIMPEE->Paint( pImpEditView, rRect );
++    PIMPEE->Paint( pImpEditView, rRect, pTargetDevice );
+ }
+ 
+ void EditView::SetEditEngine( EditEngine* pEditEng )
+diff --git a/editeng/source/editeng/impedit.cxx b/editeng/source/editeng/impedit.cxx
+index 9be8669..08d4656 100644
+--- a/editeng/source/editeng/impedit.cxx
++++ b/editeng/source/editeng/impedit.cxx
+@@ -134,7 +134,7 @@ void ImpEditView::SetEditSelection( const EditSelection& rEditSelection )
+ }
+ 
+ 
+-void ImpEditView::DrawSelection( EditSelection aTmpSel, Region* pRegion )
++void ImpEditView::DrawSelection( EditSelection aTmpSel, Region* pRegion, OutputDevice* pTargetDevice )
+ {
+     if ( GetSelectionMode() == EE_SELMODE_HIDDEN )
+         return;
+@@ -150,8 +150,9 @@ void ImpEditView::DrawSelection( EditSelection aTmpSel, Region* pRegion )
+     if ( pRegion )
+         pPolyPoly = new PolyPolygon;
+ 
+-    sal_Bool bClipRegion = pOutWin->IsClipRegion();
+-    Region aOldRegion = pOutWin->GetClipRegion();
++    OutputDevice* pTarget = pTargetDevice ? pTargetDevice : pOutWin;
++    sal_Bool bClipRegion = pTarget->IsClipRegion();
++    Region aOldRegion = pTarget->GetClipRegion();
+ 
+     if ( !pRegion )
+     {
+@@ -168,7 +169,7 @@ void ImpEditView::DrawSelection( EditSelection aTmpSel, Region* pRegion )
+         Rectangle aTmpOutArea( aOutArea );
+         if ( aTmpOutArea.GetWidth() > pEditEngine->pImpEditEngine->GetPaperSize().Width() )
+             aTmpOutArea.Right() = aTmpOutArea.Left() + pEditEngine->pImpEditEngine->GetPaperSize().Width();
+-        pOutWin->IntersectClipRegion( aTmpOutArea );
++        pTarget->IntersectClipRegion( aTmpOutArea );
+ 
+         if ( pOutWin->GetCursor() )
+             pOutWin->GetCursor()->Hide();
+@@ -246,7 +247,7 @@ void ImpEditView::DrawSelection( EditSelection aTmpSel, Region* pRegion )
+                 Range aLineXPosStartEnd = pEditEngine->pImpEditEngine->GetLineXPosStartEnd( pTmpPortion, pLine );
+                 aTopLeft.X() = aLineXPosStartEnd.Min();
+                 aBottomRight.X() = aLineXPosStartEnd.Max();
+-                ImplDrawHighlightRect( pOutWin, aTopLeft, aBottomRight, pPolyPoly );
++                ImplDrawHighlightRect( pTarget, aTopLeft, aBottomRight, pPolyPoly );
+             }
+             else
+             {
+@@ -267,7 +268,7 @@ void ImpEditView::DrawSelection( EditSelection aTmpSel, Region* pRegion )
+                     Point aPt1( Min( nX1, nX2 ), aTopLeft.Y() );
+                     Point aPt2( Max( nX1, nX2 ), aBottomRight.Y() );
+ 
+-                    ImplDrawHighlightRect( pOutWin, aPt1, aPt2, pPolyPoly );
++                    ImplDrawHighlightRect( pTarget, aPt1, aPt2, pPolyPoly );
+ 
+                     nTmpStartIndex = nTmpEndIndex;
+                 }
+@@ -287,30 +288,30 @@ void ImpEditView::DrawSelection( EditSelection aTmpSel, Region* pRegion )
+             pOutWin->GetCursor()->Show();
+ 
+         if ( bClipRegion )
+-            pOutWin->SetClipRegion( aOldRegion );
++            pTarget->SetClipRegion( aOldRegion );
+         else
+-            pOutWin->SetClipRegion();
++            pTarget->SetClipRegion();
+     }
+ }
+ 
+-void ImpEditView::ImplDrawHighlightRect( Window* _pOutWin, const Point& rDocPosTopLeft, const Point& rDocPosBottomRight, PolyPolygon* pPolyPoly )
++void ImpEditView::ImplDrawHighlightRect( OutputDevice* _pTarget, const Point& rDocPosTopLeft, const Point& rDocPosBottomRight, PolyPolygon* pPolyPoly )
+ {
+     if ( rDocPosTopLeft.X() != rDocPosBottomRight.X() )
+     {
+-        sal_Bool bPixelMode = _pOutWin->GetMapMode() == MAP_PIXEL;
++        sal_Bool bPixelMode = _pTarget->GetMapMode() == MAP_PIXEL;
+ 
+         Point aPnt1( GetWindowPos( rDocPosTopLeft ) );
+         Point aPnt2( GetWindowPos( rDocPosBottomRight ) );
+ 
+         if ( !IsVertical() )
+         {
+-            lcl_AllignToPixel( aPnt1, _pOutWin, +1, 0 );
+-            lcl_AllignToPixel( aPnt2, _pOutWin, 0, ( bPixelMode ? 0 : -1 ) );
++            lcl_AllignToPixel( aPnt1, _pTarget, +1, 0 );
++            lcl_AllignToPixel( aPnt2, _pTarget, 0, ( bPixelMode ? 0 : -1 ) );
+         }
+         else
+         {
+-            lcl_AllignToPixel( aPnt1, _pOutWin, 0, +1 );
+-            lcl_AllignToPixel( aPnt2, _pOutWin, ( bPixelMode ? 0 : +1 ), 0 );
++            lcl_AllignToPixel( aPnt1, _pTarget, 0, +1 );
++            lcl_AllignToPixel( aPnt2, _pTarget, ( bPixelMode ? 0 : +1 ), 0 );
+         }
+ 
+         Rectangle aRect( aPnt1, aPnt2 );
+@@ -325,7 +326,21 @@ void ImpEditView::ImplDrawHighlightRect( Window* _pOutWin, const Point& rDocPosT
+         }
+         else
+         {
+-            _pOutWin->Invert( aRect );
++            Window* pWindow = dynamic_cast< Window* >(_pTarget);
++
++            if(pWindow)
++            {
++                pWindow->Invert( aRect );
++            }
++            else
++            {
++                _pTarget->Push(PUSH_LINECOLOR|PUSH_FILLCOLOR|PUSH_RASTEROP);
++                _pTarget->SetLineColor();
++                _pTarget->SetFillColor(COL_BLACK);
++                _pTarget->SetRasterOp(ROP_INVERT);
++                _pTarget->DrawRect(aRect);
++                _pTarget->Pop();
++            }
+         }
+     }
+ }
+diff --git a/editeng/source/editeng/impedit.hxx b/editeng/source/editeng/impedit.hxx
+index e427fcd..0e54393 100644
+--- a/editeng/source/editeng/impedit.hxx
++++ b/editeng/source/editeng/impedit.hxx
+@@ -267,7 +267,7 @@ protected:
+     void ShowDDCursor( const Rectangle& rRect );
+     void HideDDCursor();
+ 
+-    void ImplDrawHighlightRect( Window* pOutWin, const Point& rDocPosTopLeft, const Point& rDocPosBottomRight, PolyPolygon* pPolyPoly );
++    void ImplDrawHighlightRect( OutputDevice* _pTarget, const Point& rDocPosTopLeft, const Point& rDocPosBottomRight, PolyPolygon* pPolyPoly );
+ 
+ public:
+                     ImpEditView( EditView* pView, EditEngine* pEng, Window* pWindow );
+@@ -315,7 +315,7 @@ public:
+     sal_Bool        HasSelection() const { return aEditSelection.HasRange(); }
+ 
+     void            DrawSelection() { DrawSelection( aEditSelection ); }
+-    void            DrawSelection( EditSelection, Region* pRegion = NULL );
++    void            DrawSelection( EditSelection, Region* pRegion = NULL, OutputDevice* pTargetDevice = NULL );
+ 
+     Window*         GetWindow() const           { return pOutWin; }
+ 
+@@ -744,7 +744,7 @@ public:
+     void                    FormatDoc();
+     void                    FormatFullDoc();
+     void                    UpdateViews( EditView* pCurView = 0 );
+-    void                    Paint( ImpEditView* pView, const Rectangle& rRect, sal_Bool bUseVirtDev = sal_False );
++    void                    Paint( ImpEditView* pView, const Rectangle& rRect, OutputDevice* pTargetDevice = 0, sal_Bool bUseVirtDev = sal_False );
+     void                    Paint( OutputDevice* pOutDev, Rectangle aClipRec, Point aStartPos, sal_Bool bStripOnly = sal_False, short nOrientation = 0 );
+ 
+     sal_Bool                MouseButtonUp( const MouseEvent& rMouseEvent, EditView* pView );
+diff --git a/editeng/source/editeng/impedit3.cxx b/editeng/source/editeng/impedit3.cxx
+index ffdd294..d3477af 100644
+--- a/editeng/source/editeng/impedit3.cxx
++++ b/editeng/source/editeng/impedit3.cxx
+@@ -303,8 +303,8 @@ void ImpEditEngine::UpdateViews( EditView* pCurView )
+             // convert to window coordinates ....
+             aClipRec = pView->pImpEditView->GetWindowPos( aClipRec );
+ 
+-            if ( ( pView == pCurView )  )
+-                Paint( pView->pImpEditView, aClipRec, sal_True );
++            if ( pView == pCurView )
++                Paint( pView->pImpEditView, aClipRec, 0, sal_True );
+             else
+                 pView->GetWindow()->Invalidate( aClipRec );
+         }
+@@ -3529,7 +3529,7 @@ void ImpEditEngine::Paint( OutputDevice* pOutDev, Rectangle aClipRec, Point aSta
+         pOutDev->SetFont( aOldFont );
+ }
+ 
+-void ImpEditEngine::Paint( ImpEditView* pView, const Rectangle& rRec, sal_Bool bUseVirtDev )
++void ImpEditEngine::Paint( ImpEditView* pView, const Rectangle& rRec, OutputDevice* pTargetDevice, sal_Bool bUseVirtDev )
+ {
+     DBG_ASSERT( pView, "No View - No Paint!" );
+     DBG_CHKOBJ( GetEditEnginePtr(), EditEngine, 0 );
+@@ -3541,11 +3541,11 @@ void ImpEditEngine::Paint( ImpEditView* pView, const Rectangle& rRec, sal_Bool b
+     Rectangle aClipRec( pView->GetOutputArea() );
+     aClipRec.Intersection( rRec );
+ 
+-    Window* pOutWin = pView->GetWindow();
++    OutputDevice* pTarget = pTargetDevice ? pTargetDevice : pView->GetWindow();
+ 
+     if ( bUseVirtDev )
+     {
+-        Rectangle aClipRecPixel( pOutWin->LogicToPixel( aClipRec ) );
++        Rectangle aClipRecPixel( pTarget->LogicToPixel( aClipRec ) );
+         if ( !IsVertical() )
+         {
+             // etwas mehr, falls abgerundet!
+@@ -3560,7 +3560,7 @@ void ImpEditEngine::Paint( ImpEditView* pView, const Rectangle& rRec, sal_Bool b
+ 
+         // If aClipRecPixel > XXXX, then invalidate?!
+ 
+-        VirtualDevice* pVDev = GetVirtualDevice( pOutWin->GetMapMode(), pOutWin->GetDrawMode() );
++        VirtualDevice* pVDev = GetVirtualDevice( pTarget->GetMapMode(), pTarget->GetDrawMode() );
+         pVDev->SetDigitLanguage( GetRefDevice()->GetDigitLanguage() );
+ 
+         {
+@@ -3623,7 +3623,7 @@ void ImpEditEngine::Paint( ImpEditView* pView, const Rectangle& rRec, sal_Bool b
+         // Otherwise, the line below must also be printed out:
+         Rectangle aTmpRec( Point( 0, 0 ), aClipRec.GetSize() );
+ 
+-        aClipRec = pOutWin->PixelToLogic( aClipRecPixel );
++        aClipRec = pTarget->PixelToLogic( aClipRecPixel );
+         Point aStartPos;
+         if ( !IsVertical() )
+         {
+@@ -3648,36 +3648,38 @@ void ImpEditEngine::Paint( ImpEditView* pView, const Rectangle& rRec, sal_Bool b
+         if ( GetTextRanger() )
+         {
+             // Some problems here with push/pop, why?!
+-            bClipRegion = pOutWin->IsClipRegion();
+-            aOldRegion = pOutWin->GetClipRegion();
++//          pTarget->Push( PUSH_CLIPREGION|PUSH_MAPMODE );
++            bClipRegion = pTarget->IsClipRegion();
++            aOldRegion = pTarget->GetClipRegion();
+             // How do I get the polygon to the right place??
+             // The polygon is based on the view, not the Window
+             // => reset origin...
+-            aOldMapMode = pOutWin->GetMapMode();
++            aOldMapMode = pTarget->GetMapMode();
+             Point aOrigin = aOldMapMode.GetOrigin();
+             Point aViewPos = pView->GetOutputArea().TopLeft();
+             aOrigin.Move( aViewPos.X(), aViewPos.Y() );
+             aClipRec.Move( -aViewPos.X(), -aViewPos.Y() );
+             MapMode aNewMapMode( aOldMapMode );
+             aNewMapMode.SetOrigin( aOrigin );
+-            pOutWin->SetMapMode( aNewMapMode );
+-            pOutWin->SetClipRegion( Region( GetTextRanger()->GetPolyPolygon() ) );
++            pTarget->SetMapMode( aNewMapMode );
++            pTarget->SetClipRegion( Region( GetTextRanger()->GetPolyPolygon() ) );
+         }
+ 
+-        pOutWin->DrawOutDev( aClipRec.TopLeft(), aClipRec.GetSize(),
++        pTarget->DrawOutDev( aClipRec.TopLeft(), aClipRec.GetSize(),
+                             Point(0,0), aClipRec.GetSize(), *pVDev );
+ 
+         if ( GetTextRanger() )
+         {
++//          pTarget->Pop();
+             if ( bClipRegion )
+-                pOutWin->SetClipRegion( aOldRegion );
++                pTarget->SetClipRegion( aOldRegion );
+             else
+-                pOutWin->SetClipRegion();
+-            pOutWin->SetMapMode( aOldMapMode );
++                pTarget->SetClipRegion();
++            pTarget->SetMapMode( aOldMapMode );
+         }
+ 
+ 
+-        pView->DrawSelection();
++        pView->DrawSelection(pView->GetEditSelection(), 0, pTarget);
+     }
+     else
+     {
+@@ -3708,18 +3710,18 @@ void ImpEditEngine::Paint( ImpEditView* pView, const Rectangle& rRec, sal_Bool b
+                 aClipRec.Right() = nMaxX;
+         }
+ 
+-        sal_Bool bClipRegion = pOutWin->IsClipRegion();
+-        Region aOldRegion = pOutWin->GetClipRegion();
+-        pOutWin->IntersectClipRegion( aClipRec );
++        sal_Bool bClipRegion = pTarget->IsClipRegion();
++        Region aOldRegion = pTarget->GetClipRegion();
++        pTarget->IntersectClipRegion( aClipRec );
+ 
+-        Paint( pOutWin, aClipRec, aStartPos );
++        Paint( pTarget, aClipRec, aStartPos );
+ 
+         if ( bClipRegion )
+-            pOutWin->SetClipRegion( aOldRegion );
++            pTarget->SetClipRegion( aOldRegion );
+         else
+-            pOutWin->SetClipRegion();
++            pTarget->SetClipRegion();
+ 
+-        pView->DrawSelection();
++        pView->DrawSelection(pView->GetEditSelection(), 0, pTarget);
+     }
+ 
+ }
+diff --git a/editeng/source/editeng/impedit4.cxx b/editeng/source/editeng/impedit4.cxx
+index 5b80c17..a46ae7f 100644
+--- a/editeng/source/editeng/impedit4.cxx
++++ b/editeng/source/editeng/impedit4.cxx
+@@ -2385,7 +2385,7 @@ void ImpEditEngine::DoOnlineSpelling( ContentNode* pThisNodeOnly, sal_Bool bSpel
+                                 // convert to window coordinates ....
+                                 aClipRec.SetPos( pView->pImpEditView->GetWindowPos( aClipRec.TopLeft() ) );
+                                 // If selected, then VDev ...
+-                                Paint( pView->pImpEditView, aClipRec, pView->HasSelection() );
++                                Paint( pView->pImpEditView, aClipRec, 0, pView->HasSelection() );
+                             }
+                         }
+                     }
+diff --git a/editeng/source/outliner/outlvw.cxx b/editeng/source/outliner/outlvw.cxx
+index cfc9ebe..a21d5e4 100644
+--- a/editeng/source/outliner/outlvw.cxx
++++ b/editeng/source/outliner/outlvw.cxx
+@@ -90,7 +90,7 @@ OutlinerView::~OutlinerView()
+     delete pEditView;
+ }
+ 
+-void OutlinerView::Paint( const Rectangle& rRect )
++void OutlinerView::Paint( const Rectangle& rRect, OutputDevice* pTargetDevice )
+ {
+     DBG_CHKTHIS(OutlinerView,0);
+ 
+@@ -99,7 +99,7 @@ void OutlinerView::Paint( const Rectangle& rRect )
+     if( pOwner->bFirstParaIsEmpty )
+         pOwner->Insert( String() );
+ 
+-    pEditView->Paint( rRect );
++    pEditView->Paint( rRect, pTargetDevice );
+ }
+ 
+ sal_Bool OutlinerView::PostKeyEvent( const KeyEvent& rKEvt, Window* pFrameWin )
+diff --git a/svx/inc/svx/sdr/overlay/overlaymanager.hxx b/svx/inc/svx/sdr/overlay/overlaymanager.hxx
+index 5a525ac..bdf0c83 100644
+--- a/svx/inc/svx/sdr/overlay/overlaymanager.hxx
++++ b/svx/inc/svx/sdr/overlay/overlaymanager.hxx
+@@ -99,17 +99,11 @@ namespace sdr
+             // ViewTransformation and evtl. correct mfDiscreteOne
+             double getDiscreteOne() const;
+ 
+-            // when handing over another OverlayManager at construction, the OverlayObjects
+-            // will be taken over from it. The new one will have added all OverlayObjects
+-            // while the handed over one will have none
+-            OverlayManager(
+-                OutputDevice& rOutputDevice,
+-                OverlayManager* pOldOverlayManager);
++            OverlayManager(OutputDevice& rOutputDevice);
+             virtual ~OverlayManager();
+ 
+         public:
+-            static rtl::Reference<OverlayManager> create(OutputDevice& rOutputDevice,
+-                OverlayManager* pOldOverlayManager = 0);
++            static rtl::Reference<OverlayManager> create(OutputDevice& rOutputDevice);
+ 
+             // access to current ViewInformation2D; this call checks and evtl. updates ViewInformation2D
+             const drawinglayer::geometry::ViewInformation2D getCurrentViewInformation2D() const;
+diff --git a/svx/inc/svx/sdr/overlay/overlaymanagerbuffered.hxx b/svx/inc/svx/sdr/overlay/overlaymanagerbuffered.hxx
+index 9400af5..9ebb83d 100644
+--- a/svx/inc/svx/sdr/overlay/overlaymanagerbuffered.hxx
++++ b/svx/inc/svx/sdr/overlay/overlaymanagerbuffered.hxx
+@@ -75,18 +75,14 @@ namespace sdr
+             void ImpRestoreBackground(const Region& rRegionPixel) const;
+             void ImpSaveBackground(const Region& rRegion, OutputDevice* pPreRenderDevice = 0L);
+ 
+-            // when handing over another OverlayManager at construction, the OverlayObjects
+-            // will be taken over from it. The new one will have added all OverlayObjects
+-            // while the handed over one will have none
+             OverlayManagerBuffered(
+                 OutputDevice& rOutputDevice,
+-                OverlayManager* pOldOverlayManager,
+-                bool bRefreshWithPreRendering);
++                bool bRefreshWithPreRendering = false);
+             virtual ~OverlayManagerBuffered();
+ 
+         public:
+             static rtl::Reference<OverlayManager> create(OutputDevice& rOutputDevice,
+-                OverlayManager* pOldOverlayManager = 0, bool bRefreshWithPreRendering = false);
++                bool bRefreshWithPreRendering = false);
+ 
+             // complete redraw
+             virtual void completeRedraw(const Region& rRegion, OutputDevice* pPreRenderDevice = 0L) const;
+diff --git a/svx/inc/svx/sdrpaintwindow.hxx b/svx/inc/svx/sdrpaintwindow.hxx
+index c6faaa2..5b80317 100644
+--- a/svx/inc/svx/sdrpaintwindow.hxx
++++ b/svx/inc/svx/sdrpaintwindow.hxx
+@@ -101,18 +101,7 @@ private:
+     bool mbUseBuffer;
+ 
+     // helpers
+-    /** Create mxOverlayManager member on demand.
+-        @param bUseBuffer
+-            Specifies whether to use the buffered (OverlayManagerBuffered)
+-            or the unbuffered (OverlayManager) version of the overlay
+-            manager.  When this values is different from that of the
+-            previous call then the overlay manager is replaced by the
+-            specified one.
+-
+-            The bUseBuffer flag will typically change its value when text
+-            editing is started or stopped.
+-    */
+-    void impCreateOverlayManager(const bool bUseBuffer);
++    void impCreateOverlayManager();
+ 
+ public:
+     SdrPaintWindow(SdrPaintView& rNewPaintView, OutputDevice& rOut);
+@@ -126,7 +115,7 @@ public:
+     rtl::Reference< ::sdr::overlay::OverlayManager > GetOverlayManager() const;
+ 
+     // #i73602# add flag if buffer shall be used
+-    void DrawOverlay(const Region& rRegion, bool bUseBuffer);
++    void DrawOverlay(const Region& rRegion);
+ 
+     // calculate visible area and return
+     Rectangle GetVisibleArea() const;
+diff --git a/svx/inc/svx/svdedxv.hxx b/svx/inc/svx/svdedxv.hxx
+index a383a37..7e7d414 100644
+--- a/svx/inc/svx/svdedxv.hxx
++++ b/svx/inc/svx/svdedxv.hxx
+@@ -127,7 +127,7 @@ protected:
+     // Eine neue OutlinerView auf dem Heap anlegen und alle erforderlichen Parameter setzen.
+     // pTextEditObj, pTextEditPV und pTextEditOutliner muessen initiallisiert sein.
+     OutlinerView* ImpMakeOutlinerView(Window* pWin, sal_Bool bNoPaint, OutlinerView* pGivenView) const;
+-    void ImpPaintOutlinerView(OutlinerView& rOutlView, const Rectangle& rRect) const;
++    void ImpPaintOutlinerView(OutlinerView& rOutlView, const Rectangle& rRect, OutputDevice& rTargetDevice) const;
+     void ImpInvalidateOutlinerView(OutlinerView& rOutlView) const;
+ 
+     // Feststellen, ob der gesamte Text markiert ist. Liefert auch sal_True wenn
+@@ -151,6 +151,11 @@ protected:
+     virtual ~SdrObjEditView();
+ 
+ public:
++    ////////////////////////////////////////////////////////////////////////////////////////////////////
++    // used to call the old ImpPaintOutlinerView. Will be replaced when the
++    // outliner will be displayed on the overlay in edit mode.
++    void TextEditDrawing(SdrPaintWindow& rPaintWindow) const;
++
+     // Actionhandling fuer Macromodus
+     virtual sal_Bool IsAction() const;
+     virtual void MovAction(const Point& rPnt);
+diff --git a/svx/inc/svx/svdpagv.hxx b/svx/inc/svx/svdpagv.hxx
+index 8a825a0..baed6d4 100644
+--- a/svx/inc/svx/svdpagv.hxx
++++ b/svx/inc/svx/svdpagv.hxx
+@@ -123,7 +123,6 @@ public:
+     */
+     const SdrPageWindow* FindPatchedPageWindow( const OutputDevice& rOutDev ) const;
+ 
+-    void PaintOutlinerView(OutputDevice* pOut, const Rectangle& rRect) const;
+ private:
+     SVX_DLLPRIVATE SdrPageWindow& CreateNewPageWindowEntry(SdrPaintWindow& rPaintWindow);
+ 
+diff --git a/svx/inc/svx/svdpntv.hxx b/svx/inc/svx/svdpntv.hxx
+index 761e5d3..29bc695 100644
+--- a/svx/inc/svx/svdpntv.hxx
++++ b/svx/inc/svx/svdpntv.hxx
+@@ -395,11 +395,6 @@ public:
+ 
+ protected:
+     ////////////////////////////////////////////////////////////////////////////////////////////////////
+-    // used to call the old PaintOutlinerView at the single PageViews. Will be replaced when the
+-    // outliner will be displayed on the overlay in edit mode.
+-    void ImpTextEditDrawing(SdrPaintWindow& rPaintWindow) const;
+-
+-    ////////////////////////////////////////////////////////////////////////////////////////////////////
+     // used to paint the form layer after the PreRender device is flushed (painted) to the window.
+     void ImpFormLayerDrawing(SdrPaintWindow& rPaintWindow) const;
+ 
+diff --git a/svx/source/sdr/overlay/overlaymanager.cxx b/svx/source/sdr/overlay/overlaymanager.cxx
+index 7095058..a6b8ca9 100644
+--- a/svx/source/sdr/overlay/overlaymanager.cxx
++++ b/svx/source/sdr/overlay/overlaymanager.cxx
+@@ -126,9 +126,7 @@ namespace sdr
+             return mfDiscreteOne;
+         }
+ 
+-        OverlayManager::OverlayManager(
+-            OutputDevice& rOutputDevice,
+-            OverlayManager* pOldOverlayManager)
++        OverlayManager::OverlayManager(OutputDevice& rOutputDevice)
+         :   Scheduler(),
+             mnRefCount(0),
+             rmOutputDevice(rOutputDevice),
+@@ -152,37 +150,11 @@ namespace sdr
+                 xProperties[0].Value <<= true;
+                 maViewInformation2D = drawinglayer::geometry::ViewInformation2D(xProperties);
+             }
+-
+-            if(pOldOverlayManager)
+-            {
+-                // take over OverlayObjects from given OverlayManager. Copy
+-                // the vector of pointers
+-                maOverlayObjects = pOldOverlayManager->maOverlayObjects;
+-                const sal_uInt32 nSize(maOverlayObjects.size());
+-
+-                if(nSize)
+-                {
+-                    for(OverlayObjectVector::iterator aIter(maOverlayObjects.begin()); aIter != maOverlayObjects.end(); aIter++)
+-                    {
+-                        OSL_ENSURE(*aIter, "Corrupted OverlayObject List (!)");
+-                        OverlayObject& rCandidate = **aIter;
+-
+-                        // remove from old and add to new OverlayManager
+-                        pOldOverlayManager->impApplyRemoveActions(rCandidate);
+-                        impApplyAddActions(rCandidate);
+-                    }
+-
+-                    pOldOverlayManager->maOverlayObjects.clear();
+-                }
+-            }
+         }
+ 
+-        rtl::Reference<OverlayManager> OverlayManager::create(
+-            OutputDevice& rOutputDevice,
+-            OverlayManager* pOldOverlayManager)
++        rtl::Reference<OverlayManager> OverlayManager::create(OutputDevice& rOutputDevice)
+         {
+-            return rtl::Reference<OverlayManager>(new OverlayManager(rOutputDevice,
+-                pOldOverlayManager));
++            return rtl::Reference<OverlayManager>(new OverlayManager(rOutputDevice));
+         }
+ 
+         const drawinglayer::geometry::ViewInformation2D OverlayManager::getCurrentViewInformation2D() const
+diff --git a/svx/source/sdr/overlay/overlaymanagerbuffered.cxx b/svx/source/sdr/overlay/overlaymanagerbuffered.cxx
+index 958fd37..5745459 100644
+--- a/svx/source/sdr/overlay/overlaymanagerbuffered.cxx
++++ b/svx/source/sdr/overlay/overlaymanagerbuffered.cxx
+@@ -405,9 +405,8 @@ namespace sdr
+ 
+         OverlayManagerBuffered::OverlayManagerBuffered(
+             OutputDevice& rOutputDevice,
+-            OverlayManager* pOldOverlayManager,
+             bool bRefreshWithPreRendering)
+-        :   OverlayManager(rOutputDevice, pOldOverlayManager),
++        :   OverlayManager(rOutputDevice),
+             mbRefreshWithPreRendering(bRefreshWithPreRendering)
+         {
+             // Init timer
+@@ -417,11 +416,10 @@ namespace sdr
+ 
+         rtl::Reference<OverlayManager> OverlayManagerBuffered::create(
+             OutputDevice& rOutputDevice,
+-            OverlayManager* pOldOverlayManager,
+             bool bRefreshWithPreRendering)
+         {
+             return rtl::Reference<OverlayManager>(new OverlayManagerBuffered(rOutputDevice,
+-                pOldOverlayManager, bRefreshWithPreRendering));
++                bRefreshWithPreRendering));
+         }
+ 
+         OverlayManagerBuffered::~OverlayManagerBuffered()
+diff --git a/svx/source/svdraw/sdrpaintwindow.cxx b/svx/source/svdraw/sdrpaintwindow.cxx
+index 0218624..df6a6a2 100644
+--- a/svx/source/svdraw/sdrpaintwindow.cxx
++++ b/svx/source/svdraw/sdrpaintwindow.cxx
+@@ -107,20 +107,8 @@ void SdrPreRenderDevice::OutputPreRenderDevice(const Region& rExpandedRegion)
+ 
+ ////////////////////////////////////////////////////////////////////////////////////////////////////
+ 
+-void SdrPaintWindow::impCreateOverlayManager(const bool bUseBuffer)
++void SdrPaintWindow::impCreateOverlayManager()
+ {
+-    // When the buffer usage has changed then we have to create a new
+-    // overlay manager.  Save the current one so that later we can move its
+-    // overlay objects to the new one.
+-    rtl::Reference<sdr::overlay::OverlayManager> xOldOverlayManager;
+-
+-    if(mbUseBuffer != bUseBuffer)
+-    {
+-        mbUseBuffer = bUseBuffer;
+-        xOldOverlayManager = mxOverlayManager;
+-        mxOverlayManager.clear();
+-    }
+-
+     // not yet one created?
+     if(!mxOverlayManager.is())
+     {
+@@ -135,8 +123,7 @@ void SdrPaintWindow::impCreateOverlayManager(const bool bUseBuffer)
+                 // whether that refresh itself will use a 2nd vdev to avoid flickering.
+                 // Also hand over the old OverlayManager if existent; this means to take over
+                 // the registered OverlayObjects from it
+-                mxOverlayManager = ::sdr::overlay::OverlayManagerBuffered::create(GetOutputDevice(),
+-                    xOldOverlayManager.get(), true);
++                mxOverlayManager = ::sdr::overlay::OverlayManagerBuffered::create(GetOutputDevice(), true);
+             }
+             else
+             {
+@@ -144,8 +131,7 @@ void SdrPaintWindow::impCreateOverlayManager(const bool bUseBuffer)
+                 // take place
+                 // Also hand over the old OverlayManager if existent; this means to take over
+                 // the registered OverlayObjects from it
+-                mxOverlayManager = ::sdr::overlay::OverlayManager::create(GetOutputDevice(),
+-                    xOldOverlayManager.get());
++                mxOverlayManager = ::sdr::overlay::OverlayManager::create(GetOutputDevice());
+             }
+ 
+             OSL_ENSURE(mxOverlayManager.is(), "SdrPaintWindow::SdrPaintWindow: Could not allocate an overlayManager (!)");
+@@ -194,7 +180,7 @@ rtl::Reference< ::sdr::overlay::OverlayManager > SdrPaintWindow::GetOverlayManag
+     if(!mxOverlayManager.is())
+     {
+         // Create buffered overlay manager by default.
+-        const_cast< SdrPaintWindow* >(this)->impCreateOverlayManager(true);
++        const_cast< SdrPaintWindow* >(this)->impCreateOverlayManager();
+     }
+ 
+     return mxOverlayManager;
+@@ -256,15 +242,15 @@ void SdrPaintWindow::OutputPreRenderDevice(const Region& rExpandedRegion)
+ }
+ 
+ // #i73602# add flag if buffer shall be used
+-void SdrPaintWindow::DrawOverlay(const Region& rRegion, bool bUseBuffer)
++void SdrPaintWindow::DrawOverlay(const Region& rRegion)
+ {
+     // ## force creation of OverlayManager since the first repaint needs to
+     // save the background to get a controlled start into overlay mechanism
+-    impCreateOverlayManager(bUseBuffer);
++    impCreateOverlayManager();
+ 
+     if(mxOverlayManager.is() && !OutputToPrinter())
+     {
+-        if(mpPreRenderDevice && bUseBuffer)
++        if(mpPreRenderDevice)
+         {
+             mxOverlayManager->completeRedraw(rRegion, &mpPreRenderDevice->GetPreRenderDevice());
+         }
+diff --git a/svx/source/svdraw/svdedxv.cxx b/svx/source/svdraw/svdedxv.cxx
+index feee997..cfe2602 100644
+--- a/svx/source/svdraw/svdedxv.cxx
++++ b/svx/source/svdraw/svdedxv.cxx
+@@ -296,72 +296,99 @@ void SdrObjEditView::ModelHasChanged()
+ // TextEdit
+ ////////////////////////////////////////////////////////////////////////////////////////////////////
+ 
+-void SdrObjEditView::ImpPaintOutlinerView(OutlinerView& rOutlView, const Rectangle& rRect) const
++void SdrObjEditView::TextEditDrawing(SdrPaintWindow& rPaintWindow) const
+ {
+-    Window* pWin = rOutlView.GetWindow();
+-
+-    if(pWin)
++    // draw old text edit stuff
++    if(IsTextEdit())
+     {
+-        const SdrTextObj* pText = PTR_CAST(SdrTextObj,GetTextEditObject());
+-        bool bTextFrame(pText && pText->IsTextFrame());
+-        bool bFitToSize(pText && pText->IsFitToSize());
+-        bool bModifyMerk(pTextEditOutliner->IsModified());
+-        Rectangle aBlankRect(rOutlView.GetOutputArea());
+-        aBlankRect.Union(aMinTextEditArea);
+-        Rectangle aPixRect(pWin->LogicToPixel(aBlankRect));
+-        aBlankRect.Intersection(rRect);
+-        rOutlView.GetOutliner()->SetUpdateMode(sal_True);
+-        rOutlView.Paint(aBlankRect);
+-
+-        if(!bModifyMerk)
+-        {
+-            pTextEditOutliner->ClearModifyFlag();
+-        }
++        const SdrOutliner* pActiveOutliner = GetTextEditOutliner();
+ 
+-        if(bTextFrame && !bFitToSize)
++        if(pActiveOutliner)
+         {
+-            aPixRect.Left()--;
+-            aPixRect.Top()--;
+-            aPixRect.Right()++;
+-            aPixRect.Bottom()++;
+-            sal_uInt16 nPixSiz(rOutlView.GetInvalidateMore() - 1);
++            const sal_uInt32 nViewAnz(pActiveOutliner->GetViewCount());
+ 
++            if(nViewAnz)
+             {
+-                // limit xPixRect because of driver problems when pixel coordinates are too far out
+-                Size aMaxXY(pWin->GetOutputSizePixel());
+-                long a(2 * nPixSiz);
+-                long nMaxX(aMaxXY.Width() + a);
+-                long nMaxY(aMaxXY.Height() + a);
++                const Region& rRedrawRegion = rPaintWindow.GetRedrawRegion();
++                const Rectangle aCheckRect(rRedrawRegion.GetBoundRect());
+ 
+-                if (aPixRect.Left  ()<-a) aPixRect.Left()=-a;
+-                if (aPixRect.Top   ()<-a) aPixRect.Top ()=-a;
+-                if (aPixRect.Right ()>nMaxX) aPixRect.Right ()=nMaxX;
+-                if (aPixRect.Bottom()>nMaxY) aPixRect.Bottom()=nMaxY;
++                for(sal_uInt32 i(0); i < nViewAnz; i++)
++                {
++                    OutlinerView* pOLV = pActiveOutliner->GetView(i);
++
++                    if(pOLV->GetWindow() == &rPaintWindow.GetOutputDevice())
++                    {
++                        ImpPaintOutlinerView(*pOLV, aCheckRect, rPaintWindow.GetTargetOutputDevice());
++                        return;
++                    }
++                }
+             }
++        }
++    }
++}
+ 
+-            Rectangle aOuterPix(aPixRect);
+-            aOuterPix.Left()-=nPixSiz;
+-            aOuterPix.Top()-=nPixSiz;
+-            aOuterPix.Right()+=nPixSiz;
+-            aOuterPix.Bottom()+=nPixSiz;
++void SdrObjEditView::ImpPaintOutlinerView(OutlinerView& rOutlView, const Rectangle& rRect, OutputDevice& rTargetDevice) const
++{
++    const SdrTextObj* pText = PTR_CAST(SdrTextObj,GetTextEditObject());
++    bool bTextFrame(pText && pText->IsTextFrame());
++    bool bFitToSize(0 != (pTextEditOutliner->GetControlWord() & EE_CNTRL_STRETCHING));
++    bool bModifyMerk(pTextEditOutliner->IsModified()); // #43095#
++    Rectangle aBlankRect(rOutlView.GetOutputArea());
++    aBlankRect.Union(aMinTextEditArea);
++    Rectangle aPixRect(rTargetDevice.LogicToPixel(aBlankRect));
++    aBlankRect.Intersection(rRect);
++    rOutlView.GetOutliner()->SetUpdateMode(sal_True); // Bugfix #22596#
++    rOutlView.Paint(aBlankRect, &rTargetDevice);
++
++    if(!bModifyMerk)
++    {
++        // #43095#
++        pTextEditOutliner->ClearModifyFlag();
++    }
+ 
+-            bool bMerk(pWin->IsMapModeEnabled());
+-            pWin->EnableMapMode(sal_False);
+-            PolyPolygon aPolyPoly( 2 );
++    if(bTextFrame && !bFitToSize)
++    {
++        aPixRect.Left()--;
++        aPixRect.Top()--;
++        aPixRect.Right()++;
++        aPixRect.Bottom()++;
++        sal_uInt16 nPixSiz(rOutlView.GetInvalidateMore() - 1);
++
++        {
++            // xPixRect Begrenzen, wegen Treiberproblem bei zu weit hinausragenden Pixelkoordinaten
++            Size aMaxXY(rTargetDevice.GetOutputSizePixel());
++            long a(2 * nPixSiz);
++            long nMaxX(aMaxXY.Width() + a);
++            long nMaxY(aMaxXY.Height() + a);
++
++            if (aPixRect.Left  ()<-a) aPixRect.Left()=-a;
++            if (aPixRect.Top   ()<-a) aPixRect.Top ()=-a;
++            if (aPixRect.Right ()>nMaxX) aPixRect.Right ()=nMaxX;
++            if (aPixRect.Bottom()>nMaxY) aPixRect.Bottom()=nMaxY;
++        }
+ 
+-            svtools::ColorConfig aColorConfig;
+-            Color aHatchCol( aColorConfig.GetColorValue( svtools::FONTCOLOR ).nColor );
+-            const Hatch aHatch( HATCH_SINGLE, aHatchCol, 3, 450 );
++        Rectangle aOuterPix(aPixRect);
++        aOuterPix.Left()-=nPixSiz;
++        aOuterPix.Top()-=nPixSiz;
++        aOuterPix.Right()+=nPixSiz;
++        aOuterPix.Bottom()+=nPixSiz;
+ 
+-            aPolyPoly.Insert( aOuterPix );
+-            aPolyPoly.Insert( aPixRect );
+-            pWin->DrawHatch( aPolyPoly, aHatch );
++        bool bMerk(rTargetDevice.IsMapModeEnabled());
++        rTargetDevice.EnableMapMode(sal_False);
++        PolyPolygon aPolyPoly( 2 );
+ 
+-            pWin->EnableMapMode(bMerk);
+-        }
++        svtools::ColorConfig aColorConfig;
++        Color aHatchCol( aColorConfig.GetColorValue( svtools::FONTCOLOR ).nColor );
++        const Hatch aHatch( HATCH_SINGLE, aHatchCol, 3, 450 );
++
++        aPolyPoly.Insert( aOuterPix );
++        aPolyPoly.Insert( aPixRect );
++        rTargetDevice.DrawHatch( aPolyPoly, aHatch );
+ 
+-        rOutlView.ShowCursor();
++        rTargetDevice.EnableMapMode(bMerk);
+     }
++
++    rOutlView.ShowCursor();
+ }
+ 
+ void SdrObjEditView::ImpInvalidateOutlinerView(OutlinerView& rOutlView) const
+diff --git a/svx/source/svdraw/svdpagv.cxx b/svx/source/svdraw/svdpagv.cxx
+index 66f8bff..2065b1b 100644
+--- a/svx/source/svdraw/svdpagv.cxx
++++ b/svx/source/svdraw/svdpagv.cxx
+@@ -49,8 +49,6 @@
+ #include "svx/svditer.hxx"
+ #include <svx/svdogrp.hxx>
+ #include <svx/svdtypes.hxx>
+-
+-#include <svx/svdotext.hxx> // fuer PaintOutlinerView
+ #include <svx/svdoole2.hxx>
+ 
+ #include <svx/sdr/contact/objectcontactofpageview.hxx>
+@@ -295,19 +293,6 @@ void SdrPageView::InvalidateAllWin()
+     }
+ }
+ 
+-void SdrPageView::PaintOutlinerView(OutputDevice* pOut, const Rectangle& rRect) const
+-{
+-    if (GetView().pTextEditOutliner==NULL) return;
+-    sal_uIntPtr nViewAnz=GetView().pTextEditOutliner->GetViewCount();
+-    for (sal_uIntPtr i=0; i<nViewAnz; i++) {
+-        OutlinerView* pOLV=GetView().pTextEditOutliner->GetView(i);
+-        if (pOLV->GetWindow()==pOut) {
+-            GetView().ImpPaintOutlinerView(*pOLV, rRect);
+-            return;
+-        }
+-    }
+-}
+-
+ ////////////////////////////////////////////////////////////////////////////////////////////////////
+ 
+ void SdrPageView::PrePaint()
+diff --git a/svx/source/svdraw/svdpntv.cxx b/svx/source/svdraw/svdpntv.cxx
+index 331354b..a431bbc 100644
+--- a/svx/source/svdraw/svdpntv.cxx
++++ b/svx/source/svdraw/svdpntv.cxx
+@@ -744,36 +744,16 @@ void SdrPaintView::EndCompleteRedraw(SdrPaintWindow& rPaintWindow, bool bPaintFo
+         // look for active TextEdit. As long as this cannot be painted to a VDev,
+         // it cannot get part of buffering. In that case, output evtl. prerender
+         // early and paint text edit to window.
+-        const bool bTextEditActive(IsTextEdit() && GetTextEditPageView());
+-
+-        if(bTextEditActive)
++        if(IsTextEdit() && GetSdrPageView())
+         {
+-            // output PreRendering and destroy it so that it is not used for FormLayer
+-            // or overlay
+-            rPaintWindow.OutputPreRenderDevice(rPaintWindow.GetRedrawRegion());
+-
+-            // draw old text edit stuff before overlay to have it as part of the background
+-            // ATM. This will be changed to have the text editing on the overlay, bit it
+-            // is not an easy thing to do, see BegTextEdit and the OutlinerView stuff used...
+-            if(bTextEditActive)
+-            {
+-                ImpTextEditDrawing(rPaintWindow);
+-            }
+-
+-            // draw Overlay directly to window. This will save the contents of the window
+-            // in the RedrawRegion to the overlay background buffer, too.
+-            // This may lead to problems when reading from the screen is slow from the
+-            // graphics driver/graphiccard combination.
+-            rPaintWindow.DrawOverlay(rPaintWindow.GetRedrawRegion(), false);
++            static_cast< SdrView* >(this)->TextEditDrawing(rPaintWindow);
+         }
+-        else
+-        {
+-            // draw Overlay, also to PreRender device if exists
+-            rPaintWindow.DrawOverlay(rPaintWindow.GetRedrawRegion(), true);
+ 
+-            // output PreRendering
+-            rPaintWindow.OutputPreRenderDevice(rPaintWindow.GetRedrawRegion());
+-        }
++        // draw Overlay, also to PreRender device if exists
++        rPaintWindow.DrawOverlay(rPaintWindow.GetRedrawRegion());
++
++        // output PreRendering
++        rPaintWindow.OutputPreRenderDevice(rPaintWindow.GetRedrawRegion());
+     }
+ }
+ 
+@@ -882,23 +862,6 @@ Region SdrPaintView::OptimizeDrawLayersRegion(OutputDevice* pOut, const Region&
+ 
+ ////////////////////////////////////////////////////////////////////////////////////////////////////
+ 
+-void SdrPaintView::ImpTextEditDrawing(SdrPaintWindow& rPaintWindow) const
+-{
+-    // draw old text edit stuff
+-    if(IsTextEdit())
+-    {
+-        SdrPageView* pPageView = GetTextEditPageView();
+-
+-        if(pPageView)
+-        {
+-            // paint TextEdit directly to the destination OutDev
+-            const Region& rRedrawRegion = rPaintWindow.GetRedrawRegion();
+-            const Rectangle aCheckRect(rRedrawRegion.GetBoundRect());
+-            pPageView->PaintOutlinerView(&rPaintWindow.GetOutputDevice(), aCheckRect);
+-        }
+-    }
+-}
+-
+ void SdrPaintView::ImpFormLayerDrawing(SdrPaintWindow& rPaintWindow) const
+ {
+     if(mpPageView)
+-- 
+1.8.1.2
+
