@@ -1,0 +1,1244 @@
+From d28f2cfcce9d551c88b2a45df840788797163db6 Mon Sep 17 00:00:00 2001
+From: Stephan Bergmann <sbergman@redhat.com>
+Date: Thu, 23 May 2013 08:11:49 +0000
+Subject: Revert "fdo#46808, Convert chart2::Title service to new style"
+
+This reverts commit d256dbede60533369d1aac64cca34721183f6a8a:
+
+For one, the new css.chart2.XTitle2 looked unfinished, in that it transfered the
+direct properties of the old-style css.chart2.Title service into attributes, but
+left out all the properties inherited by the old-style service from
+css.style.ParagraphProperties, css.drawing.FillProperties,
+css.drawing.LineProperties (and that missing FIXME css.layout.LayoutElement,
+whatever that is supposed to be).  This needs more thought, to either make
+available all propertiers as attributes, or none.
+
+For another, this broke JunitTest_chart2_unoapi (sch.ChXChartDocument,
+sch.ChartTitle), for hard-to-debug reasons.
+
+Conflicts:
+	chart2/source/model/main/Title.cxx
+	chart2/source/model/main/Title.hxx
+	offapi/com/sun/star/chart2/XTitle2.idl
+	sc/source/filter/inc/xlchart.hxx
+
+(cherry picked from commit f30399c540f01f16f097b86ff518251324d558d7)
+Conflicts:
+	sc/source/filter/inc/xlchart.hxx
+
+Change-Id: I4747208a13984904d0e409ea49a73b0f667c86c7
+---
+diff --git a/chart2/source/controller/chartapiwrapper/TitleWrapper.cxx b/chart2/source/controller/chartapiwrapper/TitleWrapper.cxx
+index 89f6f9e..ad07eb1 100644
+--- a/chart2/source/controller/chartapiwrapper/TitleWrapper.cxx
++++ b/chart2/source/controller/chartapiwrapper/TitleWrapper.cxx
+@@ -77,7 +77,7 @@ WrappedTitleStringProperty::~WrappedTitleStringProperty()
+ void WrappedTitleStringProperty::setPropertyValue( const Any& rOuterValue, const Reference< beans::XPropertySet >& xInnerPropertySet ) const
+                 throw (beans::UnknownPropertyException, beans::PropertyVetoException, lang::IllegalArgumentException, lang::WrappedTargetException, uno::RuntimeException)
+ {
+-    Reference< chart2::XTitle2 > xTitle(xInnerPropertySet,uno::UNO_QUERY);
++    Reference< chart2::XTitle > xTitle(xInnerPropertySet,uno::UNO_QUERY);
+     if(xTitle.is())
+     {
+         OUString aString;
+@@ -89,7 +89,7 @@ Any WrappedTitleStringProperty::getPropertyValue( const Reference< beans::XPrope
+                         throw (beans::UnknownPropertyException, lang::WrappedTargetException, uno::RuntimeException)
+ {
+     Any aRet( getPropertyDefault( Reference< beans::XPropertyState >( xInnerPropertySet, uno::UNO_QUERY ) ) );
+-    Reference< chart2::XTitle2 > xTitle(xInnerPropertySet,uno::UNO_QUERY);
++    Reference< chart2::XTitle > xTitle(xInnerPropertySet,uno::UNO_QUERY);
+     if(xTitle.is())
+     {
+         Sequence< Reference< chart2::XFormattedString > > aStrings( xTitle->getText());
+@@ -294,7 +294,7 @@ Reference< beans::XPropertySet > TitleWrapper::getFirstCharacterPropertySet()
+ {
+     Reference< beans::XPropertySet > xProp;
+ 
+-    Reference< chart2::XTitle2 > xTitle = this->getTitleObject();
++    Reference< chart2::XTitle > xTitle( this->getTitleObject() );
+     if( xTitle.is())
+     {
+         Sequence< Reference< chart2::XFormattedString > > aStrings( xTitle->getText());
+@@ -333,7 +333,7 @@ void TitleWrapper::setFastCharacterPropertyValue(
+     OSL_ASSERT( FAST_PROPERTY_ID_START_CHAR_PROP <= nHandle &&
+                 nHandle < CharacterProperties::FAST_PROPERTY_ID_END_CHAR_PROP );
+ 
+-    Reference< chart2::XTitle2 > xTitle( this->getTitleObject() );
++    Reference< chart2::XTitle > xTitle( this->getTitleObject() );
+     if( xTitle.is())
+     {
+         Sequence< Reference< chart2::XFormattedString > > aStrings( xTitle->getText());
+@@ -494,7 +494,7 @@ awt::Size TitleWrapper::getCurrentSizeForReference()
+ 
+ // ================================================================================
+ 
+-Reference< chart2::XTitle2 > TitleWrapper::getTitleObject()
++Reference< chart2::XTitle > TitleWrapper::getTitleObject()
+ {
+     return TitleHelper::getTitle( m_eTitleType, m_spChart2ModelContact->getChartModel() );
+ }
+diff --git a/chart2/source/controller/chartapiwrapper/TitleWrapper.hxx b/chart2/source/controller/chartapiwrapper/TitleWrapper.hxx
+index 85f7657..5a43711 100644
+--- a/chart2/source/controller/chartapiwrapper/TitleWrapper.hxx
++++ b/chart2/source/controller/chartapiwrapper/TitleWrapper.hxx
+@@ -30,7 +30,7 @@
+ #include <com/sun/star/drawing/XShape.hpp>
+ #include <com/sun/star/lang/XComponent.hpp>
+ #include <com/sun/star/lang/XServiceInfo.hpp>
+-#include <com/sun/star/chart2/XTitle2.hpp>
++#include <com/sun/star/chart2/XTitle.hpp>
+ #include <com/sun/star/uno/XComponentContext.hpp>
+ 
+ #include <boost/shared_ptr.hpp>
+@@ -112,7 +112,7 @@ protected:
+     ::com::sun::star::uno::Reference< ::com::sun::star::beans::XPropertySet > getFirstCharacterPropertySet();
+ 
+ private:
+-    ::com::sun::star::uno::Reference< ::com::sun::star::chart2::XTitle2 > getTitleObject();
++    ::com::sun::star::uno::Reference< ::com::sun::star::chart2::XTitle > getTitleObject();
+ 
+ private:
+     ::boost::shared_ptr< Chart2ModelContact >   m_spChart2ModelContact;
+diff --git a/chart2/source/controller/chartapiwrapper/WrappedAxisAndGridExistenceProperties.cxx b/chart2/source/controller/chartapiwrapper/WrappedAxisAndGridExistenceProperties.cxx
+index 3424119..d21f485 100644
+--- a/chart2/source/controller/chartapiwrapper/WrappedAxisAndGridExistenceProperties.cxx
++++ b/chart2/source/controller/chartapiwrapper/WrappedAxisAndGridExistenceProperties.cxx
+@@ -300,7 +300,7 @@ Any WrappedAxisTitleExistenceProperty::getPropertyValue( const Reference< beans:
+ {
+     sal_Bool bHasTitle = sal_False;
+ 
+-    Reference< chart2::XTitle2 > xTitle( TitleHelper::getTitle( m_eTitleType, m_spChart2ModelContact->getChartModel() ) );
++    Reference< chart2::XTitle > xTitle( TitleHelper::getTitle( m_eTitleType, m_spChart2ModelContact->getChartModel() ) );
+     if( xTitle.is() && !TitleHelper::getCompleteString( xTitle ).isEmpty() )
+         bHasTitle = sal_True;
+ 
+diff --git a/chart2/source/controller/dialogs/ObjectNameProvider.cxx b/chart2/source/controller/dialogs/ObjectNameProvider.cxx
+index 2f81a5c..29a3f38 100644
+--- a/chart2/source/controller/dialogs/ObjectNameProvider.cxx
++++ b/chart2/source/controller/dialogs/ObjectNameProvider.cxx
+@@ -393,7 +393,7 @@ OUString ObjectNameProvider::getTitleName( const OUString& rObjectCID
+ {
+     OUString aRet;
+ 
+-    Reference< XTitle2 > xTitle(
++    Reference< XTitle > xTitle(
+         ObjectIdentifier::getObjectPropertySet( rObjectCID , xChartModel ), uno::UNO_QUERY );
+     if( xTitle.is() )
+     {
+diff --git a/chart2/source/controller/dialogs/TitleDialogData.cxx b/chart2/source/controller/dialogs/TitleDialogData.cxx
+index b1560db..91d4435 100644
+--- a/chart2/source/controller/dialogs/TitleDialogData.cxx
++++ b/chart2/source/controller/dialogs/TitleDialogData.cxx
+@@ -62,10 +62,10 @@ void TitleDialogData::readFromModel( const uno::Reference< frame::XModel>& xChar
+          nTitleIndex < static_cast< sal_Int32 >( TitleHelper::NORMAL_TITLE_END );
+          nTitleIndex++)
+     {
+-        uno::Reference< XTitle2 > xTitle =  TitleHelper::getTitle(
++        uno::Reference< XTitle > xTitle =  TitleHelper::getTitle(
+             static_cast< TitleHelper::eTitleType >( nTitleIndex ), xChartModel );
+         this->aExistenceList[nTitleIndex] = xTitle.is();
+-        this->aTextList[nTitleIndex] = TitleHelper::getCompleteString( xTitle );
++        this->aTextList[nTitleIndex]=TitleHelper::getCompleteString( xTitle );
+     }
+ }
+ 
+@@ -97,8 +97,8 @@ bool TitleDialogData::writeDifferenceToModel(
+         else if( !pOldState || ( pOldState->aTextList[nN] != this->aTextList[nN] ) )
+         {
+             //change content
+-            uno::Reference< XTitle2 > xTitle =
+-                TitleHelper::getTitle( static_cast< TitleHelper::eTitleType >( nN ), xChartModel );
++            uno::Reference< XTitle > xTitle(
++                TitleHelper::getTitle( static_cast< TitleHelper::eTitleType >( nN ), xChartModel ) );
+             if(xTitle.is())
+             {
+                 TitleHelper::setCompleteString( this->aTextList[nN], xTitle, xContext );
+diff --git a/chart2/source/controller/main/ChartController_TextEdit.cxx b/chart2/source/controller/main/ChartController_TextEdit.cxx
+index 6f7b4eb..8fd50b0 100644
+--- a/chart2/source/controller/main/ChartController_TextEdit.cxx
++++ b/chart2/source/controller/main/ChartController_TextEdit.cxx
+@@ -145,7 +145,7 @@ bool ChartController::EndTextEdit()
+             ControllerLockGuard aCLGuard( getModel() );
+ 
+             TitleHelper::setCompleteString( aString, uno::Reference<
+-                ::com::sun::star::chart2::XTitle2 >::query( xPropSet ), m_xCC );
++                ::com::sun::star::chart2::XTitle >::query( xPropSet ), m_xCC );
+ 
+             OSL_ENSURE( m_pTextActionUndoGuard.get(), "ChartController::EndTextEdit: no TextUndoGuard!" );
+             if ( m_pTextActionUndoGuard.get() )
+diff --git a/chart2/source/inc/TitleHelper.hxx b/chart2/source/inc/TitleHelper.hxx
+index 3fec3e3..ec9db23 100644
+--- a/chart2/source/inc/TitleHelper.hxx
++++ b/chart2/source/inc/TitleHelper.hxx
+@@ -52,13 +52,13 @@ public:
+     };
+ 
+     static ::com::sun::star::uno::Reference<
+-            ::com::sun::star::chart2::XTitle2 >
++            ::com::sun::star::chart2::XTitle >
+         getTitle( eTitleType nTitleIndex
+                     , const ::com::sun::star::uno::Reference<
+                     ::com::sun::star::frame::XModel >& xModel );
+ 
+     static ::com::sun::star::uno::Reference<
+-            ::com::sun::star::chart2::XTitle2 >
++            ::com::sun::star::chart2::XTitle >
+         createTitle(  eTitleType nTitleIndex
+                     , const OUString& rTitleText
+                     , const ::com::sun::star::uno::Reference<
+@@ -72,17 +72,17 @@ public:
+                             ::com::sun::star::frame::XModel >& xModel );
+ 
+     static OUString getCompleteString( const ::com::sun::star::uno::Reference<
+-        ::com::sun::star::chart2::XTitle2 >& xTitle );
++        ::com::sun::star::chart2::XTitle >& xTitle );
+     static void setCompleteString( const OUString& rNewText
+         , const ::com::sun::star::uno::Reference<
+-            ::com::sun::star::chart2::XTitle2 >& xTitle
++            ::com::sun::star::chart2::XTitle >& xTitle
+         , const ::com::sun::star::uno::Reference<
+             ::com::sun::star::uno::XComponentContext > & xContext
+         , float * pDefaultCharHeight = 0 );
+ 
+     static bool getTitleType( eTitleType& rType
+                     , const ::com::sun::star::uno::Reference<
+-                        ::com::sun::star::chart2::XTitle2 >& xTitle
++                        ::com::sun::star::chart2::XTitle >& xTitle
+                     , const ::com::sun::star::uno::Reference<
+                         ::com::sun::star::frame::XModel >& xModel );
+ };
+diff --git a/chart2/source/model/inc/Diagram.hxx b/chart2/source/model/inc/Diagram.hxx
+index c922363..f31c3c5 100644
+--- a/chart2/source/model/inc/Diagram.hxx
++++ b/chart2/source/model/inc/Diagram.hxx
+@@ -150,10 +150,10 @@ protected:
+ 
+     // ____ XTitled ____
+     virtual ::com::sun::star::uno::Reference<
+-        ::com::sun::star::chart2::XTitle2 > SAL_CALL getTitleObject()
++        ::com::sun::star::chart2::XTitle > SAL_CALL getTitleObject()
+         throw (::com::sun::star::uno::RuntimeException);
+     virtual void SAL_CALL setTitleObject( const ::com::sun::star::uno::Reference<
+-                                          ::com::sun::star::chart2::XTitle2 >& Title )
++                                          ::com::sun::star::chart2::XTitle >& Title )
+         throw (::com::sun::star::uno::RuntimeException);
+ 
+     // ____ X3DDefaultSetter ____
+@@ -209,7 +209,7 @@ private:
+                         m_xFloor;
+ 
+     ::com::sun::star::uno::Reference<
+-        ::com::sun::star::chart2::XTitle2 >
++        ::com::sun::star::chart2::XTitle >
+                         m_xTitle;
+ 
+     ::com::sun::star::uno::Reference<
+diff --git a/chart2/source/model/main/Axis.cxx b/chart2/source/model/main/Axis.cxx
+index bac6aea..35fcabb 100644
+--- a/chart2/source/model/main/Axis.cxx
++++ b/chart2/source/model/main/Axis.cxx
+@@ -341,7 +341,7 @@ Axis::Axis( const Axis & rOther ) :
+         lcl_CloneSubGrids( rOther.m_aSubGridProperties, m_aSubGridProperties );
+     ModifyListenerHelper::addListenerToAllSequenceElements( m_aSubGridProperties, m_xModifyEventForwarder );
+ 
+-    m_xTitle.set( CloneHelper::CreateRefClone< Reference< chart2::XTitle2 > >()( rOther.m_xTitle ));
++    m_xTitle.set( CloneHelper::CreateRefClone< Reference< chart2::XTitle > >()( rOther.m_xTitle ));
+     if( m_xTitle.is())
+         ModifyListenerHelper::addListener( m_xTitle, m_xModifyEventForwarder );
+ }
+@@ -480,18 +480,18 @@ Sequence< Reference< beans::XPropertySet > > SAL_CALL Axis::getSubTickProperties
+ 
+ 
+ // ____ XTitled ____
+-Reference< chart2::XTitle2 > SAL_CALL Axis::getTitleObject()
++Reference< chart2::XTitle > SAL_CALL Axis::getTitleObject()
+     throw (uno::RuntimeException)
+ {
+     MutexGuard aGuard( GetMutex() );
+     return m_xTitle;
+ }
+ 
+-void SAL_CALL Axis::setTitleObject( const Reference< chart2::XTitle2 >& xNewTitle )
++void SAL_CALL Axis::setTitleObject( const Reference< chart2::XTitle >& xNewTitle )
+     throw (uno::RuntimeException)
+ {
+     Reference< util::XModifyListener > xModifyEventForwarder;
+-    Reference< chart2::XTitle2 > xOldTitle;
++    Reference< chart2::XTitle > xOldTitle;
+     {
+         MutexGuard aGuard( GetMutex() );
+         xOldTitle = m_xTitle;
+diff --git a/chart2/source/model/main/Axis.hxx b/chart2/source/model/main/Axis.hxx
+index c5c2c17..46301fe 100644
+--- a/chart2/source/model/main/Axis.hxx
++++ b/chart2/source/model/main/Axis.hxx
+@@ -106,11 +106,11 @@ protected:
+ 
+     // ____ XTitled ____
+     virtual ::com::sun::star::uno::Reference<
+-                ::com::sun::star::chart2::XTitle2 > SAL_CALL getTitleObject()
++                ::com::sun::star::chart2::XTitle > SAL_CALL getTitleObject()
+         throw (::com::sun::star::uno::RuntimeException);
+     virtual void SAL_CALL setTitleObject(
+         const ::com::sun::star::uno::Reference<
+-            ::com::sun::star::chart2::XTitle2 >& Title )
++            ::com::sun::star::chart2::XTitle >& Title )
+         throw (::com::sun::star::uno::RuntimeException);
+ 
+     // ____ XCloneable ____
+@@ -160,7 +160,7 @@ private: //member
+             ::com::sun::star::beans::XPropertySet > >     m_aSubGridProperties;
+ 
+     ::com::sun::star::uno::Reference<
+-        ::com::sun::star::chart2::XTitle2 >         m_xTitle;
++        ::com::sun::star::chart2::XTitle >          m_xTitle;
+ };
+ 
+ } //  namespace chart
+diff --git a/chart2/source/model/main/ChartModel.cxx b/chart2/source/model/main/ChartModel.cxx
+index da52243..e2157c4 100644
+--- a/chart2/source/model/main/ChartModel.cxx
++++ b/chart2/source/model/main/ChartModel.cxx
+@@ -156,7 +156,7 @@ ChartModel::ChartModel( const ChartModel & rOther )
+         m_xOldModelAgg->setDelegator( *this );
+ 
+         Reference< util::XModifyListener > xListener;
+-        Reference< chart2::XTitle2 > xNewTitle = CreateRefClone< Reference< chart2::XTitle2 > >()( rOther.m_xTitle );
++        Reference< chart2::XTitle > xNewTitle = CreateRefClone< Reference< chart2::XTitle > >()( rOther.m_xTitle );
+         Reference< chart2::XDiagram > xNewDiagram = CreateRefClone< Reference< chart2::XDiagram > >()( rOther.m_xDiagram );
+         Reference< beans::XPropertySet > xNewPageBackground = CreateRefClone< Reference< beans::XPropertySet > >()( rOther.m_xPageBackground );
+         Reference< chart2::XChartTypeManager > xChartTypeManager = CreateRefClone< Reference< chart2::XChartTypeManager > >()( rOther.m_xChartTypeManager );
+@@ -967,14 +967,14 @@ uno::Reference< beans::XPropertySet > SAL_CALL ChartModel::getPageBackground()
+ }
+ 
+ // ____ XTitled ____
+-uno::Reference< chart2::XTitle2 > SAL_CALL ChartModel::getTitleObject()
++uno::Reference< chart2::XTitle > SAL_CALL ChartModel::getTitleObject()
+     throw (uno::RuntimeException)
+ {
+     MutexGuard aGuard( m_aModelMutex );
+     return m_xTitle;
+ }
+ 
+-void SAL_CALL ChartModel::setTitleObject( const uno::Reference< chart2::XTitle2 >& xTitle )
++void SAL_CALL ChartModel::setTitleObject( const uno::Reference< chart2::XTitle >& xTitle )
+     throw (uno::RuntimeException)
+ {
+     {
+diff --git a/chart2/source/model/main/ChartModel.hxx b/chart2/source/model/main/ChartModel.hxx
+index b27e834..f7d81b8 100644
+--- a/chart2/source/model/main/ChartModel.hxx
++++ b/chart2/source/model/main/ChartModel.hxx
+@@ -160,7 +160,7 @@ private:
+     ::com::sun::star::uno::Reference< ::com::sun::star::chart2::XDiagram >
+         m_xDiagram;
+ 
+-    ::com::sun::star::uno::Reference< ::com::sun::star::chart2::XTitle2 >
++    ::com::sun::star::uno::Reference< ::com::sun::star::chart2::XTitle >
+                                           m_xTitle;
+ 
+     bool                                  m_bIsDisposed;
+@@ -480,10 +480,10 @@ public:
+ 
+     // ____ XTitled ____
+     virtual ::com::sun::star::uno::Reference<
+-        ::com::sun::star::chart2::XTitle2 > SAL_CALL getTitleObject()
++        ::com::sun::star::chart2::XTitle > SAL_CALL getTitleObject()
+         throw (::com::sun::star::uno::RuntimeException);
+     virtual void SAL_CALL setTitleObject( const ::com::sun::star::uno::Reference<
+-                                          ::com::sun::star::chart2::XTitle2 >& Title )
++                                          ::com::sun::star::chart2::XTitle >& Title )
+         throw (::com::sun::star::uno::RuntimeException);
+ 
+     // ____ XInterface (for old API wrapper) ____
+diff --git a/chart2/source/model/main/Diagram.cxx b/chart2/source/model/main/Diagram.cxx
+index eb7fac3..ec1637b 100644
+--- a/chart2/source/model/main/Diagram.cxx
++++ b/chart2/source/model/main/Diagram.cxx
+@@ -307,7 +307,7 @@ Diagram::Diagram( const Diagram & rOther ) :
+ 
+     m_xWall.set( CloneHelper::CreateRefClone< Reference< beans::XPropertySet > >()( rOther.m_xWall ));
+     m_xFloor.set( CloneHelper::CreateRefClone< Reference< beans::XPropertySet > >()( rOther.m_xFloor ));
+-    m_xTitle.set( CloneHelper::CreateRefClone< Reference< chart2::XTitle2 > >()( rOther.m_xTitle ));
++    m_xTitle.set( CloneHelper::CreateRefClone< Reference< chart2::XTitle > >()( rOther.m_xTitle ));
+     m_xLegend.set( CloneHelper::CreateRefClone< Reference< chart2::XLegend > >()( rOther.m_xLegend ));
+ 
+     ModifyListenerHelper::addListener( m_xWall, m_xModifyEventForwarder );
+@@ -442,17 +442,17 @@ void SAL_CALL Diagram::setDiagramData(
+ }
+ 
+ // ____ XTitled ____
+-uno::Reference< chart2::XTitle2 > SAL_CALL Diagram::getTitleObject()
++uno::Reference< chart2::XTitle > SAL_CALL Diagram::getTitleObject()
+     throw (uno::RuntimeException)
+ {
+     MutexGuard aGuard( GetMutex() );
+     return m_xTitle;
+ }
+ 
+-void SAL_CALL Diagram::setTitleObject( const uno::Reference< chart2::XTitle2 >& xNewTitle )
++void SAL_CALL Diagram::setTitleObject( const uno::Reference< chart2::XTitle >& xNewTitle )
+     throw (uno::RuntimeException)
+ {
+-    Reference< chart2::XTitle2 > xOldTitle;
++    Reference< chart2::XTitle > xOldTitle;
+     {
+         MutexGuard aGuard( GetMutex() );
+         if( m_xTitle == xNewTitle )
+diff --git a/chart2/source/model/main/Title.cxx b/chart2/source/model/main/Title.cxx
+index 70db368..346a967 100644
+--- a/chart2/source/model/main/Title.cxx
++++ b/chart2/source/model/main/Title.cxx
+@@ -370,41 +370,6 @@
+     m_xModifyEventForwarder->modified( lang::EventObject( static_cast< uno::XWeak* >( this )));
+ }
+ 
+-sal_Bool Title::getPropertyBool(const OUString& aPropertyName) throw (css::uno::RuntimeException)
+-{
+-   uno::Any any = getPropertyValue(aPropertyName);
+-   sal_Bool b = sal_False;
+-   any >>= b;
+-   return b;
+-}
+-
+-double Title::getPropertyDouble(const OUString& aPropertyName) throw (css::uno::RuntimeException)
+-{
+-   uno::Any any = getPropertyValue(aPropertyName);
+-   double b = sal_False;
+-   any >>= b;
+-   return b;
+-}
+-
+-awt::Size Title::getReferencePageSize() throw(css::uno::RuntimeException)
+-{
+-   uno::Any any = getPropertyValue("ReferencePageSize");
+-   awt::Size b;
+-   any >>= b;
+-   return b;
+-}
+-
+-chart2::RelativePosition Title::getRelativePosition() throw(css::uno::RuntimeException)
+-{
+-   uno::Any any = getPropertyValue("RelativePosition");
+-   chart2::RelativePosition b;
+-   any >>= b;
+-   return b;
+-}
+-
+-
+-
+-
+ // ================================================================================
+ 
+ uno::Sequence< OUString > Title::getSupportedServiceNames_Static()
+diff --git a/chart2/source/model/main/Title.hxx b/chart2/source/model/main/Title.hxx
+index 62a2e0cd..c177d6e 100644
+--- a/chart2/source/model/main/Title.hxx
++++ b/chart2/source/model/main/Title.hxx
+@@ -25,7 +25,7 @@
+ #include "MutexContainer.hxx"
+ #include <cppuhelper/implbase5.hxx>
+ #include <comphelper/uno3.hxx>
+-#include <com/sun/star/chart2/XTitle2.hpp>
++#include <com/sun/star/chart2/XTitle.hpp>
+ #include <com/sun/star/lang/XServiceInfo.hpp>
+ #include <com/sun/star/uno/XComponentContext.hpp>
+ #include <com/sun/star/util/XCloneable.hpp>
+@@ -36,7 +36,7 @@
+ namespace impl
+ {
+ typedef ::cppu::WeakImplHelper5<
+-    ::com::sun::star::chart2::XTitle2,
++    ::com::sun::star::chart2::XTitle,
+     ::com::sun::star::lang::XServiceInfo,
+     ::com::sun::star::util::XCloneable,
+     ::com::sun::star::util::XModifyBroadcaster,
+@@ -65,38 +65,6 @@
+     /// merge XTypeProvider implementations
+     DECLARE_XTYPEPROVIDER()
+ 
+-
+-    // ambiguous overloads
+-    virtual void SAL_CALL setPropertyValue(const rtl::OUString& p1, const com::sun::star::uno::Any& p2) throw(css::uno::RuntimeException)
+-        { ::property::OPropertySet::setPropertyValue(p1, p2); }
+-    virtual com::sun::star::uno::Any SAL_CALL getPropertyValue(const rtl::OUString& p1) throw(css::uno::RuntimeException)
+-        { return ::property::OPropertySet::getPropertyValue(p1); }
+-    virtual void SAL_CALL addPropertyChangeListener(const rtl::OUString& p1, const com::sun::star::uno::Reference<com::sun::star::beans::XPropertyChangeListener>& p2) throw(css::uno::RuntimeException)
+-        { ::property::OPropertySet::addPropertyChangeListener(p1, p2); }
+-    virtual void SAL_CALL removePropertyChangeListener(const rtl::OUString& p1, const com::sun::star::uno::Reference<com::sun::star::beans::XPropertyChangeListener>& p2) throw(css::uno::RuntimeException)
+-        { ::property::OPropertySet::removePropertyChangeListener(p1, p2); }
+-    virtual void SAL_CALL addVetoableChangeListener(const rtl::OUString& p1, const com::sun::star::uno::Reference<com::sun::star::beans::XVetoableChangeListener>& p2) throw(css::uno::RuntimeException)
+-        { ::property::OPropertySet::addVetoableChangeListener(p1, p2); }
+-    virtual void SAL_CALL removeVetoableChangeListener(const rtl::OUString& p1, const com::sun::star::uno::Reference<com::sun::star::beans::XVetoableChangeListener>& p2) throw(css::uno::RuntimeException)
+-        { ::property::OPropertySet::removeVetoableChangeListener(p1, p2); }
+-
+-    // Attributes
+-    virtual double SAL_CALL getTextRotation() throw(css::uno::RuntimeException)
+-        { return getPropertyDouble("TextRotation"); }
+-    virtual void SAL_CALL setTextRotation(double p1) throw(css::uno::RuntimeException)
+-        { setPropertyDouble("TextRotation", p1); }
+-    virtual sal_Bool SAL_CALL getStackCharacters() throw(css::uno::RuntimeException)
+-        { return getPropertyBool("StackCharacters"); }
+-    virtual void SAL_CALL setStackCharacters(sal_Bool p1) throw(css::uno::RuntimeException)
+-        { setPropertyBool("StackCharacters", p1); }
+-    virtual com::sun::star::chart2::RelativePosition SAL_CALL getRelativePosition() throw(css::uno::RuntimeException);
+-    virtual void SAL_CALL setRelativePosition(const com::sun::star::chart2::RelativePosition& p1) throw(css::uno::RuntimeException)
+-        { setPropertyValue("RelativePosition", css::uno::Any(p1)); }
+-    virtual com::sun::star::awt::Size SAL_CALL getReferencePageSize() throw(css::uno::RuntimeException);
+-    virtual void SAL_CALL setReferencePageSize(const com::sun::star::awt::Size& p1) throw(css::uno::RuntimeException)
+-        { setPropertyValue("ReferencePageSize", css::uno::Any(p1)); }
+-
+-
+ protected:
+     explicit Title( const Title & rOther );
+ 
+@@ -151,14 +119,6 @@
+     void fireModifyEvent();
+ 
+ private:
+-
+-    sal_Bool getPropertyBool(const OUString& p1) throw(::com::sun::star::uno::RuntimeException);
+-    double getPropertyDouble(const OUString& p1) throw(::com::sun::star::uno::RuntimeException);
+-    void setPropertyBool(const OUString& p1, sal_Bool p2) throw(::com::sun::star::uno::RuntimeException)
+-        { setPropertyValue( p1, css::uno::Any(p2) ); }
+-    void setPropertyDouble(const OUString& p1, double p2) throw(::com::sun::star::uno::RuntimeException)
+-        { setPropertyValue( p1, css::uno::Any(p2) ); }
+-
+     ::com::sun::star::uno::Sequence<
+         ::com::sun::star::uno::Reference<
+             ::com::sun::star::chart2::XFormattedString > > m_aStrings;
+diff --git a/chart2/source/tools/ObjectIdentifier.cxx b/chart2/source/tools/ObjectIdentifier.cxx
+index 1352277..9dc31b1 100644
+--- a/chart2/source/tools/ObjectIdentifier.cxx
++++ b/chart2/source/tools/ObjectIdentifier.cxx
+@@ -344,7 +344,7 @@ OUString ObjectIdentifier::createClassifiedIdentifierForObject(
+     try
+     {
+         //title
+-        Reference< XTitle2 > xTitle( xObject, uno::UNO_QUERY );
++        Reference< XTitle > xTitle( xObject, uno::UNO_QUERY );
+         if( xTitle.is() )
+         {
+             TitleHelper::eTitleType aTitleType;
+diff --git a/chart2/source/tools/TitleHelper.cxx b/chart2/source/tools/TitleHelper.cxx
+index dda0513..a8a0b00 100644
+--- a/chart2/source/tools/TitleHelper.cxx
++++ b/chart2/source/tools/TitleHelper.cxx
+@@ -23,7 +23,6 @@
+ #include "AxisHelper.hxx"
+ #include "DiagramHelper.hxx"
+ #include <com/sun/star/chart2/FormattedString.hpp>
+-#include <com/sun/star/chart2/Title.hpp>
+ #include <com/sun/star/chart2/XChartDocument.hpp>
+ #include <rtl/ustrbuf.hxx>
+ 
+@@ -123,23 +122,23 @@ uno::Reference< XTitled > lcl_getTitleParent( TitleHelper::eTitleType nTitleInde
+     return xResult;
+ }
+ 
+-uno::Reference< XTitle2 > TitleHelper::getTitle( TitleHelper::eTitleType nTitleIndex
++uno::Reference< XTitle > TitleHelper::getTitle( TitleHelper::eTitleType nTitleIndex
+                             , const uno::Reference< frame::XModel >& xModel )
+ {
+     uno::Reference< XTitled > xTitled( lcl_getTitleParent( nTitleIndex, xModel ) );
+     if( xTitled.is())
+-        xTitled->getTitleObject();
++        return xTitled->getTitleObject();
+     return NULL;
+ }
+ 
+-uno::Reference< XTitle2 > TitleHelper::createTitle(
++uno::Reference< XTitle > TitleHelper::createTitle(
+       TitleHelper::eTitleType eTitleType
+     , const OUString& rTitleText
+     , const uno::Reference< frame::XModel >& xModel
+     , const uno::Reference< uno::XComponentContext > & xContext
+     , ReferenceSizeProvider * pRefSizeProvider )
+ {
+-    uno::Reference< XTitle2 > xTitle;
++    uno::Reference< XTitle > xTitle;
+     uno::Reference< XTitled > xTitled( lcl_getTitleParent( eTitleType, xModel ) );
+ 
+     if( !xTitled.is() )
+@@ -169,62 +168,71 @@ uno::Reference< XTitle2 > TitleHelper::createTitle(
+     {
+         uno::Reference< XDiagram > xDiagram( ChartModelHelper::findDiagram( xModel ) );
+ 
+-        xTitle = chart2::Title::create( xContext );
++        xTitle.set( xContext->getServiceManager()->createInstanceWithContext(
++                        "com.sun.star.chart2.Title",
++                        xContext ), uno::UNO_QUERY );
+ 
+-        // default char height (main: 13.0 == default)
+-        float fDefaultCharHeightSub = 11.0;
+-        float fDefaultCharHeightAxis = 9.0;
+-        switch( eTitleType )
++        if(xTitle.is())
+         {
+-            case TitleHelper::SUB_TITLE:
+-                TitleHelper::setCompleteString(
+-                    rTitleText, xTitle, xContext, & fDefaultCharHeightSub );
+-                break;
+-            case TitleHelper::X_AXIS_TITLE:
+-            case TitleHelper::Y_AXIS_TITLE:
+-            case TitleHelper::Z_AXIS_TITLE:
+-            case TitleHelper::TITLE_AT_STANDARD_X_AXIS_POSITION:
+-            case TitleHelper::TITLE_AT_STANDARD_Y_AXIS_POSITION:
+-            case TitleHelper::SECONDARY_X_AXIS_TITLE:
+-            case TitleHelper::SECONDARY_Y_AXIS_TITLE:
+-                TitleHelper::setCompleteString(
+-                    rTitleText, xTitle, xContext, & fDefaultCharHeightAxis );
+-                break;
+-            default:
+-                TitleHelper::setCompleteString( rTitleText, xTitle, xContext );
+-                break;
+-        }
++            // default char height (main: 13.0 == default)
++            float fDefaultCharHeightSub = 11.0;
++            float fDefaultCharHeightAxis = 9.0;
++            switch( eTitleType )
++            {
++                case TitleHelper::SUB_TITLE:
++                    TitleHelper::setCompleteString(
++                        rTitleText, xTitle, xContext, & fDefaultCharHeightSub );
++                    break;
++                case TitleHelper::X_AXIS_TITLE:
++                case TitleHelper::Y_AXIS_TITLE:
++                case TitleHelper::Z_AXIS_TITLE:
++                case TitleHelper::TITLE_AT_STANDARD_X_AXIS_POSITION:
++                case TitleHelper::TITLE_AT_STANDARD_Y_AXIS_POSITION:
++                case TitleHelper::SECONDARY_X_AXIS_TITLE:
++                case TitleHelper::SECONDARY_Y_AXIS_TITLE:
++                    TitleHelper::setCompleteString(
++                        rTitleText, xTitle, xContext, & fDefaultCharHeightAxis );
++                    break;
++                default:
++                    TitleHelper::setCompleteString( rTitleText, xTitle, xContext );
++                    break;
++            }
+ 
+-        // set/clear autoscale
+-        if( pRefSizeProvider )
+-            pRefSizeProvider->setValuesAtTitle( xTitle );
++            // set/clear autoscale
++            if( pRefSizeProvider )
++                pRefSizeProvider->setValuesAtTitle( xTitle );
+ 
+-        xTitled->setTitleObject( xTitle );
++            xTitled->setTitleObject( xTitle );
+ 
+-        //default rotation 90 degree for y axis title in normal coordinatesystems or for x axis title for swapped coordinatesystems
+-        if( eTitleType == TitleHelper::X_AXIS_TITLE ||
+-            eTitleType == TitleHelper::Y_AXIS_TITLE ||
+-            eTitleType == TitleHelper::SECONDARY_X_AXIS_TITLE ||
+-            eTitleType == TitleHelper::SECONDARY_Y_AXIS_TITLE )
++            //default rotation 90 degree for y axis title in normal coordinatesystems or for x axis title for swapped coordinatesystems
++            if( eTitleType == TitleHelper::X_AXIS_TITLE ||
++                eTitleType == TitleHelper::Y_AXIS_TITLE ||
++                eTitleType == TitleHelper::SECONDARY_X_AXIS_TITLE ||
++                eTitleType == TitleHelper::SECONDARY_Y_AXIS_TITLE )
+ 
+-        {
+-            try
+             {
+-                bool bDummy = false;
+-                bool bIsVertical = DiagramHelper::getVertical( xDiagram, bDummy, bDummy );
+-
+-                if( (!bIsVertical && eTitleType == TitleHelper::Y_AXIS_TITLE)
+-                    || (bIsVertical && eTitleType == TitleHelper::X_AXIS_TITLE)
+-                    || (!bIsVertical && eTitleType == TitleHelper::SECONDARY_Y_AXIS_TITLE)
+-                    || (bIsVertical && eTitleType == TitleHelper::SECONDARY_X_AXIS_TITLE) )
++                try
+                 {
+-                    double fNewAngleDegree = 90.0;
+-                    xTitle->setTextRotation( fNewAngleDegree );
++                    bool bDummy = false;
++                    bool bIsVertical = DiagramHelper::getVertical( xDiagram, bDummy, bDummy );
++
++                    Reference< beans::XPropertySet > xTitleProps( xTitle, uno::UNO_QUERY );
++                    if( xTitleProps.is() )
++                    {
++                        if( (!bIsVertical && eTitleType == TitleHelper::Y_AXIS_TITLE)
++                            || (bIsVertical && eTitleType == TitleHelper::X_AXIS_TITLE)
++                            || (!bIsVertical && eTitleType == TitleHelper::SECONDARY_Y_AXIS_TITLE)
++                            || (bIsVertical && eTitleType == TitleHelper::SECONDARY_X_AXIS_TITLE) )
++                        {
++                            double fNewAngleDegree = 90.0;
++                            xTitleProps->setPropertyValue( "TextRotation", uno::makeAny( fNewAngleDegree ));
++                        }
++                    }
++                }
++                catch( const uno::Exception & ex )
++                {
++                    ASSERT_EXCEPTION( ex );
+                 }
+-            }
+-            catch( const uno::Exception & ex )
+-            {
+-                ASSERT_EXCEPTION( ex );
+             }
+         }
+     }
+@@ -232,7 +240,7 @@ uno::Reference< XTitle2 > TitleHelper::createTitle(
+ 
+ }
+ 
+-OUString TitleHelper::getCompleteString( const uno::Reference< XTitle2 >& xTitle )
++OUString TitleHelper::getCompleteString( const uno::Reference< XTitle >& xTitle )
+ {
+     OUString aRet;
+     if(!xTitle.is())
+@@ -244,7 +252,7 @@ OUString TitleHelper::getCompleteString( const uno::Reference< XTitle2 >& xTitle
+ }
+ 
+ void TitleHelper::setCompleteString( const OUString& rNewText
+-                    , const uno::Reference< XTitle2 >& xTitle
++                    , const uno::Reference< XTitle >& xTitle
+                     , const uno::Reference< uno::XComponentContext > & xContext
+                     , float * pDefaultCharHeight /* = 0 */ )
+ {
+@@ -254,7 +262,10 @@ void TitleHelper::setCompleteString( const OUString& rNewText
+ 
+     OUString aNewText = rNewText;
+ 
+-    bool bStacked = xTitle->getStackCharacters();
++    bool bStacked = false;
++    uno::Reference< beans::XPropertySet > xTitleProperties( xTitle, uno::UNO_QUERY );
++    if( xTitleProperties.is() )
++        xTitleProperties->getPropertyValue( "StackCharacters" ) >>= bStacked;
+ 
+     if( bStacked )
+     {
+@@ -326,14 +337,14 @@ void TitleHelper::removeTitle( TitleHelper::eTitleType nTitleIndex
+ 
+ bool TitleHelper::getTitleType( eTitleType& rType
+                     , const ::com::sun::star::uno::Reference<
+-                        ::com::sun::star::chart2::XTitle2 >& xTitle
++                        ::com::sun::star::chart2::XTitle >& xTitle
+                     , const ::com::sun::star::uno::Reference<
+                         ::com::sun::star::frame::XModel >& xModel )
+ {
+     if( !xTitle.is() || !xModel.is() )
+         return false;
+ 
+-    Reference< chart2::XTitle2 > xCurrentTitle;
++    Reference< chart2::XTitle > xCurrentTitle;
+     for( sal_Int32 nTitleType = TITLE_BEGIN; nTitleType < NORMAL_TITLE_END; nTitleType++ )
+     {
+         xCurrentTitle = TitleHelper::getTitle( static_cast<eTitleType>(nTitleType), xModel );
+diff --git a/chart2/source/view/main/ChartView.cxx b/chart2/source/view/main/ChartView.cxx
+index 5698e3e..e5ae969 100644
+--- a/chart2/source/view/main/ChartView.cxx
++++ b/chart2/source/view/main/ChartView.cxx
+@@ -2167,7 +2167,7 @@ boost::shared_ptr<VTitle> lcl_createTitle( TitleHelper::eTitleType eType
+         nXDistance = nXOffset;
+     }
+ 
+-    uno::Reference< XTitle2 > xTitle( TitleHelper::getTitle( eType, xChartModel ) );
++    uno::Reference< XTitle > xTitle( TitleHelper::getTitle( eType, xChartModel ) );
+     OUString aCompleteString( TitleHelper::getCompleteString( xTitle ) );
+     if( !aCompleteString.isEmpty() )
+     {
+diff --git a/include/oox/drawingml/chart/converterbase.hxx b/include/oox/drawingml/chart/converterbase.hxx
+index 3408e85..21a0344 100644
+--- a/include/oox/drawingml/chart/converterbase.hxx
++++ b/include/oox/drawingml/chart/converterbase.hxx
+@@ -27,7 +27,7 @@ namespace com { namespace sun { namespace star {
+     namespace awt { struct Rectangle; }
+     namespace awt { struct Size; }
+     namespace chart2 { class XChartDocument; }
+-    namespace chart2 { class XTitle2; }
++    namespace chart2 { class XTitle; }
+     namespace drawing { class XShape; }
+ } } }
+ 
+@@ -87,7 +87,7 @@ protected:
+     /** Registers a title object and its layout data, needed for conversion of
+         the title position using the old Chart1 API. */
+     void                registerTitleLayout(
+-                            const ::com::sun::star::uno::Reference< ::com::sun::star::chart2::XTitle2 >& rxTitle,
++                            const ::com::sun::star::uno::Reference< ::com::sun::star::chart2::XTitle >& rxTitle,
+                             const ModelRef< LayoutModel >& rxLayout, ObjectType eObjType,
+                             sal_Int32 nMainIdx = -1, sal_Int32 nSubIdx = -1 );
+     /** Converts the positions of the main title and all axis titles. */
+diff --git a/offapi/UnoApi_offapi.mk b/offapi/UnoApi_offapi.mk
+index 4e03c19..7439a2e 100644
+--- a/offapi/UnoApi_offapi.mk
++++ b/offapi/UnoApi_offapi.mk
+@@ -89,7 +89,6 @@ $(eval $(call gb_UnoApi_add_idlfiles_nohdl,offapi,offapi/com/sun/star/chart2,\
+ 	PowerScaling \
+ 	RegressionEquation \
+ 	Scaling \
+-	Title \
+ ))
+ $(eval $(call gb_UnoApi_add_idlfiles_nohdl,offapi,offapi/com/sun/star/chart2/data,\
+ 	DatabaseDataProvider \
+@@ -633,6 +632,7 @@ $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,offapi/com/sun/star/chart2,
+ 	RegressionCurve \
+ 	RegressionCurveEquation \
+ 	StandardDiagramCreationParameters \
++	Title \
+ ))
+ $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,offapi/com/sun/star/chart2/data,\
+ 	DataFilter \
+@@ -2029,7 +2029,6 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,offapi/com/sun/star/chart2,\
+ 	XScaling \
+ 	XTarget \
+ 	XTitle \
+-	XTitle2 \
+ 	XTitled \
+ 	XTransformation \
+ ))
+diff --git a/offapi/com/sun/star/chart2/Title.idl b/offapi/com/sun/star/chart2/Title.idl
+index 936c8e1..24bcfd5 100644
+--- a/offapi/com/sun/star/chart2/Title.idl
++++ b/offapi/com/sun/star/chart2/Title.idl
+@@ -19,13 +19,68 @@
+ #ifndef com_sun_star_chart2_Title_idl
+ #define com_sun_star_chart2_Title_idl
+ 
+-#include <com/sun/star/chart2/XTitle2.idl>
++#include <com/sun/star/style/ParagraphProperties.idl>
++#include <com/sun/star/chart2/XTitle.idl>
++#include <com/sun/star/chart2/RelativePosition.idl>
++#include <com/sun/star/beans/PropertySet.idl>
++#include <com/sun/star/drawing/LineProperties.idl>
++#include <com/sun/star/drawing/FillProperties.idl>
++//FIXME does not exist <com/sun/star/layout/LayoutElement.idl>
+ 
+-module com { module sun { module star { module chart2 {
++module com
++{
++module sun
++{
++module star
++{
++module chart2
++{
+ 
+-service Title : XTitle2;
++service Title
++{
++    /** only mandatory properties
++     */
++    service                ::com::sun::star::style::ParagraphProperties;
++    service                ::com::sun::star::drawing::FillProperties;
++    service                ::com::sun::star::drawing::LineProperties;
++    service                ::com::sun::star::beans::PropertySet;
++//FIXME    [optional] service     ::com::sun::star::layout::LayoutElement;
+ 
+-}; }; }; };
++    /**
++     */
++    interface              XTitle;
++
++    /** the rotation of the title's text in degrees in the range
++        [0,360).
++     */
++    [property] double      TextRotation;
++
++    /** writes the characters of the title on top of each other if set
++        to <TRUE/>.
++     */
++    [property] boolean     StackCharacters;
++
++    /** The position is a relative position on the page.
++
++        <p>If a relative position is given the title is not automatically placed,
++        but instead is placed relative on the page.</p>
++     */
++    [property, maybevoid] ::com::sun::star::chart2::RelativePosition RelativePosition;
++
++
++    /** contains the size of the page at the time when properties were
++        set (e.g. the CharHeight).
++
++        <p>This way it is possible to resize objects (like text) in
++        the view without modifying the model.</p>
++     */
++    [property, maybevoid]  com::sun::star::awt::Size   ReferencePageSize;
++};
++
++} ; // chart2
++} ; // com
++} ; // sun
++} ; // star
+ 
+ #endif
+ 
+diff --git a/offapi/com/sun/star/chart2/XTitle2.idl b/offapi/com/sun/star/chart2/XTitle2.idl
+deleted file mode 100644
+index 64019d2..0000000
+--- a/offapi/com/sun/star/chart2/XTitle2.idl
++++ b/dev/null
+@@ -1,86 +0,0 @@
+-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+-/*
+- * This file is part of the LibreOffice project.
+- *
+- * This Source Code Form is subject to the terms of the Mozilla Public
+- * License, v. 2.0. If a copy of the MPL was not distributed with this
+- * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+- *
+- * This file incorporates work covered by the following license notice:
+- *
+- *   Licensed to the Apache Software Foundation (ASF) under one or more
+- *   contributor license agreements. See the NOTICE file distributed
+- *   with this work for additional information regarding copyright
+- *   ownership. The ASF licenses this file to you under the Apache
+- *   License, Version 2.0 (the "License"); you may not use this file
+- *   except in compliance with the License. You may obtain a copy of
+- *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
+- */
+-#ifndef com_sun_star_chart2_XTitle2_idl
+-#define com_sun_star_chart2_XTitle2_idl
+-
+-#include <com/sun/star/style/ParagraphProperties.idl>
+-#include <com/sun/star/chart2/XTitle.idl>
+-#include <com/sun/star/chart2/RelativePosition.idl>
+-#include <com/sun/star/beans/XPropertySet.idl>
+-#include <com/sun/star/drawing/LineProperties.idl>
+-#include <com/sun/star/drawing/FillProperties.idl>
+-//FIXME does not exist <com/sun/star/layout/LayoutElement.idl>
+-
+-module com { module sun { module star { module chart2 {
+-
+-/**
+-    The unified interface for the Title service.
+-
+-    This service actually implements a few other services
+-    (style::ParagraphProperties, drawing::FillProperties, drawing::LineProperties).
+-    This set here is only the set that we use internally.
+-
+-    @since LibreOffice 4.1
+-*/
+-interface XTitle2
+-{
+-    /** only mandatory properties
+-     */
+-//    service                ::com::sun::star::style::ParagraphProperties;
+-//    service                ::com::sun::star::drawing::FillProperties;
+-//    service                ::com::sun::star::drawing::LineProperties;
+-    interface                ::com::sun::star::beans::XPropertySet;
+-//FIXME    [optional] service     ::com::sun::star::layout::LayoutElement;
+-
+-    /**
+-     */
+-    interface              XTitle;
+-
+-    /** the rotation of the title's text in degrees in the range
+-        [0,360).
+-     */
+-    [attribute] double      TextRotation;
+-
+-    /** writes the characters of the title on top of each other if set
+-        to <TRUE/>.
+-     */
+-    [attribute] boolean     StackCharacters;
+-
+-    /** The position is a relative position on the page.
+-
+-        <p>If a relative position is given the title is not automatically placed,
+-        but instead is placed relative on the page.</p>
+-     */
+-    [attribute] ::com::sun::star::chart2::RelativePosition RelativePosition;
+-
+-
+-    /** contains the size of the page at the time when properties were
+-        set (e.g. the CharHeight).
+-
+-        <p>This way it is possible to resize objects (like text) in
+-        the view without modifying the model.</p>
+-     */
+-    [attribute]  com::sun::star::awt::Size   ReferencePageSize;
+-};
+-
+-}; }; }; };
+-
+-#endif
+-
+-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/offapi/com/sun/star/chart2/XTitled.idl b/offapi/com/sun/star/chart2/XTitled.idl
+index 84d326b..3a5ec18 100644
+--- a/offapi/com/sun/star/chart2/XTitled.idl
++++ b/offapi/com/sun/star/chart2/XTitled.idl
+@@ -20,7 +20,7 @@
+ #define com_sun_star_chart2_XTitled_idl
+ 
+ #include <com/sun/star/uno/XInterface.idl>
+-#include <com/sun/star/chart2/XTitle2.idl>
++#include <com/sun/star/chart2/XTitle.idl>
+ 
+ module com
+ {
+@@ -38,11 +38,11 @@ interface XTitled : ::com::sun::star::uno::XInterface
+ {
+     /** get the object holding the title's content and formatting
+      */
+-    XTitle2 getTitleObject();
++    XTitle getTitleObject();
+ 
+     /** set a new title object replacing the former one
+      */
+-    void setTitleObject( [in] XTitle2 Title );
++    void setTitleObject( [in] XTitle Title );
+ };
+ 
+ } ; // chart2
+diff --git a/oox/source/drawingml/chart/converterbase.cxx b/oox/source/drawingml/chart/converterbase.cxx
+index 67f0a68..65d813d 100644
+--- a/oox/source/drawingml/chart/converterbase.cxx
++++ b/oox/source/drawingml/chart/converterbase.cxx
+@@ -26,7 +26,6 @@
+ #include <com/sun/star/chart/XSecondAxisTitleSupplier.hpp>
+ #include <com/sun/star/chart2/RelativePosition.hpp>
+ #include <com/sun/star/chart2/RelativeSize.hpp>
+-#include <com/sun/star/chart2/XTitle2.hpp>
+ #include <com/sun/star/drawing/FillStyle.hpp>
+ #include <com/sun/star/drawing/LineStyle.hpp>
+ #include <com/sun/star/frame/XModel.hpp>
+@@ -72,7 +71,7 @@ struct TitleLayoutInfo
+ {
+     typedef Reference< XShape > (*GetShapeFunc)( const Reference< cssc::XChartDocument >& );
+ 
+-    Reference< XTitle2 > mxTitle;        /// The API title object.
++    Reference< XTitle > mxTitle;        /// The API title object.
+     ModelRef< LayoutModel > mxLayout;   /// The layout model, if existing.
+     GetShapeFunc        mpGetShape;     /// Helper function to receive the title shape.
+ 
+@@ -90,7 +89,9 @@ void TitleLayoutInfo::convertTitlePos( ConverterRoot& rRoot, const Reference< cs
+         // try to get the title shape
+         Reference< XShape > xTitleShape( mpGetShape( rxChart1Doc ), UNO_SET_THROW );
+         // get title rotation angle, needed for correction of position of top-left edge
+-        double fAngle = mxTitle->getTextRotation();
++        double fAngle = 0.0;
++        PropertySet aTitleProp( mxTitle );
++        aTitleProp.getProperty( fAngle, PROP_TextRotation );
+         // convert the position
+         LayoutModel& rLayout = mxLayout.getOrCreate();
+         LayoutConverter aLayoutConv( rRoot, rLayout );
+@@ -270,7 +271,7 @@ ObjectFormatter& ConverterRoot::getFormatter() const
+     return mxData->maFormatter;
+ }
+ 
+-void ConverterRoot::registerTitleLayout( const Reference< XTitle2 >& rxTitle,
++void ConverterRoot::registerTitleLayout( const Reference< XTitle >& rxTitle,
+         const ModelRef< LayoutModel >& rxLayout, ObjectType eObjType, sal_Int32 nMainIdx, sal_Int32 nSubIdx )
+ {
+     OSL_ENSURE( rxTitle.is(), "ConverterRoot::registerTitleLayout - missing title object" );
+diff --git a/oox/source/drawingml/chart/titleconverter.cxx b/oox/source/drawingml/chart/titleconverter.cxx
+index c34ad9a..32fb37f 100644
+--- a/oox/source/drawingml/chart/titleconverter.cxx
++++ b/oox/source/drawingml/chart/titleconverter.cxx
+@@ -22,9 +22,9 @@
+ #include <com/sun/star/chart/ChartLegendExpansion.hpp>
+ #include <com/sun/star/chart2/FormattedString.hpp>
+ #include <com/sun/star/chart2/LegendPosition.hpp>
+-#include <com/sun/star/chart2/Title.hpp>
+ #include <com/sun/star/chart2/XDiagram.hpp>
+ #include <com/sun/star/chart2/XLegend.hpp>
++#include <com/sun/star/chart2/XTitle.hpp>
+ #include <com/sun/star/chart2/XTitled.hpp>
+ #include "oox/drawingml/textbody.hxx"
+ #include "oox/drawingml/textparagraph.hxx"
+@@ -152,7 +152,7 @@ void TitleConverter::convertFromModel( const Reference< XTitled >& rxTitled, con
+         if( aStringSeq.hasElements() ) try
+         {
+             // create the title object and set the string data
+-            Reference< XTitle2 > xTitle = Title::create( getComponentContext() );
++            Reference< XTitle > xTitle( createInstance( "com.sun.star.chart2.Title" ), UNO_QUERY_THROW );
+             xTitle->setText( aStringSeq );
+             rxTitled->setTitleObject( xTitle );
+ 
+diff --git a/reportdesign/source/ui/inc/DataProviderHandler.hxx b/reportdesign/source/ui/inc/DataProviderHandler.hxx
+index 7649b5e..f24d1f5 100644
+--- a/reportdesign/source/ui/inc/DataProviderHandler.hxx
++++ b/reportdesign/source/ui/inc/DataProviderHandler.hxx
+@@ -95,7 +95,7 @@ namespace rptui
+ 
+         bool impl_dialogLinkedFields_nothrow( ::osl::ClearableMutexGuard& _rClearBeforeDialog ) const;
+         bool impl_dialogChartType_nothrow( ::osl::ClearableMutexGuard& _rClearBeforeDialog ) const;
+-        void impl_updateChartTitle_throw(const OUString& _aValue);
++        void impl_updateChartTitle_throw(const ::com::sun::star::uno::Any& _aValue);
+ 
+         // overload WeakComponentImplHelperBase::disposing()
+         // This function is called upon disposing the component,
+diff --git a/reportdesign/source/ui/inspection/DataProviderHandler.cxx b/reportdesign/source/ui/inspection/DataProviderHandler.cxx
+index ae231f7..72842e7 100644
+--- a/reportdesign/source/ui/inspection/DataProviderHandler.cxx
++++ b/reportdesign/source/ui/inspection/DataProviderHandler.cxx
+@@ -29,12 +29,12 @@
+ #include <com/sun/star/inspection/PropertyLineElement.hpp>
+ #include <com/sun/star/chart/ChartDataRowSource.hpp>
+ #include <com/sun/star/chart2/FormattedString.hpp>
+-#include <com/sun/star/chart2/Title.hpp>
+ #include <com/sun/star/chart2/XDiagram.hpp>
+ #include <com/sun/star/chart2/XCoordinateSystemContainer.hpp>
+ #include <com/sun/star/chart2/XChartTypeContainer.hpp>
+ #include <com/sun/star/chart2/XChartType.hpp>
+ #include <com/sun/star/chart2/XTitled.hpp>
++#include <com/sun/star/chart2/XTitle.hpp>
+ #include <com/sun/star/chart2/data/XDataReceiver.hpp>
+ #include <com/sun/star/ui/dialogs/XExecutableDialog.hpp>
+ #include <com/sun/star/report/XReportDefinition.hpp>
+@@ -233,22 +233,27 @@ void SAL_CALL DataProviderHandler::setPropertyValue(const OUString & PropertyNam
+     }
+ }
+ // -----------------------------------------------------------------------------
+-void DataProviderHandler::impl_updateChartTitle_throw(const OUString& sStr)
++void DataProviderHandler::impl_updateChartTitle_throw(const uno::Any& _aValue)
+ {
+     uno::Reference<chart2::XTitled> xTitled(m_xChartModel,uno::UNO_QUERY);
+     if ( xTitled.is() )
+     {
+-        uno::Reference<chart2::XTitle2> xTitle = xTitled->getTitleObject();
++        uno::Reference<chart2::XTitle> xTitle = xTitled->getTitleObject();
+         if ( !xTitle.is() )
+         {
+-            xTitle = chart2::Title::create(m_xContext);
++            xTitle.set(m_xContext->getServiceManager()->createInstanceWithContext(OUString("com.sun.star.chart2.Title"),m_xContext),uno::UNO_QUERY);
+             xTitled->setTitleObject(xTitle);
+         }
+-        uno::Reference< chart2::XFormattedString2> xFormatted = chart2::FormattedString::create(m_xContext);
+-        xFormatted->setString(sStr);
+-        uno::Sequence< uno::Reference< chart2::XFormattedString> > aArgs(1);
+-        aArgs[0] = xFormatted;
+-        xTitle->setText(aArgs);
++        if ( xTitle.is() )
++        {
++            uno::Reference< chart2::XFormattedString2> xFormatted = chart2::FormattedString::create(m_xContext);
++            OUString sStr;
++            _aValue >>= sStr;
++            xFormatted->setString(sStr);
++            uno::Sequence< uno::Reference< chart2::XFormattedString> > aArgs(1);
++            aArgs[0] = xFormatted;
++            xTitle->setText(aArgs);
++        }
+     }
+ }
+ 
+@@ -463,11 +468,7 @@ void SAL_CALL DataProviderHandler::actuatingPropertyChanged(const OUString & Act
+     else if ( ActuatingPropertyName == PROPERTY_TITLE )
+     {
+         if ( NewValue != OldValue )
+-        {
+-            OUString aStr;
+-            NewValue >>= aStr;
+-            impl_updateChartTitle_throw(aStr);
+-        }
++            impl_updateChartTitle_throw(NewValue);
+     }
+     else
+     {
+diff --git a/sc/source/filter/excel/xichart.cxx b/sc/source/filter/excel/xichart.cxx
+index e36a147..e07d1d4 100644
+--- a/sc/source/filter/excel/xichart.cxx
++++ b/sc/source/filter/excel/xichart.cxx
+@@ -47,7 +47,6 @@
+ #include <com/sun/star/chart2/LinearScaling.hpp>
+ #include <com/sun/star/chart2/PolarCoordinateSystem2d.hpp>
+ #include <com/sun/star/chart2/PolarCoordinateSystem3d.hpp>
+-#include <com/sun/star/chart2/Title.hpp>
+ #include <com/sun/star/chart2/XChartDocument.hpp>
+ #include <com/sun/star/chart2/XDiagram.hpp>
+ #include <com/sun/star/chart2/XCoordinateSystemContainer.hpp>
+@@ -1146,9 +1145,9 @@ void XclImpChText::ConvertDataLabel( ScfPropertySet& rPropSet, const XclChTypeIn
+     }
+ }
+ 
+-Reference< css::chart2::XTitle2 > XclImpChText::CreateTitle() const
++Reference< XTitle > XclImpChText::CreateTitle() const
+ {
+-    Reference< css::chart2::XTitle2 > xTitle;
++    Reference< XTitle > xTitle;
+     if( mxSrcLink && mxSrcLink->HasString() )
+     {
+         // create the formatted strings
+@@ -1157,13 +1156,16 @@ Reference< css::chart2::XTitle2 > XclImpChText::CreateTitle() const
+         if( aStringSeq.hasElements() )
+         {
+             // create the title object
+-            xTitle = css::chart2::Title::create( comphelper::getProcessComponentContext() );
+-            // set the formatted strings
+-            xTitle->setText( aStringSeq );
+-            // more title formatting properties
+-            ScfPropertySet aTitleProp( xTitle );
+-            ConvertFrame( aTitleProp );
+-            ConvertRotation( aTitleProp, true );
++            xTitle.set( ScfApiHelper::CreateInstance( SERVICE_CHART2_TITLE ), UNO_QUERY );
++            if( xTitle.is() )
++            {
++                // set the formatted strings
++                xTitle->setText( aStringSeq );
++                // more title formatting properties
++                ScfPropertySet aTitleProp( xTitle );
++                ConvertFrame( aTitleProp );
++                ConvertRotation( aTitleProp, true );
++            }
+         }
+     }
+     return xTitle;
+@@ -3745,7 +3747,7 @@ void XclImpChAxesSet::ConvertAxis(
+             if( xChAxisTitle ) try
+             {
+                 Reference< XTitled > xTitled( xAxis, UNO_QUERY_THROW );
+-                Reference< css::chart2::XTitle2 > xTitle = xChAxisTitle->CreateTitle();
++                Reference< XTitle > xTitle( xChAxisTitle->CreateTitle(), UNO_SET_THROW );
+                 xTitled->setTitleObject( xTitle );
+             }
+             catch( Exception& )
+@@ -3935,7 +3937,7 @@ void XclImpChChart::Convert( const Reference<XChartDocument>& xChartDoc,
+     if( mxTitle ) try
+     {
+         Reference< XTitled > xTitled( xChartDoc, UNO_QUERY_THROW );
+-        Reference< css::chart2::XTitle2 > xTitle = mxTitle->CreateTitle();
++        Reference< XTitle > xTitle( mxTitle->CreateTitle(), UNO_SET_THROW );
+         xTitled->setTitleObject( xTitle );
+     }
+     catch( Exception& )
+diff --git a/sc/source/filter/inc/xichart.hxx b/sc/source/filter/inc/xichart.hxx
+index 6be2572..c1a2cbc 100644
+--- a/sc/source/filter/inc/xichart.hxx
++++ b/sc/source/filter/inc/xichart.hxx
+@@ -61,7 +61,6 @@ namespace com { namespace sun { namespace star {
+         class XAxis;
+         class XLegend;
+         class XTitle;
+-        class XTitle2;
+         class XFormattedString;
+         namespace data
+         {
+@@ -488,6 +487,9 @@ typedef boost::shared_ptr< XclImpChFont > XclImpChFontRef;
+ class XclImpChText : public XclImpChGroupBase, public XclImpChFontBase, protected XclImpChRoot
+ {
+ public:
++    typedef ::com::sun::star::uno::Reference< ::com::sun::star::chart2::XTitle > XTitleRef;
++
++public:
+     explicit            XclImpChText( const XclImpChRoot& rRoot );
+ 
+     /** Reads the CHTEXT record (called by base class). */
+@@ -529,8 +531,7 @@ public:
+     /** Converts and writes all contained data to the passed data point label property set. */
+     void                ConvertDataLabel( ScfPropertySet& rPropSet, const XclChTypeInfo& rTypeInfo ) const;
+     /** Creates a title text object. */
+-    css::uno::Reference< css::chart2::XTitle2 >
+-                        CreateTitle() const;
++    XTitleRef           CreateTitle() const;
+     /** Converts the manual position of the specified title */
+     void                ConvertTitlePosition( const XclChTextKey& rTitleKey ) const;
+ 
+diff --git a/sc/source/filter/inc/xlchart.hxx b/sc/source/filter/inc/xlchart.hxx
+index 4e3eb94..2c3a594 100644
+--- a/sc/source/filter/inc/xlchart.hxx
++++ b/sc/source/filter/inc/xlchart.hxx
+@@ -58,6 +58,7 @@ class XclRoot;
+ #define SERVICE_CHART2_LINEARREGCURVE       "com.sun.star.chart2.LinearRegressionCurve"
+ #define SERVICE_CHART2_LOGREGCURVE          "com.sun.star.chart2.LogarithmicRegressionCurve"
+ #define SERVICE_CHART2_POTREGCURVE          "com.sun.star.chart2.PotentialRegressionCurve"
++#define SERVICE_CHART2_TITLE                "com.sun.star.chart2.Title"
+ 
+ // property names
+ #define EXC_CHPROP_ADDITIONALSHAPES         "AdditionalShapes"
+--
+cgit v0.9.0.2-2-gbebe
