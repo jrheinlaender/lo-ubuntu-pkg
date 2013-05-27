@@ -150,8 +150,8 @@ BUILD_ONLY_EN_US=n
 ENABLE_JAVA=y
 ifeq "$(ENABLE_JAVA)" "y"
   JDK=openjdk
-  JAVA_MAINVER=6
-  ifneq (,$(filter hppa kfreebsd%, $(DEB_HOST_ARCH)))
+  JAVA_MAINVER=7
+  ifneq (,$(filter hppa, $(DEB_HOST_ARCH)))
     JDK=gcj-jdk
   endif
 endif
@@ -432,7 +432,7 @@ $(eval $(call gen_no_archs,OOO_JAVA_ARCHS))
 OOO_GCJ_ARCHS = $(filter-out $(OOO_OPENJDK_ARCHS), $(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs,OOO_GCJ_ARCHS))
 
-OOO_GCJ_JDK_ARCHS := hppa kfreebsd-i386 kfreebsd-amd64
+OOO_GCJ_JDK_ARCHS := hppa
 OOO_OPENJDK_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs,OOO_OPENJDK_ARCHS))
 
@@ -809,16 +809,16 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
   ifeq "$(JDK)" "openjdk"
     ifeq "$(JAVA_MAINVER)" "6"
-	BUILD_DEPS += , openjdk-$(JAVA_MAINVER)-jdk (>= 6b23~pre8-2) [$(filter-out ia64,$(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))])
-      # except on ia64, which doesn't build with 6...
-      ifneq (,$(findstring ia64,$(OOO_JAVA_ARCHS)))
-	BUILD_DEPS += , openjdk-7-jdk [ia64]
+	BUILD_DEPS += , openjdk-$(JAVA_MAINVER)-jdk (>= 6b23~pre8-2) [$(filter-out ia64 $((OOO_GCJ_JDK_ARCHS),$(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))])
+    else
+	BUILD_DEPS += , openjdk-$(JAVA_MAINVER)-jdk [$(filter-out mips mipsel $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))]
+      # no 7 on mips(el)
+      ifneq (,$(findstring mips,$(OOO_JAVA_ARCHS)))
+	BUILD_DEPS += , openjdk-6-jdk (>= 6b23~pre8-2) [mips mipsel]
         ifeq "$(DEB_HOST_ARCH)" "ia64"
-          JAVA_MAINVER=7
+          JAVA_MAINVER=6
         endif
       endif
-    else
-	BUILD_DEPS += , openjdk-$(JAVA_MAINVER)-jdk [$(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))]
     endif
 	JAVA_HOME=/usr/lib/jvm/java-$(JAVA_MAINVER)-openjdk-$(DEB_HOST_ARCH)
   endif
