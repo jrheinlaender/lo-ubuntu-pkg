@@ -152,8 +152,8 @@ BUILD_ONLY_EN_US=n
 ENABLE_JAVA=y
 ifeq "$(ENABLE_JAVA)" "y"
   JDK=openjdk
-  JAVA_MAINVER=6
-  ifneq (,$(filter hppa kfreebsd%, $(DEB_HOST_ARCH)))
+  JAVA_MAINVER=7
+  ifneq (,$(filter hppa, $(DEB_HOST_ARCH)))
     JDK=gcj-jdk
   endif
 endif
@@ -324,7 +324,7 @@ endif
 PACKAGE_BASE=y
 ENABLE_GRAPHITE=y
 SYSTEM_STUFF += graphite
-#SYSTEM_STUFF += harfbuzz
+SYSTEM_STUFF += harfbuzz
 ALLOC=system
 SYSTEM_STUFF += libexttextcat
 SYSTEM_STUFF += cppunit
@@ -449,7 +449,7 @@ $(eval $(call gen_no_archs,OOO_JAVA_ARCHS))
 OOO_GCJ_ARCHS = $(filter-out $(OOO_OPENJDK_ARCHS), $(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs,OOO_GCJ_ARCHS))
 
-OOO_GCJ_JDK_ARCHS := hppa kfreebsd-i386 kfreebsd-amd64
+OOO_GCJ_JDK_ARCHS := hppa
 OOO_OPENJDK_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs,OOO_OPENJDK_ARCHS))
 
@@ -617,26 +617,16 @@ ifneq "$(ENABLE_MINIMIZER)" "y"
 endif
 	BUILD_DEPS += , libpoppler-dev (>= 0.8.0), libpoppler-private-dev, libpoppler-cpp-dev
 
-# fails their tests
-ifeq "$(DEB_HOST_ARCH)" "armel"
-ENABLE_GRAPHITE=n
-SYSTEM_STUFF := $(filter-out graphite, $(SYSTEM_STUFF))
-endif
-ifeq "$(DEB_HOST_ARCH)" "sparc"
-ENABLE_GRAPHITE=n
-SYSTEM_STUFF := $(filter-out graphite, $(SYSTEM_STUFF))
-endif
-
 ifeq "$(ENABLE_GRAPHITE)" "y"
   ifneq (,$(filter graphite, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libgraphite2-dev (>= 0.9.3) [!armel !sparc]
+	BUILD_DEPS += , libgraphite2-dev (>= 0.9.3)
   endif
 else
 	CONFIGURE_FLAGS += --disable-graphite
 endif
 
 ifneq (,$(filter harfbuzz, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libharfbuzz-dev
+	BUILD_DEPS += , libharfbuzz-dev (>= 0.9.18)
 endif
 
 ifneq (,$(filter libexttextcat, $(SYSTEM_STUFF)))
@@ -853,16 +843,16 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
   ifeq "$(JDK)" "openjdk"
     ifeq "$(JAVA_MAINVER)" "6"
-	BUILD_DEPS += , openjdk-$(JAVA_MAINVER)-jdk (>= 6b23~pre8-2) [$(filter-out ia64,$(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))])
-      # except on ia64, which doesn't build with 6...
-      ifneq (,$(findstring ia64,$(OOO_JAVA_ARCHS)))
-	BUILD_DEPS += , openjdk-7-jdk [ia64]
-        ifeq "$(DEB_HOST_ARCH)" "ia64"
-          JAVA_MAINVER=7
-        endif
-      endif
+	BUILD_DEPS += , openjdk-$(JAVA_MAINVER)-jdk (>= 6b23~pre8-2) [$(filter-out ia64 $((OOO_GCJ_JDK_ARCHS),$(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))])
     else
-	BUILD_DEPS += , openjdk-$(JAVA_MAINVER)-jdk [$(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))]
+	BUILD_DEPS += , openjdk-$(JAVA_MAINVER)-jdk [$(filter-out mips mipsel $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))]
+      # no 7 on mips(el)
+      ifneq (,$(findstring mips,$(OOO_JAVA_ARCHS)))
+	BUILD_DEPS += , openjdk-6-jdk (>= 6b23~pre8-2) [mips mipsel]
+        ifneq (,$(findstring mips,$(DEB_HOST_ARCH)))
+	JAVA_MAINVER=6
+	endif
+      endif
     endif
 	JAVA_HOME=/usr/lib/jvm/java-$(JAVA_MAINVER)-openjdk-$(DEB_HOST_ARCH)
   endif
@@ -1624,12 +1614,6 @@ endif
 ifeq "$(WHEEZY_BACKPORT)" "y"
   ifneq (,$(filter hsqldb, $(SYSTEM_STUFF)))
 	perl -pi -e "s/(Build-Conflicts: .*)/\1,libhsqldb-java (>= $(HSQLDB_TOONEWVER)~),/" debian/control
-  endif
-endif
-
-ifeq "$(WHEEZY_BACKPORT)" "y"
-  ifneq (,$(filter harfbuzz, $(SYSTEM_STUFF)))
-	perl -pi -e "s/(Build-Conflicts: .*)/\1,libharfbuzz-dev (= 0.9.17-3),/" debian/control
   endif
 endif
 
