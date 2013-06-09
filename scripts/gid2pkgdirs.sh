@@ -83,7 +83,6 @@ mv ./usr/share/mime* \
 create_package_directory gid_Module_Root_Files_Images           pkg/libreoffice-common
 create_package_directory gid_Module_Oo_Linguistic               pkg/libreoffice-common
 create_package_directory gid_Module_Optional_Xsltfiltersamples  pkg/libreoffice-common
-create_package_directory gid_Module_Optional_Javafilter         pkg/libreoffice-common
 create_package_directory gid_Module_Optional_Grfflt             pkg/libreoffice-draw
 create_package_directory gid_Module_Prg_Calc_Bin                pkg/libreoffice-calc
 create_package_directory gid_Module_Prg_Math_Bin                pkg/libreoffice-math
@@ -97,9 +96,9 @@ create_package_directory gid_Module_Brand_Prg_Draw              pkg/libreoffice-
 create_package_directory gid_Module_Brand_Prg_Wrt               pkg/libreoffice-writer
 create_package_directory gid_Module_Brand_Prg_Impress           pkg/libreoffice-impress
 create_package_directory gid_Module_Brand_Prg_Base              pkg/libreoffice-base
-create_package_directory gid_Module_Optional_Pyuno              pkg/python3-uno
+create_package_directory gid_Module_Pyuno              pkg/python3-uno
 create_package_directory gid_Module_Optional_Pyuno_LibreLogo	pkg/libreoffice-librelogo
-create_package_directory gid_Module_Optional_Extensions_Script_Provider_For_Python		pkg/libreoffice-script-provider-python
+create_package_directory gid_Module_Script_Provider_For_Python		pkg/libreoffice-script-provider-python
 create_package_directory gid_Module_Optional_Gnome              pkg/libreoffice-gnome
 create_package_directory gid_Module_Optional_Kde                pkg/libreoffice-kde
 create_package_directory gid_Module_Root_Files_2                pkg/libreoffice-common
@@ -117,7 +116,7 @@ create_package_directory gid_Module_Optional_Extensions_MINIMIZER	pkg/libreoffic
 create_package_directory gid_Module_Optional_Extensions_MySQLConnector  pkg/libreoffice-mysql-connector
 create_package_directory gid_Module_Pdfimport     pkg/libreoffice-pdfimport
 create_package_directory gid_Module_Optional_Extensions_PRESENTER_SCREEN	pkg/libreoffice-presenter-console
-create_package_directory gid_Module_Optional_Extensions_REPORTDESIGN	pkg/libreoffice-report-builder
+create_package_directory gid_Module_Reportbuilder	pkg/libreoffice-report-builder
 create_package_directory gid_Module_Optional_PostgresqlSdbc     pkg/libreoffice-sdbc-postgresql
 move_wrappers pkg/libreoffice-common soffice unopkg
 move_wrappers pkg/libreoffice-common libreoffice loffice lofromtemplate
