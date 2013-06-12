@@ -187,7 +187,6 @@ endif
 SYSTEM_STUFF += mdds
 SYSTEM_STUFF += vigra
 USE_EXTERNAL_CXXLIBS=y
-#SYSTEM_STUFF += sablot
 SYSTEM_STUFF += mythes
 SYSTEM_STUFF += icu
 ICU_MINVER= (>= 4.6)
@@ -679,10 +678,12 @@ PYMAJOR:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[0])")
 PYMINOR:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[1])")
 PYMINORPLUS1:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[1]+1)")
 PYTHON_SITE:=debian/python3.3-uno/$(shell $(PYTHON) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
+ifeq "$(ENABLE_PYTHON2)" "y"
 PY2MAJOR:=$(shell $(PYTHON2) -c "import sys; print sys.version_info[0]")
 PY2MINOR:=$(shell $(PYTHON2) -c "import sys; print sys.version_info[1]")
 PY2MINORPLUS1:=$(shell $(PYTHON2) -c "import sys; print sys.version_info[1]+1")
 PYTHON2_SITE:=debian/python-uno/$(shell $(PYTHON2) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
+endif
 else
 PYMAJOR:=$(shell $(PYTHON2) -c "import sys; print (sys.version_info[0])")
 PYMINOR:=$(shell $(PYTHON2) -c "import sys; print (sys.version_info[1])")
@@ -702,7 +703,7 @@ ifeq "$(ENABLE_PYTHON)" "y"
 	BUILD_DEPS += , python (>= 2.6.6-3+squeeze4)
 	# for dh_python3
 	BUILD_DEPS += , python3
-	DBG_DBG_SUGGESTS+= , python-dbg
+	DBG_DBG_SUGGESTS+= , $(PYTHON)-dbg
   ifneq "$(WHEEZY_BACKPORT)" "y"
 	BUILD_DEPS += , $(PYTHON)-dev (>= 3.3)
     ifeq "$(ENABLE_PYTHON2)" "y"
@@ -759,7 +760,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	#ISOS=$(shell $(SOURCE_TREE)/bin/lo-xlate-lang -i all')
 	ISOS:=en-US af ar as ast be bg bn br bs ca ca-XV cs cy da de dz el \
 	  en-GB en-ZA eo es et eu fa fi fr ga gl gu he hi hr hu id is it ja \
-	  ka km ko ku lt lv mk mn ml mr nb ne nl nn nr nso oc om or \
+	  ka kk km ko ku lt lv mk mn ml mr nb ne nl nn nr nso oc om or \
 	  pa-IN pl pt pt-BR ro ru rw si sk sl sr ss st sv \
 	  ta te tg th tn tr ts ug uk uz ve vi xh zh-CN zh-TW zu
     ifeq "$(ENABLE_HELP)" "n"
@@ -772,7 +773,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	#LANGPACKISOS:=$(shell $(SOURCE_TREE)/bin/lo-xlate-lang -i all')
 	LANGPACKISOS:=en-US af ar as ast be bg bn br bs ca ca-XV cs cy da de dz el \
 	  en-GB en-ZA eo es et eu fa fi fr ga gl gu he hi hr hu id is it ja \
-	  ka km ko ku lt lv mk mn ml mr nb ne nl nn nr nso oc om or \
+	  ka kk km ko ku lt lv mk mn ml mr nb ne nl nn nr nso oc om or \
 	  pa-IN pl pt pt-BR ro ru rw si sk sl sr ss st sv \
 	  ta te tg th tn tr ts ug uk uz ve vi xh zh-CN zh-TW zu
   endif
@@ -963,9 +964,15 @@ ifneq (,$(filter boost, $(SYSTEM_STUFF)))
     ifneq "$(BOOST_VERSION)" "default"
 	BUILD_DEPS += , libboost$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-date-time$(BOOST_VERSION)-dev $(BOOST_MINVER)
 	#BUILD_DEPS += , libboost-thread$(BOOST_VERSION)-dev, libboost-program-options$(BOOST_VERSION)-dev
+      ifeq (,$(filter orcus, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libboost-system$(BOOST_VERSION)-dev $(BOOST_MINVER)
+      endif
     else
 	BUILD_DEPS += , libboost-dev $(BOOST_MINVER), libboost-date-time-dev $(BOOST_MINVER)
 	#BUILD_DEPS += , libboost-thread-dev, libboost-program-options-dev
+      ifeq (,$(filter orcus, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libboost-system-dev $(BOOST_MINVER)
+      endif
     endif
   endif
 endif
@@ -989,9 +996,6 @@ endif
 ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
   ifneq (,$(filter libwpd, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libwpd-dev (>= 0.9.0)
-  endif
-  ifneq (,$(filter sablot, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libsablot0-dev (>= 1.0.2-4)
   endif
   ifneq (,$(filter mythes, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libmythes-dev (>= 2:1.2)
