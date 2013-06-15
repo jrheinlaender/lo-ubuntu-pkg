@@ -37,9 +37,6 @@ export gb_SHELL:=$(SHELL)
 
 SYSTEM_GCC_VERSION = $(shell gcc --version | sed -n '/^gcc/s/.*\(.\..\)\..$$/\1/p')
 
-# Debian buildds run as user `buildd', other are using /CurrentlyBuilding
-ON_BUILDD := $(shell if [ "`whoami`" = buildd -o -f /CurrentlyBuilding ] || echo $(CURDIR) | grep -q \/build\/buildd; then echo y; else echo n; fi)
-
 PKGDIR:=debian/libreoffice
 OODIRNAME=libreoffice
 OODIR:=usr/lib/$(OODIRNAME)
@@ -173,7 +170,7 @@ else
   BOOST_VERSION=1.53
 endif
 ifeq "$(BOOST_VERSION)" "default"
-  ifeq "$(SYSTEM_GCC_VERSION)" "4.8"
+  ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) ge 4.8 && echo true)" "true"
     BOOST_MINVER= (>= 1.53)
   else
     BOOST_MINVER= (>= 1.38)
@@ -201,7 +198,7 @@ CAIRO_FONTS_PATCH=y
 BUILD_KDE=y
 # not ported to KDE 4
 ENABLE_KDEAB=n
-ifeq "$(SYSTEM_GCC_VERSION)" "4.7"
+ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) ge 4.7 && echo true)" "true"
 # < 4.8 fails with gcc 4.7, see #667911
 QT_MINVER= (>= 4:4.8)
 else
@@ -393,9 +390,7 @@ ifeq "$(shell echo $(DEB_VERSION_UPSTREAM) | grep -E '(alpha|beta)'; echo $$?)" 
 CONFIGURE_FLAGS += --enable-release-build
 endif
 
-ifneq ($(ON_BUILDD),y)
 CONFIGURE_FLAGS += --enable-verbose
-endif
 
 CONFIGURE_FLAGS += --with-alloc=$(ALLOC)
 
@@ -555,6 +550,14 @@ CONFIGURE_FLAGS += $(foreach i, $(SYSTEM_STUFF),--with-system-$(i))
 
 CC_PREFIX:=$(shell gcc -dumpmachine)-
 
+	BUILD_DEPS += , gcc-4.6 [!i386 !amd64 !kfreebsd-i386 !kfreebas-amd64] ,g++-4.6 [!i386 !amd64 !kfreebsd-i386 !kfreebsd-amd64]
+ifeq (,$(findstring i386,$(DEB_HOST_ARCH)))
+  ifeq (,$(findstring amd64,$(DEB_HOST_ARCH)))
+    ifneq "$(SYSTEM_GCC_VERSION)" "4.6"
+	GCC_VERSION := 4.6
+    endif
+  endif
+endif
 ifneq "$(GCC_VERSION)" ""
   ifneq "$(SYSTEM_GCC_VERSION)" "$(GCC_VERSION)"
     BUILD_DEPS += , gcc-$(GCC_VERSION), g++-$(GCC_VERSION)
