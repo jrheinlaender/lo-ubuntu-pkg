@@ -37,9 +37,6 @@ export gb_SHELL:=$(SHELL)
 
 SYSTEM_GCC_VERSION = $(shell gcc --version | sed -n '/^gcc/s/.*\(.\..\)\..$$/\1/p')
 
-# Debian buildds run as user `buildd', other are using /CurrentlyBuilding
-ON_BUILDD := $(shell if [ "`whoami`" = buildd -o -f /CurrentlyBuilding ] || echo $(CURDIR) | grep -q \/build\/buildd; then echo y; else echo n; fi)
-
 PKGDIR:=debian/libreoffice
 OODIRNAME=libreoffice
 OODIR:=usr/lib/$(OODIRNAME)
@@ -154,7 +151,7 @@ ENABLE_JAVA=y
 ifeq "$(ENABLE_JAVA)" "y"
   JDK=openjdk
   JAVA_MAINVER=7
-  ifneq (,$(filter hppa, $(DEB_HOST_ARCH)))
+  ifneq (,$(filter hppa kfreebsd%, $(DEB_HOST_ARCH)))
     JDK=gcj-jdk
   endif
 endif
@@ -173,7 +170,7 @@ else
   BOOST_VERSION=1.53
 endif
 ifeq "$(BOOST_VERSION)" "default"
-  ifeq "$(SYSTEM_GCC_VERSION)" "4.8"
+  ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) ge 4.8 && echo true)" "true"
     BOOST_MINVER= (>= 1.53)
   else
     BOOST_MINVER= (>= 1.38)
@@ -187,7 +184,6 @@ endif
 SYSTEM_STUFF += mdds
 SYSTEM_STUFF += vigra
 USE_EXTERNAL_CXXLIBS=y
-#SYSTEM_STUFF += sablot
 SYSTEM_STUFF += mythes
 SYSTEM_STUFF += icu
 ICU_MINVER= (>= 4.6)
@@ -204,7 +200,7 @@ CAIRO_FONTS_PATCH=y
 BUILD_KDE=y
 # not ported to KDE 4
 ENABLE_KDEAB=n
-ifeq "$(SYSTEM_GCC_VERSION)" "4.7"
+ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) ge 4.7 && echo true)" "true"
 # < 4.8 fails with gcc 4.7, see #667911
 QT_MINVER= (>= 4:4.8)
 else
@@ -400,9 +396,7 @@ ifeq "$(shell echo $(DEB_VERSION_UPSTREAM) | grep -E '(alpha|beta)'; echo $$?)" 
 CONFIGURE_FLAGS += --enable-release-build
 endif
 
-ifneq ($(ON_BUILDD),y)
 CONFIGURE_FLAGS += --enable-verbose
-endif
 
 CONFIGURE_FLAGS += --with-alloc=$(ALLOC)
 
@@ -450,7 +444,7 @@ $(eval $(call gen_no_archs,OOO_JAVA_ARCHS))
 OOO_GCJ_ARCHS = $(filter-out $(OOO_OPENJDK_ARCHS), $(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs,OOO_GCJ_ARCHS))
 
-OOO_GCJ_JDK_ARCHS := hppa
+OOO_GCJ_JDK_ARCHS := hppa kfreebsd-i386 kfreebsd-amd64
 OOO_OPENJDK_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs,OOO_OPENJDK_ARCHS))
 
@@ -560,6 +554,14 @@ CONFIGURE_FLAGS += $(foreach i, $(SYSTEM_STUFF),--with-system-$(i))
 
 CC_PREFIX:=$(shell gcc -dumpmachine)-
 
+	BUILD_DEPS += , gcc-4.6 [!i386 !amd64 !kfreebsd-i386 !kfreebas-amd64] ,g++-4.6 [!i386 !amd64 !kfreebsd-i386 !kfreebsd-amd64]
+ifeq (,$(findstring i386,$(DEB_HOST_ARCH)))
+  ifeq (,$(findstring amd64,$(DEB_HOST_ARCH)))
+    ifneq "$(SYSTEM_GCC_VERSION)" "4.6"
+	GCC_VERSION := 4.6
+    endif
+  endif
+endif
 ifneq "$(GCC_VERSION)" ""
   ifneq "$(SYSTEM_GCC_VERSION)" "$(GCC_VERSION)"
     BUILD_DEPS += , gcc-$(GCC_VERSION), g++-$(GCC_VERSION)
@@ -680,10 +682,12 @@ PYMAJOR:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[0])")
 PYMINOR:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[1])")
 PYMINORPLUS1:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[1]+1)")
 PYTHON_SITE:=debian/python3.3-uno/$(shell $(PYTHON) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
+ifeq "$(ENABLE_PYTHON2)" "y"
 PY2MAJOR:=$(shell $(PYTHON2) -c "import sys; print sys.version_info[0]")
 PY2MINOR:=$(shell $(PYTHON2) -c "import sys; print sys.version_info[1]")
 PY2MINORPLUS1:=$(shell $(PYTHON2) -c "import sys; print sys.version_info[1]+1")
 PYTHON2_SITE:=debian/python-uno/$(shell $(PYTHON2) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
+endif
 else
 PYMAJOR:=$(shell $(PYTHON2) -c "import sys; print (sys.version_info[0])")
 PYMINOR:=$(shell $(PYTHON2) -c "import sys; print (sys.version_info[1])")
@@ -703,7 +707,7 @@ ifeq "$(ENABLE_PYTHON)" "y"
 	BUILD_DEPS += , python (>= 2.6.6-3+squeeze4)
 	# for dh_python3
 	BUILD_DEPS += , python3
-	DBG_DBG_SUGGESTS+= , python-dbg
+	DBG_DBG_SUGGESTS+= , $(PYTHON)-dbg
   ifneq "$(WHEEZY_BACKPORT)" "y"
 	BUILD_DEPS += , $(PYTHON)-dev (>= 3.3)
     ifeq "$(ENABLE_PYTHON2)" "y"
@@ -765,7 +769,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	#ISOS=$(shell $(SOURCE_TREE)/bin/lo-xlate-lang -i all')
 	ISOS:=en-US af ar as ast be bg bn br bs ca ca-XV cs cy da de dz el \
 	  en-GB en-ZA eo es et eu fa fi fr ga gl gu he hi hr hu id is it ja \
-	  ka km ko ku lt lv mk mn ml mr nb ne nl nn nr nso oc om or \
+	  ka kk km ko ku lt lv mk mn ml mr nb ne nl nn nr nso oc om or \
 	  pa-IN pl pt pt-BR ro ru rw si sk sl sr ss st sv \
 	  ta te tg th tn tr ts ug uk uz ve vi xh zh-CN zh-TW zu
     ifeq "$(ENABLE_HELP)" "n"
@@ -778,7 +782,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	#LANGPACKISOS:=$(shell $(SOURCE_TREE)/bin/lo-xlate-lang -i all')
 	LANGPACKISOS:=en-US af ar as ast be bg bn br bs ca ca-XV cs cy da de dz el \
 	  en-GB en-ZA eo es et eu fa fi fr ga gl gu he hi hr hu id is it ja \
-	  ka km ko ku lt lv mk mn ml mr nb ne nl nn nr nso oc om or \
+	  ka kk km ko ku lt lv mk mn ml mr nb ne nl nn nr nso oc om or \
 	  pa-IN pl pt pt-BR ro ru rw si sk sl sr ss st sv \
 	  ta te tg th tn tr ts ug uk uz ve vi xh zh-CN zh-TW zu
   endif
@@ -969,9 +973,15 @@ ifneq (,$(filter boost, $(SYSTEM_STUFF)))
     ifneq "$(BOOST_VERSION)" "default"
 	BUILD_DEPS += , libboost$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-date-time$(BOOST_VERSION)-dev $(BOOST_MINVER)
 	#BUILD_DEPS += , libboost-thread$(BOOST_VERSION)-dev, libboost-program-options$(BOOST_VERSION)-dev
+      ifeq (,$(filter orcus, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libboost-system$(BOOST_VERSION)-dev $(BOOST_MINVER)
+      endif
     else
 	BUILD_DEPS += , libboost-dev $(BOOST_MINVER), libboost-date-time-dev $(BOOST_MINVER)
 	#BUILD_DEPS += , libboost-thread-dev, libboost-program-options-dev
+      ifeq (,$(filter orcus, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libboost-system-dev $(BOOST_MINVER)
+      endif
     endif
   endif
 endif
@@ -995,9 +1005,6 @@ endif
 ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
   ifneq (,$(filter libwpd, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libwpd-dev (>= 0.9.0)
-  endif
-  ifneq (,$(filter sablot, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libsablot0-dev (>= 1.0.2-4)
   endif
   ifneq (,$(filter mythes, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libmythes-dev (>= 2:1.2)
@@ -2322,11 +2329,6 @@ endif
 	mkdir -p -m755 $(PKGDIR)-base/usr/share/applications \
 	               $(PKGDIR)-core/usr/share/applications
 
-	for f in `find debian -name 'xdg/*.desktop' ! -name "*soffice.od*"`; do \
-		if ! grep -q X-KDE-Protocols $$f; then \
-			echo 'X-KDE-Protocols=file,http,smb,ftp,webdav' >> $$f; \
-		fi; \
-	done
 	sed -i -e 's/Office;/Office;Graphics;/' $(PKGDIR)-draw/$(OODIR)/share/xdg/draw.desktop
 	# invalid, according to lintian. make it shut up.
 	for i in writer calc impress draw math base; do \
@@ -2484,7 +2486,11 @@ else
 	# move rpt stuff into -report-builder-bin
 	rm -rf $(PKGDIR)-report-builder-bin
 	mkdir -p $(PKGDIR)-report-builder-bin/$(OODIR)/program
-	mv $(PKGDIR)-report-builder/$(OODIR)/program/librpt* \
+	# FIXME: it seems that --enable/--disable-reportbuiler affects the install
+	# location. sigh.
+	if [ -e $(PKGDIR)-core/$(OODIR)/program/librptlo.so ]; then \
+		i=core; else i=report-builder; fi; \
+	mv $(PKGDIR)-$$i/$(OODIR)/program/librpt* \
 		$(PKGDIR)-report-builder-bin/$(OODIR)/program
   endif
 endif
