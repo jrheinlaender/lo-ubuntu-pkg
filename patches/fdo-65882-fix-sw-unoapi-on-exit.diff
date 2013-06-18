@@ -1,0 +1,62 @@
+From 23ff4ca909f960a7fb36ac87791d448a2ed5eb6d Mon Sep 17 00:00:00 2001
+From: Michael Meeks <michael.meeks@suse.com>
+Date: Tue, 18 Jun 2013 09:00:12 +0000
+Subject: fdo#65882 - fix intermittent writer unit test failure on exit.
+
+Change-Id: Iffa4ea724f2192f85df66eaf4e9e4f30e6ba3d4b
+---
+diff --git a/sw/source/filter/xml/XMLRedlineImportHelper.cxx b/sw/source/filter/xml/XMLRedlineImportHelper.cxx
+index b4f85a5..e922d3c 100644
+--- a/sw/source/filter/xml/XMLRedlineImportHelper.cxx
++++ b/sw/source/filter/xml/XMLRedlineImportHelper.cxx
+@@ -368,25 +368,32 @@ XMLRedlineImportHelper::~XMLRedlineImportHelper()
+     }
+ 
+     // set redline mode & key
+-    Any aAny;
++    try
++    {
++        Any aAny;
+ 
+-    aAny.setValue( &bShowChanges, ::getBooleanCppuType() );
+-    if ( bHandleShowChanges )
+-        xModelPropertySet->setPropertyValue( sShowChanges, aAny );
+-    else
+-        xImportInfoPropertySet->setPropertyValue( sShowChanges, aAny );
++        aAny.setValue( &bShowChanges, ::getBooleanCppuType() );
++        if ( bHandleShowChanges )
++            xModelPropertySet->setPropertyValue( sShowChanges, aAny );
++        else
++            xImportInfoPropertySet->setPropertyValue( sShowChanges, aAny );
+ 
+-    aAny.setValue( &bRecordChanges, ::getBooleanCppuType() );
+-    if ( bHandleRecordChanges )
+-        xModelPropertySet->setPropertyValue( sRecordChanges, aAny );
+-    else
+-        xImportInfoPropertySet->setPropertyValue( sRecordChanges, aAny );
++        aAny.setValue( &bRecordChanges, ::getBooleanCppuType() );
++        if ( bHandleRecordChanges )
++            xModelPropertySet->setPropertyValue( sRecordChanges, aAny );
++        else
++            xImportInfoPropertySet->setPropertyValue( sRecordChanges, aAny );
+ 
+-    aAny <<= aProtectionKey;
+-    if ( bHandleProtectionKey )
+-        xModelPropertySet->setPropertyValue( sRedlineProtectionKey, aAny );
+-    else
+-        xImportInfoPropertySet->setPropertyValue( sRedlineProtectionKey, aAny);
++        aAny <<= aProtectionKey;
++        if ( bHandleProtectionKey )
++            xModelPropertySet->setPropertyValue( sRedlineProtectionKey, aAny );
++        else
++            xImportInfoPropertySet->setPropertyValue( sRedlineProtectionKey, aAny);
++    }
++    catch (const uno::RuntimeException &) // fdo#65882
++    {
++        SAL_WARN( "sw", "potentially benign ordering issue during shutdown" );
++    }
+ }
+ 
+ void XMLRedlineImportHelper::Add(
+--
+cgit v0.9.0.2-2-gbebe
