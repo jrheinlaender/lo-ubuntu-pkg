@@ -2329,7 +2329,14 @@ endif
 ifeq "$(ENABLE_PYTHON)" "y"
 	# PyUNO packaging
 	install -d $(PYTHON_SITE)
-	mv debian/python3.3-uno/$(OODIR)/program/uno.py $(PYTHON_SITE)
+	# prepend stuff so that it works when the module is not in LOs
+	# directories but in $(PYTHON_SITE). Can't be a patch (anymore)
+	# as otherwise the python-based unittests fail miserably.
+	echo "import sys, os" > $(PYTHON_SITE)/uno.py
+	echo "sys.path.append('$(OODIR)/program')" >> $(PYTHON_SITE)/uno.py
+	echo echo "os.putenv('URE_BOOTSTRAP', 'vnd.sun.star.pathname:$(OODIR)/program/fundamentalrc')" >> $(PYTHON_SITE)/uno.py
+	cat debian/python3.3-uno/$(OODIR)/program/uno.py >> $(PYTHON_SITE)/uno.px
+	rm -f debian/python3.3-uno/$(OODIR)/program/uno.py
 	mv debian/python3.3-uno/$(OODIR)/program/unohelper.py $(PYTHON_SITE)
 	touch debian/python3.3-uno/$(OODIR)/program/pythonloader.unorc
 	chmod u+w debian/python3.3-uno/$(OODIR)/program/pythonloader.unorc
