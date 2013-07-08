@@ -96,7 +96,7 @@ create_package_directory gid_Module_Brand_Prg_Draw              pkg/libreoffice-
 create_package_directory gid_Module_Brand_Prg_Wrt               pkg/libreoffice-writer
 create_package_directory gid_Module_Brand_Prg_Impress           pkg/libreoffice-impress
 create_package_directory gid_Module_Brand_Prg_Base              pkg/libreoffice-base
-create_package_directory gid_Module_Pyuno              pkg/python3.3-uno
+create_package_directory gid_Module_Pyuno              pkg/python3-uno
 create_package_directory gid_Module_Optional_Pyuno_LibreLogo	pkg/libreoffice-librelogo
 create_package_directory gid_Module_Script_Provider_For_Python		pkg/libreoffice-script-provider-python
 create_package_directory gid_Module_Optional_Gnome              pkg/libreoffice-gnome
