@@ -70,7 +70,7 @@ lo_sources_ver=$(shell grep AC_INIT $(SOURCE_TREE)/configure.ac | grep documentf
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
 GIT_TAG=libreoffice-$(lo_sources_ver)
-GIT_BRANCH=libreoffice-4-1
+GIT_BRANCH=libreoffice-4-1-0
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
 lo_sources_ver=$(shell cat $(CURDIR)/sources.ver | cut -d= -f2)
@@ -113,6 +113,8 @@ BUILD_DEPS=\
     zip,\
     zlib1g-dev\
 
+
+CHECKTARGET:=check
 # These are components which can be built from internal copies, or used from the
 # distribution. See configure --help for valid values (--with-system-<value>).
 SYSTEM_STUFF = dicts
@@ -128,8 +130,7 @@ endif
 # uses pythonX.Y directly (and the dh_pycentral-created dependencies allow
 # also the non-working default python then) - see e.g. #587402. Also
 # note we are NOT working with python < 2.6 anymore!
-# Also note that you need to adapt all package names...
-PYTHON_VERSION=3.3
+PYTHON_VERSION=current
 ifeq "$(PYTHON_VERSION)" "current"
   PYTHON=python3
 export PYTHON=python3
@@ -551,14 +552,14 @@ CONFIGURE_FLAGS += $(foreach i, $(SYSTEM_STUFF),--with-system-$(i))
 
 CC_PREFIX:=$(shell gcc -dumpmachine)-
 
-	BUILD_DEPS += , gcc-4.6 [!i386 !amd64 !kfreebsd-i386 !kfreebsd-amd64] ,g++-4.6 [!i386 !amd64 !kfreebsd-i386 !kfreebsd-amd64]
-ifeq (,$(findstring i386,$(DEB_HOST_ARCH)))
-  ifeq (,$(findstring amd64,$(DEB_HOST_ARCH)))
-    ifneq "$(SYSTEM_GCC_VERSION)" "4.6"
-	GCC_VERSION := 4.6
-    endif
-  endif
-endif
+#	BUILD_DEPS += , gcc-4.6 [!i386 !amd64 !kfreebsd-i386 !kfreebsd-amd64] ,g++-4.6 [!i386 !amd64 !kfreebsd-i386 !kfreebsd-amd64]
+#ifeq (,$(findstring i386,$(DEB_HOST_ARCH)))
+#  ifeq (,$(findstring amd64,$(DEB_HOST_ARCH)))
+#    ifneq "$(SYSTEM_GCC_VERSION)" "4.6"
+#	GCC_VERSION := 4.6
+#    endif
+#  endif
+#endif
 ifneq "$(GCC_VERSION)" ""
   ifneq "$(SYSTEM_GCC_VERSION)" "$(GCC_VERSION)"
     BUILD_DEPS += , gcc-$(GCC_VERSION), g++-$(GCC_VERSION)
@@ -682,7 +683,7 @@ ifneq "$(WHEEZY_BACKPORT)" "y"
 PYMAJOR:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[0])")
 PYMINOR:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[1])")
 PYMINORPLUS1:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[1]+1)")
-PYTHON_SITE:=debian/python3.3-uno/$(shell $(PYTHON) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
+PYTHON_SITE:=debian/python3-uno/$(shell $(PYTHON) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
 ifeq "$(ENABLE_PYTHON2)" "y"
 PY2MAJOR:=$(shell $(PYTHON2) -c "import sys; print sys.version_info[0]")
 PY2MINOR:=$(shell $(PYTHON2) -c "import sys; print sys.version_info[1]")
@@ -693,8 +694,8 @@ else
 PYMAJOR:=$(shell $(PYTHON2) -c "import sys; print (sys.version_info[0])")
 PYMINOR:=$(shell $(PYTHON2) -c "import sys; print (sys.version_info[1])")
 PYMINORPLUS1:=$(shell $(PYTHON2) -c "import sys; print (sys.version_info[1]+1)")
-# YES, really! python3.3-uno. see "OMG!" below :-)
-PYTHON_SITE:=debian/python3.3-uno/$(shell $(PYTHON2) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
+# YES, really! python3-uno. see "OMG!" below :-)
+PYTHON_SITE:=debian/python3-uno/$(shell $(PYTHON2) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
 PYTHON:=$(PYTHON2)
 endif
 
@@ -1153,7 +1154,7 @@ else
 endif
 
 ifneq "$(ENABLE_PYTHON)" "y"
-	DEBHELPER_OPTIONS+= -Npython-uno -Npython3.3-uno -Nlibreoffice-script-provider-python
+	DEBHELPER_OPTIONS+= -Npython-uno -Npython3-uno -Nlibreoffice-script-provider-python
   ifeq "$(BUILD_ISOS)" "en-US"
 	CONFIGURE_FLAGS += --disable-python
   else
@@ -1161,10 +1162,10 @@ ifneq "$(ENABLE_PYTHON)" "y"
   endif
 else
   ifeq "$(WHEEZY_BACKPORT)" "y"
-	DEBHELPER_OPTIONS+= -Npython3.3-uno
+	DEBHELPER_OPTIONS+= -Npython3-uno
 	PYUNO_DEPENDS = python-uno
   else
-	PYUNO_DEPENDS = python3.3-uno | python3-uno (>= 4.0~) | python-uno
+	PYUNO_DEPENDS = python3-uno (>= 4.0~) | python-uno
   endif
   CONFIGURE_FLAGS += --enable-python=system
 endif
@@ -1575,8 +1576,9 @@ ifeq "$(BUILD_TEST_PACKAGE)" "y"
 	# we want the build deps as dep on subsequentcheckbase, but strip the arch
 	# specifics as we are arch-all
 	# for now we filter out the arch-specific libc* and ia64, which is ugly,
-	# but better than manual bookkeeping
-	perl -pi -e "s#%BUILD_DEPS_ARCH_ALL%#$(strip $(shell echo '$(BUILD_DEPS), $(BUILD_DEPS_INDEP)'|sed -e 's/,/,\n /g'|grep -v libc0.1| grep -v libc6| grep -v ia64|sed -e 's/\[[^]]*\]//g'))#g" debian/control
+	# but better than manual bookkeeping. Also filter out the mips(el)-only
+	# binutils build-dep...
+	perl -pi -e "s#%BUILD_DEPS_ARCH_ALL%#$(strip $(shell echo '$(BUILD_DEPS), $(BUILD_DEPS_INDEP)'|sed -e 's/,/,\n /g'|grep -v libc0.1| grep -v libc6| grep -v ia64|grep -v binutils|sed -e 's/\[[^]]*\]//g'))#g" debian/control
 endif
 ifeq "$(BUILD_KDE)" "y"
 	perl -pi -e 's/%LO-DESKTOP-INTEGRATION%/libreoffice-gnome | libreoffice-kde/' debian/control
@@ -1802,7 +1804,7 @@ endif
 		export HOME=$$t; \
 		export SAL_USE_VCLPLUGIN="svp"; \
 		if [ -x /usr/bin/gdb ]; then ulimit -c unlimited; fi && \
-		$(MAKE) -k check || $(MAKE) check && \
+		$(MAKE) -k $(CHECKTARGET) || $(MAKE) $(CHECKTARGET) && \
 	rm -rf $$t
 
 ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
@@ -2346,16 +2348,16 @@ ifeq "$(ENABLE_PYTHON)" "y"
 	echo "import sys, os" > $(PYTHON_SITE)/uno.py
 	echo "sys.path.append('$(OODIR)/program')" >> $(PYTHON_SITE)/uno.py
 	echo "os.putenv('URE_BOOTSTRAP', 'vnd.sun.star.pathname:$(OODIR)/program/fundamentalrc')" >> $(PYTHON_SITE)/uno.py
-	cat debian/python3.3-uno/$(OODIR)/program/uno.py >> $(PYTHON_SITE)/uno.py
-	rm -f debian/python3.3-uno/$(OODIR)/program/uno.py
-	mv debian/python3.3-uno/$(OODIR)/program/unohelper.py $(PYTHON_SITE)
-	touch debian/python3.3-uno/$(OODIR)/program/pythonloader.unorc
-	chmod u+w debian/python3.3-uno/$(OODIR)/program/pythonloader.unorc
+	cat debian/python3-uno/$(OODIR)/program/uno.py >> $(PYTHON_SITE)/uno.py
+	rm -f debian/python3-uno/$(OODIR)/program/uno.py
+	mv debian/python3-uno/$(OODIR)/program/unohelper.py $(PYTHON_SITE)
+	touch debian/python3-uno/$(OODIR)/program/pythonloader.unorc
+	chmod u+w debian/python3-uno/$(OODIR)/program/pythonloader.unorc
 	( echo '[Bootstrap]'; \
 	  echo 'PYTHONHOME=file:///usr/lib/python$(PYMAJOR).$(PYMINOR)' ;\
 	  echo 'PYTHONPATH=$$PYTHONHOME $$PYTHONHOME/site-packages $$PYTHONHOME/lib-dynload $$PYTHONHOME/lib-tk $$ORIGIN' \
-	) > debian/python3.3-uno/$(OODIR)/program/pythonloader.unorc
-	chmod u-w debian/python3.3-uno/$(OODIR)/program/pythonloader.unorc
+	) > debian/python3-uno/$(OODIR)/program/pythonloader.unorc
+	chmod u-w debian/python3-uno/$(OODIR)/program/pythonloader.unorc
   ifneq "$(WHEEZY_BACKPORT)" "y"
     ifeq "$(ENABLE_PYTHON2)" "y"
 	install -d $(PYTHON2_SITE)
@@ -2366,7 +2368,7 @@ ifeq "$(ENABLE_PYTHON)" "y"
 	mkdir -p debian/python-uno/$(OODIR)/program
 	mkdir -p debian/python-uno/$(OODIR)/share/registry
 	mkdir -p debian/python-uno/$(OODIR)/share/Scripts
-	cat debian/python3.3-uno/$(OODIR)/program/pythonloader.unorc \
+	cat debian/python3-uno/$(OODIR)/program/pythonloader.unorc \
 		| sed -e "s/$(PYMAJOR).$(PYMINOR)/$(PY2MAJOR).$(PY2MINOR)/" \
 		> debian/python-uno/$(OODIR)/program/pythonloader.unorc
 	for i in py2uno.so libpy2uno.so; do \
@@ -2377,11 +2379,11 @@ ifeq "$(ENABLE_PYTHON)" "y"
 	install -m644 $(SOURCE_TREE)/workdir/$(shell .  $(SOURCE_TREE)/bin/get_config_variables OUTPATH PROEXT; echo $$OUTPATH$$PROEXT)/LinkTarget/Library/libpython2loaderlo.so \
 		debian/python-uno/$(OODIR)/program/libpython2loaderlo.so
 	ln -s libpython2loaderlo.so debian/python-uno/$(OODIR)/program/libpythonloaderlo.so
-	cp debian/python3.3-uno/$(OODIR)/program/pythonloader.py \
+	cp debian/python3-uno/$(OODIR)/program/pythonloader.py \
 		debian/python-uno/$(OODIR)/program
-	cp debian/python3.3-uno/$(OODIR)/share/registry/pyuno.xcd \
+	cp debian/python3-uno/$(OODIR)/share/registry/pyuno.xcd \
 		debian/python-uno/$(OODIR)/share/registry
-	cp -r debian/python3.3-uno/$(OODIR)/share/Scripts/python \
+	cp -r debian/python3-uno/$(OODIR)/share/Scripts/python \
 		debian/python-uno/$(OODIR)/share/Scripts
     endif
   endif
@@ -2389,13 +2391,13 @@ ifeq "$(ENABLE_PYTHON)" "y"
 	rm -f debian/libreoffice-script-provider-python/$(OODIR)/share/extensions/script-provider-for-python/registration/LICENSE
   endif
 
-	mkdir -p debian/python3.3-uno/usr/share/doc/python3.3-uno
+	mkdir -p debian/python3-uno/usr/share/doc/python3-uno
 	cp -r $(SOURCE_TREE)/pyuno/demo \
-	  debian/python3.3-uno/usr/share/doc/python3.3-uno; \
+	  debian/python3-uno/usr/share/doc/python3-uno; \
 	for i in $(SOURCE_TREE)/pyuno/doc/*; do \
-		cp $$i debian/python3.3-uno/usr/share/doc/python3.3-uno; \
+		cp $$i debian/python3-uno/usr/share/doc/python3-uno; \
 	done
-	cd debian/python3.3-uno/usr/share/doc/python3.3-uno && \
+	cd debian/python3-uno/usr/share/doc/python3-uno && \
 		find . -type d -name "CVS" | xargs -r rm -rf
   ifneq "$(WHEEZY_BACKPORT)" "y"
     ifeq "$(ENABLE_PYTHON2)" "y"
@@ -2414,7 +2416,7 @@ endif
 ifeq "$(WHEEZY_BACKPORT)" "y"
 	# OMG!!
 	rm -rf debian/python-uno
-	mv debian/python3.3-uno debian/python-uno
+	mv debian/python3-uno debian/python-uno
 endif
 
 	# should be empty now, remove if there
@@ -2934,14 +2936,14 @@ endif
 ifeq "$(WHEEZY_BACKPORT)" "y"
 	dh_python2 -ppython-uno --no-guessing-versions --no-guessing-deps
 else
-	dh_python3 -ppython3.3-uno --no-guessing-deps
+	dh_python3 -ppython3-uno --no-guessing-deps
 	# adds a python3 (>= 3.2.3-3~)
   ifeq "$(PYTHON_VERSION)" "current"
 	sed -i -e 's/python$(PYMAJOR) (>= .*)/python$(PYMAJOR) (>= 3.3~)/g' \
-		debian/python3.3-uno.substvars
+		debian/python3-uno.substvars
   else
 	sed -i -e 's/python$(PYMAJOR) (>= .*)/python$(PYMAJOR).$(PYMINOR)/g' \
-		debian/python3.3-uno.substvars
+		debian/python3-uno.substvars
   endif
   ifeq "$(ENABLE_PYTHON2)" "y"
 	dh_python2 -ppython-uno --no-guessing-versions --no-guessing-deps
