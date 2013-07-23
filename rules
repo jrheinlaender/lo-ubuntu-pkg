@@ -544,7 +544,7 @@ endif
 # Debian WHeezy
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "wheezy-backports"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub libmwaw libodfgen mdds liblangtag orcus harfbuzz libatomic-ops firebird, $(SYSTEM_STUFF))
+  SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub libmwaw libodfgen mdds liblangtag orcus harfbuzz libatomic-ops, $(SYSTEM_STUFF))
   PACKAGE_SDK_DOCS=n
   WHEEZY_BACKPORT=y
 endif
@@ -1120,7 +1120,17 @@ ifneq (,$(filter libatomic-ops, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libatomic-ops-dev (>= 7.3~alpha1+git20110913-1)
 endif
 ifneq (,$(filter firebird, $(SYSTEM_STUFF)))
+  ifneq "$(WHEEZY_BACKPORT)" "y"
 	BUILD_DEPS += , firebird-dev (>= 2.5.2.26540.ds4-2)
+	# no FIREBIRD_CFLAGS here. Have no effect as fb_config is there
+	# and configure prefers that over our values...
+  else
+	BUILD_DEPS += , firebird-dev
+	# firebird-dev only _Suggests_ libfbembed2.5...
+	BUILD_DEPS += , libfbembed2.5
+	FIREBIRD_CFLAGS := " "
+	FIREBIRD_LIBS := "-L/usr/lib/$(DEB_HOST_MULTIARCH) -lfbembed"
+  endif
 endif
 
 ifeq "$(BUILD_GTK)" "n"
@@ -1731,6 +1741,7 @@ $(STAMP_DIR)/build-arch:
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
 	PYTHON=$(PYTHON) PYTHON_CFLAGS="$(shell pkg-config --cflags python-$(PYMAJOR).$(PYMINOR))" PYTHON_LIBS="$(shell pkg-config --libs python-$(PYMAJOR).$(PYMINOR))" \
 	MARIADBCONFIG=$(MARIADBCONFIG) \
+	FIREBIRD_CFLAGS=$(FIREBIRD_CFLAGS) FIREBIRD_LIBS=$(FIREBIRD_LIBS) \
 	./autogen.sh $(CONFIGURE_FLAGS) \
 		--without-doxygen --disable-ext-wiki-publisher \
 		--disable-report-builder --disable-scripting-javascript \
@@ -1784,6 +1795,7 @@ $(STAMP_DIR)/build-indep:
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
 	PYTHON=$(PYTHON) PYTHON_CFLAGS="$(shell pkg-config --cflags python-$(PYMAJOR).$(PYMINOR))" PYTHON_LIBS="$(shell pkg-config --libs python-$(PYMAJOR).$(PYMINOR))" \
+	FIREBIRD_CFLAGS=$(FIREBIRD_CFLAGS) FIREBIRD_LIBS=$(FIREBIRD_LIBS) \
 	MARIADBCONFIG=$(MARIADBCONFIG) \
 	./autogen.sh $(CONFIGURE_FLAGS) --with-help $(CONFIGURE_FLAGS_LANG)
 
