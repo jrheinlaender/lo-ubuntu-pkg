@@ -1270,13 +1270,22 @@ ifeq "$(USE_GSTREAMER)" "y"
 	BUILD_DEPS += , libgstreamer-plugins-base$(GSTREAMER_VERSION)-dev
 	GSTREAMER_PLUGINS_SUGGESTS += , gstreamer$(GSTREAMER_VERSION)-plugins-base, gstreamer$(GSTREAMER_VERSION)-plugins-good, gstreamer$(GSTREAMER_VERSION)-plugins-ugly, gstreamer$(GSTREAMER_VERSION)-plugins-bad, gstreamer$(GSTREAMER_VERSION)-ffmpeg
 	DBG_DBG_SUGGESTS+= , libgstreamer$(GSTREAMER_VERSION)-0-dbg
+	AVMEDIA_BE_DEPENDS += , libreoffice-avmedia-backend-gstreamer
 else
 	CONFIGURE_FLAGS += --disable-gstreamer-0-10
+	DEBHELPER_OPTIONS += -Nlibreoffice-avmedia-backend-gstreamer
 endif
 
 ifeq "$(USE_VLC)" "y"
 	BUILD_DEPS += , libvlc-dev
 	CONFIGURE_FLAGS += --enable-vlc
+  ifeq "$(AVMEDIA_BE_DEPENDS)" ""
+	AVMEDIA_BE_DEPENDS += , libreoffice-avmedia-backend-vlc
+  else
+	AVMEDIA_BE_DEPENDS += | libreoffice-avmedia-backend-vlc
+  endif
+else
+	DEBHELPER_OPTIONS += -Nlibreoffice-avmedia-backend-vlc
 endif
 
 ifneq (,$(filter neon, $(SYSTEM_STUFF)))
@@ -2580,6 +2589,17 @@ ifeq (,$(filter lpsolve, $(SYSTEM_STUFF)))
 		$(PKGDIR)-core/$(OODIR)/program
 endif
 
+ifeq "$(USE_GSTREAMER)" "y"
+	mkdir -p $(PKGDIR)-avmedia-backend-gstreamer/$(OODIR)/program
+	mv $(PKGDIR)-core/$(OODIR)/program/libavmediagst.so \
+		$(PKGDIR)-avmedia-backend-gstreamer/$(OODIR)/program
+endif
+ifeq "$(USE_VLC)" "y"
+	mkdir -p $(PKGDIR)-avmedia-backend-vlc/$(OODIR)/program
+	mv $(PKGDIR)-core/$(OODIR)/program/libavmediavlc.so \
+		$(PKGDIR)-avmedia-backend-vlc/$(OODIR)/program
+endif
+
 	for i in $(ARCH_DEP_PACKAGES); do \
 		if [ -e debian/$$i.bug-script.in ]; then \
 			cat debian/$$i.bug-script.in \
@@ -2619,7 +2639,7 @@ $(STAMP_DIR)/install-indep: $(STAMP_DIR)/build-indep $(STAMP_DIR)/install-common
 	dh_testdir
 	dh_testroot
 
-ifneq "$(USE_GSTREAMER)" "y"
+ifeq "$(shell echo $(USE_GSTREAMER)$(USE_VLC) | grep -q y && echo 0)" "0"
 	# sound doesn't work anyway, remove the .wav files to save space
 	rm -rf $(PKGDIR)-common/$(OODIR)/share/gallery/sounds
 	rm -f $(PKGDIR)-common/$(OODIR)/share/gallery/sg9.*
@@ -3112,6 +3132,7 @@ endif
 		-V'libebook-dep=$(shell debian/scripts/get_libebook_dep.sh)' \
 		-V'idlc-cpp-depends=$(IDLC_CPP_DEPENDS)' \
 		-V'pyuno-depends=$(PYUNO_DEPENDS)' \
+		-V'avmedia-be-depends=$(AVMEDIA_BE_DEPENDS)' \
 		-V'dejavu-depends=$(DEJAVU_DEPENDS)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-v$(BINARY_VERSION)
