@@ -150,10 +150,16 @@ PACKAGE_TTF_OPENSYMBOL=y
 BUILD_ONLY_EN_US=n
 ENABLE_JAVA=y
 ifeq "$(ENABLE_JAVA)" "y"
-  JDK=openjdk
-  JAVA_MAINVER=7
-  ifneq (,$(filter hppa kfreebsd%, $(DEB_HOST_ARCH)))
-    JDK=gcj-jdk
+  ifneq "$(WHEEZY_BACKPORT)" "y"
+    JDK=default
+  else
+    JDK=openjdk
+  endif
+  ifneq "$(JDK)" "default"
+    JAVA_MAINVER=7
+    ifneq (,$(filter hppa kfreebsd%, $(DEB_HOST_ARCH)))
+      JDK=gcj-jdk
+    endif
   endif
 endif
 JAVAHELPER_MIN_VERSION= (>= 0.37~)
@@ -421,7 +427,7 @@ ifeq "$(ENABLE_OPENGL)" "y"
 endif
 
 IGNORE_MAKE_CHECK_FAILURES=-
-ifneq "$(JDK)" "gcj"
+ifneq "$(JDK)" "gcj-jdk"
   ifneq (,$(findstring i386,$(DEB_HOST_ARCH)))
 IGNORE_MAKE_CHECK_FAILURES:=
   endif
@@ -796,10 +802,15 @@ endif
 
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(JDK)" "default"
+	BUILD_DEPS += , java-common (>= 0.49)
+    include /usr/share/java/java_defaults.mk
 	JAVA_HOME=/usr/lib/jvm/default-java
 	BUILD_DEPS += , default-jdk$(filter-out !ia64,$(OOO_NO_JAVA_ARCHS))
     ifneq (,$(findstring ia64,$(OOO_JAVA_ARCHS)))
 	BUILD_DEPS += , default-jdk (>= 1:1.7-48) [ia64]
+    endif
+    ifeq ($(java_default_version),5)
+	JDK=gcj-jdk
     endif
   endif
   ifeq "$(JDK)" "java-gcj-compat"
@@ -842,13 +853,13 @@ ifeq "$(ENABLE_JAVA)" "y"
 	GCJ_VERSION = $(shell basename `readlink $(JAVA_HOME)/bin/gcj` | sed -e s/gcj-//)
 	GCJ_JAWT_DEPENDS= $(shell dpkg -S /usr/lib/$(DEB_HOST_MULTIARCH)/gcj-$(GCJ_VERSION)-*/libgcj_bc.so.1 | cut -d: -f1 | sed -e s/$$/-awt/)
 	DBG_DBG_SUGGESTS+= , $(shell echo $(GCJ_AWT_DEPENDS) | sed -e s/awt/dbg/)
-	JAVA_RUNTIME_DEPENDS = default-jre | gcj-jre | java-gcj-compat
+	JAVA_RUNTIME_DEPENDS = default-jre | gcj-jre
 #  ifneq (,$(GCJ_JAWT_DEPENDS))
 #	JAVA_RUNTIME_DEPENDS += | $(GCJ_JAWT_DEPENDS)
 #  endif
   ifneq (,$(filter $(DEB_HOST_ARCH), $(OOO_OPENJDK_ARCHS)))
     ifneq "$(DEB_HOST_ARCH)" "ia64"
-	JAVA_RUNTIME_DEPENDS += | openjdk-6-jre | openjdk-7-jre
+	JAVA_RUNTIME_DEPENDS += | openjdk-7-jre | openjdk-6-jre
     else
 	JAVA_RUNTIME_DEPENDS += | openjdk-7-jre
     endif
