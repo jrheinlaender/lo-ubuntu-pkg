@@ -152,6 +152,7 @@ ENABLE_JAVA=y
 ifeq "$(ENABLE_JAVA)" "y"
   ifneq "$(WHEEZY_BACKPORT)" "y"
     JDK=default
+    include /usr/share/java/java_defaults.mk
   else
     JDK=openjdk
   endif
@@ -443,15 +444,23 @@ endif
 OOO_64BIT_ARCHS = $(filter amd64 ia64 kfreebsd-amd64 ppc64 s390x, $(OOO_ARCHS))
 
 # Java...
+ifeq "$(JDK)" "default"
+OOO_JAVA_ARCHS = $(filter $(OOO_ARCHS),$(java_architectures))
+else
 OOO_JAVA_ARCHS = $(OOO_ARCHS)
+endif
 $(eval $(call gen_no_archs,OOO_JAVA_ARCHS))
+
+ifeq "$(JDK)" "default"
+OOO_GCJ_JDK_ARCHS := $(filter $(OOO_ARCHS),$(filter-out $(java7_architectures),$(filter-out $(java6_architectures),$(java5_architectures))))
+else
+OOO_GCJ_JDK_ARCHS := hppa kfreebsd-i386 kfreebsd-amd64
+endif
+OOO_OPENJDK_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
+$(eval $(call gen_no_archs,OOO_OPENJDK_ARCHS))
 
 OOO_GCJ_ARCHS = $(filter-out $(OOO_OPENJDK_ARCHS), $(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs,OOO_GCJ_ARCHS))
-
-OOO_GCJ_JDK_ARCHS := hppa kfreebsd-i386 kfreebsd-amd64
-OOO_OPENJDK_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
-$(eval $(call gen_no_archs,OOO_OPENJDK_ARCHS))
 
 OOO_UNOWINREG_DLL_ARCHS := i386 amd64
 ifneq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_UNOWINREG_DLL_ARCHS)))
@@ -803,7 +812,6 @@ endif
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(JDK)" "default"
 	BUILD_DEPS += , java-common (>= 0.49)
-    include /usr/share/java/java_defaults.mk
 	JAVA_HOME=/usr/lib/jvm/default-java
 	BUILD_DEPS += , default-jdk$(filter-out !ia64,$(OOO_NO_JAVA_ARCHS))
     ifneq (,$(findstring ia64,$(OOO_JAVA_ARCHS)))
