@@ -159,7 +159,7 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
   ifneq "$(JDK)" "default"
     JAVA_MAINVER=7
-    ifneq (,$(filter hppa kfreebsd%, $(DEB_HOST_ARCH)))
+    ifneq (,$(filter hppa, $(DEB_HOST_ARCH)))
       JDK=gcj-jdk
     endif
   endif
@@ -172,12 +172,7 @@ USE_LIBHYPHEN=y
 LIBALTLINUXHYPH_MINVER= (>= 0.1.1-11)
 LIBHYPHEN_MINVER= (>= 2.4)
 SYSTEM_STUFF += boost
-# see 701310/695826. Also happens with sids new gcc 4.7.3
-ifeq "$(WHEEZY_BACKPORT)" "y"
-  BOOST_VERSION=default
-else
-  BOOST_VERSION=1.53
-endif
+BOOST_VERSION=default
 ifeq "$(BOOST_VERSION)" "default"
   ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) ge 4.8 && echo true)" "true"
     BOOST_MINVER= (>= 1.53)
@@ -841,6 +836,9 @@ ifeq "$(ENABLE_JAVA)" "y"
     ifneq (,$(findstring ia64,$(OOO_JAVA_ARCHS)))
 	BUILD_DEPS += , default-jdk (>= 1:1.7-48) [ia64]
     endif
+    ifneq (,$(findstring kfreebsd,$(OOO_JAVA_ARCHS)))
+	BUILD_DEPS += , java-common (>= 0.50) [kfreebsd-i386 kfreebsd-amd64], default-jdk (>= 1:1.7-50) [kfreebsd-i386 kfreebsd-amd64]
+    endif
     ifeq ($(java_default_version),5)
 	JDK=gcj-jdk
     endif
@@ -1011,6 +1009,9 @@ ifneq (,$(filter boost, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libboost-system-dev $(BOOST_MINVER)
       endif
     endif
+  endif
+  ifeq "$(shell if [ -e /usr/lib/$(DEB_HOST_MULTIARCH)/libboost_date_time.so ]; then echo true; fi)" "true"
+  	CONFIGURE_FLAGS += --with-boost-libdir=/usr/lib/$(DEB_HOST_MULTIARCH)
   endif
 endif
 
