@@ -71,8 +71,8 @@ GIT_BASEURL:=git://anongit.freedesktop.org/libreoffice
 lo_sources_ver=4.1.1.2-hotfix1
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
-GIT_TAG=libreoffice-$(lo_sources_ver)
-GIT_BRANCH=libreoffice-4-1
+GIT_TAG=libreoffice-$(lo_sources_ver)-hotfix1
+GIT_BRANCH=libreoffice-4-1-1
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
 lo_sources_ver=$(shell cat $(CURDIR)/sources.ver | cut -d= -f2)
@@ -162,7 +162,7 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
   ifneq "$(JDK)" "default"
     JAVA_MAINVER=7
-    ifneq (,$(filter hppa kfreebsd%, $(DEB_HOST_ARCH)))
+    ifneq (,$(filter hppa, $(DEB_HOST_ARCH)))
       JDK=gcj-jdk
     endif
   endif
@@ -175,12 +175,7 @@ USE_LIBHYPHEN=y
 LIBALTLINUXHYPH_MINVER= (>= 0.1.1-11)
 LIBHYPHEN_MINVER= (>= 2.4)
 SYSTEM_STUFF += boost
-# see 701310/695826. Also happens with sids new gcc 4.7.3
-ifeq "$(WHEEZY_BACKPORT)" "y"
-  BOOST_VERSION=default
-else
-  BOOST_VERSION=1.53
-endif
+BOOST_VERSION=default
 ifeq "$(BOOST_VERSION)" "default"
   ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) ge 4.8 && echo true)" "true"
     BOOST_MINVER= (>= 1.53)
@@ -281,11 +276,13 @@ ifeq "$(ENABLE_JAVA)" "y"
     else
       RUN_MAKE_CHECK=n
       ENABLE_JUNIT4=n
+      BUILD_TEST_PACKAGE=n
     endif
   endif
 else
   RUN_MAKE_CHECK=n
   ENABLE_JUNIT4=n
+  BUILD_TEST_PACKAGE=n
 endif
 ifeq "$(ENABLE_JUNIT4)" "y"
   JUNIT_MIN_VER= (>= 4.8.2-2)
@@ -433,10 +430,10 @@ endif
 
 IGNORE_MAKE_CHECK_FAILURES=-
 ifneq "$(JDK)" "gcj-jdk"
-  ifneq (,$(findstring i386,$(DEB_HOST_ARCH)))
+  ifeq (i386,$(DEB_HOST_ARCH))
 IGNORE_MAKE_CHECK_FAILURES:=
   endif
-  ifneq (,$(findstring amd64,$(DEB_HOST_ARCH)))
+  ifeq (amd64,$(DEB_HOST_ARCH))
 IGNORE_MAKE_CHECK_FAILURES:=
   endif
 endif
@@ -537,6 +534,10 @@ ifeq (ia64,$(findstring ia64,$(OOO_OPENJDK_ARCHS)))
 endif
 ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_GCJ_ARCHS)))
 	BUILD_JARS_NATIVE=n
+endif
+
+ifeq "$(BUILD_TEST_PACKAGE)" "n"
+	DEBHELPER_OPTIONS += -Nlibreoffice-subsequentcheckbase
 endif
 
 ifeq "$(PACKAGE_NSPLUGIN)" "y"
@@ -786,6 +787,9 @@ ifneq (,$(filter cppunit, $(SYSTEM_STUFF)))
 endif
 ifeq "$(RUN_MAKE_CHECK)" "y"
 	BUILD_DEPS += , gdb
+	# checking for uuidgen... no
+	# configure: WARNING: uuid is needed for dev-install
+	BUILD_DEPS += , uuid
   ifeq "$(ENABLE_JUNIT4)" "y"
 	BUILD_DEPS += , junit4 $(JUNIT_MIN_VER)
   else
@@ -861,14 +865,11 @@ ifeq "$(ENABLE_JAVA)" "y"
     ifneq (,$(findstring ia64,$(OOO_JAVA_ARCHS)))
 	BUILD_DEPS += , default-jdk (>= 1:1.7-48) [ia64]
     endif
+    ifneq (,$(findstring kfreebsd,$(OOO_JAVA_ARCHS)))
+	BUILD_DEPS += , java-common (>= 0.50) [kfreebsd-i386 kfreebsd-amd64], default-jdk (>= 1:1.7-50) [kfreebsd-i386 kfreebsd-amd64]
+    endif
     ifeq ($(java_default_version),5)
 	JDK=gcj-jdk
-    endif
-  endif
-  ifeq "$(JDK)" "java-gcj-compat"
-	JAVA_HOME=/usr/lib/jvm/java-gcj
-    ifneq (,$(findstring armel,$(OOO_JAVA_ARCHS)))
-	BUILD_DEPS += , gcj-4.3 (>= 4.3.1-2) [armel]
     endif
   endif
   ifeq "$(JDK)" "gcj-jdk"
@@ -1039,6 +1040,9 @@ ifneq (,$(filter boost, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libboost-system-dev $(BOOST_MINVER)
       endif
     endif
+  endif
+  ifeq "$(shell if [ -e /usr/lib/$(DEB_HOST_MULTIARCH)/libboost_date_time.so ]; then echo true; fi)" "true"
+  	CONFIGURE_FLAGS += --with-boost-libdir=/usr/lib/$(DEB_HOST_MULTIARCH)
   endif
 endif
 
@@ -1416,7 +1420,8 @@ clean-debdir:
 	# remove generated symlinks / java wrappers
 	rm -rf debian/usr
 
-	find debian -name "*.links" -exec rm {} \;
+	find debian -name "*.links" ! -name "libreoffice-dev-doc.links" \
+		-exec rm {} \;
 	if [ -d "$(STAMP_DIR)" ]; then rm -rf "$(STAMP_DIR)"; fi
 	rm -f debian/*.bug-script
 	rm -f debian/scripts/aotcompile.py*
@@ -2223,16 +2228,11 @@ endif
 	# the Debian i386 buildd, although having much ram still OOMs without
 	# this (at unoil.jar).
 	# Also the native jar build is MUCH faster with this. But it
-	# won't be accepted into the official java-gcj-compat package so this
+	# won't be accepted into the official libgcj-common package so this
 	# hack here is needed.
-	if [ -e /usr/lib/gcc/aotcompile.py ]; then \
-		aotcompile_py=/usr/lib/gcc/aotcompile.py; \
-	elif [ -e /usr/share/pyshared/aotcompile.py ]; then \
-		aotcompile_py=/usr/share/pyshared/aotcompile.py; \
-	fi && \
-	cp $$aotcompile_py debian/scripts
+	cp /usr/lib/gcc/aotcompile.py debian/scripts
 	cd debian/scripts && \
-		patch -p0 < $(CURDIR)/debian/aotcompile-256M-default.diff
+		patch -p0 < $(CURDIR)/debian/patches/aotcompile-256M-default.diff
 	PYTHONPATH="debian/scripts:$(shell echo $(PYTHON_SITE) | sed -e s,debian/python-uno,,)" \
 	AOT_MAKEFLAGS=-j$(NUM_CPUS) aot-compile -L /usr/lib/gcj/$(OODIRNAME) \
 	    debian/tmp/native-jars debian/tmp/native-jars/gcj
@@ -2690,12 +2690,14 @@ ifeq "$(ENABLE_JAVA)" "y"
 	done
 
 ifeq "$(BUILD_TEST_PACKAGE)" "y"
+  ifeq "$(ENABLE_JUNIT4)" "y"
 	rm -rf $(PKGDIR)-subsequentcheckbase
 	mkdir -p $(PKGDIR)-subsequentcheckbase/$(OODIR)/program/classes/
 	for jar in OOoRunner.jar OOoRunnerLight.jar test.jar test-tools.jar; \
 	do \
 		cp `find solver -name $$jar` $(PKGDIR)-subsequentcheckbase/$(OODIR)/program/classes/; \
 	done
+  endif
 endif
 endif
 
