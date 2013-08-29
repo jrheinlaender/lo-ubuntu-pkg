@@ -69,8 +69,8 @@ GIT_BASEURL:=git://anongit.freedesktop.org/libreoffice
 lo_sources_ver=$(shell grep AC_INIT $(SOURCE_TREE)/configure.ac | grep documentfoundation | cut -d, -f2 | sed -e 's,\[,,' -e 's,\],,')
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
-GIT_TAG=libreoffice-$(lo_sources_ver)
-GIT_BRANCH=libreoffice-4-1-0
+GIT_TAG=libreoffice-$(lo_sources_ver)-hotfix1
+GIT_BRANCH=libreoffice-4-1-1
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
 lo_sources_ver=$(shell cat $(CURDIR)/sources.ver | cut -d= -f2)
@@ -150,10 +150,17 @@ PACKAGE_TTF_OPENSYMBOL=y
 BUILD_ONLY_EN_US=n
 ENABLE_JAVA=y
 ifeq "$(ENABLE_JAVA)" "y"
-  JDK=openjdk
-  JAVA_MAINVER=7
-  ifneq (,$(filter hppa, $(DEB_HOST_ARCH)))
-    JDK=gcj-jdk
+  ifneq "$(WHEEZY_BACKPORT)" "y"
+    JDK=default
+    include /usr/share/java/java_defaults.mk
+  else
+    JDK=openjdk
+  endif
+  ifneq "$(JDK)" "default"
+    JAVA_MAINVER=7
+    ifneq (,$(filter hppa, $(DEB_HOST_ARCH)))
+      JDK=gcj-jdk
+    endif
   endif
 endif
 JAVAHELPER_MIN_VERSION= (>= 0.37~)
@@ -164,12 +171,7 @@ USE_LIBHYPHEN=y
 LIBALTLINUXHYPH_MINVER= (>= 0.1.1-11)
 LIBHYPHEN_MINVER= (>= 2.4)
 SYSTEM_STUFF += boost
-# see 701310/695826. Also happens with sids new gcc 4.7.3
-ifeq "$(WHEEZY_BACKPORT)" "y"
-  BOOST_VERSION=default
-else
-  BOOST_VERSION=1.53
-endif
+BOOST_VERSION=default
 ifeq "$(BOOST_VERSION)" "default"
   ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) ge 4.8 && echo true)" "true"
     BOOST_MINVER= (>= 1.53)
@@ -439,15 +441,23 @@ endif
 OOO_64BIT_ARCHS = $(filter amd64 ia64 kfreebsd-amd64 ppc64 s390x, $(OOO_ARCHS))
 
 # Java...
+ifeq "$(JDK)" "default"
+OOO_JAVA_ARCHS = $(filter $(OOO_ARCHS),$(java_architectures))
+else
 OOO_JAVA_ARCHS = $(OOO_ARCHS)
+endif
 $(eval $(call gen_no_archs,OOO_JAVA_ARCHS))
+
+ifeq "$(JDK)" "default"
+OOO_GCJ_JDK_ARCHS := $(filter $(OOO_ARCHS),$(filter-out $(java7_architectures) kfreebsd%,$(filter-out $(java6_architectures),$(java5_architectures))))
+else
+OOO_GCJ_JDK_ARCHS := hppa
+endif
+OOO_OPENJDK_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
+$(eval $(call gen_no_archs,OOO_OPENJDK_ARCHS))
 
 OOO_GCJ_ARCHS = $(filter-out $(OOO_OPENJDK_ARCHS), $(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs,OOO_GCJ_ARCHS))
-
-OOO_GCJ_JDK_ARCHS := hppa
-OOO_OPENJDK_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
-$(eval $(call gen_no_archs,OOO_OPENJDK_ARCHS))
 
 OOO_UNOWINREG_DLL_ARCHS := i386 amd64
 ifneq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_UNOWINREG_DLL_ARCHS)))
@@ -545,7 +555,7 @@ endif
 # Debian WHeezy
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "wheezy-backports"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub libmwaw libodfgen mdds liblangtag orcus harfbuzz, $(SYSTEM_STUFF))
+  SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub libmwaw libodfgen mdds liblangtag orcus harfbuzz libwpd redland, $(SYSTEM_STUFF))
   WHEEZY_BACKPORT=y
 endif
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "UNRELEASED"
@@ -739,9 +749,6 @@ ifneq (,$(filter cppunit, $(SYSTEM_STUFF)))
 endif
 ifeq "$(RUN_MAKE_CHECK)" "y"
 	BUILD_DEPS += , gdb
-	# checking for uuidgen... no
-	# configure: WARNING: uuid is needed for dev-install
-	BUILD_DEPS += , uuid
   ifeq "$(ENABLE_JUNIT4)" "y"
 	BUILD_DEPS += , junit4 $(JUNIT_MIN_VER)
   else
@@ -805,16 +812,14 @@ endif
 
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(JDK)" "default"
+	BUILD_DEPS += , java-common (>= 0.49)
 	JAVA_HOME=/usr/lib/jvm/default-java
 	BUILD_DEPS += , default-jdk$(filter-out !ia64,$(OOO_NO_JAVA_ARCHS))
     ifneq (,$(findstring ia64,$(OOO_JAVA_ARCHS)))
 	BUILD_DEPS += , default-jdk (>= 1:1.7-48) [ia64]
     endif
-  endif
-  ifeq "$(JDK)" "java-gcj-compat"
-	JAVA_HOME=/usr/lib/jvm/java-gcj
-    ifneq (,$(findstring armel,$(OOO_JAVA_ARCHS)))
-	BUILD_DEPS += , gcj-4.3 (>= 4.3.1-2) [armel]
+    ifeq ($(java_default_version),5)
+	JDK=gcj-jdk
     endif
   endif
   ifeq "$(JDK)" "gcj-jdk"
@@ -851,13 +856,13 @@ ifeq "$(ENABLE_JAVA)" "y"
 	GCJ_VERSION = $(shell basename `readlink $(JAVA_HOME)/bin/gcj` | sed -e s/gcj-//)
 	GCJ_JAWT_DEPENDS= $(shell dpkg -S /usr/lib/$(DEB_HOST_MULTIARCH)/gcj-$(GCJ_VERSION)-*/libgcj_bc.so.1 | cut -d: -f1 | sed -e s/$$/-awt/)
 	DBG_DBG_SUGGESTS+= , $(shell echo $(GCJ_AWT_DEPENDS) | sed -e s/awt/dbg/)
-	JAVA_RUNTIME_DEPENDS = default-jre | gcj-jre | java-gcj-compat
+	JAVA_RUNTIME_DEPENDS = default-jre | gcj-jre
 #  ifneq (,$(GCJ_JAWT_DEPENDS))
 #	JAVA_RUNTIME_DEPENDS += | $(GCJ_JAWT_DEPENDS)
 #  endif
   ifneq (,$(filter $(DEB_HOST_ARCH), $(OOO_OPENJDK_ARCHS)))
     ifneq "$(DEB_HOST_ARCH)" "ia64"
-	JAVA_RUNTIME_DEPENDS += | openjdk-6-jre | openjdk-7-jre
+	JAVA_RUNTIME_DEPENDS += | openjdk-7-jre | openjdk-6-jre
     else
 	JAVA_RUNTIME_DEPENDS += | openjdk-7-jre
     endif
@@ -984,6 +989,9 @@ ifneq (,$(filter boost, $(SYSTEM_STUFF)))
       endif
     endif
   endif
+  ifeq "$(shell if [ -e /usr/lib/$(DEB_HOST_MULTIARCH)/libboost_date_time.so ]; then echo true; fi)" "true"
+  	CONFIGURE_FLAGS += --with-boost-libdir=/usr/lib/$(DEB_HOST_MULTIARCH)
+  endif
 endif
 
 ifneq (,$(filter mdds, $(SYSTEM_STUFF)))
@@ -1004,7 +1012,7 @@ endif
 
 ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
   ifneq (,$(filter libwpd, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libwpd-dev (>= 0.9.0)
+	BUILD_DEPS += , libwpd-dev (>= 0.9.5)
   endif
   ifneq (,$(filter mythes, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libmythes-dev (>= 2:1.2)
@@ -1259,7 +1267,7 @@ ifeq "$(ENABLE_HELP)" "n"
 endif
 
 ifneq (,$(filter redland, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , librdf0-dev (>= 1.0.8)
+	BUILD_DEPS += , librdf0-dev (>= 1.0.16)
 	SHLIBS_OVERRIDE += -Xunordf
 endif
 
@@ -1747,10 +1755,12 @@ ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 endif
 
 ifneq "$(BUILD_ISOS)" "en-US"
-	# build some extensions again with all languages; as it contains language-specific help
+	# build sysui and some extensions again with all languages; as it contains language-specific help
 	# and/or descriptions...
+	$(MAKE) sysui.clean
 	$(MAKE) sdext.clean
 	$(MAKE) mysqlc.clean
+	make cmd cmd="cd sysui; export WITH_LANG='$(LANGPACKISOS)'; export WITH_LANG_LIST='$(LANGPACKISOS)'; $(MAKE)"
 	make cmd cmd="cd sdext; export WITH_LANG='$(LANGPACKISOS)'; export WITH_LANG_LIST='$(LANGPACKISOS)'; $(MAKE)"
 	make cmd cmd="cd mysqlc; export WITH_LANG='$(LANGPACKISOS)'; export WITH_LANG_LIST='$(LANGPACKISOS)'; $(MAKE)"
 endif
@@ -2169,16 +2179,11 @@ endif
 	# the Debian i386 buildd, although having much ram still OOMs without
 	# this (at unoil.jar).
 	# Also the native jar build is MUCH faster with this. But it
-	# won't be accepted into the official java-gcj-compat package so this
+	# won't be accepted into the official libgcj-common package so this
 	# hack here is needed.
-	if [ -e /usr/lib/gcc/aotcompile.py ]; then \
-		aotcompile_py=/usr/lib/gcc/aotcompile.py; \
-	elif [ -e /usr/share/pyshared/aotcompile.py ]; then \
-		aotcompile_py=/usr/share/pyshared/aotcompile.py; \
-	fi && \
-	cp $$aotcompile_py debian/scripts
+	cp /usr/lib/gcc/aotcompile.py debian/scripts
 	cd debian/scripts && \
-		patch -p0 < $(CURDIR)/debian/aotcompile-256M-default.diff
+		patch -p0 < $(CURDIR)/debian/patches/aotcompile-256M-default.diff
 	PYTHONPATH="debian/scripts:$(shell echo $(PYTHON_SITE) | sed -e s,debian/python-uno,,)" \
 	AOT_MAKEFLAGS=-j$(NUM_CPUS) aot-compile -L /usr/lib/gcj/$(OODIRNAME) \
 	    debian/tmp/native-jars debian/tmp/native-jars/gcj
@@ -2353,6 +2358,7 @@ ifeq "$(ENABLE_PYTHON)" "y"
 	touch debian/python3-uno/$(OODIR)/program/pythonloader.unorc
 	chmod u+w debian/python3-uno/$(OODIR)/program/pythonloader.unorc
 	( echo '[Bootstrap]'; \
+	  echo 'PYUNO_LOADER_PYTHONPATH=$$ORIGIN'; \
 	  echo 'PYTHONHOME=file:///usr/lib/python$(PYMAJOR).$(PYMINOR)' ;\
 	  echo 'PYTHONPATH=$$PYTHONHOME $$PYTHONHOME/site-packages $$PYTHONHOME/lib-dynload $$PYTHONHOME/lib-tk $$ORIGIN' \
 	) > debian/python3-uno/$(OODIR)/program/pythonloader.unorc
@@ -2666,10 +2672,8 @@ endif
 	# share/uno_packages/cache...
 	rm -rf $(PKGDIR)-common/$(OODIR)/presets/uno_packages
 
-	# set PYTHONPATH in soffice and unopkg
-	sed -i -e 's,case "`uname -s`" in,PYTHONPATH=$$sd_prog$${PYTHONPATH+:$$PYTHONPATH}\nexport PYTHONPATH\n\ncase "`uname -s`" in,' \
-		$(PKGDIR)-common/$(OODIR)/program/soffice
-	sed -i -e 's,unset XENVIRONMENT,PYTHONPATH=$$sd_prog$${PYTHONPATH+:$$PYTHONPATH}\nexport PYTHONPATH\n\nunset XENVIRONMENT,' \
+	# set PYTHONPATH in unopkg
+	perl -pi -e 's,unset XENVIRONMENT,unset XENVIRONMENT\n\nexport PYTHONPATH=\"/$(OODIR)/program\"\n\n,' \
 		$(PKGDIR)-common/$(OODIR)/program/unopkg
 
 ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
