@@ -453,9 +453,9 @@ endif
 $(eval $(call gen_no_archs,OOO_JAVA_ARCHS))
 
 ifeq "$(JDK)" "default"
-OOO_GCJ_JDK_ARCHS := $(filter $(OOO_ARCHS),$(filter-out $(java7_architectures),$(filter-out $(java6_architectures),$(java5_architectures))))
+OOO_GCJ_JDK_ARCHS := $(filter $(OOO_ARCHS),$(filter-out $(java7_architectures) kfreebsd%,$(filter-out $(java6_architectures),$(java5_architectures))))
 else
-OOO_GCJ_JDK_ARCHS := hppa kfreebsd-i386 kfreebsd-amd64
+OOO_GCJ_JDK_ARCHS := hppa
 endif
 OOO_OPENJDK_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs,OOO_OPENJDK_ARCHS))
@@ -559,7 +559,7 @@ endif
 # Debian WHeezy
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "wheezy-backports"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub libmwaw libodfgen mdds liblangtag orcus harfbuzz libwpd, $(SYSTEM_STUFF))
+  SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub libmwaw libodfgen mdds liblangtag orcus harfbuzz libwpd redland, $(SYSTEM_STUFF))
   WHEEZY_BACKPORT=y
 endif
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "UNRELEASED"
@@ -859,9 +859,6 @@ ifeq "$(ENABLE_JAVA)" "y"
 	BUILD_DEPS += , default-jdk$(filter-out !ia64,$(OOO_NO_JAVA_ARCHS))
     ifneq (,$(findstring ia64,$(OOO_JAVA_ARCHS)))
 	BUILD_DEPS += , default-jdk (>= 1:1.7-48) [ia64]
-    endif
-    ifneq (,$(findstring kfreebsd,$(OOO_JAVA_ARCHS)))
-	BUILD_DEPS += , java-common (>= 0.50) [kfreebsd-i386 kfreebsd-amd64], default-jdk (>= 1:1.7-50) [kfreebsd-i386 kfreebsd-amd64]
     endif
     ifeq ($(java_default_version),5)
 	JDK=gcj-jdk
@@ -1314,7 +1311,7 @@ ifeq "$(ENABLE_HELP)" "n"
 endif
 
 ifneq (,$(filter redland, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , librdf0-dev (>= 1.0.8)
+	BUILD_DEPS += , librdf0-dev (>= 1.0.16)
 	SHLIBS_OVERRIDE += -Xunordf
 endif
 
@@ -1799,10 +1796,12 @@ ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 endif
 
 ifneq "$(BUILD_ISOS)" "en-US"
-	# build some extensions again with all languages; as it contains language-specific help
+	# build sysui and some extensions again with all languages; as it contains language-specific help
 	# and/or descriptions...
+	$(MAKE) sysui.clean
 	$(MAKE) sdext.clean
 	$(MAKE) mysqlc.clean
+	make cmd cmd="cd sysui; export WITH_LANG='$(LANGPACKISOS)'; export WITH_LANG_LIST='$(LANGPACKISOS)'; $(MAKE)"
 	make cmd cmd="cd sdext; export WITH_LANG='$(LANGPACKISOS)'; export WITH_LANG_LIST='$(LANGPACKISOS)'; $(MAKE)"
 	make cmd cmd="cd mysqlc; export WITH_LANG='$(LANGPACKISOS)'; export WITH_LANG_LIST='$(LANGPACKISOS)'; $(MAKE)"
 endif
