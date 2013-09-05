@@ -1,0 +1,91 @@
+From 13badfb5ccd296faf480b19b2b33f7633f4085c5 Mon Sep 17 00:00:00 2001
+From: Bjoern Michaelsen <bjoern.michaelsen@canonical.com>
+Date: Thu, 5 Sep 2013 10:50:06 +0200
+Subject: [PATCH] lp#1204592: activate menues even earlier to reduce latency
+Forwarded: https://gerrit.libreoffice.org/gitweb?p=core.git;a=commitdiff;h=13badfb5ccd296faf480b19b2b33f7633f4085c5;hp=43b84bbba2519686eb6b0463f422bf695d2d74b9
+
+Change-Id: I54dc06c1bcd708fb666813ec2d0ca79acba361a0
+---
+ vcl/inc/unx/gtk/gtkframe.hxx          |  4 ++++
+ vcl/unx/gtk/window/gloactiongroup.cxx |  8 ++++++++
+ vcl/unx/gtk/window/gtksalframe.cxx    | 14 ++++++++++++++
+ 3 files changed, 26 insertions(+)
+
+diff --git a/vcl/inc/unx/gtk/gtkframe.hxx b/vcl/inc/unx/gtk/gtkframe.hxx
+index cce16ab..c2bb187 100644
+--- a/vcl/inc/unx/gtk/gtkframe.hxx
++++ b/vcl/inc/unx/gtk/gtkframe.hxx
+@@ -219,6 +219,10 @@ class GtkSalFrame : public SalFrame
+     SalMenu*                        m_pSalMenu;
+ 
+ #if defined(ENABLE_DBUS) && defined(ENABLE_GIO)
++    public:
++    void EnsureDbusMenuSynced();
++    private:
++    SalMenu*                        m_pLastSyncedDbusMenu;
+     friend void ensure_dbus_setup(GdkWindow* gdkWindow, GtkSalFrame* pSalFrame);
+     friend void on_registrar_available (GDBusConnection*, const gchar*, const gchar*, gpointer);
+     friend void on_registrar_unavailable (GDBusConnection*, const gchar*, gpointer);
+diff --git a/vcl/unx/gtk/window/gloactiongroup.cxx b/vcl/unx/gtk/window/gloactiongroup.cxx
+index 78fecf0..19187a6 100644
+--- a/vcl/unx/gtk/window/gloactiongroup.cxx
++++ b/vcl/unx/gtk/window/gloactiongroup.cxx
+@@ -144,8 +144,15 @@ g_lo_action_group_query_action (GActionGroup        *group,
+     if (action == NULL)
+         return FALSE;
+ 
++
+     if (enabled)
++    {
++        GtkSalFrame* pFrame = lo_group->priv->frame;
++        if (pFrame) {
++            pFrame->EnsureDbusMenuSynced();
++        }
+         *enabled = action->enabled;
++    }
+ 
+     if (parameter_type)
+         *parameter_type = action->parameter_type;
+@@ -193,6 +200,7 @@ g_lo_action_group_change_state (GActionGroup *group,
+                                 const gchar  *action_name,
+                                 GVariant     *value)
+ {
++    SAL_INFO("vcl.unity", "g_lo_action_group_change_state on " << group );
+     g_return_if_fail (value != NULL);
+ 
+     g_variant_ref_sink (value);
+diff --git a/vcl/unx/gtk/window/gtksalframe.cxx b/vcl/unx/gtk/window/gtksalframe.cxx
+index 8eda04a..ac64628 100644
+--- a/vcl/unx/gtk/window/gtksalframe.cxx
++++ b/vcl/unx/gtk/window/gtksalframe.cxx
+@@ -482,6 +482,9 @@ GtkSalFrame::GtkSalFrame( SystemParentData* pSysData )
+     GetGenericData()->ErrorTrapPush();
+     m_bDefaultPos       = true;
+     m_bDefaultSize      = true;
++#if defined(ENABLE_DBUS) && defined(ENABLE_GIO)
++    m_pLastSyncedDbusMenu = NULL;
++#endif
+     Init( pSysData );
+ }
+ 
+@@ -521,6 +524,17 @@ static void ObjectDestroyedNotify( gpointer data )
+     }
+ }
+ 
++#if defined(ENABLE_DBUS) && defined(ENABLE_GIO)
++void GtkSalFrame::EnsureDbusMenuSynced()
++{
++    GtkSalMenu* pSalMenu = static_cast<GtkSalMenu*>(GetMenu());
++    if(m_pLastSyncedDbusMenu != pSalMenu) {
++        m_pLastSyncedDbusMenu = pSalMenu;
++        static_cast<GtkSalMenu*>(pSalMenu)->Activate();
++    }
++}
++#endif
++
+ static void hud_activated( gboolean hud_active, gpointer user_data )
+ {
+     if ( hud_active )
+-- 
+1.8.3.2
+
