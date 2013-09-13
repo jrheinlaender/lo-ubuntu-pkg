@@ -71,8 +71,9 @@ GIT_BASEURL:=git://anongit.freedesktop.org/libreoffice
 lo_sources_ver=4.1.1.2-hotfix1
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
-GIT_TAG=libreoffice-$(lo_sources_ver)-hotfix1
-GIT_BRANCH=libreoffice-4-1-1
+#GIT_TAG=libreoffice-$(lo_sources_ver)
+GIT_TAG=88a97db7e630a70e68afcc80277174b9dd5ec159
+GIT_BRANCH=libreoffice-4-1-2
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
 lo_sources_ver=$(shell cat $(CURDIR)/sources.ver | cut -d= -f2)
@@ -162,8 +163,14 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
   ifneq "$(JDK)" "default"
     JAVA_MAINVER=7
-    ifneq (,$(filter hppa, $(DEB_HOST_ARCH)))
+    ifeq "$(WHEEZY_BACKPORT)" "y"
+      ifneq (,$(filter hppa kfreebsd%, $(DEB_HOST_ARCH)))
       JDK=gcj-jdk
+      endif
+    else
+      ifneq (,$(filter hppa, $(DEB_HOST_ARCH)))
+      JDK=gcj-jdk
+      endif
     endif
   endif
 endif
@@ -456,6 +463,9 @@ ifeq "$(JDK)" "default"
 OOO_GCJ_JDK_ARCHS := $(filter $(OOO_ARCHS),$(filter-out $(java7_architectures) kfreebsd%,$(filter-out $(java6_architectures),$(java5_architectures))))
 else
 OOO_GCJ_JDK_ARCHS := hppa
+ifeq "$(WHEEZY_BACKPORT)" "y"
+OOO_GCJ_JDK_ARCHS += kfreebsd-i386 kfreebsd-amd64
+endif
 endif
 OOO_OPENJDK_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs,OOO_OPENJDK_ARCHS))
@@ -646,9 +656,24 @@ ifneq "$(ENABLE_MINIMIZER)" "y"
 endif
 	BUILD_DEPS += , libpoppler-dev (>= 0.8.0), libpoppler-private-dev, libpoppler-cpp-dev
 
+ifeq "$(WHEEZY_BACKPORTS)" "y"
+# fails their tests
+  ifeq "$(DEB_HOST_ARCH)" "armel"
+ENABLE_GRAPHITE=n
+SYSTEM_STUFF := $(filter-out graphite, $(SYSTEM_STUFF))
+  endif
+  ifeq "$(DEB_HOST_ARCH)" "sparc"
+ENABLE_GRAPHITE=n
+SYSTEM_STUFF := $(filter-out graphite, $(SYSTEM_STUFF))
+  endif
+endif
+
 ifeq "$(ENABLE_GRAPHITE)" "y"
   ifneq (,$(filter graphite, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libgraphite2-dev (>= 0.9.3)
+    ifeq "$(WHEEZY_BACKPORTS)" "y"
+	BUILD_DEPS += [!armel !sparc]
+    endif
   endif
 else
 	CONFIGURE_FLAGS += --disable-graphite
@@ -687,7 +712,7 @@ ifneq (,$(filter libpng, $(SYSTEM_STUFF)))
        BUILD_DEPS += , libpng12-dev
 endif
 
-ifeq (,$(filter curl, $(SYSTEM_STUFF)))
+ifneq (,$(filter curl, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libcurl4-$(CURL_SECTYPE)-dev
 endif
 
@@ -2269,9 +2294,9 @@ endif
 		mv $$i debian/uno-libs3/$(OOUREDIR)/lib; \
 		ln -sf /$(OOUREDIR)/lib/`basename $$i` debian/uno-libs3/usr/lib/`basename $$i`; \
 	done
-	# we also need libxmlreader.so and libreg.so (libuno_cppuhelpergcc3.so.3 needs it)
-	# and libstore.so (libreg.so.3 needs it)
-	for i in libxmlreader.so libreg.so libstore.so; do \
+	# we also need libxmlreaderlo.so and libreglo.so (libuno_cppuhelpergcc3.so.3 needs it)
+	# and libstorelo.so (libreg.so.3 needs it)
+	for i in libxmlreaderlo.so libreglo.so libstorelo.so; do \
 		mv debian/ure/$(OOUREDIR)/lib/$$i \
 			debian/uno-libs3/$(OOUREDIR)/lib; \
 	done
