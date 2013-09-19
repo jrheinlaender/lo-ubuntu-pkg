@@ -379,6 +379,7 @@ FAKEROOT_LIBDIR=/usr/lib/$(DEB_HOST_MULTIARCH)/libfakeroot
 ENABLE_TELEPATHY=n
 ENABLE_LIBLANGTAG=y
 SYSTEM_STUFF += liblangtag
+ENABLE_ORCUS=y
 SYSTEM_STUFF += orcus
 USE_UCPP=n
 ifeq "$(USE_UCPP)" "y"
@@ -690,8 +691,9 @@ ifneq (,$(filter openssl, $(SYSTEM_STUFF)))
 	DBG_DBG_SUGGESTS += , libssl$(shell readlink /usr/lib/$(DEB_HOST_MULTIARCH)/libssl.so | cut -d"." -f3,4,5)-dbg
 endif
 ifeq "$(USE_OPENCL)" "y"
-	BUILD_DEPS += , ocl-icd-opencl-dev
-	CONFIGURE_FLAGS += --with-opencl-sdk=/usr
+	OPENCL_SUGGESTS := libopencl1
+else
+	CONFIGURE_FLAGS += --disable-opencl
 endif
 
 ifeq "$(BUILD_DBG_PACKAGE)" "y"
@@ -1007,8 +1009,10 @@ ifneq (,$(filter boost, $(SYSTEM_STUFF)))
   ifneq "$(BOOST_VERSION)" "default"
 	BUILD_DEPS += , libboost$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-date-time$(BOOST_VERSION)-dev $(BOOST_MINVER)
 	#BUILD_DEPS += , libboost-thread$(BOOST_VERSION)-dev, libboost-program-options$(BOOST_VERSION)-dev
-    ifeq (,$(filter orcus, $(SYSTEM_STUFF)))
+    ifeq "$(ENABLE_ORCUS)" "y"
+      ifeq (,$(filter orcus, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libboost-system$(BOOST_VERSION)-dev $(BOOST_MINVER)
+      endif
     endif
     ifeq ($USE_VLC),y)
 	BUILD_DEPS += , libboost-system$(BOOST_VERSION)-dev $(BOOST_MINVER)
@@ -1032,8 +1036,12 @@ ifneq (,$(filter mdds, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libmdds-dev (>= 0.9.0)
 endif
 
-ifneq (,$(filter orcus, $(SYSTEM_STUFF)))
+ifeq "$(ENABLE_ORCUS)" "y"
+  ifneq (,$(filter orcus, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , liborcus-dev (>= 0.5.0)
+  endif
+else
+	CONFIGURE_FLAGS += --disable-orcus
 endif
 
 ifneq (,$(filter vigra, $(SYSTEM_STUFF)))
@@ -3191,6 +3199,7 @@ endif
 		-V'pyuno-depends=$(PYUNO_DEPENDS)' \
 		-V'avmedia-be-depends=$(AVMEDIA_BE_DEPENDS)' \
 		-V'dejavu-depends=$(DEJAVU_DEPENDS)' \
+		-V'opencl-sug=$(OPENCL_SUGGESTS)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-v$(BINARY_VERSION)
 ifeq "$(ENABLE_JAVA)" "y"
