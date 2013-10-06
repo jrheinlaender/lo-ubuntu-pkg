@@ -1,0 +1,77 @@
+diff --git a/config_host.mk.in b/config_host.mk.in
+index 9268c7b..2a35ed5 100644
+--- a/config_host.mk.in
++++ b/config_host.mk.in
+@@ -150,6 +152,7 @@ export ENABLE_SCRIPTING_BEANSHELL=@ENABLE_SCRIPTING_BEANSHELL@
+ export ENABLE_SCRIPTING_JAVASCRIPT=@ENABLE_SCRIPTING_JAVASCRIPT@
+ export ENABLE_SDREMOTE=@ENABLE_SDREMOTE@
+ export ENABLE_SDREMOTE_BLUETOOTH=@ENABLE_SDREMOTE_BLUETOOTH@
++export SYSTEM_BLUEZ=@SYSTEM_BLUEZ@
+ export ENABLE_SILENT_MSI=@ENABLE_SILENT_MSI@
+ export ENABLE_SYMBOLS=@ENABLE_SYMBOLS@
+ export ENABLE_SYSTRAY_GTK=@ENABLE_SYSTRAY_GTK@
+diff --git a/sd/Library_sd.mk b/sd/Library_sd.mk
+index 6c57b4b..0a6cc9e 100644
+--- a/sd/Library_sd.mk
++++ b/sd/Library_sd.mk
+@@ -38,13 +38,19 @@ $(eval $(call gb_Library_add_sdi_headers,sd,\
+ 
+ $(eval $(call gb_Library_set_include,sd,\
+     $$(INCLUDE) \
+-    -I$(SRCDIR)/bluez_bluetooth/inc \
+     -I$(SRCDIR)/sd/inc \
+     -I$(SRCDIR)/sd/source/ui/inc \
+     -I$(SRCDIR)/sd/source/ui/slidesorter/inc \
+     -I$(WORKDIR)/SdiTarget/sd/sdi \
+ ))
+ 
++
++ifneq ($(SYSTEM_BLUEZ),YES)
++$(eval $(call gb_Library_add_cxxflags,sd,\
++       -I$(SRCDIR)/bluez_bluetooth/inc \
++))
++endif
++
+ $(eval $(call gb_Library_add_defs,sd,\
+     -DSD_DLLIMPLEMENTATION \
+ ))
+diff --git a/configure.ac b/configure.ac
+index ae7bf2c..80fbaa8 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -9383,28 +9417,34 @@ if test -n "$enable_sdremote" -a "$enable_sdremote" != "no"; then
+                     AC_MSG_RESULT([external])
+                     AC_CHECK_HEADER(bluetooth/bluetooth.h, [],
+                         [AC_MSG_ERROR(bluetooth.h not found. install bluez)], [])
++                    SYSTEM_BLUEZ=YES
+                 else
+                     AC_MSG_RESULT([internal])
+-                    BUILD_TYPE="$BUILD_TYPE BLUEZ"
++                    SYSTEM_BLUEZ=NO
+                 fi
+             else
+                 AC_MSG_RESULT([no, dbus disabled])
+                 ENABLE_SDREMOTE_BLUETOOTH=NO
++                SYSTEM_BLUEZ=NO
+             fi
+         else
+             AC_MSG_RESULT([yes])
+             ENABLE_SDREMOTE_BLUETOOTH=YES
++            SYSTEM_BLUEZ=NO
+         fi
+     else
+         AC_MSG_RESULT([no])
+         ENABLE_SDREMOTE_BLUETOOTH=NO
++        SYSTEM_BLUEZ=NO
+     fi
+ else
+     ENABLE_SDREMOTE=NO
+     AC_MSG_RESULT([no])
++    SYSTEM_BLUEZ=NO
+ fi
+ AC_SUBST(ENABLE_SDREMOTE)
+ AC_SUBST(ENABLE_SDREMOTE_BLUETOOTH)
++AC_SUBST(SYSTEM_BLUEZ)
+ 
+ dnl ===================================================================
+ dnl Check whether the gtk 2.0 libraries are available.
