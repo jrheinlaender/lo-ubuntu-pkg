@@ -1,0 +1,50 @@
+From 612508f02c221d2a9b6cf31a2c274149381c6f62 Mon Sep 17 00:00:00 2001
+From: David Bolen <db3l.net@gmail.com>
+Date: Sun, 6 Oct 2013 19:23:14 -0400
+Subject: [PATCH] fdo#70196: Python 2 compatibility for UNO import error
+ handling
+
+Add backwards compatibility support for Python 2 to the earlier
+change in fdo#66025 to improve import error handling under Python 3.
+
+Change-Id: I47bf8ef255c4c2a3e4a2754414977aaa8ed32483
+---
+ pyuno/source/module/uno.py |   15 ++++++++-------
+ 1 file changed, 8 insertions(+), 7 deletions(-)
+
+diff --git a/pyuno/source/module/uno.py b/pyuno/source/module/uno.py
+index 2396641..eb542f3 100644
+--- a/pyuno/source/module/uno.py
++++ b/pyuno/source/module/uno.py
+@@ -310,10 +310,10 @@ def _uno_import( name, *optargs, **kwargs ):
+               # uno and non-uno errors as uno lookups are attempted for all
+               # "from xxx import yyy" imports following a python failure.
+               #
+-              # The traceback from the original python exception is kept to
+-              # pinpoint the actual failing location, but in Python 3 the
+-              # original message is most likely unhelpful for uno failures,
+-              # as it will most commonly be a missing top level module,
++              # In Python 3, the original python exception traceback is reused
++              # to help pinpoint the actual failing location.  It's original
++              # message, unlike Python 2, is unlikely to be helpful for uno
++              # failures, as it most commonly is just a top level module,
+               # like 'com'.  Our exception appends the uno lookup failure.
+               # This is more ambiguous, but it plus the traceback should be
+               # sufficient to identify a root cause for python or uno issues.
+@@ -327,9 +327,10 @@ def _uno_import( name, *optargs, **kwargs ):
+               # keeps the exception relevant to the primary failure point,
+               # preventing us from re-processing our own import errors.
+ 
+-              uno_import_exc = ImportError(
+-                  "%s (or '%s.%s' is unknown)" % (py_import_exc, name, x)
+-                  ).with_traceback(py_import_exc.__traceback__)
++              uno_import_exc = ImportError("%s (or '%s.%s' is unknown)" %
++                                           (py_import_exc, name, x))
++              if sys.version_info[0] >= 3:
++                  uno_import_exc = uno_import_exc.with_traceback(py_import_exc.__traceback__)
+               uno_import_exc._uno_import_failed = True
+               raise uno_import_exc
+ 
+-- 
+1.7.10.4
+
