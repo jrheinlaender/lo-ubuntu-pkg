@@ -1,0 +1,60 @@
+From 23c7aeb5ec633674a51b41e936ad9708e502841b Mon Sep 17 00:00:00 2001
+From: Stephan Bergmann <sbergman@redhat.com>
+Date: Thu, 17 Oct 2013 18:01:47 +0200
+Subject: [PATCH] fdo#70319 "exponent followed by at least on digit" also for
+ special case 0.0
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+(cherry picked from commit 7bbd58eafc3146abcefc73d2d1ca6869bb47ef5a)
+Conflicts:
+	sal/rtl/math.cxx
+
+Change-Id: I07e7917417b8a22cf6d64f2b7a447f9084b9fa2d
+Reviewed-on: https://gerrit.libreoffice.org/6296
+Reviewed-by: Eike Rathke <erack@redhat.com>
+Tested-by: Eike Rathke <erack@redhat.com>
+Reviewed-by: Björn Michaelsen <bjoern.michaelsen@canonical.com>
+Reviewed-by: Caolán McNamara <caolanm@redhat.com>
+Tested-by: Caolán McNamara <caolanm@redhat.com>
+---
+ sal/qa/rtl/math/test-rtl-math.cxx | 6 ++++++
+ sal/rtl/source/math.cxx           | 4 ++++
+ 2 files changed, 10 insertions(+)
+
+diff --git a/sal/qa/rtl/math/test-rtl-math.cxx b/sal/qa/rtl/math/test-rtl-math.cxx
+index 8f6578c..3929a53 100644
+--- a/sal/qa/rtl/math/test-rtl-math.cxx
++++ b/sal/qa/rtl/math/test-rtl-math.cxx
+@@ -81,6 +81,12 @@ public:
+         CPPUNIT_ASSERT_EQUAL(rtl_math_ConversionStatus_Ok, status);
+         CPPUNIT_ASSERT_EQUAL(sal_Int32(RTL_CONSTASCII_LENGTH("1")), end);
+         CPPUNIT_ASSERT_EQUAL(1.0, res);
++        res = rtl::math::stringToDouble(
++            rtl::OUString("0e"),
++            sal_Unicode('.'), sal_Unicode(','), &status, &end);
++        CPPUNIT_ASSERT_EQUAL(rtl_math_ConversionStatus_Ok, status);
++        CPPUNIT_ASSERT_EQUAL(sal_Int32(RTL_CONSTASCII_LENGTH("1")), end);
++        CPPUNIT_ASSERT_EQUAL(0.0, res);
+     }
+ 
+     CPPUNIT_TEST_SUITE(Test);
+diff --git a/sal/rtl/source/math.cxx b/sal/rtl/source/math.cxx
+index e5c44d5..ec2bfc4 100644
+--- a/sal/rtl/source/math.cxx
++++ b/sal/rtl/source/math.cxx
+@@ -825,6 +825,10 @@ inline double stringToDouble(CharT const * pBegin, CharT const * pEnd,
+                 // offset
+                 while (p != pEnd && isDigit(*p))
+                     ++p;
++                if (p == pFirstExpDigit)
++                {   // no digits in exponent, reset end of scan
++                    p = pExponent;
++                }
+             }
+             else
+             {
+-- 
+1.8.3.2
+
