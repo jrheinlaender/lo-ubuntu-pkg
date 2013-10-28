@@ -23,7 +23,7 @@ BASE_VERSION:=$(shell echo $(DEB_VERSION) | cut -d: -f1):$(DEB_VERSION_UPSTREAM)
 BINARY_VERSION=$(DEB_VERSION)
 #HELP_L10N_VIRTUAL_VERSION:=$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d: -f2 | tr [~] [\\-])
 HELP_L10N_VIRTUAL_VERSION:=4.1
-OOVER:=4.1
+OOVER:=4.2
 NEXT_OOVER:=$(shell echo "$(OOVER) + 0.1" | bc)
 
 ARCH_INDEP_PACKAGES := $(shell dh_listpackages -i)
@@ -72,7 +72,7 @@ lo_sources_ver=4.1.2.3
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
 GIT_TAG=libreoffice-$(lo_sources_ver)
-GIT_BRANCH=libreoffice-4-1-2
+GIT_BRANCH=master
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
 lo_sources_ver=$(shell cat $(CURDIR)/sources.ver | cut -d= -f2)
@@ -91,13 +91,13 @@ BUILD_DEPS=\
     bzip2,\
     dpkg-dev (>= 1.16.1),\
     fastjar,\
-    flex | flex-old,\
+    flex (>= 2.3.35),
     gperf,\
     libarchive-zip-perl,\
     libc0.1 (>= 2.10.2-7) [kfreebsd-i386 kfreebsd-amd64],\
     libcups2-dev,\
     libfontconfig1-dev,\
-    libfreetype6-dev,\
+    libfreetype6-dev (>= 2.2.0),\
     libice-dev,\
     libsm-dev,\
     libx11-dev,\
@@ -106,6 +106,7 @@ BUILD_DEPS=\
     libxinerama-dev,\
     libxkbfile-dev,\
     libxml-parser-perl,\
+    libxrender-dev,\
     libxt-dev,\
     libxtst-dev,\
     pkg-config,\
@@ -186,7 +187,7 @@ ifeq "$(BOOST_VERSION)" "default"
   ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) ge 4.8 && echo true)" "true"
     BOOST_MINVER= (>= 1.53)
   else
-    BOOST_MINVER= (>= 1.38)
+    BOOST_MINVER= (>= 1.47)
   endif
 endif
 ifneq "$(WHEEZY_BACKPORT)" "y"
@@ -257,12 +258,14 @@ ifeq "$(USE_DBUS)" "y"
     SYSTEM_STUFF += bluez
   endif
 endif
+ENABLE_AVAHI=y
 USE_GSTREAMER=y
 ifneq "$(WHEEZY_BACKPORT)" "y"
   GSTREAMER_VERSION=1.0
 else
    GSTREAMER_VERSION=0.10
 endif
+USE_VLC=y
 SYSTEM_STUFF += neon
 NEON_SECTYPE=gnutls
 NEONSONR=27
@@ -317,7 +320,6 @@ else
   ENABLE_SCRIPT_PROVIDER_JS=n
 endif
 ENABLE_SDBC_POSTGRESQL=y
-ENABLE_MINIMIZER=y
 BUILD_GTK=y
 #ifeq "$(DEB_DISTRIBUTION)" "experimental"
 BUILD_GTK3=y
@@ -362,7 +364,6 @@ SYSTEM_STUFF += expat
 SYSTEM_STUFF += odbc
 SYSTEM_STUFF += curl
 SYSTEM_STUFF += sane
-SYSTEM_STUFF += xextensions-headers
 SYSTEM_STUFF += mesa-headers
 SYSTEM_STUFF += poppler
 SYSTEM_STUFF += libpng
@@ -381,6 +382,7 @@ FAKEROOT_LIBDIR=/usr/lib/$(DEB_HOST_MULTIARCH)/libfakeroot
 ENABLE_TELEPATHY=n
 ENABLE_LIBLANGTAG=y
 SYSTEM_STUFF += liblangtag
+ENABLE_ORCUS=y
 SYSTEM_STUFF += orcus
 USE_UCPP=n
 ifeq "$(USE_UCPP)" "y"
@@ -388,6 +390,11 @@ ifeq "$(USE_UCPP)" "y"
 endif
 ENABLE_MERGELIBS=n
 PACKAGE_LIBLIBREOFFICE=n
+USE_OPENCL=y
+SYSTEM_STUFF += firebird
+ifeq (,$(filter firebird, $(SYSTEM_STUFF)))
+SYSTEM_STUFF += libatomic-ops
+endif
 
 # Default flags to pass to configure
 CONFIGURE_FLAGS= \
@@ -493,16 +500,16 @@ ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
 	ENABLE_EVO2=n
 	ENABLE_KDEAB=n
 	ENABLE_REPORTDESIGN=n
-	DEBHELPER_OPTIONS += -Nlibreoffice-base libreoffice-base-core
+	DEBHELPER_OPTIONS += -Nlibreoffice-base libreoffice-base-core -Nlibreoffice-base-drivers
 	DEBHELPER_OPTIONS += -Nlibreoffice-evolution -Nlibreoffice-kab
 	DEBHELPER_OPTIONS += -Nlibreoffice-sdbc-postgresql -Nlibreoffice-mysql-connector
+	DEBHELPER_OPTIONS += -Nlibreoffice-sdbc-hsqldb -Nlibreoffice-sdbc-firebird 
 	DEBHELPER_OPTIONS += -Nlibreoffice-report-builder-bin -Nlibreoffice-report-builder
 	CONFIGURE_FLAGS += --disable-database-connectivity
   endif
 endif
 
 ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
-	ENABLE_MINIMIZER=n
 	ENABLE_MYSQLNATIVE=n
 	DEBHELPER_OPTIONS += -Nlibreoffice-mysql-connector
 	DEBHELPER_OPTIONS += -Nlibreoffice-presentation-minimizer
@@ -568,7 +575,8 @@ endif
 # Debian WHeezy
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "wheezy-backports"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub libmwaw libodfgen mdds liblangtag orcus harfbuzz libwpd redland, $(SYSTEM_STUFF))
+  SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub libmwaw libodfgen mdds liblangtag orcus harfbuzz libatomic-ops libwpd redland,$(SYSTEM_STUFF))
+  PACKAGE_SDK_DOCS=n
   WHEEZY_BACKPORT=y
 endif
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "UNRELEASED"
@@ -646,13 +654,10 @@ ifneq "$(PACKAGE_SDK)" "y"
  endif
 else
   ifeq "$(PACKAGE_SDK_DOCS)" "y"
-	BUILD_DEPS_INDEP += , doxygen
+	BUILD_DEPS_INDEP += , doxygen (>= 1.8.4)
   endif
 endif
 
-ifneq "$(ENABLE_MINIMIZER)" "y"
-	CONFIGURE_FLAGS += --disable-ext-presenter-minimizer
-endif
 	BUILD_DEPS += , libpoppler-dev (>= 0.8.0), libpoppler-private-dev, libpoppler-cpp-dev
 
 ifeq "$(WHEEZY_BACKPORTS)" "y"
@@ -704,9 +709,6 @@ endif
 ifneq (,$(filter sane, $(SYSTEM_STUFF)))
        BUILD_DEPS += , libsane-dev
 endif
-ifneq (,$(filter xextensions-headers, $(SYSTEM_STUFF)))
-       BUILD_DEPS += , libxrender-dev
-endif
 ifneq (,$(filter libpng, $(SYSTEM_STUFF)))
        BUILD_DEPS += , libpng12-dev
 endif
@@ -716,8 +718,13 @@ ifneq (,$(filter curl, $(SYSTEM_STUFF)))
 endif
 
 ifneq (,$(filter openssl, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libssl-dev
+	BUILD_DEPS += , libssl-dev (>= 0.9.8)
 	DBG_DBG_SUGGESTS += , libssl$(shell readlink /usr/lib/$(DEB_HOST_MULTIARCH)/libssl.so | cut -d"." -f3,4,5)-dbg
+endif
+ifeq "$(USE_OPENCL)" "y"
+	OPENCL_SUGGESTS := libopencl1
+else
+	CONFIGURE_FLAGS += --disable-opencl
 endif
 
 ifeq "$(BUILD_DBG_PACKAGE)" "y"
@@ -809,6 +816,11 @@ ifneq (,$(filter cppunit, $(SYSTEM_STUFF)))
 endif
 ifeq "$(RUN_MAKE_CHECK)" "y"
 	BUILD_DEPS += , gdb
+  ifeq "$(WHEEZY_BACKPORT)" "y"
+	BUILD_DEPS += , ttf-liberation
+  else
+	BUILD_DEPS += , fonts-liberation
+  endif
   ifeq "$(ENABLE_JUNIT4)" "y"
 	BUILD_DEPS += , junit4 $(JUNIT_MIN_VER)
   else
@@ -834,7 +846,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	# one to that gid_Module_Root always is english and the other langpacks
 	# have gid_Module_Root.$iso
 	#ISOS=$(shell $(SOURCE_TREE)/bin/lo-xlate-lang -i all')
-	ISOS:=en-US af ar as ast be bg bn br bs ca ca-XV cs cy da de dz el \
+	ISOS:=en-US af ar as ast be bg bn br bs ca ca-valencia cs cy da de dz el \
 	  en-GB en-ZA eo es et eu fa fi fr ga gl gu he hi hr hu id is it ja \
 	  ka kk km ko ku lt lv mk mn ml mr nb ne nl nn nr nso oc om or \
 	  pa-IN pl pt pt-BR ro ru rw si sk sl sr ss st sv \
@@ -843,11 +855,11 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	HELPISOS:=
     else
 	#HELPISOS:=$(shell $(SOURCE_TREE)/bin/lo-xlate-lang -i all') 
-	HELPISOS:=en-US ca ca-XV cs da de dz el en-GB es et eu fi fr gl hi hu it \
+	HELPISOS:=en-US ca ca-valencia cs da de dz el en-GB es et eu fi fr gl hi hu it \
 	  ja km ko nl om pl pt pt-BR ru sk sl sv tr vi zh-CN zh-TW
     endif
 	#LANGPACKISOS:=$(shell $(SOURCE_TREE)/bin/lo-xlate-lang -i all')
-	LANGPACKISOS:=en-US af ar as ast be bg bn br bs ca ca-XV cs cy da de dz el \
+	LANGPACKISOS:=en-US af ar as ast be bg bn br bs ca ca-valencia cs cy da de dz el \
 	  en-GB en-ZA eo es et eu fa fi fr ga gl gu he hi hr hu id is it ja \
 	  ka kk km ko ku lt lv mk mn ml mr nb ne nl nn nr nso oc om or \
 	  pa-IN pl pt pt-BR ro ru rw si sk sl sr ss st sv \
@@ -1033,28 +1045,25 @@ endif
 	CONFIGURE_FLAGS += --with-external-hyph-dir=$(HYPH_DIR)
 
 ifneq (,$(filter boost, $(SYSTEM_STUFF)))
-  ifeq "$(BOOST_VERSION)" "1.34"
-    ifeq "$(SYSTEM_GCC_VERSION)" "4.4"
-	BUILD_DEPS += , libboost-dev (>= 1.34.1-15), libboost-date-time-dev (>= 1.34.1-15)
-    else
-	BUILD_DEPS += , libboost-dev, libboost-date-time-dev
-    endif
-    ifeq "$(SYSTEM_GCC_VERSION)" "4.6"
-	BUILD_DEPS += , g++-4.6 (>= 4.6.2-12)
-    endif
-  else
-    ifneq "$(BOOST_VERSION)" "default"
+  ifneq "$(BOOST_VERSION)" "default"
 	BUILD_DEPS += , libboost$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-date-time$(BOOST_VERSION)-dev $(BOOST_MINVER)
 	#BUILD_DEPS += , libboost-thread$(BOOST_VERSION)-dev, libboost-program-options$(BOOST_VERSION)-dev
+    ifeq "$(ENABLE_ORCUS)" "y"
       ifeq (,$(filter orcus, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libboost-system$(BOOST_VERSION)-dev $(BOOST_MINVER)
       endif
-    else
+    endif
+    ifeq ($(USE_VLC),y)
+	BUILD_DEPS += , libboost-system$(BOOST_VERSION)-dev $(BOOST_MINVER)
+    endif
+  else
 	BUILD_DEPS += , libboost-dev $(BOOST_MINVER), libboost-date-time-dev $(BOOST_MINVER)
 	#BUILD_DEPS += , libboost-thread-dev, libboost-program-options-dev
-      ifeq (,$(filter orcus, $(SYSTEM_STUFF)))
+    ifeq (,$(filter orcus, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libboost-system-dev $(BOOST_MINVER)
-      endif
+    endif
+    ifeq ($(USE_VLC),y)
+	BUILD_DEPS += , libboost-system-dev $(BOOST_MINVER)
     endif
   endif
   ifeq "$(shell if [ -e /usr/lib/$(DEB_HOST_MULTIARCH)/libboost_date_time.so ]; then echo true; fi)" "true"
@@ -1063,11 +1072,15 @@ ifneq (,$(filter boost, $(SYSTEM_STUFF)))
 endif
 
 ifneq (,$(filter mdds, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libmdds-dev (>= 0.8.0)
+	BUILD_DEPS += , libmdds-dev (>= 0.9.1)
 endif
 
-ifneq (,$(filter orcus, $(SYSTEM_STUFF)))
+ifeq "$(ENABLE_ORCUS)" "y"
+  ifneq (,$(filter orcus, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , liborcus-dev (>= 0.5.0)
+  endif
+else
+	CONFIGURE_FLAGS += --disable-orcus
 endif
 
 ifneq (,$(filter vigra, $(SYSTEM_STUFF)))
@@ -1107,7 +1120,7 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
 	BUILD_DEPS += , libodfgen-dev
   endif
   ifneq (,$(filter libcmis, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libcmis-dev (>= 0.3.1)
+	BUILD_DEPS += , libcmis-dev (>= 0.4.0)
   endif
 endif
 	CONFIGURE_FLAGS += --with-external-thes-dir=$(THES_DIR)
@@ -1186,6 +1199,23 @@ ifeq "$(ENABLE_MYSQLNATIVE)" "y"
   endif
 endif
 
+ifneq (,$(filter libatomic-ops, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libatomic-ops-dev (>= 7.3~alpha1+git20110913-1)
+endif
+ifneq (,$(filter firebird, $(SYSTEM_STUFF)))
+  ifneq "$(WHEEZY_BACKPORT)" "y"
+	BUILD_DEPS += , firebird-dev (>= 2.5.2.26540.ds4-2)
+	# no FIREBIRD_CFLAGS here. Have no effect as fb_config is there
+	# and configure prefers that over our values...
+  else
+	BUILD_DEPS += , firebird-dev
+	# firebird-dev only _Suggests_ libfbembed2.5...
+	BUILD_DEPS += , libfbembed2.5
+	FIREBIRD_CFLAGS := " "
+	FIREBIRD_LIBS := "-L/usr/lib/$(DEB_HOST_MULTIARCH) -lfbembed"
+  endif
+endif
+
 ifeq "$(BUILD_GTK)" "n"
 	CONFIGURE_FLAGS+= --disable-gtk
 	DEBHELPER_OPTIONS+= -Nlibreoffice-gtk -Nlibreoffice-gnome
@@ -1258,7 +1288,7 @@ ifeq "$(ENABLE_JAVA)" "y"
     endif
   else
 	BUILD_DEPS += , libservlet2.5-java
-    ifneq "$(JDK)" "openjdk"
+    ifeq "$(JDK)" "gcj-jdk"
 	# hsqldb with jdk7 buildfix from jdk7.diff fails with gcj
 	$(error hsqldb with jdk7 buildfix from jdk7.diff fails with gcj)
     endif
@@ -1308,6 +1338,11 @@ ifeq "$(USE_DBUS)" "y"
   endif
 endif
 
+ifeq "$(ENABLE_AVAHI)" "y"
+	BUILD_DEPS += , libavahi-client-dev
+	CONFIGURE_FLAGS += --enable-avahi
+endif
+
 ifeq "$(USE_GSTREAMER)" "y"
   ifeq "$(GSTREAMER_VERSION)" "1.0"
 	BUILD_DEPS += , libgstreamer$(GSTREAMER_VERSION)-dev
@@ -1316,8 +1351,22 @@ ifeq "$(USE_GSTREAMER)" "y"
 	BUILD_DEPS += , libgstreamer-plugins-base$(GSTREAMER_VERSION)-dev
 	GSTREAMER_PLUGINS_SUGGESTS += , gstreamer$(GSTREAMER_VERSION)-plugins-base, gstreamer$(GSTREAMER_VERSION)-plugins-good, gstreamer$(GSTREAMER_VERSION)-plugins-ugly, gstreamer$(GSTREAMER_VERSION)-plugins-bad, gstreamer$(GSTREAMER_VERSION)-ffmpeg
 	DBG_DBG_SUGGESTS+= , libgstreamer$(GSTREAMER_VERSION)-0-dbg
+	AVMEDIA_BE_DEPENDS += , libreoffice-avmedia-backend-gstreamer
 else
 	CONFIGURE_FLAGS += --disable-gstreamer-0-10
+	DEBHELPER_OPTIONS += -Nlibreoffice-avmedia-backend-gstreamer
+endif
+
+ifeq "$(USE_VLC)" "y"
+	CONFIGURE_FLAGS += --enable-vlc
+	BUILD_DEPS += , $(shell debian/scripts/get_libvlc_dep.sh)
+  ifeq "$(AVMEDIA_BE_DEPENDS)" ""
+	AVMEDIA_BE_DEPENDS += , libreoffice-avmedia-backend-vlc
+  else
+	AVMEDIA_BE_DEPENDS += | libreoffice-avmedia-backend-vlc
+  endif
+else
+	DEBHELPER_OPTIONS += -Nlibreoffice-avmedia-backend-vlc
 endif
 
 ifneq (,$(filter neon, $(SYSTEM_STUFF)))
@@ -1499,7 +1548,7 @@ debian/control: $(wildcard debian/control*in) $(SOURCE_TREE)/bin/lo-xlate-lang  
 	for LNUM in $(filter-out en-US,$(LANGPACKISOS)) ; do \
 	    LNAME=`$(SOURCE_TREE)/bin/lo-xlate-lang -l $$LNUM | perl -e 'print ucfirst(<STDIN>);'`; \
 	    LCODE=`$(SOURCE_TREE)/bin/lo-xlate-lang -i $$LNUM | tr A-Z a-z`; \
-	    [ "$$LNUM" = ca-XV ] && continue; \
+	    [ "$$LNUM" = ca-valencia ] && continue; \
 	    CCODE=`echo $$LCODE | sed 's/-.*//'`; \
 	    case "$$LCODE" in \
 		bn|gu|pa-in|ml|or|te|ta) \
@@ -1562,7 +1611,7 @@ ifneq "$(ENABLE_HELP)" "n"
 	for LNUM in $(HELPISOS) ; do \
 	    LNAME=`$(SOURCE_TREE)/bin/lo-xlate-lang -l $$LNUM | perl -e 'print ucfirst(<STDIN>);'`; \
 	    LCODE=`$(SOURCE_TREE)/bin/lo-xlate-lang -i $$LNUM | tr A-Z a-z`; \
-	    [ "$$LNUM" = ca-XV ] && continue; \
+	    [ "$$LNUM" = ca-valencia ] && continue; \
 	    CCODE=`echo $$LCODE | sed 's/-.*//'`; \
 	    sed -e "s|@LNAME@|$$LNAME|g" -e "s|@LCODE@|$$LCODE|g" \
 		-e "s|@CCODE@|$$CCODE|g" \
@@ -1595,9 +1644,6 @@ ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(ENABLE_REPORTDESIGN)" "y"
 	cat debian/control.reportdesign.in >> debian/control
   endif
-endif
-ifeq "$(ENABLE_MINIMIZER)" "y"
-	cat debian/control.minimizer.in >> debian/control
 endif
 ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 	cat debian/control.fonts.in >> debian/control
@@ -1739,6 +1785,7 @@ $(STAMP_DIR)/prepare:
 	for FILE in debian/scripts/move-if-change \
 		    debian/scripts/cleandupes \
 		    debian/scripts/get_libebook_dep.sh \
+		    debian/scripts/get_libvlc_dep.sh \
 		    autogen.sh; \
 	do \
 	  chmod 755 $$FILE ;\
@@ -1792,10 +1839,12 @@ $(STAMP_DIR)/build-arch:
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
 	PYTHON=$(PYTHON) PYTHON_CFLAGS="$(shell pkg-config --cflags python-$(PYMAJOR).$(PYMINOR))" PYTHON_LIBS="$(shell pkg-config --libs python-$(PYMAJOR).$(PYMINOR))" \
 	MARIADBCONFIG=$(MARIADBCONFIG) \
+	FIREBIRD_CFLAGS=$(FIREBIRD_CFLAGS) FIREBIRD_LIBS=$(FIREBIRD_LIBS) \
 	./autogen.sh $(CONFIGURE_FLAGS) \
 		--without-doxygen --disable-ext-wiki-publisher \
 		--disable-report-builder --disable-scripting-javascript \
-		--disable-scripting-beanshell
+		--disable-scripting-beanshell \
+		--with-galleries=no
 
 ifneq "$(WHEEZY_BACKPORT)" "y"
 	# setting PYTHON_FOR_BUILD above does NOT work and otherwise it
@@ -1848,6 +1897,7 @@ $(STAMP_DIR)/build-indep:
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
 	PYTHON=$(PYTHON) PYTHON_CFLAGS="$(shell pkg-config --cflags python-$(PYMAJOR).$(PYMINOR))" PYTHON_LIBS="$(shell pkg-config --libs python-$(PYMAJOR).$(PYMINOR))" \
 	MARIADBCONFIG=$(MARIADBCONFIG) \
+	FIREBIRD_CFLAGS=$(FIREBIRD_CFLAGS) FIREBIRD_LIBS=$(FIREBIRD_LIBS) \
 	./autogen.sh $(CONFIGURE_FLAGS) --with-help $(CONFIGURE_FLAGS_LANG)
 
 ifneq "$(WHEEZY_BACKPORT)" "y"
@@ -1940,19 +1990,19 @@ endif
 	cat debian/libreoffice-l10n-en-US.install >> debian/libreoffice-common.install
 	rm -f debian/libreoffice-l10n-en-US.dirs debian/libreoffice-l10n-en-US.install
 
-	# and ca-XV in -ca...
-ifeq (ca-XV,$(findstring ca-XV,$(LANGPACKISOS)))
-	if [ -f debian/libreoffice-l10n-ca-XV.dirs -a -f debian/libreoffice-l10n-ca-XV.install ]; then \
-		cat debian/libreoffice-l10n-ca-XV.dirs >> debian/libreoffice-l10n-ca.dirs; \
-		cat debian/libreoffice-l10n-ca-XV.install >> debian/libreoffice-l10n-ca.install; \
-		rm -f debian/libreoffice-l10n-ca-XV.dirs debian/libreoffice-l10n-ca-XV.install; \
+	# and ca-valencia in -ca...
+ifeq (ca-valencia,$(findstring ca-valencia,$(LANGPACKISOS)))
+	if [ -f debian/libreoffice-l10n-ca-valencia.dirs -a -f debian/libreoffice-l10n-ca-valencia.install ]; then \
+		cat debian/libreoffice-l10n-ca-valencia.dirs >> debian/libreoffice-l10n-ca.dirs; \
+		cat debian/libreoffice-l10n-ca-valencia.install >> debian/libreoffice-l10n-ca.install; \
+		rm -f debian/libreoffice-l10n-ca-valencia.dirs debian/libreoffice-l10n-ca-valencia.install; \
 	fi
 endif
-ifeq (ca-XV,$(findstring ca-XV,$(HELPISOS)))
-	if [ -f debian/libreoffice-help-ca-XV.dirs -a -f debian/libreoffice-help-ca-XV.install ]; then \
-		cat debian/libreoffice-help-ca-XV.dirs >> debian/libreoffice-help-ca.dirs; \
-		cat debian/libreoffice-help-ca-XV.install >> debian/libreoffice-help-ca.install; \
-		rm -f debian/libreoffice-help-ca-XV.dirs debian/libreoffice-help-ca-XV.install; \
+ifeq (ca-valencia,$(findstring ca-valencia,$(HELPISOS)))
+	if [ -f debian/libreoffice-help-ca-valencia.dirs -a -f debian/libreoffice-help-ca-valencia.install ]; then \
+		cat debian/libreoffice-help-ca-valencia.dirs >> debian/libreoffice-help-ca.dirs; \
+		cat debian/libreoffice-help-ca-valencia.install >> debian/libreoffice-help-ca.install; \
+		rm -f debian/libreoffice-help-ca-valencia.dirs debian/libreoffice-help-ca-valencia.install; \
 	fi
 endif
 
@@ -2098,11 +2148,6 @@ ifeq "$(PACKAGE_SDK)" "y"
 	find $(PKGDIR)-dev-doc/usr/share/doc/ -size 0 -type f -delete
 endif
 
-	# fixup ure-link symlink. The move is done in install-arch
-	# but the link is in -common so we need to do it here.
-	cd $(PKGDIR)-common/$(OODIR) && \
-		rm ure-link && ln -sf /$(OOUREDIR) ure-link
-
 ifeq "$(ENABLE_EVO2)" "y"
 	mkdir -p $(PKGDIR)-evolution/$(OODIR)/presets/database
 	mkdir -p $(PKGDIR)-evolution/$(OODIR)/share/registry
@@ -2187,7 +2232,7 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/build-indep $(STAMP_DIR)/install-indep $(SO
 	# install technical.dic
 	for iso in $(LANGPACKISOS); do \
 		if [ "$$iso" = "en-US" ]; then pkg=common; \
-		elif [ "$$iso" = "ca-XV" ]; then pkg=l10n-ca; else pkg=l10n-`echo $$iso | tr A-Z a-z`; \
+		elif [ "$$iso" = "ca-valencia" ]; then pkg=l10n-ca; else pkg=l10n-`echo $$iso | tr A-Z a-z`; \
 		fi; \
 		mkdir -p $(PKGDIR)-$$pkg/$(OODIR)/share/wordbook/$$iso; \
 		install -m644 $(SOURCE_TREE)/extras/source/wordbook/technical.dic \
@@ -2199,7 +2244,7 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/build-indep $(STAMP_DIR)/install-indep $(SO
 #	TMP=`mktemp -q`; \
 #		fdupes --quiet --recurse --sameline --size \
 #		debian/libreoffice-common/$(OODIR) \
-#		$(foreach d,$(shell echo $(filter-out en-US ca-XV,$(LANGPACKISOS)) | tr A-Z a-z),debian/libreoffice-l10n-$(d)/$(OODIR)) \
+#		$(foreach d,$(shell echo $(filter-out en-US ca-valencia,$(LANGPACKISOS)) | tr A-Z a-z),debian/libreoffice-l10n-$(d)/$(OODIR)) \
 #		> $$TMP && \
 #	debian/scripts/cleandupes --base=libreoffice --prefix=debian < $$TMP && rm -f $$TMP
 
@@ -2272,7 +2317,6 @@ $(STAMP_DIR)/install-arch: $(STAMP_DIR)/install-common $(STAMP_NATIVE_JARS)
 	# move the URE to /usr/lib/ure
 	mv debian/ure/$(OODIR)/ure debian/ure/usr/lib
 	chmod 644 debian/ure/$(OOUREDIR)/lib/unorc
-	rmdir debian/ure/$(OODIR)
 	# move URE Java stuff to /usr/share/java
 	mkdir -p debian/ure/usr/share/java
 ifeq "$(ENABLE_JAVA)" "y"
@@ -2294,11 +2338,14 @@ endif
 		ln -sf /$(OOUREDIR)/lib/`basename $$i` debian/uno-libs3/usr/lib/`basename $$i`; \
 	done
 	# we also need libxmlreaderlo.so and libreglo.so (libuno_cppuhelpergcc3.so.3 needs it)
-	# and libstorelo.so (libreg.so.3 needs it)
+	# and libstorelo.so (libreglo.so needs it)
 	for i in libxmlreaderlo.so libreglo.so libstorelo.so; do \
 		mv debian/ure/$(OOUREDIR)/lib/$$i \
 			debian/uno-libs3/$(OOUREDIR)/lib; \
 	done
+	cd debian/ure/$(OODIR) && \
+		rm ure-link && ln -sf /$(OOUREDIR) ure-link
+
 
 ifeq "$(BUILD_KDE)" "y"
 	# install files for KDEs "create new" ...
@@ -2426,11 +2473,9 @@ ifeq "$(ENABLE_PYTHON)" "y"
 	mv debian/python3-uno/$(OODIR)/program/unohelper.py $(PYTHON_SITE)
 	touch debian/python3-uno/$(OODIR)/program/pythonloader.unorc
 	chmod u+w debian/python3-uno/$(OODIR)/program/pythonloader.unorc
-	( echo '[Bootstrap]'; \
-	  echo 'PYUNO_LOADER_PYTHONPATH=$$ORIGIN'; \
-	  echo 'PYTHONHOME=file:///usr/lib/python$(PYMAJOR).$(PYMINOR)' ;\
+	( echo 'PYTHONHOME=file:///usr/lib/python$(PYMAJOR).$(PYMINOR)' ;\
 	  echo 'PYTHONPATH=$$PYTHONHOME $$PYTHONHOME/site-packages $$PYTHONHOME/lib-dynload $$PYTHONHOME/lib-tk $$ORIGIN' \
-	) > debian/python3-uno/$(OODIR)/program/pythonloader.unorc
+	) >> debian/python3-uno/$(OODIR)/program/pythonloader.unorc
 	chmod u-w debian/python3-uno/$(OODIR)/program/pythonloader.unorc
   ifneq "$(WHEEZY_BACKPORT)" "y"
     ifeq "$(ENABLE_PYTHON2)" "y"
@@ -2446,11 +2491,11 @@ ifeq "$(ENABLE_PYTHON)" "y"
 		| sed -e "s/$(PYMAJOR).$(PYMINOR)/$(PY2MAJOR).$(PY2MINOR)/" \
 		> debian/python-uno/$(OODIR)/program/pythonloader.unorc
 	for i in py2uno.so libpy2uno.so; do \
-		install -m644 $(SOURCE_TREE)/workdir/$(shell .  $(SOURCE_TREE)/bin/get_config_variables OUTPATH PROEXT; echo $$OUTPATH$$PROEXT)/LinkTarget/Library/$$i \
+		install -m644 $(SOURCE_TREE)/instdir/$(shell .  $(SOURCE_TREE)/bin/get_config_variables OUTPATH PROEXT; echo $$OUTPATH$$PROEXT)/program/$$i \
 			debian/python-uno/$(OODIR)/program/$$i; \
 			ln -s $$i debian/python-uno/$(OODIR)/program/`echo $$i | sed -e s/2//`; \
 	done
-	install -m644 $(SOURCE_TREE)/workdir/$(shell .  $(SOURCE_TREE)/bin/get_config_variables OUTPATH PROEXT; echo $$OUTPATH$$PROEXT)/LinkTarget/Library/libpython2loaderlo.so \
+	install -m644 $(SOURCE_TREE)/instdir/$(shell .  $(SOURCE_TREE)/bin/get_config_variables OUTPATH PROEXT; echo $$OUTPATH$$PROEXT)/program/libpython2loaderlo.so \
 		debian/python-uno/$(OODIR)/program/libpython2loaderlo.so
 	ln -s libpython2loaderlo.so debian/python-uno/$(OODIR)/program/libpythonloaderlo.so
 	cp debian/python3-uno/$(OODIR)/program/pythonloader.py \
@@ -2619,6 +2664,42 @@ ifeq (,$(filter lpsolve, $(SYSTEM_STUFF)))
 		$(PKGDIR)-core/$(OODIR)/program
 endif
 
+ifeq "$(USE_GSTREAMER)" "y"
+	mkdir -p $(PKGDIR)-avmedia-backend-gstreamer/$(OODIR)/program
+	mv $(PKGDIR)-core/$(OODIR)/program/libavmediagst.so \
+		$(PKGDIR)-avmedia-backend-gstreamer/$(OODIR)/program
+endif
+ifeq "$(USE_VLC)" "y"
+	mkdir -p $(PKGDIR)-avmedia-backend-vlc/$(OODIR)/program
+	mv $(PKGDIR)-core/$(OODIR)/program/libavmediavlc.so \
+		$(PKGDIR)-avmedia-backend-vlc/$(OODIR)/program
+endif
+
+ifeq "$(ENABLE_JAVA)" "y"
+	mkdir -p $(PKGDIR)-sdbc-hsqldb/$(OODIR)/program
+	mkdir -p $(PKGDIR)-sdbc-hsqldb/usr/lib/libreoffice/program/classes
+	mkdir -p $(PKGDIR)-sdbc-hsqldb/usr/share/libreoffice/program/classes
+	mv $(PKGDIR)-base/$(OODIR)/program/libhsqldblo.so \
+		$(PKGDIR)-sdbc-hsqldb/$(OODIR)/program
+  ifneq (,$(filter hsqldb, $(SYSTEM_STUFF)))
+	mv $(PKGDIR)-base/usr/lib/libreoffice/program/classes/hsqldb.jar \
+		$(PKGDIR)-sdbc-hsqldb/usr/lib/libreoffice/program/classes
+  endif
+	for i in lib share; do \
+		mv $(PKGDIR)-base/usr/$$i/libreoffice/program/classes/sdbc_hsqldb.jar \
+			$(PKGDIR)-sdbc-hsqldb/usr/$$i/libreoffice/program/classes; \
+	done
+endif
+	mkdir -p $(PKGDIR)-sdbc-firebird/$(OODIR)/program
+	mv $(PKGDIR)-base/$(OODIR)/program/libfirebird_sdbclo.so \
+		$(PKGDIR)-sdbc-firebird/$(OODIR)/program
+	mkdir -p $(PKGDIR)-base-drivers/$(OODIR)/program
+	for i in `find $(PKGDIR)-base/$(OODIR)/program/ -name "*.so" \
+		-a \! -name "libdbulo*" -a \! -name "libdbaxml*" -a \! -name "libdbp*" -a \! -name "libabplo.so"`; do \
+		mv $$i \
+			$(PKGDIR)-base-drivers/$(OODIR)/program; \
+	done
+
 	for i in $(ARCH_DEP_PACKAGES); do \
 		if [ -e debian/$$i.bug-script.in ]; then \
 			cat debian/$$i.bug-script.in \
@@ -2659,7 +2740,7 @@ $(STAMP_DIR)/install-indep: $(STAMP_DIR)/build-indep $(STAMP_DIR)/install-common
 	dh_testdir
 	dh_testroot
 
-ifneq "$(USE_GSTREAMER)" "y"
+ifeq "$(shell echo $(USE_GSTREAMER)$(USE_VLC) | grep -q y && echo 0)" "0"
 	# sound doesn't work anyway, remove the .wav files to save space
 	rm -rf $(PKGDIR)-common/$(OODIR)/share/gallery/sounds
 	rm -f $(PKGDIR)-common/$(OODIR)/share/gallery/sg9.*
@@ -3120,10 +3201,10 @@ ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(PACKAGE_BASE)" "y"
     ifeq "$(WHEEZY_BACKPORT)" "y"
 	perl -pi -e "s/libhsqldb-java/$(BASE_HSQLDB_DEPENDS)/" \
-		debian/libreoffice-base.substvars
+		debian/libreoffice-sdbc-hsqldb.substvars
     endif
 	perl -pi -e "s/base-files,//" \
-		debian/libreoffice-base.substvars
+		debian/libreoffice-sdbc-hsqldb.substvars
   endif
 	# jh_depends adds ure (${source:Version}) entries. They are overly strict
 	# and do not fit anyway given ure has a different versioning scheme. Excluded
@@ -3152,9 +3233,12 @@ endif
 		-V'lpsolve-dep=$(LPSOLVE_DEP)' \
 		-V'gstreamer-plugins-suggests=$(GSTREAMER_PLUGINS_SUGGESTS)' \
 		-V'libebook-dep=$(shell debian/scripts/get_libebook_dep.sh)' \
+		-V'libvlc-dep=$(shell debian/scripts/get_libvlc_dep.sh)' \
 		-V'idlc-cpp-depends=$(IDLC_CPP_DEPENDS)' \
 		-V'pyuno-depends=$(PYUNO_DEPENDS)' \
+		-V'avmedia-be-depends=$(AVMEDIA_BE_DEPENDS)' \
 		-V'dejavu-depends=$(DEJAVU_DEPENDS)' \
+		-V'opencl-sug=$(OPENCL_SUGGESTS)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-v$(BINARY_VERSION)
 ifeq "$(ENABLE_JAVA)" "y"
@@ -3162,10 +3246,6 @@ ifeq "$(ENABLE_JAVA)" "y"
 		debian/libreoffice-officebean/DEBIAN/control
 endif
 ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
-ifeq "$(ENABLE_MINIMIZER)" "y"
-	dh_gencontrol -plibreoffice-presentation-minimizer -- \
-		-v$(shell grep "<version" $(SOURCE_TREE)/sdext/source/minimizer/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
-endif
 ifeq "$(PACKAGE_BASE)" "y"
   ifeq "$(ENABLE_MYSQLNATIVE)" "y"
 	dh_gencontrol -plibreoffice-mysql-connector -- \
@@ -3252,6 +3332,9 @@ endif
 	dh_installchangelogs -i -Nlibreoffice-librelogo -k
 ifeq "$(PACKAGE_LIBRELOGO)" "y"
 	 dh_installchangelogs -plibreoffice-librelogo -k librelogo/source/ChangeLog
+endif
+ifeq "$(PACKAGE_SDK_DOCS)" "y"
+	dh_doxygen -plibreoffice-dev-doc
 endif
 	dh_installmime -i
 	dh_lintian -i
