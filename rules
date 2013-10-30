@@ -391,6 +391,7 @@ endif
 ENABLE_MERGELIBS=n
 PACKAGE_LIBLIBREOFFICE=n
 USE_OPENCL=y
+ENABLE_FIREBIRD=y
 SYSTEM_STUFF += firebird
 ifeq (,$(filter firebird, $(SYSTEM_STUFF)))
 SYSTEM_STUFF += libatomic-ops
@@ -508,6 +509,9 @@ ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
 	CONFIGURE_FLAGS += --disable-database-connectivity
   endif
 endif
+ifneq ($(ENABLE_FIREBIRD),y)
+  DEBHELPER_OPTIONS += -Nlibreoffice-sdbc-firebird
+endif
 
 ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
 	ENABLE_MYSQLNATIVE=n
@@ -586,7 +590,8 @@ endif
 ifeq "$(DEB_VENDOR)" "Ubuntu"
   IMAGES+=human
   CONFIGURE_FLAGS+= --with-theme="$(patsubst galaxy,default,$(IMAGES))"
-  SYSTEM_STUFF := $(filter-out libcmis firebird mdds, $(SYSTEM_STUFF))
+  ENABLE_FIREBIRD=n
+  SYSTEM_STUFF := $(filter-out libcmis mdds, $(SYSTEM_STUFF))
   # lp#1034560: MIR troubles make it easier to use internal jfreereport
   SYSTEM_STUFF := $(filter-out jfreereport, $(SYSTEM_STUFF))
   ifeq ($(shell echo "$(DEB_VERSION)" | grep -c ppa),1)
@@ -617,6 +622,9 @@ ifeq "$(DEB_VENDOR)" "Ubuntu"
 endif
 
 CONFIGURE_FLAGS += $(foreach i, $(SYSTEM_STUFF),--with-system-$(i))
+ifneq ($(ENABLE_FIREBIRD),y)
+  CONFIGURE_FLAGS += --disable-firebird-sdbc
+endif
 
 CC_PREFIX:=$(shell gcc -dumpmachine)-
 
@@ -1203,6 +1211,7 @@ endif
 ifneq (,$(filter libatomic-ops, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libatomic-ops-dev (>= 7.3~alpha1+git20110913-1)
 endif
+ifeq ($(ENABLE_FIREBIRD),y)
 ifneq (,$(filter firebird, $(SYSTEM_STUFF)))
   ifneq "$(WHEEZY_BACKPORT)" "y"
 	BUILD_DEPS += , firebird-dev (>= 2.5.2.26540.ds4-2)
@@ -1215,6 +1224,7 @@ ifneq (,$(filter firebird, $(SYSTEM_STUFF)))
 	FIREBIRD_CFLAGS := " "
 	FIREBIRD_LIBS := "-L/usr/lib/$(DEB_HOST_MULTIARCH) -lfbembed"
   endif
+endif
 endif
 
 ifeq "$(BUILD_GTK)" "n"
@@ -2691,9 +2701,11 @@ ifeq "$(ENABLE_JAVA)" "y"
 			$(PKGDIR)-sdbc-hsqldb/usr/$$i/libreoffice/program/classes; \
 	done
 endif
+ifeq ($(ENABLE_FIREBIRD),y)
 	mkdir -p $(PKGDIR)-sdbc-firebird/$(OODIR)/program
 	mv $(PKGDIR)-base/$(OODIR)/program/libfirebird_sdbclo.so \
 		$(PKGDIR)-sdbc-firebird/$(OODIR)/program
+endif
 	mkdir -p $(PKGDIR)-base-drivers/$(OODIR)/program
 	for i in `find $(PKGDIR)-base/$(OODIR)/program/ -name "*.so" \
 		-a \! -name "libdbulo*" -a \! -name "libdbaxml*" -a \! -name "libdbp*" -a \! -name "libabplo.so"`; do \
