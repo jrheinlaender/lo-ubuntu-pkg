@@ -91,7 +91,7 @@ BUILD_DEPS=\
     bzip2,\
     dpkg-dev (>= 1.16.1),\
     fastjar,\
-    flex (>= 2.3.35),
+    flex (>= 2.3.35), \
     gperf,\
     libarchive-zip-perl,\
     libc0.1 (>= 2.10.2-7) [kfreebsd-i386 kfreebsd-amd64],\
@@ -207,6 +207,8 @@ SYSTEM_STUFF += libcdr
 SYSTEM_STUFF += libmspub
 SYSTEM_STUFF += libmwaw
 SYSTEM_STUFF += libodfgen
+SYSTEM_STUFF += libetonyek
+SYSTEM_STUFF += libfreehand
 #SYSTEM_STUFF += xmlsec
 BUILD_CAIROCANVAS=y
 SYSTEM_STUFF += cairo
@@ -579,7 +581,7 @@ endif
 # Debian WHeezy
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "wheezy-backports"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub libmwaw libodfgen mdds liblangtag orcus harfbuzz libatomic-ops libwpd redland,$(SYSTEM_STUFF))
+  SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub libmwaw libodfgen mdds liblangtag orcus harfbuzz libatomic-ops libwpd redland libetonyek libfreehand,$(SYSTEM_STUFF))
   PACKAGE_SDK_DOCS=n
   WHEEZY_BACKPORT=y
 endif
@@ -981,10 +983,6 @@ export JAVA_HOME
 	MEDIAWIKI_JAR_DEPENDS := , libcommons-codec-java, libcommons-httpclient-java, libcommons-lang-java, libcommons-logging-java
 	BUILD_DEPS_INDEP += $(MEDIAWIKI_BUILD_DEPS)
 	CONFIGURE_FLAGS += --with-commons-codec-jar=/usr/share/java/commons-codec.jar --with-commons-lang-jar=/usr/share/java/commons-lang.jar --with-commons-httpclient-jar=/usr/share/java/commons-httpclient.jar --with-commons-logging-jar=/usr/share/java/commons-logging.jar
-	CONFIGURE_FLAGS += --with-system-servlet-api
-	#BUILD_DEPS_INDEP += , $(shell dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f5 | sed -e s/^\ // | awk '{ print $$1 }')
-	BUILD_DEPS_INDEP += , libservlet3.0-java 
-	CONFIGURE_FLAGS += --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f5 | sed -e s/^\ // | awk '{ print $$1 }'` | grep servlet-api.*\.jar$ | head -n 1)
     endif
   endif
   ifeq "$(ENABLE_REPORTDESIGN)" "y"
@@ -999,9 +997,6 @@ export JAVA_HOME
 	REPORT_BUILDER_BUILD_DEPS += , libcommons-logging-java$(OOO_NO_JAVA_ARCHS) (>= 1.1.1-9)
 	REPORT_BUILDER_JAR_DEPENDS += , libcommons-logging-java (>=1.1.1-9)
 	CONFIGURE_FLAGS += --with-commons-logging-jar=/usr/share/java/commons-logging.jar
-	#BUILD_DEPS_INDEP += , $(shell dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f5 | sed -e s/^\ // | awk '{ print $$1 }')
-	BUILD_DEPS_INDEP += , libservlet3.0-java 
-	CONFIGURE_FLAGS += --with-servlet-api-jar=$(shell dpkg -L `dpkg -s libcommons-logging-java | grep Suggests | cut -d"," -f5 | sed -e s/^\ // | awk '{ print $$1 }'` | grep servlet-api.*\.jar$ | head -n 1)
     endif
   else
 	CONFIGURE_FLAGS += --disable-report-builder
@@ -1123,10 +1118,16 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
 	BUILD_DEPS += , libmspub-dev
   endif
   ifneq (,$(filter libmwaw, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libmwaw-dev
+	BUILD_DEPS += , libmwaw-dev (>= 0.2.0)
   endif
   ifneq (,$(filter libodfgen, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libodfgen-dev
+	BUILD_DEPS += , libodfgen-dev (>= 0.0.3)
+  endif
+  ifneq (,$(filter libetonyek, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libetonyek-dev
+  endif
+  ifneq (,$(filter libfreehand, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libfreehand-dev
   endif
   ifneq (,$(filter libcmis, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libcmis-dev (>= 0.4.0)
@@ -1298,7 +1299,6 @@ ifeq "$(ENABLE_JAVA)" "y"
 	CONFIGURE_FLAGS += --with-hsqldb-jar=$(HSQLDB_JAR)
     endif
   else
-	BUILD_DEPS += , libservlet2.5-java
     ifeq "$(JDK)" "gcj-jdk"
 	# hsqldb with jdk7 buildfix from jdk7.diff fails with gcj
 	$(error hsqldb with jdk7 buildfix from jdk7.diff fails with gcj)
@@ -3087,10 +3087,8 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 	dh_installdocs -s -A
 	for p in $(ARCH_DEP_PACKAGES); do \
 		mkdir -p debian/$$p/usr/share/doc/$$p; \
-		cat solver/$(shell .  $(SOURCE_TREE)/bin/get_config_variables OUTPATH PROEXT; echo $$OUTPATH$$PROEXT)/bin/osl/README_en-US \
-		| sed -e 's/$${PRODUCTNAME}/LibreOffice/g' \
-		| sed -e 's/$${PRODUCTVERSION}/$(OOVER)/g' \
-		> debian/$$p/usr/share/doc/$$p/README; \
+		cp workdir/unxlngx6.pro/CustomTarget/readlicense_oo/readme/README_en-US \
+			debian/$$p/usr/share/doc/$$p/README; \
 	done 
 	dh_installdebconf -s
 	dh_installman -s
@@ -3148,9 +3146,9 @@ ifeq "$(BUILD_DBG_PACKAGE)" "y"
 		$(PKGDIR)-dbg/usr/share/libreoffice/gdb
 	# FIXME: or better ure-dbg (ure/lib?). Then again ure-link is a link which is in -common
 	# anyways...
-	mkdir -p debian/uno-libs3-dbg/usr/share/gdb/auto-load/$(OODIR)/ure-link/
-	mv $(CURDIR)/debian/tmp//usr/share/gdb/auto-load/$(OODIR)/ure-link/lib \
-		debian/uno-libs3-dbg/usr/share/gdb/auto-load/$(OODIR)/ure-link
+	mkdir -p debian/uno-libs3-dbg/usr/share/gdb/auto-load/$(OOUREDIR)/lib
+	mv $(CURDIR)/debian/tmp//usr/share/gdb/auto-load/$(OODIR)/ure/lib/* \
+		debian/uno-libs3-dbg/usr/share/gdb/auto-load/$(OOUREDIR)/lib
 	mkdir -p debian/uno-libs3-dbg/usr/share/libreoffice/gdb/libreoffice
 	mv $(PKGDIR)-dbg/usr/share/libreoffice/gdb/libreoffice/cppu.py \
 		debian/uno-libs3-dbg/usr/share/libreoffice/gdb/libreoffice
@@ -3329,10 +3327,8 @@ endif
 	dh_installdocs -i -A 
 	for p in $(ARCH_INDEP_PACKAGES); do \
 		mkdir -p debian/$$p/usr/share/doc/$$p; \
-		cat solver/$(shell .  $(SOURCE_TREE)/bin/get_config_variables OUTPATH PROEXT; echo $$OUTPATH$$PROEXT)/bin/osl/README_en-US \
-		| sed -e 's/$${PRODUCTNAME}/LibreOffice/g' \
-		| sed -s 's/$${PRODUCTVERSION}/$(OOVER)/g' \
-		> debian/$$p/usr/share/doc/$$p/README; \
+		cp workdir/unxlngx6.pro/CustomTarget/readlicense_oo/readme/README_en-US \
+			debian/$$p/usr/share/doc/$$p/README; \
 	done 
 	dh_installman -i
 	for i in `find $(PKGDIR)-common -type l -name "lo*.1"`; do \
