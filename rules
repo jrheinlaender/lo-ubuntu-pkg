@@ -209,6 +209,10 @@ SYSTEM_STUFF += libmwaw
 SYSTEM_STUFF += libodfgen
 SYSTEM_STUFF += libetonyek
 SYSTEM_STUFF += libfreehand
+# this is libe-book, NOT evolutions libebook (which is
+# dlopen()'ed anyway and whose headers we need from the
+# system anyways if enabled
+SYSTEM_STUFF += libebook
 #SYSTEM_STUFF += xmlsec
 BUILD_CAIROCANVAS=y
 SYSTEM_STUFF += cairo
@@ -391,12 +395,15 @@ ifeq "$(USE_UCPP)" "y"
   SYSTEM_STUFF += ucpp
 endif
 ENABLE_MERGELIBS=n
-PACKAGE_LIBLIBREOFFICE=n
 USE_OPENCL=y
 ENABLE_FIREBIRD=y
 SYSTEM_STUFF += firebird
 ifeq (,$(filter firebird, $(SYSTEM_STUFF)))
 SYSTEM_STUFF += libatomic-ops
+endif
+ENABLE_EOT=n
+ifeq "$(ENABLE_EOT)" "y"
+SYSTEM_STUFF += libeot
 endif
 
 # Default flags to pass to configure
@@ -581,7 +588,7 @@ endif
 # Debian WHeezy
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "wheezy-backports"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub libmwaw libodfgen mdds liblangtag orcus harfbuzz libatomic-ops libwpd redland libetonyek libfreehand,$(SYSTEM_STUFF))
+  SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub libmwaw libodfgen mdds liblangtag orcus harfbuzz libatomic-ops libwpd redland libetonyek libfreehand libebook,$(SYSTEM_STUFF))
   PACKAGE_SDK_DOCS=n
   WHEEZY_BACKPORT=y
 endif
@@ -1129,11 +1136,18 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
   ifneq (,$(filter libfreehand, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libfreehand-dev
   endif
+  ifneq (,$(filter libebook, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libe-book-dev
+  endif
   ifneq (,$(filter libcmis, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libcmis-dev (>= 0.4.0)
   endif
 endif
 	CONFIGURE_FLAGS += --with-external-thes-dir=$(THES_DIR)
+
+ifneq (,$(filter libeot, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libeot-dev
+endif
 
 ifneq (,$(filter lcms2, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , liblcms2-dev
@@ -1687,9 +1701,6 @@ ifeq "$(BUILD_TEST_PACKAGE)" "y"
 endif
 ifeq "$(PACKAGE_LIBRELOGO)" "y"
 	cat debian/control.librelogo.in >> debian/control
-endif
-ifeq "$(PACKAGE_LIBLIBREOFFICE)" "y"
-	cat debian/control.liblibreoffice.in >> debian/control
 endif
 
 	perl -pi -e "s,%OOO_ARCHS%,$(OOO_ARCHS),g" debian/control
@@ -2502,11 +2513,11 @@ ifeq "$(ENABLE_PYTHON)" "y"
 		| sed -e "s/$(PYMAJOR).$(PYMINOR)/$(PY2MAJOR).$(PY2MINOR)/" \
 		> debian/python-uno/$(OODIR)/program/pythonloader.unorc
 	for i in py2uno.so libpy2uno.so; do \
-		install -m644 $(SOURCE_TREE)/instdir/$(shell .  $(SOURCE_TREE)/bin/get_config_variables OUTPATH PROEXT; echo $$OUTPATH$$PROEXT)/program/$$i \
+		install -m644 $(SOURCE_TREE)/instdir/program/$$i \
 			debian/python-uno/$(OODIR)/program/$$i; \
 			ln -s $$i debian/python-uno/$(OODIR)/program/`echo $$i | sed -e s/2//`; \
 	done
-	install -m644 $(SOURCE_TREE)/instdir/$(shell .  $(SOURCE_TREE)/bin/get_config_variables OUTPATH PROEXT; echo $$OUTPATH$$PROEXT)/program/libpython2loaderlo.so \
+	install -m644 $(SOURCE_TREE)/instdir/program/libpython2loaderlo.so \
 		debian/python-uno/$(OODIR)/program/libpython2loaderlo.so
 	ln -s libpython2loaderlo.so debian/python-uno/$(OODIR)/program/libpythonloaderlo.so
 	cp debian/python3-uno/$(OODIR)/program/pythonloader.py \
@@ -3088,7 +3099,7 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 	dh_installdocs -s -A
 	for p in $(ARCH_DEP_PACKAGES); do \
 		mkdir -p debian/$$p/usr/share/doc/$$p; \
-		cp `grep WORKDIR\= config_host.mk|sed -e 's/^.*WORKDIR=//'`/CustomTarget/readlicense_oo/readme/README_en-US \
+		cp workdir/CustomTarget/readlicense_oo/readme/README_en-US \
 			debian/$$p/usr/share/doc/$$p/README; \
 	done 
 	dh_installdebconf -s
@@ -3328,7 +3339,7 @@ endif
 	dh_installdocs -i -A 
 	for p in $(ARCH_INDEP_PACKAGES); do \
 		mkdir -p debian/$$p/usr/share/doc/$$p; \
-		cp `grep WORKDIR\= config_host.mk|sed -e 's/^.*WORKDIR=//'`/CustomTarget/readlicense_oo/readme/README_en-US \
+		cp workdir/CustomTarget/readlicense_oo/readme/README_en-US \
 			debian/$$p/usr/share/doc/$$p/README; \
 	done 
 	dh_installman -i
