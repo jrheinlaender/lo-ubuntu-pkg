@@ -60,7 +60,7 @@ export QUILT_OPTIONS="-p1 -F0"
 
 SOURCE_TREE=.
 STAMP_DIR=debian/stampdir
-TARFILE_LOCATION=$(CURDIR)/src
+TARFILE_LOCATION=$(CURDIR)/external/tarballs
 export TARFILE_LOCATION
 USE_SOURCE_TARBALLS=n
 USE_GIT_TARBALLS=n
@@ -352,7 +352,7 @@ SYSTEM_STUFF += cppunit
 # C++ ABI (like it was the case with libreoffice2), we need to set this. Don't touch
 # otherwise
 DEFAULT_IMAGE=galaxy
-IMAGES:=$(DEFAULT_IMAGE) crystal hicontrast tango oxygen
+IMAGES:=$(DEFAULT_IMAGE) crystal hicontrast tango oxygen sifr
 ENABLE_MYSQLNATIVE=y
 USE_MARIADB=n
 # set this also to y for system-mysql..
@@ -401,7 +401,7 @@ SYSTEM_STUFF += firebird
 ifeq (,$(filter firebird, $(SYSTEM_STUFF)))
 SYSTEM_STUFF += libatomic-ops
 endif
-ENABLE_EOT=n
+ENABLE_EOT=y
 ifeq "$(ENABLE_EOT)" "y"
 SYSTEM_STUFF += libeot
 endif
@@ -588,7 +588,7 @@ endif
 # Debian WHeezy
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "wheezy-backports"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub libmwaw libodfgen mdds liblangtag orcus harfbuzz libatomic-ops libwpd redland libetonyek libfreehand libebook,$(SYSTEM_STUFF))
+  SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub libmwaw libodfgen mdds liblangtag orcus harfbuzz libatomic-ops libwpd redland libetonyek libfreehand libebook libvisio,$(SYSTEM_STUFF))
   PACKAGE_SDK_DOCS=n
   WHEEZY_BACKPORT=y
 endif
@@ -867,7 +867,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	#ISOS=$(shell $(SOURCE_TREE)/bin/lo-xlate-lang -i all')
 	ISOS:=en-US af ar as ast be bg bn br bs ca ca-valencia cs cy da de dz el \
 	  en-GB en-ZA eo es et eu fa fi fr ga gl gu he hi hr hu id is it ja \
-	  ka kk km ko ku lt lv mk mn ml mr nb ne nl nn nr nso oc om or \
+	  ka kk km ko kmr-Latn lt lv mk mn ml mr nb ne nl nn nr nso oc om or \
 	  pa-IN pl pt pt-BR ro ru rw si sk sl sr ss st sv \
 	  ta te tg th tn tr ts ug uk uz ve vi xh zh-CN zh-TW zu
     ifeq "$(ENABLE_HELP)" "n"
@@ -880,7 +880,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	#LANGPACKISOS:=$(shell $(SOURCE_TREE)/bin/lo-xlate-lang -i all')
 	LANGPACKISOS:=en-US af ar as ast be bg bn br bs ca ca-valencia cs cy da de dz el \
 	  en-GB en-ZA eo es et eu fa fi fr ga gl gu he hi hr hu id is it ja \
-	  ka kk km ko ku lt lv mk mn ml mr nb ne nl nn nr nso oc om or \
+	  ka kk km ko kmr-Latn lt lv mk mn ml mr nb ne nl nn nr nso oc om or \
 	  pa-IN pl pt pt-BR ro ru rw si sk sl sr ss st sv \
 	  ta te tg th tn tr ts ug uk uz ve vi xh zh-CN zh-TW zu
       # PPA builds need a reduced l10n set to fit on those builders
@@ -1146,8 +1146,11 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
 endif
 	CONFIGURE_FLAGS += --with-external-thes-dir=$(THES_DIR)
 
-ifneq (,$(filter libeot, $(SYSTEM_STUFF)))
+ifeq "$(ENABLE_EOT)" "y"
+ 	CONFIGURE_FLAGS += --enable-eot
+ ifneq (,$(filter libeot, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libeot-dev
+ endif
 endif
 
 ifneq (,$(filter lcms2, $(SYSTEM_STUFF)))
@@ -1321,9 +1324,15 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
   ifeq "$(ENABLE_SCRIPT_PROVIDER_BSH)" "y"
     ifneq (,$(filter beanshell, $(SYSTEM_STUFF)))
+      ifneq "$(WHEEZY_BACKPORT)" "y"
+	# -gcj is gone
+	BUILD_DEPS_INDEP += , libbsh-java
+	BSH_DEPENDS = libbsh-java
+      else
 	BUILD_DEPS_INDEP += , bsh (>= 2.0b4)$(OOO_NO_JAVA_ARCHS)
 	BSH_DEPENDS = bsh (>= 2.0b4)
 	JAVA_GCJ_DEPENDS += , bsh-gcj [$(OOO_GCJ_ARCHS)]
+      endif
     endif
 	CONFIGURE_FLAGS += --enable-scripting-beanshell
   else
@@ -1468,9 +1477,6 @@ ifeq "$(PARALLEL_BUILD)" "y"
 else
 	CONFIGURE_FLAGS += --without-parallelism
 endif
-# disable parallelism for subsequentchecks, there seem to be race conditions still
-CONFIGURE_FLAGS += --with-check-jobs=1
-
 
 ifeq ($(GCC_VERSION),)
 	BUILD_PATH = /usr/lib/jvm/java-gcj/bin:$$PATH
@@ -1575,6 +1581,7 @@ debian/control: $(wildcard debian/control*in) $(SOURCE_TREE)/bin/lo-xlate-lang  
 	    LNAME=`$(SOURCE_TREE)/bin/lo-xlate-lang -l $$LNUM | perl -e 'print ucfirst(<STDIN>);'`; \
 	    LCODE=`$(SOURCE_TREE)/bin/lo-xlate-lang -i $$LNUM | tr A-Z a-z`; \
 	    [ "$$LNUM" = ca-valencia ] && continue; \
+	    [ "$$LCODE" = kmr-latn ] && LCODE=kmr; \
 	    CCODE=`echo $$LCODE | sed 's/-.*//'`; \
 	    case "$$LCODE" in \
 		bn|gu|pa-in|ml|or|te|ta) \
@@ -1876,7 +1883,7 @@ ifneq "$(WHEEZY_BACKPORT)" "y"
 	perl -pi -e 's/export PYTHON_FOR_BUILD=.*/export PYTHON_FOR_BUILD=$(PYTHON)/' config_host.mk
 endif
 
-	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build-nocheck
+	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build-non-l10n-only
 
 ifneq "$(WHEEZY_BACKPORT)" "y"
   ifeq "$(ENABLE_PYTHON)" "y"
@@ -1951,7 +1958,7 @@ endif
 		export HOME=$$t; \
 		export SAL_USE_VCLPLUGIN="svp"; \
 		if [ -x /usr/bin/gdb ]; then ulimit -c unlimited; fi && \
-		$(MAKE) -k $(CHECKTARGET) || $(MAKE) $(CHECKTARGET) && \
+		PARALLELISM=1 $(MAKE) -k $(CHECKTARGET) || PARALLELISM=1 $(MAKE) $(CHECKTARGET) && \
 	rm -rf $$t
 
 ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
@@ -2026,6 +2033,15 @@ ifeq (ca-valencia,$(findstring ca-valencia,$(HELPISOS)))
 		cat debian/libreoffice-help-ca-valencia.dirs >> debian/libreoffice-help-ca.dirs; \
 		cat debian/libreoffice-help-ca-valencia.install >> debian/libreoffice-help-ca.install; \
 		rm -f debian/libreoffice-help-ca-valencia.dirs debian/libreoffice-help-ca-valencia.install; \
+	fi
+endif
+
+	# should be in -kmr...
+ifeq (kmr-Latn,$(findstring kmr-Latn,$(LANGPACKISOS)))
+	if [ -f debian/libreoffice-l10n-kmr-Latn.dirs -a -f debian/libreoffice-l10n-kmr-Latn.install ]; then \
+		cat debian/libreoffice-l10n-kmr-Latn.dirs >> debian/libreoffice-l10n-kmr.dirs; \
+		cat debian/libreoffice-l10n-kmr-Latn.install >> debian/libreoffice-l10n-kmr.install; \
+		rm -f debian/libreoffice-l10n-kmr-Latn.dirs debian/libreoffice-l10n-kmr-Latn.install; \
 	fi
 endif
 
@@ -2819,7 +2835,7 @@ ifeq "$(BUILD_TEST_PACKAGE)" "y"
 	# FIXME: find all jars again
 	for jar in test-tools.jar; \
 	do \
-		cp `find workdir -name $$jar` $(PKGDIR)-subsequentcheckbase/$(OODIR)/program/classes/; \
+		cp workdir/Jar/$$i $(PKGDIR)-subsequentcheckbase/$(OODIR)/program/classes/; \
 	done
   endif
 endif
@@ -3187,6 +3203,9 @@ endif
 ifeq (,$(filter icu, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.icu >> debian/shlibs.local
 endif
+ifneq (,$(filter libvisio, $(SYSTEM_STUFF)))
+	cat debian/shlibs.override.libvisio >> debian/shlibs.local
+endif
 	# we need to do it in two steps. The new dpkg-shlibdeps doesn't find
 	# /usr/lib/libgcj-bc.so when specifying -l$(GCJ_JAWT_DIR)
 	# and therefore we must not use it for -gcj. But we *do* need it
@@ -3431,7 +3450,7 @@ ifeq "$(USE_GIT_TARBALLS)" "y"
 # from build and download the source, configure, build, pack in on piece. As
 # get-orig-source is an optional target anyway, we stick to support only this
 # case and not random dirs. see also: debian bug 494141
-# also, we need to run configure to create the src tarball anyway
+# also, we need to run configure to create the external tarball anyway
 
 GIT_INSTALLED:=$(shell which git >/dev/null 2>/dev/null && echo "y")
 
@@ -3465,16 +3484,16 @@ $(call get_orig_tarball,-%):
 	$(call pack_gittarball,$*,$@,libreoffice-$(DEB_VERSION_UPSTREAM)/)
 
 # Get upstream external sources
-$(call get_orig_tarball,-src): helpcontent2/makefile.pmk translations/makefile.mk .gitignore
+$(call get_orig_tarball,-external): helpcontent2/makefile.pmk translations/makefile.mk .gitignore
 	dh_testdir
-	rm -rf $(TARFIILE_LOCATION)
-	mkdir -p $(TARFILE_LOCATION)
+	rm -rf external
+	mkdir -p external
 	./autogen.sh $(filter-out --disable-fetch-external,$(CONFIGURE_FLAGS)) --with-all-tarballs
 	$(MAKE) download gb_LO_VER=$(DEB_VERSION_UPSTREAM)
 	# removing the biggest internal tarballs to keep the source tree size
 	# reasonable -- we likely never want to use those internal anyway
 	rm src/*-boost_* src/*-JLanguageTool-* src/*-cairo-* src/*-icu4c-* src/*-postgresql-* src/*-Python-* src/*-dbghelp.dll
-	tar cvJf $@ -C $(TARFILE_LOCATION) --transform 's,./,,' .
+	tar cvJf $@ -C external --transform 's,./,,' .
 
 # using flag files for unpacking
 .gitignore: $(call get_orig_tarball)
@@ -3486,13 +3505,13 @@ translations/makefile.mk:  $(call get_orig_tarball,-translations)
 helpcontent2/makefile.pmk:  $(call get_orig_tarball,-helpcontent2)
 	$(call unpack_gittarball,helpcontent2,$<,)
 
-src/fetch.log: $(call get_orig_tarball,-src) patched
-	$(call unpack_gittarball,src,$<,)
+external/tarballs/fetch.log: $(call get_orig_tarball,-external) patched
+	$(call unpack_gittarball,external,$<,)
 
-get-orig-source: $(call get_orig_tarball,-src) src/fetch.log
+get-orig-source: $(call get_orig_tarball,-external) external/tarballs/fetch.log
 	dh_testdir
 
-unpack: src/fetch.log
+unpack: external/fetch.log
 	dh_testdir
 endif
 endif
