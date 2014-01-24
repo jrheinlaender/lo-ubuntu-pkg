@@ -588,7 +588,7 @@ endif
 # Debian WHeezy
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "wheezy-backports"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub libmwaw libodfgen mdds liblangtag orcus harfbuzz libatomic-ops libwpd redland libetonyek libfreehand libebook libvisio,$(SYSTEM_STUFF))
+  SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub libmwaw libodfgen mdds liblangtag orcus harfbuzz libatomic-ops libwpd redland libetonyek libfreehand libebook libvisio libeot,$(SYSTEM_STUFF))
   PACKAGE_SDK_DOCS=n
   WHEEZY_BACKPORT=y
 endif
@@ -1409,7 +1409,7 @@ ifeq "$(ENABLE_HELP)" "n"
 endif
 
 ifneq (,$(filter redland, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , librdf0-dev (>= 1.0.16)
+	BUILD_DEPS += , librdf0-dev (>= 1.0.16-2)
 	SHLIBS_OVERRIDE += -Xunordf
 endif
 
@@ -2583,11 +2583,11 @@ ifeq "$(BUILD_TEST_PACKAGE)" "y"
   ifeq "$(ENABLE_JUNIT4)" "y"
 	rm -rf $(PKGDIR)-subsequentcheckbase
 	mkdir -p $(PKGDIR)-subsequentcheckbase/$(OODIR)/program/classes/
-	# FIXME: find all jars again
-	for jar in test-tools.jar; \
-	do \
+	for jar in OOoRunner.jar OOoRunnerLight.jar test.jar test-tools.jar; do \
 		cp workdir/Jar/$$jar $(PKGDIR)-subsequentcheckbase/$(OODIR)/program/classes/; \
 	done
+	cp instdir/program/classes/ConnectivityTools.jar \
+		$(PKGDIR)-subsequentcheckbase/$(OODIR)/program/classes
   endif
 endif
 endif
@@ -2972,7 +2972,7 @@ ifneq (,$(filter redland, $(SYSTEM_STUFF)))
 	# dh_shlibdeps would fail. It's excluded, and we now need to do it
 	# manually. Saves us a versioned build-conflict with ourselves
 	# which quickly can get outdated
-	perl -pi -e 's/(shlibs.*$$)/$$1, $(shell cat /var/lib/dpkg/info/$(shell dpkg -S /usr/lib/`objdump -p $(PKGDIR)-core/$(OODIR)/program/libunordf*.so | grep NEEDED | grep librdf | awk '{ print $$2 }'` | cut -d: -f1).shlibs | awk '{ print $$3,$$4,$$5 }')/' $(PKGDIR)-core.substvars
+	perl -pi -e 's/(shlibs.*$$)/$$1, $(shell cat /var/lib/dpkg/info/$(shell dpkg -S /usr/lib/$(DEB_HOST_MULTIARCH)/`objdump -p $(PKGDIR)-core/$(OODIR)/program/libunordf*.so | grep NEEDED | grep librdf | awk '{ print $$2 }'` | cut -d: -f1)\:$(DEB_HOST_ARCH).shlibs | awk '{ print $$3,$$4,$$5 }')/' $(PKGDIR)-core.substvars
 endif
 	# Clean up .substvars values added by uno-libs3.symbols (adds uno-libs3, ure):
 	# 1) don't make uno-libs3 depend on ure...
