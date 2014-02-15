@@ -213,6 +213,7 @@ SYSTEM_STUFF += libfreehand
 # dlopen()'ed anyway and whose headers we need from the
 # system anyways if enabled
 SYSTEM_STUFF += libebook
+SYSTEM_STUFF += libabw
 BUILD_CAIROCANVAS=y
 SYSTEM_STUFF += cairo
 CAIRO_FONTS_PATCH=y
@@ -227,9 +228,10 @@ QT_MINVER= (>= 4:4.5)
 endif
 KDELIBS_MINVER= (>= 4:4.3.4)
 BUILD_DBG_PACKAGE=y
-ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
-  BUILD_TEST_PACKAGE=y
-endif
+#ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
+#  BUILD_TEST_PACKAGE=y
+#endif
+BUILD_TEST_PACKAGE=n
 ifeq "$(BUILD_TEST_PACKAGE)" "y"
   BUILD_DBG_PACKAGE=y
 endif
@@ -281,12 +283,14 @@ ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(JDK)" "default"
     ifeq "$(shell LANG=C /usr/lib/jvm/default-java/bin/java -version 2>&1 | tail -n 1 | awk '{ print $$1 }')" "OpenJDK"
       RUN_MAKE_CHECK=y
-      ENABLE_JUNIT4=y
+#      ENABLE_JUNIT4=y
+      ENABLE_JUNIT4=n
     endif
   else
     ifeq "$(JDK)" "openjdk"
       RUN_MAKE_CHECK=y
-      ENABLE_JUNIT4=y
+#      ENABLE_JUNIT4=y
+      ENABLE_JUNIT4=n
     else
       RUN_MAKE_CHECK=n
       ENABLE_JUNIT4=n
@@ -587,7 +591,7 @@ endif
 # Debian WHeezy
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "wheezy-backports"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub libmwaw libodfgen mdds liblangtag orcus harfbuzz libatomic-ops libwpd redland libetonyek libfreehand libebook libvisio libeot,$(SYSTEM_STUFF))
+  SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub libmwaw libodfgen mdds liblangtag orcus harfbuzz libatomic-ops libwpd redland libetonyek libfreehand libebook libvisio libeot libabw,$(SYSTEM_STUFF))
   PACKAGE_SDK_DOCS=n
   WHEEZY_BACKPORT=y
 endif
@@ -623,7 +627,7 @@ ifeq "$(DEB_VENDOR)" "Ubuntu"
   USE_VLC:=n
   #temp. hacks
   ENABLE_EVO2:=n
-  SYSTEM_STUFF := $(filter-out libodfgen libmwaw libetonyek libfreehand libebook libeot, $(SYSTEM_STUFF))
+  SYSTEM_STUFF := $(filter-out libodfgen libmwaw libetonyek libfreehand libebook libeot libabw, $(SYSTEM_STUFF))
   ifneq (,$(filter armel armhf,$(DEB_HOST_ARCH)))
     ENABLE_HELP=n
   endif
@@ -865,7 +869,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	# have gid_Module_Root.$iso
 	#ISOS=$(shell $(SOURCE_TREE)/bin/lo-xlate-lang -i all')
 	ISOS:=en-US af ar as ast be bg bn br bs ca ca-valencia cs cy da de dz el \
-	  en-GB en-ZA eo es et eu fa fi fr ga gl gu he hi hr hu id is it ja \
+	  en-GB en-ZA eo es et eu fa fi fr ga gd gl gu he hi hr hu id is it ja \
 	  ka kk km ko kmr-Latn lt lv mk mn ml mr nb ne nl nn nr nso oc om or \
 	  pa-IN pl pt pt-BR ro ru rw si sk sl sr ss st sv \
 	  ta te tg th tn tr ts ug uk uz ve vi xh zh-CN zh-TW zu
@@ -878,7 +882,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
     endif
 	#LANGPACKISOS:=$(shell $(SOURCE_TREE)/bin/lo-xlate-lang -i all')
 	LANGPACKISOS:=en-US af ar as ast be bg bn br bs ca ca-valencia cs cy da de dz el \
-	  en-GB en-ZA eo es et eu fa fi fr ga gl gu he hi hr hu id is it ja \
+	  en-GB en-ZA eo es et eu fa fi fr ga gd gl gu he hi hr hu id is it ja \
 	  ka kk km ko kmr-Latn lt lv mk mn ml mr nb ne nl nn nr nso oc om or \
 	  pa-IN pl pt pt-BR ro ru rw si sk sl sr ss st sv \
 	  ta te tg th tn tr ts ug uk uz ve vi xh zh-CN zh-TW zu
@@ -901,6 +905,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
+  BUILD_DEPS += , maven-repo-helper
   ifeq "$(JDK)" "default"
 	BUILD_DEPS += , java-common (>= 0.49)
 	JAVA_HOME=/usr/lib/jvm/default-java
@@ -1077,7 +1082,7 @@ ifneq (,$(filter boost, $(SYSTEM_STUFF)))
 endif
 
 ifneq (,$(filter mdds, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libmdds-dev (>= 0.9.1)
+	BUILD_DEPS += , libmdds-dev (>= 0.10.2)
 endif
 
 ifeq "$(ENABLE_ORCUS)" "y"
@@ -1129,6 +1134,9 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
   endif
   ifneq (,$(filter libfreehand, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libfreehand-dev
+  endif
+  ifneq (,$(filter libabw, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libabw-dev
   endif
   ifneq (,$(filter libebook, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libe-book-dev
@@ -1508,7 +1516,7 @@ clean-debdir:
 	rm -rf debian/usr
 
 	find debian -name "*.links" ! -name "libreoffice-dev-doc.links" \
-		-exec rm {} \;
+		! -name "libreoffice-java-common.links" -exec rm {} \;
 	if [ -d "$(STAMP_DIR)" ]; then rm -rf "$(STAMP_DIR)"; fi
 	rm -f debian/*.bug-script
 	rm -f debian/scripts/aotcompile.py*
@@ -1522,7 +1530,9 @@ clean-debdir:
 	rm -f debian/catalog.xml
 	rm -f debian/openoffice.org-dtd-officedocument1.0.xmlcatalogs
 	rm -f debian/*.postinst debian/*.postrm debian/*.preinst debian/*.prerm debian/*.triggers
+	rm -f debian/pom*.xml
 
+	mh_clean
 	dh_clean
 
 clean:
@@ -2457,8 +2467,13 @@ endif
 
 ifeq "$(USE_GSTREAMER)" "y"
 	mkdir -p $(PKGDIR)-avmedia-backend-gstreamer/$(OODIR)/program
+  ifeq "$(GSTREAMER_VERSION)" "1.0"
 	mv $(PKGDIR)-core/$(OODIR)/program/libavmediagst.so \
 		$(PKGDIR)-avmedia-backend-gstreamer/$(OODIR)/program
+  else
+	mv $(PKGDIR)-core/$(OODIR)/program/libavmediagst_0_10.so \
+		$(PKGDIR)-avmedia-backend-gstreamer/$(OODIR)/program
+  endif
 endif
 ifeq "$(USE_VLC)" "y"
 	mkdir -p $(PKGDIR)-avmedia-backend-vlc/$(OODIR)/program
@@ -2492,6 +2507,19 @@ endif
 		mv $$i \
 			$(PKGDIR)-base-drivers/$(OODIR)/program; \
 	done
+
+ifeq "$(ENABLE_JAVA)" "y"
+	# somehow --has-package-version doesn't overwrite version and without <version>...</version>
+	# we get a NullPointerException when calling mh_installjar
+	for i in juh jurt ridl; do \
+		sed -e s/@version@/$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d~ -f1)/ \
+		< debian/pom.$$i.xml.in > debian/pom.$$i.xml; \
+	done
+	mh_installpoms -pure
+	for i in juh jurt ridl; do \
+		mh_installjar -pure -l debian/pom.$$i.xml instdir/ure/share/java/$$i.jar; \
+	done
+endif
 
 	for i in $(ARCH_DEP_PACKAGES); do \
 		if [ -e debian/$$i.bug-script.in ]; then \
@@ -2850,6 +2878,15 @@ endif
 #	install -m644 $(SOURCE_TREE)/svx/$(shell .  $(SOURCE_TREE)/bin/get_config_variables OUTPATH PROEXT; echo $$OUTPATH$$PROEXT)/bin/gengalrc \
 #		$(PKGDIR)-common/$(OODIR)/program/gengalrc
 #endif
+
+ifeq "$(ENABLE_JAVA)" "y"
+	# somehow --has-package-version doesn't overwrite version and without <version>...</version>
+	# we get a NullPointerException when calling mh_installjar
+	sed -e s/@version@/$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d~ -f1)/ \
+		< debian/pom.unoil.xml.in > debian/pom.unoil.xml
+	mh_installpoms -plibreoffice-java-common
+	mh_installjar -plibreoffice-java-common -l debian/pom.unoil.xml instdir/program/classes/unoil.jar
+endif
 
 	touch $@
 
