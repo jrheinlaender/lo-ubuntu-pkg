@@ -269,9 +269,15 @@ else
    GSTREAMER_VERSION=0.10
 endif
 USE_VLC=y
+ENABLE_NEON=y
+ifeq "$(ENABLE_NEON)" "y"
 SYSTEM_STUFF += neon
 NEON_SECTYPE=gnutls
 NEONSONR=27
+else
+SYSTEM_STUFF += apr
+SYSTEM_STUFF += serf
+endif
 SYSTEM_STUFF += redland
 PACKAGE_SDK=y
 PACKAGE_SDK_DOCS=y
@@ -282,6 +288,7 @@ ifeq "$(ENABLE_JAVA)" "y"
       RUN_MAKE_CHECK=n
 #      ENABLE_JUNIT4=y
       ENABLE_JUNIT4=n
+      RUN_PYTESTS=y
     endif
   else
     ifeq "$(JDK)" "openjdk"
@@ -289,9 +296,11 @@ ifeq "$(ENABLE_JAVA)" "y"
       RUN_MAKE_CHECK=n
 #      ENABLE_JUNIT4=y
       ENABLE_JUNIT4=n
+      RUN_PYTESTS=y
     else
       RUN_MAKE_CHECK=n
       ENABLE_JUNIT4=n
+      RUN_PYTESTS=n
       BUILD_TEST_PACKAGE=n
     endif
   endif
@@ -405,6 +414,8 @@ ENABLE_EOT=y
 ifeq "$(ENABLE_EOT)" "y"
 #SYSTEM_STUFF += libeot
 endif
+SYSTEM_STUFF += glew
+SYSTEM_STUFF += glm
 
 # Default flags to pass to configure
 CONFIGURE_FLAGS= \
@@ -585,7 +596,7 @@ endif
 # Debian WHeezy
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "wheezy-backports"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub libmwaw libodfgen mdds liblangtag orcus harfbuzz libatomic-ops libwpd redland libetonyek libfreehand libebook libvisio libeot libabw,$(SYSTEM_STUFF))
+  SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub libmwaw libodfgen mdds liblangtag orcus harfbuzz libatomic-ops libwpd redland libetonyek libfreehand libebook libvisio libeot libabw glew glm,$(SYSTEM_STUFF))
   PACKAGE_SDK_DOCS=n
   WHEEZY_BACKPORT=y
 endif
@@ -1016,7 +1027,7 @@ ifneq (,$(filter boost, $(SYSTEM_STUFF)))
 	#BUILD_DEPS += , libboost-thread$(BOOST_VERSION)-dev, libboost-program-options$(BOOST_VERSION)-dev
     ifeq "$(ENABLE_ORCUS)" "y"
       ifeq (,$(filter orcus, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libboost-system$(BOOST_VERSION)-dev $(BOOST_MINVER)
+	BUILD_DEPS += , libboost-system$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-iostreams$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-program-options$(BOOST_VERSION)-dev $(BOOST_MINVER),
       endif
     endif
     ifeq ($(USE_VLC),y)
@@ -1026,7 +1037,7 @@ ifneq (,$(filter boost, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libboost-dev $(BOOST_MINVER), libboost-date-time-dev $(BOOST_MINVER)
 	#BUILD_DEPS += , libboost-thread-dev, libboost-program-options-dev
     ifeq (,$(filter orcus, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libboost-system-dev $(BOOST_MINVER)
+	BUILD_DEPS += , libboost-system-dev $(BOOST_MINVER), libboost-iostreams-dev $(BOOST_MINVER), libboost-program-options-dev $(BOOST_MINVER)
     endif
     ifeq ($(USE_VLC),y)
 	BUILD_DEPS += , libboost-system-dev $(BOOST_MINVER)
@@ -1043,7 +1054,7 @@ endif
 
 ifeq "$(ENABLE_ORCUS)" "y"
   ifneq (,$(filter orcus, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , liborcus-dev (>= 0.5.0)
+	BUILD_DEPS += , liborcus-dev (>= 0.7.0)
   endif
 else
 	CONFIGURE_FLAGS += --disable-orcus
@@ -1356,13 +1367,22 @@ else
 	DEBHELPER_OPTIONS += -Nlibreoffice-avmedia-backend-vlc
 endif
 
-ifneq (,$(filter neon, $(SYSTEM_STUFF)))
-  ifneq "$(NEON_SECTYPE)" "openssl"
+ifeq "$(ENABLE_NEON)" "y"
+  ifneq (,$(filter neon, $(SYSTEM_STUFF)))
+    ifneq "$(NEON_SECTYPE)" "openssl"
 	BUILD_DEPS += , libneon$(NEONSONR)-$(NEON_SECTYPE)-dev
 	DBG_DBG_SUGGESTS+= , libneon$(NEONSONR)-$(NEON_SECTYPE)-dbg
-  else
+    else
 	BUILD_DEPS += , libneon$(NEONSONR)-dev
 	DBG_DBG_SUGGESTS+= , libneon$(NEONSONR)-dbg
+    endif
+  endif
+else
+  ifneq (,$(filter apr, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libaprutil1-dev
+  endif
+  ifneq (,$(filter serf, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libserf-dev
   endif
 endif
 
@@ -1373,6 +1393,13 @@ endif
 ifneq (,$(filter redland, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , librdf0-dev (>= 1.0.16-2)
 	SHLIBS_OVERRIDE += -Xunordf
+endif
+
+ifneq (,$(filter glew, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libglew-dev
+endif
+ifneq (,$(filter glm, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libglm-dev
 endif
 
 ifeq "$(ENABLE_GIO)" "y"
@@ -1925,6 +1952,10 @@ ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
 	cd $(SOURCE_TREE)/smoketest && \
 		patch -p1 -R < $(CURDIR)/debian/patches/smoketest-disable-extension-tests.diff
 endif
+endif
+
+ifeq "$(RUN_PYTESTS)" "y"
+	cd $(SOURCE_TREE)/pyuno && $(MAKE) PythonTest_pytests
 endif
 
 install: $(STAMP_DIR)/install-common $(STAMP_DIR)/install-arch $(STAMP_DIR)/install-indep
