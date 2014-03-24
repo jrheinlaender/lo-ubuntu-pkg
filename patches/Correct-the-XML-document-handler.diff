@@ -1,0 +1,187 @@
+From 1e91f4594c686e2e0fe7b60559c7f7d9c4a732d6 Mon Sep 17 00:00:00 2001
+From: Oliver-Rainer Wittmann <orw@apache.org>
+Date: Mon, 10 Jun 2013 16:51:54 +0100
+Subject: [PATCH] Correct the XML document handler...
+
+which is used to parse Microsoft Word OOXML documents in case of unknown XML
+elements
+
+(cherry picked from commit 22e334845346f4e3189c72e706d744385953af19)
+
+Conflicts:
+	writerfilter/source/ooxml/OOXMLDocumentImpl.cxx
+	writerfilter/source/ooxml/OOXMLFastDocumentHandler.cxx
+	writerfilter/source/ooxml/OOXMLFastDocumentHandler.hxx
+
+Change-Id: Ibcd3e808abfb35291bb04aa10190a7800f0837fa
+---
+ writerfilter/source/ooxml/OOXMLDocumentImpl.cxx    | 12 ++---
+ .../source/ooxml/OOXMLFastDocumentHandler.cxx      | 62 ++++++++++++----------
+ .../source/ooxml/OOXMLFastDocumentHandler.hxx      | 11 ++--
+ 3 files changed, 43 insertions(+), 42 deletions(-)
+
+diff --git a/writerfilter/source/ooxml/OOXMLDocumentImpl.cxx b/writerfilter/source/ooxml/OOXMLDocumentImpl.cxx
+index acf84f9..1a1e83d 100644
+--- a/writerfilter/source/ooxml/OOXMLDocumentImpl.cxx
++++ b/writerfilter/source/ooxml/OOXMLDocumentImpl.cxx
+@@ -73,10 +73,8 @@ void OOXMLDocumentImpl::resolveFastSubStream(Stream & rStreamHandler,
+     {
+         uno::Reference<uno::XComponentContext> xContext(mpStream->getContext());
+         OOXMLFastDocumentHandler * pDocHandler =
+-            new OOXMLFastDocumentHandler(xContext);
+-        pDocHandler->setStream(&rStreamHandler);
+-        pDocHandler->setDocument(this);
+-        pDocHandler->setXNoteId(mnXNoteId);
++            new OOXMLFastDocumentHandler(
++                xContext, &rStreamHandler, this, mnXNoteId );
+ 
+         uno::Reference < xml::sax::XFastDocumentHandler > xDocumentHandler
+             (pDocHandler);
+@@ -322,10 +320,8 @@ void OOXMLDocumentImpl::resolve(Stream & rStream)
+         uno::Reference<uno::XComponentContext> xContext(mpStream->getContext());
+ 
+         OOXMLFastDocumentHandler * pDocHandler =
+-            new OOXMLFastDocumentHandler(xContext);
+-        pDocHandler->setStream(&rStream);
+-        pDocHandler->setDocument(this);
+-        pDocHandler->setXNoteId(mnXNoteId);
++            new OOXMLFastDocumentHandler(
++                xContext, &rStream, this, mnXNoteId );
+         pDocHandler->setIsSubstream( mbIsSubstream );
+         uno::Reference < xml::sax::XFastDocumentHandler > xDocumentHandler
+             (pDocHandler);
+diff --git a/writerfilter/source/ooxml/OOXMLFastDocumentHandler.cxx b/writerfilter/source/ooxml/OOXMLFastDocumentHandler.cxx
+index fa9f45d..ad142d3 100644
+--- a/writerfilter/source/ooxml/OOXMLFastDocumentHandler.cxx
++++ b/writerfilter/source/ooxml/OOXMLFastDocumentHandler.cxx
+@@ -44,10 +44,28 @@ using namespace ::com::sun::star;
+ using namespace ::std;
+ 
+ 
+-OOXMLFastDocumentHandler::OOXMLFastDocumentHandler
+-(uno::Reference< uno::XComponentContext > const & context)
+-: m_xContext(context), mpStream(0), mpDocument(0)
+-{}
++OOXMLFastDocumentHandler::OOXMLFastDocumentHandler(
++    uno::Reference< uno::XComponentContext > const & context,
++    Stream* pStream,
++    OOXMLDocument* pDocument,
++    sal_Int32 nXNoteId )
++    : m_xContext(context)
++    , mpStream( pStream )
++#ifdef DEBUG_ELEMENT
++    , mpTmpStream()
++#endif
++    , mpDocument( pDocument )
++    , mnXNoteId( nXNoteId )
++    , mpContextHandler()
++{
++#ifdef DEBUG_PROTOCOL
++    if ( pStream )
++    {
++        mpTmpStream.reset( new StreamProtocol( pStream, debug_logger ) );
++        mpStream = mpTmpStream.get();
++    }
++#endif
++}
+ 
+ // ::com::sun::star::xml::sax::XFastContextHandler:
+ void SAL_CALL OOXMLFastDocumentHandler::startFastElement
+@@ -150,6 +168,13 @@ uno::Reference< xml::sax::XFastContextHandler > SAL_CALL
+          << endl;
+ #endif
+ 
++    if ( mpStream == 0 && mpDocument == 0 )
++    {
++        // document handler has been created as unknown child - see <OOXMLFastDocumentHandler::createUnknownChildContext(..)>
++        // --> do not provide a child context
++        return NULL;
++    }
++
+     return OOXMLFactory::getInstance()->createFastChildContextFromStart(getContextHandler().get(), Element);
+ }
+ 
+@@ -176,13 +201,12 @@ Name
+ #endif
+ 
+     return uno::Reference< xml::sax::XFastContextHandler >
+-        (new OOXMLFastDocumentHandler(m_xContext));
++        ( new OOXMLFastDocumentHandler( m_xContext, 0, 0, 0 ) );
+ }
+ 
+ void SAL_CALL OOXMLFastDocumentHandler::characters(const ::rtl::OUString & /*aChars*/)
+     throw (uno::RuntimeException, xml::sax::SAXException)
+ {
+-    // TODO: Insert your implementation for "characters" here.
+ }
+ 
+ // ::com::sun::star::xml::sax::XFastDocumentHandler:
+@@ -200,32 +224,14 @@ void SAL_CALL OOXMLFastDocumentHandler::setDocumentLocator
+ (const uno::Reference< xml::sax::XLocator > & /*xLocator*/)
+     throw (uno::RuntimeException, xml::sax::SAXException)
+ {
+-    // TODO: Insert your implementation for "setDocumentLocator" here.
+-}
+-
+-void OOXMLFastDocumentHandler::setStream(Stream * pStream)
+-{
+-#ifdef DEBUG_PROTOCOL
+-    mpTmpStream.reset(new StreamProtocol(pStream, debug_logger));
+-    mpStream = mpTmpStream.get();
+-#else
+-    mpStream = pStream;
+-#endif
+-}
+-
+-void OOXMLFastDocumentHandler::setDocument(OOXMLDocument * pDocument)
+-{
+-    mpDocument = pDocument;
+-}
+-
+-void OOXMLFastDocumentHandler::setXNoteId(const sal_Int32 nXNoteId)
+-{
+-    mnXNoteId = nXNoteId;
+ }
+ 
+ void OOXMLFastDocumentHandler::setIsSubstream( bool bSubstream )
+ {
+-    getContextHandler( )->getParserState( )->setInSectionGroup( bSubstream );
++    if ( mpStream != 0 && mpDocument != 0 )
++    {
++        getContextHandler( )->getParserState( )->setInSectionGroup( bSubstream );
++    }
+ }
+ 
+ }}
+diff --git a/writerfilter/source/ooxml/OOXMLFastDocumentHandler.hxx b/writerfilter/source/ooxml/OOXMLFastDocumentHandler.hxx
+index eaa508a..d09a409 100644
+--- a/writerfilter/source/ooxml/OOXMLFastDocumentHandler.hxx
++++ b/writerfilter/source/ooxml/OOXMLFastDocumentHandler.hxx
+@@ -49,8 +49,11 @@ class OOXMLFastDocumentHandler:
+         xml::sax::XFastDocumentHandler>
+ {
+ public:
+-    OOXMLFastDocumentHandler
+-    (uno::Reference< uno::XComponentContext > const & context);
++    OOXMLFastDocumentHandler(
++        uno::Reference< uno::XComponentContext > const & context,
++        Stream* pStream,
++        OOXMLDocument* pDocument,
++        sal_Int32 nXNoteId );
+     virtual ~OOXMLFastDocumentHandler() {}
+ 
+     // ::com::sun::star::xml::sax::XFastDocumentHandler:
+@@ -92,10 +95,6 @@ public:
+     virtual void SAL_CALL characters(const ::rtl::OUString & aChars)
+         throw (uno::RuntimeException, xml::sax::SAXException);
+ 
+-    void setStream(Stream * pStream);
+-    void setDocument(OOXMLDocument * pDocument);
+-    void setXNoteId(const sal_Int32 nXNoteId);
+-
+     void setIsSubstream( bool bSubstream );
+ 
+ private:
+-- 
+1.9.1
+
