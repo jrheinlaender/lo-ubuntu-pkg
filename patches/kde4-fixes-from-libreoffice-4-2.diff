@@ -1,0 +1,828 @@
+diff --git a/configure.ac b/configure.ac
+index ca99692..f36cbaf 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -11126,7 +11126,7 @@ if test "$test_kde4" = "yes" -a "$ENABLE_KDE4" = "TRUE"; then
+     fi
+ 
+     qt_test_include="Qt/qobject.h"
+-    qt_test_library="libQtCore.so"
++    qt_test_library="libQtNetwork.so"
+     kde_test_include="kwindowsystem.h"
+     kde_test_library="libsolid.so"
+ 
+@@ -11213,8 +11213,9 @@ the root of your Qt installation by exporting QT4DIR before running "configure".
+         AC_MSG_ERROR([KDE4 libraries not found.  Please specify the root of your KDE4 installation by exporting KDE4DIR before running "configure".])
+     fi
+ 
+-    KDE4_CFLAGS="`pkg-config --cflags QtCore` `pkg-config --cflags QtGui` -I$kde_incdir -DQT_CLEAN_NAMESPACE -DQT_THREAD_SUPPORT"
+-    KDE4_LIBS="-L$kde_libdir -L$qt_lib_dir -lkio -lkfile -lkdeui -lkdecore -lQtCore -lQtGui"
++    PKG_CHECK_MODULES([QT4],[QtNetwork QtGui])
++    KDE4_CFLAGS="-I$kde_incdir $QT4_CFLAGS -DQT_CLEAN_NAMESPACE -DQT_THREAD_SUPPORT"
++    KDE4_LIBS="-L$kde_libdir -lkio -lkfile -lkdeui -lkdecore -L$qt_lib_dir $QT4_LIBS"
+     KDE4_CFLAGS=$(printf '%s' "$KDE4_CFLAGS" | sed -e "s/-I/${ISYSTEM?}/g")
+ 
+     AC_LANG_PUSH([C++])
+@@ -11236,11 +11237,47 @@ int main(int argc, char **argv) {
+     # Sets also KDE_GLIB_CFLAGS/KDE_GLIB_LIBS if successful.
+     PKG_CHECK_MODULES(KDE_GLIB,[glib-2.0 >= 2.4],
+         [
+-        KDE_HAVE_GLIB=1
+-        AC_DEFINE(KDE_HAVE_GLIB,1)
+-        KDE_GLIB_CFLAGS=$(printf '%s' "$KDE_GLIB_CFLAGS" | sed -e "s/-I/${ISYSTEM?}/g")
++            KDE_HAVE_GLIB=1
++            AC_DEFINE(KDE_HAVE_GLIB,1)
++            KDE_GLIB_CFLAGS=$(printf '%s' "$KDE_GLIB_CFLAGS" | sed -e "s/-I/${ISYSTEM?}/g")
++
++            AC_LANG_PUSH([C++])
++            save_CXXFLAGS=$CXXFLAGS
++            CXXFLAGS="$CXXFLAGS $KDE4_CFLAGS"
++            save_LIBS=$LIBS
++            LIBS="$LIBS $KDE4_LIBS"
++            AC_MSG_CHECKING([whether Qt has fixed ExcludeSocketNotifiers])
++
++            # Prepare meta object data
++            TSTBASE="tst_exclude_socket_notifiers"
++            TSTMOC="${SRC_ROOT}/vcl/unx/kde4/${TSTBASE}"
++            ln -fs "${TSTMOC}.hxx"
++            $MOC4 "${TSTBASE}.hxx" -o "${TSTBASE}.moc"
++
++            AC_RUN_IFELSE([AC_LANG_SOURCE([[
++#include "tst_exclude_socket_notifiers.moc"
++
++int main(int argc, char *argv[])
++{
++    QCoreApplication app(argc, argv);
++    exit(tst_processEventsExcludeSocket());
++    return 0;
++}
++            ]])],[
++                AC_MSG_RESULT([yes])
++            ],[
++                AC_MSG_RESULT([no])
++                AC_MSG_WARN([native KDE4 file pickers will be disabled at runtime - fix your Qt4 library!])
++            ])
++
++            # Remove meta object data
++            rm -f "${TSTBASE}."*
++
++            LIBS=$save_LIBS
++            CXXFLAGS=$save_CXXFLAGS
++            AC_LANG_POP([C++])
+         ],
+-        AC_MSG_WARN([[No Glib found, KDE4 support will not integrate with Qt's Glib event loop support]]))
++        AC_MSG_WARN([[No Glib found, KDE4 support will not use native file pickers!]]))
+ fi
+ AC_SUBST(KDE4_CFLAGS)
+ AC_SUBST(KDE4_LIBS)
+diff --git a/vcl/CustomTarget_kde4_moc.mk b/vcl/CustomTarget_kde4_moc.mk
+index 0846b0b..9e41754 100644
+--- a/vcl/CustomTarget_kde4_moc.mk
++++ b/vcl/CustomTarget_kde4_moc.mk
+@@ -11,7 +11,8 @@ $(eval $(call gb_CustomTarget_CustomTarget,vcl/unx/kde4))
+ 
+ $(call gb_CustomTarget_get_target,vcl/unx/kde4) : \
+ 	$(call gb_CustomTarget_get_workdir,vcl/unx/kde4)/KDEXLib.moc \
+-	$(call gb_CustomTarget_get_workdir,vcl/unx/kde4)/KDE4FilePicker.moc
++	$(call gb_CustomTarget_get_workdir,vcl/unx/kde4)/KDE4FilePicker.moc \
++	$(call gb_CustomTarget_get_workdir,vcl/unx/kde4)/tst_exclude_socket_notifiers.moc
+ 
+ $(call gb_CustomTarget_get_workdir,vcl/unx/kde4)/%.moc : \
+ 		$(SRCDIR)/vcl/unx/kde4/%.hxx \
+diff --git a/vcl/Library_vclplug_kde4.mk b/vcl/Library_vclplug_kde4.mk
+index c72fe00..18ffa02 100644
+--- a/vcl/Library_vclplug_kde4.mk
++++ b/vcl/Library_vclplug_kde4.mk
+@@ -76,7 +76,7 @@ endif
+ 
+ $(eval $(call gb_Library_add_exception_objects,vclplug_kde4,\
+     vcl/unx/kde4/KDEData \
+-	vcl/unx/kde4/KDE4FilePicker \
++    vcl/unx/kde4/KDE4FilePicker \
+     vcl/unx/kde4/KDESalDisplay \
+     vcl/unx/kde4/KDESalFrame \
+     vcl/unx/kde4/KDESalGraphics \
+diff --git a/vcl/unx/kde4/KDE4FilePicker.cxx b/vcl/unx/kde4/KDE4FilePicker.cxx
+index 405eafe..1cb1460 100644
+--- a/vcl/unx/kde4/KDE4FilePicker.cxx
++++ b/vcl/unx/kde4/KDE4FilePicker.cxx
+@@ -38,7 +38,6 @@
+ 
+ #include "KDE4FilePicker.hxx"
+ #include "FPServiceInfo.hxx"
+-#include "KDEXLib.hxx"
+ 
+ /* ********* Hack, but needed because of conflicting types... */
+ #define Region QtXRegion
+@@ -114,11 +113,10 @@ QString toQString(const OUString& s)
+ // KDE4FilePicker
+ //////////////////////////////////////////////////////////////////////////
+ 
+-KDE4FilePicker::KDE4FilePicker( const uno::Reference<uno::XComponentContext>&, KDEXLib *xlib )
++KDE4FilePicker::KDE4FilePicker( const uno::Reference<uno::XComponentContext>& )
+     : KDE4FilePicker_Base(_helperMutex)
+     , _resMgr( ResMgr::CreateResMgr("fps_office") )
+     , allowRemoteUrls( false )
+-    , _mXLib( xlib )
+ {
+     _extraControls = new QWidget();
+     _layout = new QGridLayout(_extraControls);
+@@ -263,11 +261,12 @@ sal_Int16 SAL_CALL KDE4FilePicker::execute()
+     _dialog->filterWidget()->setEditable(false);
+ 
+     // We're entering a nested loop.
+-    // Prevent yield calls, which would crash LO.
+-
+-    _mXLib->freezeYield( true );
+-    int result = _dialog->exec();
+-    _mXLib->freezeYield( false );
++    int result;
++    {
++        // Release the yield mutex to prevent deadlocks.
++        SalYieldMutexReleaser aReleaser;
++        result = _dialog->exec();
++    }
+ 
+     // HACK: KFileDialog uses KConfig("kdeglobals") for saving some settings
+     // (such as the auto-extension flag), but that doesn't update KGlobal::config()
+diff --git a/vcl/unx/kde4/KDE4FilePicker.hxx b/vcl/unx/kde4/KDE4FilePicker.hxx
+index 81acf0c..6dc97df 100644
+--- a/vcl/unx/kde4/KDE4FilePicker.hxx
++++ b/vcl/unx/kde4/KDE4FilePicker.hxx
+@@ -40,7 +40,6 @@
+ class KFileDialog;
+ class QWidget;
+ class QLayout;
+-class KDEXLib;
+ 
+ class ResMgr;
+ 
+@@ -83,10 +82,8 @@ protected:
+ 
+     bool allowRemoteUrls;
+ 
+-    KDEXLib* _mXLib;
+-
+ public:
+-    KDE4FilePicker( const ::com::sun::star::uno::Reference< ::com::sun::star::uno::XComponentContext >&, KDEXLib* );
++    KDE4FilePicker( const ::com::sun::star::uno::Reference< ::com::sun::star::uno::XComponentContext >& );
+     virtual ~KDE4FilePicker();
+ 
+     // XFilePickerNotifier
+diff --git a/vcl/unx/kde4/KDEData.cxx b/vcl/unx/kde4/KDEData.cxx
+index ccbbd99..0e87c62 100644
+--- a/vcl/unx/kde4/KDEData.cxx
++++ b/vcl/unx/kde4/KDEData.cxx
+@@ -27,6 +27,7 @@
+ #include "KDEData.hxx"
+ 
+ #include "KDEXLib.hxx"
++#include "KDESalDisplay.hxx"
+ 
+ 
+ KDEData::~KDEData()
+@@ -37,6 +38,7 @@ void KDEData::Init()
+ {
+     pXLib_ = new KDEXLib();
+     pXLib_->Init();
++    SetDisplay( SalKDEDisplay::self() );
+ }
+ 
+ void KDEData::initNWF()
+diff --git a/vcl/unx/kde4/KDESalDisplay.cxx b/vcl/unx/kde4/KDESalDisplay.cxx
+index ee330e7..650b266 100644
+--- a/vcl/unx/kde4/KDESalDisplay.cxx
++++ b/vcl/unx/kde4/KDESalDisplay.cxx
+@@ -25,8 +25,6 @@
+ #include <assert.h>
+ #include <unx/saldata.hxx>
+ 
+-#include <qthread.h>
+-
+ SalKDEDisplay* SalKDEDisplay::selfptr = NULL;
+ 
+ SalKDEDisplay::SalKDEDisplay( Display* pDisp )
+@@ -50,26 +48,22 @@ SalKDEDisplay::~SalKDEDisplay()
+ 
+ void SalKDEDisplay::Yield()
+ {
+-    // We yield the display throught the main Qt thread.
+-    // Actually this Yield may call the Display::Yield, which results in an
+-    // unlimited cycle.
+-    static bool break_cyclic_yield_recursion = false;
+-    bool is_qt_gui_thread = ( qApp->thread() == QThread::currentThread() );
+-
+-    if( DispatchInternalEvent() || break_cyclic_yield_recursion )
++    if( DispatchInternalEvent() )
+         return;
+ 
+-    if( is_qt_gui_thread )
+-        break_cyclic_yield_recursion = true;
++    // Prevent blocking from Drag'n'Drop events, which may have already have processed the event
++    if (XEventsQueued( pDisp_, QueuedAfterReading ) == 0)
++        return;
+ 
+     DBG_ASSERT( static_cast<SalYieldMutex*>(GetSalData()->m_pInstance->GetYieldMutex())->GetThreadId() ==
+                 osl::Thread::getCurrentIdentifier(),
+                 "will crash soon since solar mutex not locked in SalKDEDisplay::Yield" );
+ 
+-    static_cast<KDEXLib*>(GetXLib())->Yield( true, false );
+-
+-    if( is_qt_gui_thread )
+-        break_cyclic_yield_recursion = false;
++    XEvent event;
++    XNextEvent( pDisp_, &event );
++    if( checkDirectInputEvent( &event ))
++        return;
++    qApp->x11ProcessEvent( &event );
+ }
+ 
+ // HACK: When using Qt event loop, input methods (japanese, etc.) will get broken because
+diff --git a/vcl/unx/kde4/KDESalGraphics.cxx b/vcl/unx/kde4/KDESalGraphics.cxx
+index 967864f..6e20ef1 100644
+--- a/vcl/unx/kde4/KDESalGraphics.cxx
++++ b/vcl/unx/kde4/KDESalGraphics.cxx
+@@ -31,10 +31,12 @@
+ #undef Region
+ 
+ #include "KDESalGraphics.hxx"
++#include "KDESalInstance.hxx"
+ 
+ #include <vcl/settings.hxx>
+ #include <vcl/decoview.hxx>
+ #include <rtl/ustrbuf.hxx>
++#include <unx/saldata.hxx>
+ 
+ using namespace ::rtl;
+ 
+@@ -165,21 +167,6 @@ namespace
+         kapp->style()->drawComplexControl(element, option, &painter);
+     }
+ 
+-    int getFrameWidth()
+-    {
+-        static int s_nFrameWidth = -1;
+-        if( s_nFrameWidth < 0 )
+-        {
+-            // fill in a default
+-            QFrame aFrame( NULL );
+-            aFrame.setFrameRect( QRect(0, 0, 100, 30) );
+-            aFrame.setFrameStyle( QFrame::StyledPanel | QFrame::Sunken );
+-            aFrame.ensurePolished();
+-            s_nFrameWidth = aFrame.frameWidth();
+-        }
+-        return s_nFrameWidth;
+-    }
+-
+     void lcl_drawFrame(QStyle::PrimitiveElement element, QImage* image, QStyle::State state)
+     {
+     #if ( QT_VERSION >= QT_VERSION_CHECK( 4, 5, 0 ) )
+@@ -554,7 +541,7 @@ sal_Bool KDESalGraphics::drawNativeControl( ControlType type, ControlPart part,
+                        vclStateValue2StateFlag(nControlState, value) );
+ 
+         // draw just the border, see http://qa.openoffice.org/issues/show_bug.cgi?id=107945
+-        int fw = getFrameWidth();
++        int fw = static_cast< KDESalInstance* >(GetSalData()->m_pInstance)->getFrameWidth();
+         clipRegion = new QRegion( QRegion( widgetRect ).subtracted( widgetRect.adjusted( fw, fw, -fw, -fw )));
+     }
+     else if (type == CTRL_WINDOW_BACKGROUND)
+@@ -833,17 +820,31 @@ sal_Bool KDESalGraphics::getNativeControlRegion( ControlType type, ControlPart p
+             break;
+         }
+         case CTRL_MENU_POPUP:
+-            if (part == PART_MENU_ITEM_CHECK_MARK || part == PART_MENU_ITEM_RADIO_MARK)
+-            { // core uses this to detect radio/checkbox sizes, so just set a square
+-                contentRect.setWidth(contentRect.height());
++        {
++            int h, w;
++            switch ( part ) {
++            case PART_MENU_ITEM_CHECK_MARK:
++                h = kapp->style()->pixelMetric(QStyle::PM_IndicatorHeight);
++                w = kapp->style()->pixelMetric(QStyle::PM_IndicatorWidth);
+                 retVal = true;
++                break;
++            case PART_MENU_ITEM_RADIO_MARK:
++                h = kapp->style()->pixelMetric(QStyle::PM_ExclusiveIndicatorHeight);
++                w = kapp->style()->pixelMetric(QStyle::PM_ExclusiveIndicatorWidth);
++                retVal = true;
++                break;
++            }
++            if (retVal) {
++                contentRect = QRect(0, 0, w, h);
++                boundingRect = contentRect;
+             }
+             break;
++        }
+         case CTRL_FRAME:
+         {
+             if( part == PART_BORDER )
+             {
+-                int nFrameWidth = getFrameWidth();
++                int nFrameWidth = static_cast< KDESalInstance* >(GetSalData()->m_pInstance)->getFrameWidth();
+                 sal_uInt16 nStyle = val.getNumericVal();
+                 if( nStyle & FRAME_DRAW_NODRAW )
+                 {
+diff --git a/vcl/unx/kde4/KDESalInstance.cxx b/vcl/unx/kde4/KDESalInstance.cxx
+index 224ac3a..023d790 100644
+--- a/vcl/unx/kde4/KDESalInstance.cxx
++++ b/vcl/unx/kde4/KDESalInstance.cxx
+@@ -32,10 +32,19 @@ SalFrame* KDESalInstance::CreateFrame( SalFrame *pParent, sal_uLong nState )
+ }
+ 
+ uno::Reference< ui::dialogs::XFilePicker2 > KDESalInstance::createFilePicker(
+-        const uno::Reference< uno::XComponentContext >& xMSF )
++    const uno::Reference< uno::XComponentContext >& xMSF )
+ {
+-    return uno::Reference< ui::dialogs::XFilePicker2 >(
+-        static_cast<KDEXLib*>( mpXLib )->createFilePicker(xMSF) );
++    KDEXLib* kdeXLib = static_cast<KDEXLib*>( mpXLib );
++    if (kdeXLib->haveQt4SocketExcludeFix())
++        return uno::Reference< ui::dialogs::XFilePicker2 >(
++            kdeXLib->createFilePicker(xMSF) );
++    else
++        return X11SalInstance::createFilePicker( xMSF );
++}
++
++int KDESalInstance::getFrameWidth()
++{
++    return static_cast<KDEXLib*>( mpXLib )->getFrameWidth();
+ }
+ 
+ /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/kde4/KDESalInstance.hxx b/vcl/unx/kde4/KDESalInstance.hxx
+index 3c07f52..f73af0d 100644
+--- a/vcl/unx/kde4/KDESalInstance.hxx
++++ b/vcl/unx/kde4/KDESalInstance.hxx
+@@ -36,6 +36,7 @@ class KDESalInstance : public X11SalInstance
+         virtual com::sun::star::uno::Reference< com::sun::star::ui::dialogs::XFilePicker2 >
+             createFilePicker( const com::sun::star::uno::Reference<
+                                   com::sun::star::uno::XComponentContext >& );
++        int getFrameWidth();
+ };
+ 
+ /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/kde4/KDEXLib.cxx b/vcl/unx/kde4/KDEXLib.cxx
+index 4a9b70b..820d39a 100644
+--- a/vcl/unx/kde4/KDEXLib.cxx
++++ b/vcl/unx/kde4/KDEXLib.cxx
+@@ -19,7 +19,6 @@
+ 
+ #include "VCLKDEApplication.hxx"
+ 
+-#include "KDE4FilePicker.hxx"
+ #include "KDESalInstance.hxx"
+ 
+ #include <kapplication.h>
+@@ -45,27 +44,16 @@
+ 
+ #include <config_kde4.h>
+ 
+-#if QT_VERSION >= QT_VERSION_CHECK( 4, 9, 0 )
+-#define QT_UNIX_EVENT_LOOP_SUPPORT 1
+-#else
+-#define QT_UNIX_EVENT_LOOP_SUPPORT 0
+-#endif
+-
+ #if KDE_HAVE_GLIB
+-#define GLIB_EVENT_LOOP_SUPPORT 1
+-#else
+-#define GLIB_EVENT_LOOP_SUPPORT 0
+-#endif
+-
+-#if GLIB_EVENT_LOOP_SUPPORT
+-#include <glib-2.0/glib.h>
++#include "KDE4FilePicker.hxx"
++#include "tst_exclude_socket_notifiers.moc"
+ #endif
+ 
+ KDEXLib::KDEXLib() :
+     SalXLib(),  m_bStartupDone(false), m_pApplication(0),
+     m_pFreeCmdLineArgs(0), m_pAppCmdLineArgs(0), m_nFakeCmdLineArgs( 0 ),
+-    eventLoopType( LibreOfficeEventLoop ),
+-    m_bYieldFrozen( false )
++    m_frameWidth( -1 ), m_isGlibEventLoopType(false),
++    m_haveQt4SocketExcludeFix(false)
+ {
+     // the timers created here means they belong to the main thread.
+     // As the timeoutTimer runs the LO event queue, which may block on a dialog,
+@@ -92,6 +80,9 @@ KDEXLib::KDEXLib() :
+              this, SLOT( createFilePicker( const com::sun::star::uno::Reference<
+                                                  com::sun::star::uno::XComponentContext >&) ),
+              Qt::BlockingQueuedConnection );
++
++    connect( this, SIGNAL( getFrameWidthSignal() ),
++             this, SLOT( getFrameWidth() ), Qt::BlockingQueuedConnection );
+ }
+ 
+ KDEXLib::~KDEXLib()
+@@ -178,6 +169,14 @@ void KDEXLib::Init()
+     m_pApplication = new VCLKDEApplication();
+     kapp->disableSessionManagement();
+     KApplication::setQuitOnLastWindowClosed(false);
++
++#if KDE_HAVE_GLIB
++    m_isGlibEventLoopType = QAbstractEventDispatcher::instance()->inherits( "QEventDispatcherGlib" );
++    if (m_isGlibEventLoopType && (0 == tst_processEventsExcludeSocket()))
++        // See http://bugreports.qt.nokia.com/browse/QTBUG-37380
++        m_haveQt4SocketExcludeFix = true;
++#endif
++
+     setupEventLoop();
+ 
+     Display* pDisp = QX11Info::display();
+@@ -194,15 +193,16 @@ void KDEXLib::Init()
+ // needs to be unlocked shortly before entering the main sleep (e.g. select()) and locked
+ // immediatelly after. So we need to know which event loop implementation is used and
+ // hook accordingly.
+-#if GLIB_EVENT_LOOP_SUPPORT
++#if KDE_HAVE_GLIB
++#include <glib.h>
++
+ static GPollFunc old_gpoll = NULL;
+-static gint gpoll_wrapper( GPollFD*, guint, gint );
+-#endif
+-#if QT_UNIX_EVENT_LOOP_SUPPORT
+-static int (*qt_select)(int nfds, fd_set *fdread, fd_set *fdwrite, fd_set *fdexcept,
+-   const struct timeval *orig_timeout);
+-static int lo_select(int nfds, fd_set *fdread, fd_set *fdwrite, fd_set *fdexcept,
+-   const struct timeval *orig_timeout);
++
++static gint gpoll_wrapper( GPollFD* ufds, guint nfds, gint timeout )
++{
++    SalYieldMutexReleaser release; // release YieldMutex (and re-acquire at block end)
++    return old_gpoll( ufds, nfds, timeout );
++}
+ #endif
+ 
+ static bool ( *old_qt_event_filter )( void* );
+@@ -218,60 +218,21 @@ static bool qt_event_filter( void* m )
+ void KDEXLib::setupEventLoop()
+ {
+     old_qt_event_filter = QAbstractEventDispatcher::instance()->setEventFilter( qt_event_filter );
+-#if GLIB_EVENT_LOOP_SUPPORT
+-// Glib is simple, it has g_main_context_set_poll_func() for wrapping the sleep call.
+-// The catch is that Qt has a bug that allows triggering timers even when they should
+-// not be, leading to crashes caused by QClipboard re-entering the event loop.
+-// (http://bugreports.qt.nokia.com/browse/QTBUG-14461), so enable only with Qt>=4.8.0,
+-// where it is fixed.
+-#if QT_VERSION >= QT_VERSION_CHECK( 4, 8, 0 )
+-    if( QAbstractEventDispatcher::instance()->inherits( "QEventDispatcherGlib" ))
++#if KDE_HAVE_GLIB
++    if( m_isGlibEventLoopType )
+     {
+-        eventLoopType = GlibEventLoop;
+         old_gpoll = g_main_context_get_poll_func( NULL );
+         g_main_context_set_poll_func( NULL, gpoll_wrapper );
+-        m_pApplication->clipboard()->setProperty( "useEventLoopWhenWaiting", true );
+-        return;
+-    }
+-#endif
+-#endif
+-#if QT_UNIX_EVENT_LOOP_SUPPORT
+-// When Qt does not use Glib support, it uses its own Unix event dispatcher.
+-// That one has aboutToBlock() and awake() signals, but they are broken (either
+-// functionality or semantics), as e.g. awake() is not emitted right after the dispatcher
+-// is woken up from sleep again, but only later (which is too late for re-acquiring SolarMutex).
+-// This should be fixed with Qt-4.8.0 (?) where support for adding custom select() function
+-// has been added too (http://bugreports.qt.nokia.com/browse/QTBUG-16934).
+-    if( QAbstractEventDispatcher::instance()->inherits( "QEventDispatcherUNIX" ))
+-    {
+-        eventLoopType = QtUnixEventLoop;
+-        QInternal::callFunction( QInternal::GetUnixSelectFunction, reinterpret_cast< void** >( &qt_select ));
+-        QInternal::callFunction( QInternal::SetUnixSelectFunction, reinterpret_cast< void** >( lo_select ));
++        if( m_haveQt4SocketExcludeFix )
++            m_pApplication->clipboard()->setProperty( "useEventLoopWhenWaiting", true );
+         return;
+     }
+ #endif
+ }
+ 
+-#if GLIB_EVENT_LOOP_SUPPORT
+-gint gpoll_wrapper( GPollFD* ufds, guint nfds, gint timeout )
+-{
+-    SalYieldMutexReleaser release; // release YieldMutex (and re-acquire at block end)
+-    return old_gpoll( ufds, nfds, timeout );
+-}
+-#endif
+-
+-#if QT_UNIX_EVENT_LOOP_SUPPORT
+-int lo_select(int nfds, fd_set *fdread, fd_set *fdwrite, fd_set *fdexcept,
+-   const struct timeval *orig_timeout)
+-{
+-    SalYieldMutexReleaser release; // release YieldMutex (and re-acquire at block end)
+-    return qt_select( nfds, fdread, fdwrite, fdexcept, orig_timeout );
+-}
+-#endif
+-
+ void KDEXLib::Insert( int fd, void* data, YieldFunc pending, YieldFunc queued, YieldFunc handle )
+ {
+-    if( eventLoopType == LibreOfficeEventLoop )
++    if( !m_isGlibEventLoopType )
+         return SalXLib::Insert( fd, data, pending, queued, handle );
+     SocketData sdata;
+     sdata.data = data;
+@@ -286,7 +247,7 @@ void KDEXLib::Insert( int fd, void* data, YieldFunc pending, YieldFunc queued, Y
+ 
+ void KDEXLib::Remove( int fd )
+ {
+-    if( eventLoopType == LibreOfficeEventLoop )
++    if( !m_isGlibEventLoopType )
+         return SalXLib::Remove( fd );
+     SocketData sdata = socketData.take( fd );// according to SalXLib::Remove() this should be safe
+     delete sdata.notifier;
+@@ -300,10 +261,7 @@ void KDEXLib::socketNotifierActivated( int fd )
+ 
+ void KDEXLib::Yield( bool bWait, bool bHandleAllCurrentEvents )
+ {
+-    // Nested yield loop counter.
+-    static int loop_depth = 0;
+-
+-    if( eventLoopType == LibreOfficeEventLoop )
++    if( !m_isGlibEventLoopType )
+     {
+         if( qApp->thread() == QThread::currentThread())
+         {
+@@ -314,34 +272,15 @@ void KDEXLib::Yield( bool bWait, bool bHandleAllCurrentEvents )
+         return SalXLib::Yield( bWait, bHandleAllCurrentEvents );
+     }
+ 
+-    if( m_bYieldFrozen ) {
+-        if( qApp->thread() != QThread::currentThread() ) {
+-            QAbstractEventDispatcher* dispatcher = QAbstractEventDispatcher::instance( qApp->thread() );
+-            if( dispatcher->hasPendingEvents() ) {
+-                struct timespec delay = {0, ( 1000000 )};
+-                nanosleep(&delay, NULL);
+-            }
+-        }
+-        return;
+-    }
+-
+     // if we are the main thread (which is where the event processing is done),
+     // good, just do it
+-    if( qApp->thread() == QThread::currentThread()) {
+-        // Release the yield lock before entering a nested loop.
+-        if (loop_depth > 0)
+-            SalYieldMutexReleaser aReleaser;
+-        loop_depth++;
++    if( qApp->thread() == QThread::currentThread())
+         processYield( bWait, bHandleAllCurrentEvents );
+-        loop_depth--;
+-    }
+-    else {
++    else
++    {
+         // we were called from another thread;
+         // release the yield lock to prevent deadlock.
+         SalYieldMutexReleaser aReleaser;
+-
+-        // if this deadlocks, event processing needs to go into a separate
+-        // thread or some other solution needs to be found
+         Q_EMIT processYieldSignal( bWait, bHandleAllCurrentEvents );
+     }
+ }
+@@ -364,7 +303,7 @@ void KDEXLib::processYield( bool bWait, bool bHandleAllCurrentEvents )
+ 
+ void KDEXLib::StartTimer( sal_uLong nMS )
+ {
+-    if( eventLoopType == LibreOfficeEventLoop )
++    if( !m_isGlibEventLoopType )
+         return SalXLib::StartTimer( nMS );
+     timeoutTimer.setInterval( nMS );
+     // QTimer's can be started only in their thread (main thread here)
+@@ -381,7 +320,7 @@ void KDEXLib::startTimeoutTimer()
+ 
+ void KDEXLib::StopTimer()
+ {
+-    if( eventLoopType == LibreOfficeEventLoop )
++    if( !m_isGlibEventLoopType )
+         return SalXLib::StopTimer();
+     timeoutTimer.stop();
+ }
+@@ -395,14 +334,14 @@ void KDEXLib::timeoutActivated()
+ 
+ void KDEXLib::Wakeup()
+ {
+-    if( eventLoopType == LibreOfficeEventLoop )
++    if( !m_isGlibEventLoopType )
+         return SalXLib::Wakeup();
+     QAbstractEventDispatcher::instance( qApp->thread())->wakeUp(); // main thread event loop
+ }
+ 
+ void KDEXLib::PostUserEvent()
+ {
+-    if( eventLoopType == LibreOfficeEventLoop )
++    if( !m_isGlibEventLoopType )
+         return SalXLib::PostUserEvent();
+     if( qApp->thread() == QThread::currentThread())
+         startUserEventTimer();
+@@ -438,11 +377,36 @@ using namespace com::sun::star;
+ uno::Reference< ui::dialogs::XFilePicker2 > KDEXLib::createFilePicker(
+         const uno::Reference< uno::XComponentContext >& xMSF )
+ {
++#if KDE_HAVE_GLIB
+     if( qApp->thread() != QThread::currentThread()) {
+         SalYieldMutexReleaser aReleaser;
+         return Q_EMIT createFilePickerSignal( xMSF );
+     }
+-    return uno::Reference< ui::dialogs::XFilePicker2 >( new KDE4FilePicker( xMSF, this ) );
++    return uno::Reference< ui::dialogs::XFilePicker2 >( new KDE4FilePicker( xMSF ) );
++#else
++    return NULL;
++#endif
++}
++
++#define Region QtXRegion
++#include <qframe.h>
++#undef Region
++
++int KDEXLib::getFrameWidth()
++{
++    if( m_frameWidth >= 0 )
++        return m_frameWidth;
++    if( qApp->thread() != QThread::currentThread()) {
++        SalYieldMutexReleaser aReleaser;
++        return Q_EMIT getFrameWidthSignal();
++    }
++
++    // fill in a default
++    QFrame aFrame( NULL );
++    aFrame.setFrameStyle( QFrame::StyledPanel | QFrame::Sunken );
++    aFrame.ensurePolished();
++    m_frameWidth = aFrame.frameWidth();
++    return m_frameWidth;
+ }
+ 
+ #include "KDEXLib.moc"
+diff --git a/vcl/unx/kde4/KDEXLib.hxx b/vcl/unx/kde4/KDEXLib.hxx
+index d07b9f6..a88258c 100644
+--- a/vcl/unx/kde4/KDEXLib.hxx
++++ b/vcl/unx/kde4/KDEXLib.hxx
+@@ -51,8 +51,9 @@ class KDEXLib : public QObject, public SalXLib
+         QHash< int, SocketData > socketData; // key is fd
+         QTimer timeoutTimer;
+         QTimer userEventTimer;
+-        enum { LibreOfficeEventLoop, GlibEventLoop, QtUnixEventLoop } eventLoopType;
+-        bool m_bYieldFrozen;
++        int m_frameWidth;
++        bool m_isGlibEventLoopType;
++        bool m_haveQt4SocketExcludeFix;
+ 
+     private:
+         void setupEventLoop();
+@@ -71,6 +72,7 @@ class KDEXLib : public QObject, public SalXLib
+         com::sun::star::uno::Reference< com::sun::star::ui::dialogs::XFilePicker2 >
+             createFilePickerSignal( const com::sun::star::uno::Reference<
+                                           com::sun::star::uno::XComponentContext >& );
++        int getFrameWidthSignal();
+ 
+     public:
+         KDEXLib();
+@@ -85,13 +87,14 @@ class KDEXLib : public QObject, public SalXLib
+         virtual void Wakeup();
+         virtual void PostUserEvent();
+ 
+-        void freezeYield(bool freeze) { m_bYieldFrozen = freeze; }
+         void doStartup();
++        bool haveQt4SocketExcludeFix() { return m_haveQt4SocketExcludeFix; }
+ 
+     public Q_SLOTS:
+-        virtual com::sun::star::uno::Reference< com::sun::star::ui::dialogs::XFilePicker2 >
++        com::sun::star::uno::Reference< com::sun::star::ui::dialogs::XFilePicker2 >
+             createFilePicker( const com::sun::star::uno::Reference<
+                                   com::sun::star::uno::XComponentContext >& );
++        int getFrameWidth();
+ };
+ 
+ /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/kde4/tst_exclude_socket_notifiers.hxx b/vcl/unx/kde4/tst_exclude_socket_notifiers.hxx
+new file mode 100644
+index 0000000..0c874fd
+--- /dev/null
++++ b/vcl/unx/kde4/tst_exclude_socket_notifiers.hxx
+@@ -0,0 +1,126 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ *
++ * This code is based on the SocketEventsTester from the Qt4 test suite.
++ */
++
++#pragma once
++
++#include <qcoreapplication.h>
++#include <qeventloop.h>
++#include <qthread.h>
++#include <qtimer.h>
++#include <QtNetwork/qtcpserver.h>
++#include <QtNetwork/qtcpsocket.h>
++
++class SocketEventsTester: public QObject
++{
++    Q_OBJECT
++public:
++    SocketEventsTester()
++    {
++        socket = 0;
++        server = 0;
++        dataSent = false;
++        testResult = false;
++        dataArrived = false;
++    }
++    ~SocketEventsTester()
++    {
++        delete socket;
++        delete server;
++    }
++    bool init()
++    {
++        bool ret = false;
++        server = new QTcpServer();
++        socket = new QTcpSocket();
++        connect(server, SIGNAL(newConnection()), this, SLOT(sendHello()));
++        connect(socket, SIGNAL(readyRead()), this, SLOT(sendAck()), Qt::DirectConnection);
++        if((ret = server->listen(QHostAddress::LocalHost, 0))) {
++            socket->connectToHost(server->serverAddress(), server->serverPort());
++            socket->waitForConnected();
++        }
++        return ret;
++    }
++
++    QTcpSocket *socket;
++    QTcpServer *server;
++    bool dataSent;
++    bool testResult;
++    bool dataArrived;
++public slots:
++    void sendAck()
++    {
++        dataArrived = true;
++    }
++    void sendHello()
++    {
++        char data[10] ="HELLO";
++        qint64 size = sizeof(data);
++
++        QTcpSocket *serverSocket = server->nextPendingConnection();
++        serverSocket->write(data, size);
++        dataSent = serverSocket->waitForBytesWritten(-1);
++        QEventLoop loop;
++        //allow the TCP/IP stack time to loopback the data, so our socket is ready to read
++        QTimer::singleShot(200, &loop, SLOT(quit()));
++        loop.exec(QEventLoop::ExcludeSocketNotifiers);
++        testResult = dataArrived;
++        //check the deferred event is processed
++        QTimer::singleShot(200, &loop, SLOT(quit()));
++        loop.exec();
++        serverSocket->close();
++        QThread::currentThread()->exit(0);
++    }
++};
++
++class SocketTestThread : public QThread
++{
++    Q_OBJECT
++public:
++    SocketTestThread():QThread(0),testResult(false){};
++    void run()
++    {
++        SocketEventsTester *tester = new SocketEventsTester();
++        if (tester->init())
++            exec();
++        dataSent = tester->dataSent;
++        testResult = tester->testResult;
++        dataArrived = tester->dataArrived;
++        delete tester;
++    }
++    bool dataSent;
++    bool testResult;
++    bool dataArrived;
++};
++
++#define QVERIFY(a) \
++    if (!a) return 1;
++
++static int tst_processEventsExcludeSocket()
++{
++    SocketTestThread thread;
++    thread.start();
++    QVERIFY(thread.wait());
++    QVERIFY(thread.dataSent);
++    QVERIFY(!thread.testResult);
++    QVERIFY(thread.dataArrived);
++    return 0;
++}
++
