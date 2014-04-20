@@ -57,9 +57,9 @@ index 66edd78..47f17b6 100644
 --- a/scp2/AutoInstall.mk
 +++ b/scp2/AutoInstall.mk
 @@ -12,6 +12,7 @@ $(eval $(call gb_AutoInstall_AutoInstall))
- $(eval $(call gb_AutoInstall_add_module,activexbinarytable,LIBO_LIB_FILE_BINARYTABLE))
- $(eval $(call gb_AutoInstall_add_module,base,LIBO_LIB_FILE))
  $(eval $(call gb_AutoInstall_add_module,calc,LIBO_LIB_FILE))
+ $(eval $(call gb_AutoInstall_add_module,extensions_bsh,,,LIBO_JAR_FILE))
+ $(eval $(call gb_AutoInstall_add_module,extensions_rhino,,,LIBO_JAR_FILE))
 +$(eval $(call gb_AutoInstall_add_module,draw,LIBO_LIB_FILE))
  $(eval $(call gb_AutoInstall_add_module,gnome,LIBO_LIB_FILE))
  $(eval $(call gb_AutoInstall_add_module,graphicfilter,LIBO_LIB_FILE))
@@ -68,37 +68,38 @@ diff --git a/Repository.mk b/Repository.mk
 index 51089bb..3cffd92 100644
 --- a/Repository.mk
 +++ b/Repository.mk
-@@ -146,13 +146,28 @@ endif
+@@ -143,13 +143,29 @@ endif
  
  $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,base, \
  	abp \
 +	calc \
-+	dba \
-+	dbase \
-+	dbaxml \
++	$(call gb_Helper_optional,DBCONNECTIVITY, \
++		dba \
++		dbase \
++		dbaxml) \
  	dbp \
  	dbu \
-+	$(if $(filter $(ENABLE_FIREBIRD_SDBC),TRUE),firebird_sdbc) \
-+	flat \
-+	$(if $(ENABLE_JAVA),jdbc) \
-+	mysql \
-+	odbc \
-+	odbcbase \
++       $(if $(filter $(ENABLE_FIREBIRD_SDBC),TRUE),firebird_sdbc) \
++       $(call gb_Helper_optional,DBCONNECTIVITY,flat) \
++       $(if $(ENABLE_JAVA),jdbc) \
++	$(call gb_Helper_optional,DBCONNECTIVITY,mysql) \
++       odbc \
++       odbcbase \
 +))
 +
 +$(eval $(call gb_Helper_register_libraries_for_install,PLAINLIBS_OOO,base, \
-+	dbpool2 \
-+	$(if $(ENABLE_JAVA),hsqldb) \
-+	sdbc2 \
++	$(call gb_Helper_optional,DBCONNECTIVITY,dbpool2) \
++       $(if $(ENABLE_JAVA),hsqldb) \
++       sdbc2 \
  ))
  
  $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,calc, \
  	analysis \
--	calc \
+-	$(call gb_Helper_optional,DBCONNECTIVITY,calc) \
  	date \
  	pricing \
  	sc \
-@@ -163,6 +178,13 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,calc, \
+@@ -162,6 +178,13 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,calc, \
  	$(if $(ENABLE_TELEPATHY),tubes) \
  ))
  
@@ -112,7 +113,7 @@ index 51089bb..3cffd92 100644
  $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,graphicfilter, \
  	svgfilter \
  	flash \
-@@ -175,6 +175,7 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,impress, \
+@@ -179,6 +202,7 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,impress, \
  	PresenterScreen \
  	PresentationMinimizer \
  	wpftimpress \
@@ -120,30 +121,31 @@ index 51089bb..3cffd92 100644
  ))
  
  $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,onlineupdate, \
-@@ -222,11 +244,8 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,ooo, \
- 	configmgr \
+@@ -228,11 +252,8 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,ooo, \
  	ctl \
  	cui \
--	dba \
--	dbase \
- 	dbmm \
- 	$(if $(DISABLE_DBCONNECTIVITY),,dbtools) \
--	dbaxml \
+ 	$(call gb_Helper_optional,DBCONNECTIVITY, \
+-		dba \
+-		dbase \
+ 		dbmm \
+-		dbtools \
+-		dbaxml) \
++		dbtools) \
  	deploymentmisc \
  	$(if $(filter-out MACOSX WNT,$(OS)),desktopbe1) \
  	$(if $(filter unx,$(GUIBASE)),desktop_detector) \
-@@ -253,10 +253,8 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,ooo, \
+@@ -255,10 +276,8 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,ooo, \
  	exp \
  	expwrap \
- 	fastsax \
--	flat \
- 	file \
+ 	$(call gb_Helper_optional,DBCONNECTIVITY, \
+-		flat \
+ 		file) \
  	filterconfig \
 -	$(if $(filter $(ENABLE_FIREBIRD_SDBC),TRUE),firebird_sdbc) \
  	fps_office \
  	for \
  	forui \
-@@ -281,7 +299,6 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,ooo, \
+@@ -287,7 +306,6 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,ooo, \
  	ira \
  	itg \
  	iti \
@@ -151,19 +153,18 @@ index 51089bb..3cffd92 100644
  	$(if $(ENABLE_KAB),kab1) \
  	$(if $(ENABLE_KAB),kabdrv1) \
  	ldapbe2 \
-@@ -296,9 +313,6 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,ooo, \
+@@ -302,8 +320,6 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,ooo, \
  	msfilter \
  	$(if $(DISABLE_SCRIPTING),,msforms) \
  	mtfrenderer \
--	mysql \
+-	$(call gb_Helper_optional,DBCONNECTIVITY,mysql) \
 -	odbc \
--	odbcbase \
  	odfflatxml \
  	offacc \
- 	passwordcontainer \
-@@ -308,13 +308,8 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,ooo, \
+ 	oox \
+@@ -317,13 +333,8 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,ooo, \
  	sb \
- 	sdbt \
+ 	$(call gb_Helper_optional,DBCONNECTIVITY,sdbt) \
  	scn \
 -	sd \
 -	sdd \
@@ -175,7 +176,7 @@ index 51089bb..3cffd92 100644
  	sot \
  	spell \
  	$(if $(ENABLE_HEADLESS),,spl) \
-@@ -325,7 +334,6 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,ooo, \
+@@ -333,7 +344,6 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,ooo, \
  	svt \
  	svx \
  	svxcore \
@@ -183,7 +184,7 @@ index 51089bb..3cffd92 100644
  	syssh \
  	$(if $(ENABLE_TDEAB),tdeab1) \
  	$(if $(ENABLE_TDEAB),tdeabdrv1) \
-@@ -372,6 +380,7 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,writer, \
+@@ -397,6 +407,7 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,writer, \
  	hwp \
  	$(if $(ENABLE_LWP),lwpft) \
  	msword \
@@ -191,11 +192,11 @@ index 51089bb..3cffd92 100644
  	swd \
  	swui \
  	t602filter \
-@@ -516,13 +516,11 @@ $(eval $(call gb_Helper_register_libraries_for_install,PLAINLIBS_OOO,ooo, \
+@@ -504,13 +515,11 @@ $(eval $(call gb_Helper_register_libraries_for_install,PLAINLIBS_OOO,ooo, \
  	cached1 \
  	collator_data \
  	comphelper \
--	dbpool2 \
+-	$(call gb_Helper_optional,DBCONNECTIVITY,dbpool2) \
  	deployment \
  	deploymentgui \
  	dict_ja \
@@ -205,14 +206,14 @@ index 51089bb..3cffd92 100644
  	i18nlangtag \
  	i18nutil \
  	index_data \
-@@ -539,7 +539,6 @@ $(eval $(call gb_Helper_register_libraries_for_install,PLAINLIBS_OOO,ooo, \
- 	$(if $(filter WNT-TRUE,$(OS)-$(DISABLE_ATL)),,emboleobj) \
+@@ -526,7 +535,6 @@ $(eval $(call gb_Helper_register_libraries_for_install,PLAINLIBS_OOO,ooo, \
  	package2 \
+ 	$(if $(and $(filter unx,$(GUIBASE)),$(filter-out MACOSX,$(OS))),recentfile) \
  	$(if $(DISABLE_SCRIPTING),,scriptframe) \
 -	sdbc2 \
  	sofficeapp \
  	srtrs1 \
- 	textconv_dict \
+ 	$(if $(filter $(OS),WNT),sysdtrans) \
 diff --git a/scp2/InstallModule_kde.mk b/scp2/InstallModule_kde.mk
 index 9130b62..6ccb07f 100644
 --- a/scp2/InstallModule_kde.mk
