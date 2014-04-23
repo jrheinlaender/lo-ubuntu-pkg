@@ -1574,3 +1574,59 @@ index 07ff1f0..2fc5a21 100644
  };
  
  /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/kde4/KDEXLib.cxx b/vcl/unx/kde4/KDEXLib.cxx
+index 820d39a..e4900a7 100644
+--- a/vcl/unx/kde4/KDEXLib.cxx
++++ b/vcl/unx/kde4/KDEXLib.cxx
+@@ -166,8 +166,23 @@ void KDEXLib::Init()
+ 
+     KCmdLineArgs::init( m_nFakeCmdLineArgs, m_pAppCmdLineArgs, kAboutData );
+ 
++    // LO does its own session management, so prevent KDE/Qt from interfering
++    // (QApplication::disableSessionManagement(false) wouldn't quite do,
++    // since that still actually connects to the session manager, it just
++    // won't save the application data on session shutdown).
++    char* session_manager = NULL;
++    if( getenv( "SESSION_MANAGER" ) != NULL )
++    {
++        session_manager = strdup( getenv( "SESSION_MANAGER" ));
++        unsetenv( "SESSION_MANAGER" );
++    }
+     m_pApplication = new VCLKDEApplication();
+-    kapp->disableSessionManagement();
++    if( session_manager != NULL )
++    {
++        setenv( "SESSION_MANAGER", session_manager, 1 );
++        free( session_manager );
++    }
++
+     KApplication::setQuitOnLastWindowClosed(false);
+ 
+ #if KDE_HAVE_GLIB
+diff --git a/vcl/unx/kde4/VCLKDEApplication.hxx b/vcl/unx/kde4/VCLKDEApplication.hxx
+index 412ee34..4ce0b2c 100644
+--- a/vcl/unx/kde4/VCLKDEApplication.hxx
++++ b/vcl/unx/kde4/VCLKDEApplication.hxx
+@@ -21,22 +21,14 @@
+ 
+ #define Region QtXRegion
+ 
+-#include <QSessionManager>
+-
+ #include <kapplication.h>
+ 
+ #undef Region
+ 
+-/* #i59042# override KApplications method for session management
+- * since it will interfere badly with our own.
+- */
+ class VCLKDEApplication : public KApplication
+ {
+     public:
+         VCLKDEApplication();
+-
+-        virtual void commitData(QSessionManager&) {};
+-
+         virtual bool x11EventFilter(XEvent* event);
+ };
+ 
