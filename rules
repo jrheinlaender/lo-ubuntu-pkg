@@ -36,6 +36,7 @@ SHELL:=/bin/bash
 export gb_SHELL:=$(SHELL)
 
 SYSTEM_GCC_VERSION = $(shell gcc --version | sed -n '/^gcc/s/.*\(.\..\)\..$$/\1/p')
+SYSTEM_GCJ_VERSION = $(shell basename `readlink /usr/lib/jvm/java-gcj/bin/gcj` | sed -e s/gcj-//)
 
 PKGDIR:=debian/libreoffice
 OODIRNAME=libreoffice
@@ -224,10 +225,9 @@ QT_MINVER= (>= 4:4.5)
 endif
 KDELIBS_MINVER= (>= 4:4.3.4)
 BUILD_DBG_PACKAGE=y
-#ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
-#  BUILD_TEST_PACKAGE=y
-#endif
-BUILD_TEST_PACKAGE=n
+ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
+  BUILD_TEST_PACKAGE=y
+endif
 ifeq "$(BUILD_TEST_PACKAGE)" "y"
   BUILD_DBG_PACKAGE=y
 endif
@@ -489,7 +489,7 @@ endif
 $(eval $(call gen_no_archs,OOO_JAVA_ARCHS))
 
 ifeq "$(JDK)" "default"
-OOO_GCJ_JDK_ARCHS := $(filter $(OOO_ARCHS),$(filter-out $(java7_architectures) kfreebsd%,$(filter-out $(java6_architectures),$(java5_architectures))))
+OOO_GCJ_JDK_ARCHS := $(filter $(OOO_ARCHS),$(filter-out $(java7_architectures),$(filter-out $(java6_architectures),$(java5_architectures))))
 else
 OOO_GCJ_JDK_ARCHS := hppa
 ifeq "$(WHEEZY_BACKPORT)" "y"
@@ -610,7 +610,7 @@ CONFIGURE_FLAGS += $(foreach i, $(SYSTEM_STUFF),--with-system-$(i))
 
 CC_PREFIX:=$(shell gcc -dumpmachine)-
 
-#	BUILD_DEPS += , gcc-4.6 [!i386 !amd64 !kfreebsd-i386 !kfreebsd-amd64] ,g++-4.6 [!i386 !amd64 !kfreebsd-i386 !kfreebsd-amd64]
+	BUILD_DEPS += , gcc-$(SYSTEM_GCJ_VERSION) [$(OOO_GCJ_JDK_ARCHS)] ,g++-$(SYSTEM_GCJ_VERSION) [$(OOO_GCJ_JDK_ARCHS)]
 #ifeq (,$(findstring i386,$(DEB_HOST_ARCH)))
 #  ifeq (,$(findstring amd64,$(DEB_HOST_ARCH)))
 #    ifneq "$(SYSTEM_GCC_VERSION)" "4.6"
@@ -618,6 +618,9 @@ CC_PREFIX:=$(shell gcc -dumpmachine)-
 #    endif
 #  endif
 #endif
+ifeq "$(JDK)" "gcj-jdk"
+GCC_VERSION := $(SYSTEM_GCJ_VERSION)
+endif
 ifneq "$(GCC_VERSION)" ""
   ifneq "$(SYSTEM_GCC_VERSION)" "$(GCC_VERSION)"
     BUILD_DEPS += , gcc-$(GCC_VERSION), g++-$(GCC_VERSION)
@@ -923,7 +926,6 @@ ifeq "$(ENABLE_JAVA)" "y"
   else
 	BUILD_DEPS += , ant (>= 1.6.5)$(OOO_NO_JAVA_ARCHS)
   endif
-	GCJ_VERSION = $(shell basename `readlink $(JAVA_HOME)/bin/gcj` | sed -e s/gcj-//)
 	GCJ_JAWT_DEPENDS= $(shell dpkg -S /usr/lib/$(DEB_HOST_MULTIARCH)/gcj-$(GCJ_VERSION)-*/libgcj_bc.so.1 | cut -d: -f1 | sed -e s/$$/-awt/)
 	DBG_DBG_SUGGESTS+= , $(shell echo $(GCJ_AWT_DEPENDS) | sed -e s/awt/dbg/)
 	JAVA_RUNTIME_DEPENDS = default-jre | gcj-jre
@@ -1577,11 +1579,26 @@ debian/control: $(wildcard debian/control*in) $(SOURCE_TREE)/bin/lo-xlate-lang  
 	    [ "$$LCODE" = kmr-latn ] && LCODE=kmr; \
 	    CCODE=`echo $$LCODE | sed 's/-.*//'`; \
 	    case "$$LCODE" in \
-		bn|gu|pa-in|ml|te|ta) \
-			FONT_SUGGESTS=", ttf-`echo $$LNAME | tr A-Z a-z`-fonts"; \
+		bn) \
+			FONT_SUGGESTS=", fonts-beng"; \
+			;; \
+		gu) \
+			FONT_SUGGESTS=", fonts-gujr"; \
+			;; \
+		pa-in) \
+			FONT_SUGGESTS=", fonts-guru"; \
+			;; \
+		ml) \
+			FONT_SUGGESTS=", fonts-mlym"; \
 			;; \
 		or) \
-			FONT_SUGGESTS=", ttf-oriya-fonts", \
+			FONT_SUGGESTS=", fonts-orya"; \
+			;; \
+		te) \
+			FONT_SUGGESTS=", fonts-telu"; \
+			;; \
+		ta) \
+			FONT_SUGGESTS=", fonts-taml"; \
 			;; \
 		hi-in|ne|mr) \
 			FONT_SUGGESTS=", fonts-deva"; \
