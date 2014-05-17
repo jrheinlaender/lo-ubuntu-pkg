@@ -330,6 +330,14 @@ PARALLEL_BUILD=y
 ENABLE_LDAP=y
 USE_OPENLDAP=y
 ENABLE_OPENGL=y
+# yes, opengl related but --enable/-disable-opengl just affects OGLTrans...
+SYSTEM_STUFF += glew
+# this is also not affected by --enable/-disable-opengl but at least has an
+# own --enable/--disable...
+# and it's a complete mess. external bundled static libraries without a buildsystem,
+# broken includes for "standard" libs (where collada2gltf even also
+# contains a gltf copy and opencollada even more "Externals"
+ENABLE_GLTF=y
 SYSTEM_STUFF += openssl
 NEW_DPKG_SHLIBDEPS=y
 ifeq "$(ENABLE_JAVA)" "y"
@@ -424,11 +432,9 @@ ENABLE_EOT=y
 ifeq "$(ENABLE_EOT)" "y"
 SYSTEM_STUFF += libeot
 endif
-SYSTEM_STUFF += glew
 # need patched/git glm?!
 # 15:17 <@moggi> _rene_: interesting that this extension is not available in older glm versions
 #SYSTEM_STUFF += glm
-ENABLE_GLTF=n
 
 # Default flags to pass to configure
 CONFIGURE_FLAGS= \
@@ -471,6 +477,7 @@ ifeq "$(ENABLE_OPENGL)" "y"
   OOO_OGLTRANS_ARCHS = $(filter-out armel mips%, $(OOO_ARCHS))
   ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_OGLTRANS_ARCHS)))
        ENABLE_OPENGL=n
+       ENABLE_GLTF=n
   endif
   $(eval $(call gen_no_archs,OOO_OGLTRANS_ARCHS))
 endif
@@ -1146,6 +1153,7 @@ endif
 
 ifneq "$(ENABLE_GLTF)" "y"
 	CONFIGURE_FLAGS += --disable-gltf
+	DEBHELPER_OPTIONS += -Nlibreoffice-avmedia-backend-opengl
 endif
 
 ifneq (,$(filter lcms2, $(SYSTEM_STUFF)))
@@ -2769,6 +2777,12 @@ ifeq "$(USE_VLC)" "y"
 	mkdir -p $(PKGDIR)-avmedia-backend-vlc/$(OODIR)/program
 	mv $(PKGDIR)-core/$(OODIR)/program/libavmediavlc.so \
 		$(PKGDIR)-avmedia-backend-vlc/$(OODIR)/program
+endif
+
+ifeq "$(ENABLE_GLTF)" "y"
+	mkdir -p $(PKGDIR)-avmedia-backend-opengl/$(OODIR)/program
+	mv $(PKGDIR)-core/$(OODIR)/program/libavmediaogl.so \
+		$(PKGDIR)-avmedia-opengl/$(OODIR)/program
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
