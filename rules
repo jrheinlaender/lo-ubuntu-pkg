@@ -22,8 +22,8 @@ CURDIR ?= $(realpath $(dir $(firstword $(MAKEFILE_LIST)))/..)
 BASE_VERSION:=$(shell echo $(DEB_VERSION) | cut -d: -f1):$(DEB_VERSION_UPSTREAM)
 BINARY_VERSION=$(DEB_VERSION)
 #HELP_L10N_VIRTUAL_VERSION:=$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d: -f2 | tr [~] [\\-])
-HELP_L10N_VIRTUAL_VERSION:=4.2
-OOVER:=4.2
+HELP_L10N_VIRTUAL_VERSION:=4.3
+OOVER:=4.3
 NEXT_OOVER:=$(shell echo "$(OOVER) + 0.1" | bc)
 
 ARCH_INDEP_PACKAGES := $(shell dh_listpackages -i)
@@ -36,6 +36,7 @@ SHELL:=/bin/bash
 export gb_SHELL:=$(SHELL)
 
 SYSTEM_GCC_VERSION = $(shell gcc --version | sed -n '/^gcc/s/.*\(.\..\)\..$$/\1/p')
+SYSTEM_GCJ_VERSION = $(shell basename `readlink /usr/lib/jvm/java-gcj/bin/gcj` | sed -e s/gcj-//)
 
 PKGDIR:=debian/libreoffice
 OODIRNAME=libreoffice
@@ -81,7 +82,7 @@ endif
 #########
 # Default package configuration
 #
-OOO_ARCHS = amd64 armel armhf hppa i386 ia64 kfreebsd-amd64 kfreebsd-i386 mips mipsel powerpc powerpcspe ppc64 s390 s390x sparc
+OOO_ARCHS = alpha amd64 armel armhf hppa i386 ia64 kfreebsd-amd64 kfreebsd-i386 mips mipsel powerpc powerpcspe ppc64 s390 s390x sparc
 PATCHSET=$(DEB_VENDOR)
 BUILD_DEPS=\
     autoconf,\
@@ -255,6 +256,10 @@ endif
 SYSTEM_STUFF += lpsolve
 USE_SHARED_LPSOLVE=y
 LPSOLVE_MIN_VERSION= (>= 5.5.0.13-5+b1)
+# fails to build with -Werror=format-security....
+ENABLE_COINMP=n
+# not implemented..
+#SYSTEM_STUFF += coinmp
 USE_DBUS=y
 ifeq "$(USE_DBUS)" "y"
   ifneq (,$(findstring kfreebsd,$(DEB_HOST_ARCH)))
@@ -272,9 +277,15 @@ else
    GSTREAMER_VERSION=0.10
 endif
 USE_VLC=y
+ENABLE_NEON=y
+ifeq "$(ENABLE_NEON)" "y"
 SYSTEM_STUFF += neon
 NEON_SECTYPE=gnutls
 NEONSONR=27
+else
+SYSTEM_STUFF += apr
+SYSTEM_STUFF += serf
+endif
 SYSTEM_STUFF += redland
 PACKAGE_SDK=y
 PACKAGE_SDK_DOCS=y
@@ -282,15 +293,28 @@ ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(JDK)" "default"
     ifeq "$(shell LANG=C /usr/lib/jvm/default-java/bin/java -version 2>&1 | tail -n 1 | awk '{ print $$1 }')" "OpenJDK"
       RUN_MAKE_CHECK=y
-      ENABLE_JUNIT4=y
+      RUN_PYTESTS=y
+      ifeq "$(DEB_HOST_ARCH)" "i386"
+	ENABLE_JUNIT4=y
+      endif
+      ifeq "$(DEB_HOST_ARCH)" "amd64"
+	ENABLE_JUNIT4=y
+      endif
     endif
   else
     ifeq "$(JDK)" "openjdk"
       RUN_MAKE_CHECK=y
-      ENABLE_JUNIT4=y
+      RUN_PYTESTS=y
+      ifeq "$(DEB_HOST_ARCH)" "i386"
+	ENABLE_JUNIT4=y
+      endif
+      ifeq "$(DEB_HOST_ARCH)" "amd64"
+	ENABLE_JUNIT4=y
+      endif
     else
       RUN_MAKE_CHECK=n
       ENABLE_JUNIT4=n
+      RUN_PYTESTS=n
       BUILD_TEST_PACKAGE=n
     endif
   endif
@@ -310,6 +334,14 @@ PARALLEL_BUILD=y
 ENABLE_LDAP=y
 USE_OPENLDAP=y
 ENABLE_OPENGL=y
+# yes, opengl related but --enable/-disable-opengl just affects OGLTrans...
+SYSTEM_STUFF += glew
+# this is also not affected by --enable/-disable-opengl but at least has an
+# own --enable/--disable...
+# and it's a complete mess. external bundled static libraries without a buildsystem,
+# broken includes for "standard" libs (where collada2gltf even also
+# contains a gltf copy and opencollada even more "Externals"
+ENABLE_GLTF=n
 SYSTEM_STUFF += openssl
 NEW_DPKG_SHLIBDEPS=y
 ifeq "$(ENABLE_JAVA)" "y"
@@ -405,6 +437,9 @@ ENABLE_EOT=y
 ifeq "$(ENABLE_EOT)" "y"
 SYSTEM_STUFF += libeot
 endif
+# need patched/git glm?!
+# 15:17 <@moggi> _rene_: interesting that this extension is not available in older glm versions
+#SYSTEM_STUFF += glm
 
 # Default flags to pass to configure
 CONFIGURE_FLAGS= \
@@ -447,6 +482,7 @@ ifeq "$(ENABLE_OPENGL)" "y"
   OOO_OGLTRANS_ARCHS = $(filter-out armel mips%, $(OOO_ARCHS))
   ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_OGLTRANS_ARCHS)))
        ENABLE_OPENGL=n
+       ENABLE_GLTF=n
   endif
   $(eval $(call gen_no_archs,OOO_OGLTRANS_ARCHS))
 endif
@@ -465,7 +501,7 @@ ifeq "$(WHEEZY_BACKPORT)" "y"
 IGNORE_MAKE_CHECK_FAILURES=-
 endif
 
-OOO_64BIT_ARCHS = $(filter amd64 ia64 kfreebsd-amd64 ppc64 s390x, $(OOO_ARCHS))
+OOO_64BIT_ARCHS = $(filter alpha amd64 ia64 kfreebsd-amd64 ppc64 s390x, $(OOO_ARCHS))
 
 # Java...
 ifeq "$(JDK)" "default"
@@ -476,7 +512,7 @@ endif
 $(eval $(call gen_no_archs,OOO_JAVA_ARCHS))
 
 ifeq "$(JDK)" "default"
-OOO_GCJ_JDK_ARCHS := $(filter $(OOO_ARCHS),$(filter-out $(java7_architectures) kfreebsd%,$(filter-out $(java6_architectures),$(java5_architectures))))
+OOO_GCJ_JDK_ARCHS := $(filter $(OOO_ARCHS),$(filter-out $(java7_architectures),$(filter-out $(java6_architectures),$(java5_architectures))))
 else
 OOO_GCJ_JDK_ARCHS := hppa
 ifeq "$(WHEEZY_BACKPORT)" "y"
@@ -588,7 +624,7 @@ endif
 # Debian WHeezy
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "wheezy-backports"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub libmwaw libodfgen mdds liblangtag orcus harfbuzz libatomic-ops libwpd redland libetonyek libfreehand libebook libvisio libeot libabw,$(SYSTEM_STUFF))
+  SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub libmwaw libodfgen mdds liblangtag orcus harfbuzz libatomic-ops libwpd redland libetonyek libfreehand libebook libvisio libeot libabw glew glm,$(SYSTEM_STUFF))
   PACKAGE_SDK_DOCS=n
   WHEEZY_BACKPORT=y
 endif
@@ -637,7 +673,7 @@ endif
 
 CC_PREFIX:=$(shell gcc -dumpmachine)-
 
-#	BUILD_DEPS += , gcc-4.6 [!i386 !amd64 !kfreebsd-i386 !kfreebsd-amd64] ,g++-4.6 [!i386 !amd64 !kfreebsd-i386 !kfreebsd-amd64]
+	BUILD_DEPS += , gcc-$(SYSTEM_GCJ_VERSION) [$(OOO_GCJ_JDK_ARCHS)] ,g++-$(SYSTEM_GCJ_VERSION) [$(OOO_GCJ_JDK_ARCHS)]
 #ifeq (,$(findstring i386,$(DEB_HOST_ARCH)))
 #  ifeq (,$(findstring amd64,$(DEB_HOST_ARCH)))
 #    ifneq "$(SYSTEM_GCC_VERSION)" "4.6"
@@ -645,6 +681,11 @@ CC_PREFIX:=$(shell gcc -dumpmachine)-
 #    endif
 #  endif
 #endif
+ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_GCJ_JDK_ARCHS)))
+  ifneq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_OPENJDK_ARCHS)))
+GCC_VERSION := $(SYSTEM_GCJ_VERSION)
+  endif
+endif
 ifneq "$(GCC_VERSION)" ""
   ifneq "$(SYSTEM_GCC_VERSION)" "$(GCC_VERSION)"
     BUILD_DEPS += , gcc-$(GCC_VERSION), g++-$(GCC_VERSION)
@@ -735,12 +776,16 @@ ifneq (,$(filter curl, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libcurl4-$(CURL_SECTYPE)-dev
 endif
 
+ifneq ($(ENABLE_COINMP),y)
+	CONFIGURE_FLAGS += --disable-coinmp
+endif
+
 ifneq (,$(filter openssl, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libssl-dev (>= 0.9.8)
 	DBG_DBG_SUGGESTS += , libssl$(shell readlink /usr/lib/$(DEB_HOST_MULTIARCH)/libssl.so | cut -d"." -f3,4,5)-dbg
 endif
 ifeq "$(USE_OPENCL)" "y"
-	OPENCL_SUGGESTS := libopencl1
+	OPENCL_SUGGESTS := ocl-icd-libopencl1
 else
 	CONFIGURE_FLAGS += --disable-opencl
 endif
@@ -753,7 +798,7 @@ ifeq "$(BUILD_DBG_PACKAGE)" "y"
 	SMALL_SYMBOLS = n
     endif
   endif
-	DBG_DBG_SUGGESTS+= , libc6.1-dbg [ia64], libc0.1-dbg [kfreebsd-i386 kfreebsd-amd64], libc0.3-dbg [hurd-i386], libc6-dbg [!ia64 !kfreebsd-i386 !kfreebsd-amd64 !hurd-i386], libatk1.0-dbg, libglib2.0-0-dbg, libgnomevfs2-0-dbg, libstdc++6-$(SYSTEM_GCC_VERSION)-dbg, libx11-6-dbg, libxext6-dbg, libxaw7-dbg, libxml2-dbg, libgtk2.0-0-dbg, libxau6-dbg, libice6-dbg, libsm6-dbg, libxinerama1-dbg, libfontconfig1-dbg, libhunspell-$(shell pkg-config --modversion hunspell | cut -d. -f1,2)-0-dbg, libcurl4-dbg
+	DBG_DBG_SUGGESTS+= , libc6.1-dbg [alpha ia64], libc0.1-dbg [kfreebsd-i386 kfreebsd-amd64], libc0.3-dbg [hurd-i386], libc6-dbg [!alpha !ia64 !kfreebsd-i386 !kfreebsd-amd64 !hurd-i386], libatk1.0-dbg, libglib2.0-0-dbg, libgnomevfs2-0-dbg, libstdc++6-$(SYSTEM_GCC_VERSION)-dbg, libx11-6-dbg, libxext6-dbg, libxaw7-dbg, libxml2-dbg, libgtk2.0-0-dbg, libxau6-dbg, libice6-dbg, libsm6-dbg, libxinerama1-dbg, libfontconfig1-dbg, libhunspell-$(shell pkg-config --modversion hunspell | cut -d. -f1,2)-0-dbg, libcurl4-dbg
 endif
 
 export DPKG_EXPORT_BUILDFLAGS=y 
@@ -834,11 +879,13 @@ ifneq (,$(filter cppunit, $(SYSTEM_STUFF)))
 endif
 ifeq "$(RUN_MAKE_CHECK)" "y"
 	BUILD_DEPS += , gdb
+	BUILD_DEPS += , fontconfig
   ifeq "$(WHEEZY_BACKPORT)" "y"
 	BUILD_DEPS += , ttf-liberation
   else
 	BUILD_DEPS += , fonts-liberation
   endif
+  	BUILD_DEPS += , fonts-crosextra-carlito
   ifeq "$(ENABLE_JUNIT4)" "y"
 	BUILD_DEPS += , junit4 $(JUNIT_MIN_VER)
   else
@@ -1052,21 +1099,21 @@ endif
 
 ifneq (,$(filter boost, $(SYSTEM_STUFF)))
   ifneq "$(BOOST_VERSION)" "default"
-	BUILD_DEPS += , libboost$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-date-time$(BOOST_VERSION)-dev $(BOOST_MINVER)
+	BUILD_DEPS += , libboost$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-date-time$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-ipstreams$(BOOST_VERSION)-dev
 	#BUILD_DEPS += , libboost-thread$(BOOST_VERSION)-dev, libboost-program-options$(BOOST_VERSION)-dev
     ifeq "$(ENABLE_ORCUS)" "y"
       ifeq (,$(filter orcus, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libboost-system$(BOOST_VERSION)-dev $(BOOST_MINVER)
+	BUILD_DEPS += , libboost-system$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-iostreams$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-program-options$(BOOST_VERSION)-dev $(BOOST_MINVER),
       endif
     endif
     ifeq ($(USE_VLC),y)
 	BUILD_DEPS += , libboost-system$(BOOST_VERSION)-dev $(BOOST_MINVER)
     endif
   else
-	BUILD_DEPS += , libboost-dev $(BOOST_MINVER), libboost-date-time-dev $(BOOST_MINVER)
+	BUILD_DEPS += , libboost-dev $(BOOST_MINVER), libboost-date-time-dev $(BOOST_MINVER), libboost-iostreams-dev $(BOOST_MINVER)
 	#BUILD_DEPS += , libboost-thread-dev, libboost-program-options-dev
     ifeq (,$(filter orcus, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libboost-system-dev $(BOOST_MINVER)
+	BUILD_DEPS += , libboost-system-dev $(BOOST_MINVER), libboost-iostreams-dev $(BOOST_MINVER), libboost-program-options-dev $(BOOST_MINVER)
     endif
     ifeq ($(USE_VLC),y)
 	BUILD_DEPS += , libboost-system-dev $(BOOST_MINVER)
@@ -1078,12 +1125,12 @@ ifneq (,$(filter boost, $(SYSTEM_STUFF)))
 endif
 
 ifneq (,$(filter mdds, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libmdds-dev (>= 0.10.2)
+	BUILD_DEPS += , libmdds-dev (>= 0.10.3)
 endif
 
 ifeq "$(ENABLE_ORCUS)" "y"
   ifneq (,$(filter orcus, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , liborcus-dev (>= 0.5.0)
+	BUILD_DEPS += , liborcus-dev (>= 0.7.0)
   endif
 else
 	CONFIGURE_FLAGS += --disable-orcus
@@ -1148,6 +1195,11 @@ ifeq "$(ENABLE_EOT)" "y"
  ifneq (,$(filter libeot, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libeot-dev
  endif
+endif
+
+ifneq "$(ENABLE_GLTF)" "y"
+	CONFIGURE_FLAGS += --disable-gltf
+	DEBHELPER_OPTIONS += -Nlibreoffice-avmedia-backend-opengl
 endif
 
 ifneq (,$(filter lcms2, $(SYSTEM_STUFF)))
@@ -1398,13 +1450,22 @@ else
 	DEBHELPER_OPTIONS += -Nlibreoffice-avmedia-backend-vlc
 endif
 
-ifneq (,$(filter neon, $(SYSTEM_STUFF)))
-  ifneq "$(NEON_SECTYPE)" "openssl"
+ifeq "$(ENABLE_NEON)" "y"
+  ifneq (,$(filter neon, $(SYSTEM_STUFF)))
+    ifneq "$(NEON_SECTYPE)" "openssl"
 	BUILD_DEPS += , libneon$(NEONSONR)-$(NEON_SECTYPE)-dev
 	DBG_DBG_SUGGESTS+= , libneon$(NEONSONR)-$(NEON_SECTYPE)-dbg
-  else
+    else
 	BUILD_DEPS += , libneon$(NEONSONR)-dev
 	DBG_DBG_SUGGESTS+= , libneon$(NEONSONR)-dbg
+    endif
+  endif
+else
+  ifneq (,$(filter apr, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libaprutil1-dev
+  endif
+  ifneq (,$(filter serf, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libserf-dev
   endif
 endif
 
@@ -1415,6 +1476,13 @@ endif
 ifneq (,$(filter redland, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , librdf0-dev (>= 1.0.16-2)
 	SHLIBS_OVERRIDE += -Xunordf
+endif
+
+ifneq (,$(filter glew, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libglew-dev
+endif
+ifneq (,$(filter glm, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libglm-dev
 endif
 
 ifeq "$(ENABLE_GIO)" "y"
@@ -1572,7 +1640,6 @@ debian/control: $(wildcard debian/control*in) $(SOURCE_TREE)/bin/lo-xlate-lang  
 	    -e "s#@PYTHON2_VERSION@#$(PYTHON2_VERSION)#g" \
 	    -e "s#@BUGS@#$(BUGS)#g" \
 	    < debian/control.in > debian/control
-
 	cat debian/control.transitionals.in >> debian/control
 	cat debian/control.ure.in >> debian/control
 ifeq "$(ENABLE_JAVA)" "y"
@@ -1646,7 +1713,7 @@ endif
 	# for now we filter out the arch-specific libc* and ia64, which is ugly,
 	# but better than manual bookkeeping. Also filter out the mips(el)-only
 	# binutils build-dep...
-	perl -pi -e "s#%BUILD_DEPS_ARCH_ALL%#$(strip $(shell echo '$(BUILD_DEPS), $(BUILD_DEPS_INDEP)'|sed -e 's/,/,\n /g'|grep -v libc0.1|grep -v libc6|grep -v ia64|grep -v binutils|grep -v gcj-jdk|grep -v gcj-native-helper|grep -v libgcj-common|grep -v openjdk-6-jdk|sed -e 's/\[[^]]*\]//g'))#g" debian/control
+	perl -pi -e "s#%BUILD_DEPS_ARCH_ALL%#$(strip $(shell echo '$(BUILD_DEPS), $(BUILD_DEPS_INDEP)'|sed -e 's/,/,\n /g'|grep -v libc0.1| grep -v libc6| grep -v ia64|grep -v binutils|grep -v gcj-jdk|grep -v gcj-native-helper|grep -v libgcj-common|grep -v openjdk-6-jdk|sed -e 's/\[[^]]*\]//g'))#g" debian/control
 ifeq "$(BUILD_KDE)" "y"
 	perl -pi -e 's/%LO-DESKTOP-INTEGRATION%/libreoffice-gnome | libreoffice-kde/' debian/control
 else
@@ -1879,6 +1946,10 @@ ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
 endif
 endif
 
+ifeq "$(RUN_PYTESTS)" "y"
+	cd $(SOURCE_TREE)/pyuno && $(MAKE) PythonTest_pytests
+endif
+
 install: $(STAMP_DIR)/install-common $(STAMP_DIR)/install-arch $(STAMP_DIR)/install-indep
 
 install-common: $(STAMP_DIR)/install-common
@@ -2033,6 +2104,28 @@ ifeq "$(PACKAGE_SDK)" "y"
 		$(PKGDIR)-dev/$(OODIR)/share/glade
 else
 	rm -rf $(PKGDIR)-common/$(OODIR)/share/glade
+endif
+
+	# Access2Base IMHO clearly is -base specific :-)
+ifeq "$(PACKAGE_BASE)" "y"
+	mkdir -p $(PKGDIR)-base/$(OODIR)/share/basic
+	mv $(PKGDIR)-common/$(OODIR)/share/basic/Access2Base \
+		$(PKGDIR)-base/$(OODIR)/share/basic
+	cp $(PKGDIR)-common/$(OODIR)/share/basic/dialog.xlc \
+		$(PKGDIR)-base/$(OODIR)/share/basic
+	cp $(PKGDIR)-common/$(OODIR)/share/basic/script.xlc \
+		$(PKGDIR)-base/$(OODIR)/share/basic
+	# FIXME. Does not scale. This has to be a diversion...
+	t=`mktemp -q`; grep -v Access2Base $(PKGDIR)-common/$(OODIR)/share/basic/dialog.xlc > \
+		$$t && mv $$t $(PKGDIR)-common/$(OODIR)/share/basic/dialog.xlc && rm -f $$t
+	t=`mktemp -q`; grep -v Access2Base $(PKGDIR)-common/$(OODIR)/share/basic/script.xlc > \
+		$$t && mv $$t $(PKGDIR)-common/$(OODIR)/share/basic/script.xlc && rm -f $$t
+else
+	rm -rf $(PKGDIR)-common/$(OODIR)/share/basic/Access2Base
+	t=`mktemp -q`; grep -v Access2Base $(PKGDIR)-common/$(OODIR)/share/basic/dialog.xlc > \
+		$$t && mv $$t $(PKGDIR)-common/$(OODIR)/share/basic/dialog.xlc && rm -f $$t
+	t=`mktemp -q`; grep -v Access2Base $(PKGDIR)-common/$(OODIR)/share/basic/script.xlc > \
+		$$t && mv $$t $(PKGDIR)-common/$(OODIR)/share/basic/script.xlc && rm -f $$t
 endif
 
 	find debian/tmp ! -perm -200 | xargs -r chmod u+w
@@ -2408,8 +2501,9 @@ endif
 ifneq "$(ENABLE_REPORTDESIGN)" "y"
 	# unneeded. a no-Java arch, so the report-builder can't work anyway.
 	# (and we need to remove it here anyway as it otherwise would end up
-	# in -base)
+	# in -base/-core)
 	rm -rf $(PKGDIR)-report-builder
+	rm -f $(PKGDIR)-core/$(OODIR)/program/librpt*
 else
   ifeq "$(PACKAGE_BASE)" "y"
 	# move rpt stuff into -report-builder-bin
@@ -2478,6 +2572,12 @@ ifeq "$(USE_VLC)" "y"
 	mkdir -p $(PKGDIR)-avmedia-backend-vlc/$(OODIR)/program
 	mv $(PKGDIR)-core/$(OODIR)/program/libavmediavlc.so \
 		$(PKGDIR)-avmedia-backend-vlc/$(OODIR)/program
+endif
+
+ifeq "$(ENABLE_GLTF)" "y"
+	mkdir -p $(PKGDIR)-avmedia-backend-opengl/$(OODIR)/program
+	mv $(PKGDIR)-core/$(OODIR)/program/libavmediaogl.so \
+		$(PKGDIR)-avmedia-backend-opengl/$(OODIR)/program
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
@@ -2616,6 +2716,9 @@ ifeq "$(BUILD_TEST_PACKAGE)" "y"
 	done
 	for jar in ConnectivityTools; do \
 		cp instdir/program/classes/$$jar.jar $(PKGDIR)-subsequentcheckbase/$(OODIR)/program/classes/; \
+	done
+	for jar in ConnectivityTools.jar; do \
+		cp workdir/Jar/$$jar $(PKGDIR)-subsequentcheckbase/$(OODIR)/program/classes/; \
 	done
   endif
 endif
@@ -3136,14 +3239,14 @@ ifeq "$(PACKAGE_SDK)" "y"
 	# xargs strips the many files here so we need to post-process it.
 	UDK_COMMON_FILES=`find $(CURDIR)/debian/libreoffice-dev-doc/usr/share/doc/libreoffice-dev/docs/common/ref | sed -e 's,$(CURDIR)/debian/libreoffice-dev-doc,,g' | xargs`; \
 	TMP=`mktemp -q`; \
-	cp debian/libreoffice-dev-doc.doc-base.lo-common-ref $$TMP; \
+	cp debian/libreoffice-dev-doc.doc-base.lo-idl-ref $$TMP; \
 	echo "Files: $$UDK_COMMON_FILES" >> $$TMP; \
-	cat $$TMP | perl -e 'while(<>) { if (/^Files/) {$$f=1;} if ($$f eq "1") { chomp(); } print $$_; }' > debian/libreoffice-dev-doc.doc-base.lo-common-ref; \
+	cat $$TMP | perl -e 'while(<>) { if (/^Files/) {$$f=1;} if ($$f eq "1") { chomp(); } print $$_; }' > debian/libreoffice-dev-doc.doc-base.lo-idl-ref; \
 	rm -f $$TMP
 	# no idea why this happens; afais this can't come from above
 	# since it doesn't affect the files at the end of the lines...
 	# But fix it..
-	perl -pi -e 's,html/,html /,g' debian/libreoffice-dev-doc.doc-base.lo-common-ref
+	perl -pi -e 's,html/,html /,g' debian/libreoffice-dev-doc.doc-base.lo-idl-ref
 endif
 	dh_installdocs -i -A 
 	for p in $(ARCH_INDEP_PACKAGES); do \
