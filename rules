@@ -152,22 +152,12 @@ PACKAGE_TTF_OPENSYMBOL=y
 BUILD_ONLY_EN_US=n
 ENABLE_JAVA=y
 ifeq "$(ENABLE_JAVA)" "y"
-  ifneq "$(WHEEZY_BACKPORT)" "y"
-    JDK=default
-    include /usr/share/java/java_defaults.mk
-  else
-    JDK=openjdk
-  endif
+  JDK=default
+  include /usr/share/java/java_defaults.mk
   ifneq "$(JDK)" "default"
     JAVA_MAINVER=7
-    ifeq "$(WHEEZY_BACKPORT)" "y"
-      ifneq (,$(filter hppa kfreebsd%, $(DEB_HOST_ARCH)))
-      JDK=gcj-jdk
-      endif
-    else
-      ifneq (,$(filter hppa, $(DEB_HOST_ARCH)))
-      JDK=gcj-jdk
-      endif
+    ifneq (,$(filter hppa, $(DEB_HOST_ARCH)))
+    JDK=gcj-jdk
     endif
   endif
 endif
@@ -187,10 +177,8 @@ ifeq "$(BOOST_VERSION)" "default"
     BOOST_MINVER= (>= 1.47)
   endif
 endif
-ifneq "$(WHEEZY_BACKPORT)" "y"
-  ifeq "$(BOOST_VERSION)" "default"
+ifeq "$(BOOST_VERSION)" "default"
   BOOST_MINVER= (>= 1.49.0-4)
-  endif
 endif
 SYSTEM_STUFF += mdds
 SYSTEM_STUFF += vigra
@@ -244,11 +232,7 @@ ifeq "$(ENABLE_JAVA)" "y"
   SYSTEM_STUFF += hsqldb
   HSQLDB_MINVER= (>> 1.8.0.10)
   HSQLDB_TOONEWVER=1.8.1
-  ifeq "$(WHEEZY_BACKPORT)" "y"
-    HSQLDB_JAR=/usr/share/java/hsqldb.jar
-  else
-    HSQLDB_JAR=/usr/share/java/hsqldb1.8.0.jar
-  endif
+  HSQLDB_JAR=/usr/share/java/hsqldb1.8.0.jar
 endif
 SYSTEM_STUFF += lpsolve
 USE_SHARED_LPSOLVE=y
@@ -268,11 +252,7 @@ ifeq "$(USE_DBUS)" "y"
 endif
 ENABLE_AVAHI=y
 USE_GSTREAMER=y
-ifneq "$(WHEEZY_BACKPORT)" "y"
-  GSTREAMER_VERSION=1.0
-else
-   GSTREAMER_VERSION=0.10
-endif
+GSTREAMER_VERSION=1.0
 USE_VLC=y
 ENABLE_NEON=y
 ifeq "$(ENABLE_NEON)" "y"
@@ -492,10 +472,6 @@ IGNORE_MAKE_CHECK_FAILURES:=
 IGNORE_MAKE_CHECK_FAILURES:=
   endif
 endif
-# sw_python would fail anyways as it doesn't work with python2..
-ifeq "$(WHEEZY_BACKPORT)" "y"
-IGNORE_MAKE_CHECK_FAILURES=-
-endif
 
 OOO_64BIT_ARCHS = $(filter alpha amd64 ia64 kfreebsd-amd64 ppc64 s390x, $(OOO_ARCHS))
 
@@ -511,9 +487,6 @@ ifeq "$(JDK)" "default"
 OOO_GCJ_JDK_ARCHS := $(filter $(OOO_ARCHS),$(filter-out $(java7_architectures),$(filter-out $(java6_architectures),$(java5_architectures))))
 else
 OOO_GCJ_JDK_ARCHS := hppa
-ifeq "$(WHEEZY_BACKPORT)" "y"
-OOO_GCJ_JDK_ARCHS += kfreebsd-i386 kfreebsd-amd64
-endif
 endif
 OOO_OPENJDK_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs,OOO_OPENJDK_ARCHS))
@@ -605,20 +578,13 @@ OOO_NSPLUGIN_ARCHS=
 endif
 $(eval $(call gen_no_archs,OOO_NSPLUGIN_ARCHS))
 
-ifneq "$(WHEEZY_BACKPORT)" "y"
-  ifneq (,$(findstring mips, $(OOO_ARCHS)))
-BUILD_DEPS += , binutils (>= 2.23) [mips mipsel], libc6 (>= 2.17-6) [mips mipsel]
-  endif
-endif
-
 #############
 # Distro-specific overrides
 
-# Debian WHeezy
+# Debian Jessie
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "wheezy-backports"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub libmwaw libodfgen mdds liblangtag orcus harfbuzz libatomic-ops libwpd redland libetonyek libfreehand libebook libvisio libeot libabw glew glm librevenge libwpd libwpg libwps,$(SYSTEM_STUFF))
-  PACKAGE_SDK_DOCS=n
+  #SYSTEM_STUFF := $(filter-out ,$(SYSTEM_STUFF)
   WHEEZY_BACKPORT=y
 endif
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "UNRELEASED"
@@ -675,24 +641,9 @@ endif
 
 	BUILD_DEPS += , libpoppler-dev (>= 0.8.0), libpoppler-private-dev, libpoppler-cpp-dev
 
-ifeq "$(WHEEZY_BACKPORTS)" "y"
-# fails their tests
-  ifeq "$(DEB_HOST_ARCH)" "armel"
-ENABLE_GRAPHITE=n
-SYSTEM_STUFF := $(filter-out graphite, $(SYSTEM_STUFF))
-  endif
-  ifeq "$(DEB_HOST_ARCH)" "sparc"
-ENABLE_GRAPHITE=n
-SYSTEM_STUFF := $(filter-out graphite, $(SYSTEM_STUFF))
-  endif
-endif
-
 ifeq "$(ENABLE_GRAPHITE)" "y"
   ifneq (,$(filter graphite, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libgraphite2-dev (>= 0.9.3)
-    ifeq "$(WHEEZY_BACKPORTS)" "y"
-	BUILD_DEPS += [!armel !sparc]
-    endif
   endif
 else
 	CONFIGURE_FLAGS += --disable-graphite
@@ -775,7 +726,6 @@ ifeq (debug,$(findstring debug,$(DEB_BUILD_OPTIONS)))
 endif
 
 
-ifneq "$(WHEEZY_BACKPORT)" "y"
 PYMAJOR:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[0])")
 PYMINOR:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[1])")
 PYMINORPLUS1:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[1]+1)")
@@ -785,14 +735,6 @@ PY2MAJOR:=$(shell $(PYTHON2) -c "import sys; print sys.version_info[0]")
 PY2MINOR:=$(shell $(PYTHON2) -c "import sys; print sys.version_info[1]")
 PY2MINORPLUS1:=$(shell $(PYTHON2) -c "import sys; print sys.version_info[1]+1")
 PYTHON2_SITE:=debian/python-uno/$(shell $(PYTHON2) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
-endif
-else
-PYMAJOR:=$(shell $(PYTHON2) -c "import sys; print (sys.version_info[0])")
-PYMINOR:=$(shell $(PYTHON2) -c "import sys; print (sys.version_info[1])")
-PYMINORPLUS1:=$(shell $(PYTHON2) -c "import sys; print (sys.version_info[1]+1)")
-# YES, really! python3-uno. see "OMG!" below :-)
-PYTHON_SITE:=debian/python3-uno/$(shell $(PYTHON2) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
-PYTHON:=$(PYTHON2)
 endif
 
 ifeq "$(PYTHON_VERSION)" "current"
@@ -806,13 +748,10 @@ ifeq "$(ENABLE_PYTHON)" "y"
 	# for dh_python3
 	BUILD_DEPS += , python3
 	DBG_DBG_SUGGESTS+= , $(PYTHON)-dbg
-  ifneq "$(WHEEZY_BACKPORT)" "y"
 	BUILD_DEPS += , $(PYTHON)-dev (>= 3.3)
     ifeq "$(ENABLE_PYTHON2)" "y"
 	BUILD_DEPS += , $(PYTHON2)-dev (>= 2.6)
     endif
-  else
-	BUILD_DEPS += , $(PYTHON2)-dev (>= 2.7)
   endif
 else
 	BUILD_DEPS += , python
@@ -836,11 +775,7 @@ endif
 ifeq "$(RUN_MAKE_CHECK)" "y"
 	BUILD_DEPS += , gdb
 	BUILD_DEPS += , fontconfig
-  ifeq "$(WHEEZY_BACKPORT)" "y"
-	BUILD_DEPS += , ttf-liberation
-  else
 	BUILD_DEPS += , fonts-liberation
-  endif
   	BUILD_DEPS += , fonts-crosextra-carlito
   ifeq "$(ENABLE_JUNIT4)" "y"
 	BUILD_DEPS += , junit4 $(JUNIT_MIN_VER)
@@ -1235,17 +1170,9 @@ ifneq (,$(filter libatomic-ops, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libatomic-ops-dev (>= 7.3~alpha1+git20110913-1)
 endif
 ifneq (,$(filter firebird, $(SYSTEM_STUFF)))
-  ifneq "$(WHEEZY_BACKPORT)" "y"
 	BUILD_DEPS += , firebird-dev (>= 2.5.2.26540.ds4-2)
 	# no FIREBIRD_CFLAGS here. Have no effect as fb_config is there
 	# and configure prefers that over our values...
-  else
-	BUILD_DEPS += , firebird-dev
-	# firebird-dev only _Suggests_ libfbembed2.5...
-	BUILD_DEPS += , libfbembed2.5
-	FIREBIRD_CFLAGS := " "
-	FIREBIRD_LIBS := "-L/usr/lib/$(DEB_HOST_MULTIARCH) -lfbembed"
-  endif
 endif
 
 ifeq "$(BUILD_GTK)" "n"
@@ -1297,27 +1224,16 @@ ifneq "$(ENABLE_PYTHON)" "y"
 	$(error you can not disable python when building with translations)
   endif
 else
-  ifeq "$(WHEEZY_BACKPORT)" "y"
-	DEBHELPER_OPTIONS+= -Npython3-uno
-	PYUNO_DEPENDS = python-uno
-  else
 	PYUNO_DEPENDS = python3-uno (>= 4.0~) | python-uno
-  endif
   CONFIGURE_FLAGS += --enable-python=system
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
   ifneq (,$(filter hsqldb, $(SYSTEM_STUFF)))
-    ifeq "$(WHEEZY_BACKPORT)" "y"
-	BUILD_DEPS += , libhsqldb-java $(HSQLDB_MINVER)$(OOO_NO_JAVA_ARCHS)
-	BASE_HSQLDB_DEPENDS = libhsqldb-java $(HSQLDB_MINVER), libhsqldb-java (<< $(HSQLDB_TOONEWVER)~)
-	JAVA_GCJ_DEPENDS += , libhsqldb-java-gcj [$(OOO_GCJ_ARCHS)]
-    else
 	BUILD_DEPS += , libhsqldb1.8.0-java $(HSQLDB_MINVER)$(OOO_NO_JAVA_ARCHS)
 	BASE_HSQLDB_DEPENDS = libhsqldb1.8.0-java $(HSQLDB_MINVER)
 	JAVA_GCJ_DEPENDS += , libhsqldb1.8.0-java-gcj [$(OOO_GCJ_ARCHS)]
 	CONFIGURE_FLAGS += --with-hsqldb-jar=$(HSQLDB_JAR)
-    endif
   else
     ifeq "$(JDK)" "gcj-jdk"
 	# hsqldb with jdk7 buildfix from jdk7.diff fails with gcj
@@ -1326,15 +1242,9 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
   ifeq "$(ENABLE_SCRIPT_PROVIDER_BSH)" "y"
     ifneq (,$(filter beanshell, $(SYSTEM_STUFF)))
-      ifneq "$(WHEEZY_BACKPORT)" "y"
 	# -gcj is gone
 	BUILD_DEPS_INDEP += , libbsh-java
 	BSH_DEPENDS = libbsh-java
-      else
-	BUILD_DEPS_INDEP += , bsh (>= 2.0b4)$(OOO_NO_JAVA_ARCHS)
-	BSH_DEPENDS = bsh (>= 2.0b4)
-	JAVA_GCJ_DEPENDS += , bsh-gcj [$(OOO_GCJ_ARCHS)]
-      endif
     endif
 	CONFIGURE_FLAGS += --enable-scripting-beanshell
   else
@@ -1467,11 +1377,7 @@ ifeq ($(ENABLE_MERGELIBS),y)
 	CONFIGURE_FLAGS += --enable-mergelibs
 endif
 
-ifneq "$(WHEEZY_BACKPORT)" "y"
-  DEJAVU_DEPENDS=fonts-dejavu
-else
-  DEJAVU_DEPENDS=ttf-dejavu
-endif
+DEJAVU_DEPENDS=fonts-dejavu
 
 # Use compiler cache?  Include ccache in DEB_BUILD_OPTIONS for much faster rebuild times
 # A complete build uses about 9G of compiler cache.
@@ -1791,12 +1697,6 @@ ifeq "$(ENABLE_GIO)" "y"
 	perl -pi -e 's/GNOME GIO/GIO/' debian/control
 endif
 
-ifeq "$(WHEEZY_BACKPORT)" "y"
-  ifneq (,$(filter hsqldb, $(SYSTEM_STUFF)))
-	perl -pi -e "s/(Build-Conflicts: .*)/\1,libhsqldb-java (>= $(HSQLDB_TOONEWVER)~),/" debian/control
-  endif
-endif
-
 ifneq "$(USE_MARIADB)" "y"
 	perl -pi -e "s/(Build-Conflicts: .*)/\1,libmariadbclient-dev,/" debian/control
 endif
@@ -1876,14 +1776,12 @@ ifneq "$(PACKAGE_UNOWINREG_DLL)" "y"
   endif
 endif
 
-ifneq "$(WHEEZY_BACKPORT)" "y"
-   ifeq "$(ENABLE_PYTHON)" "y"
-    ifeq "$(ENABLE_PYTHON2)" "y"
+ifeq "$(ENABLE_PYTHON)" "y"
+  ifeq "$(ENABLE_PYTHON2)" "y"
 	rm -rf $(SOURCE_TREE)/py2uno
 	cp -ra $(SOURCE_TREE)/pyuno $(SOURCE_TREE)/py2uno
 	cd py2uno && \
 		patch -p1 < $(CURDIR)/debian/patches/pyuno-copy-for-python2.diff
-    endif
   endif
 endif
 
@@ -1917,21 +1815,12 @@ $(STAMP_DIR)/build-arch:
 		--disable-scripting-beanshell \
 		--with-galleries=no
 
-ifneq "$(WHEEZY_BACKPORT)" "y"
-	# setting PYTHON_FOR_BUILD above does NOT work and otherwise it
-	# might pick up /usr/bin/python (python 2!) due to wheezy-backports-python.diff
-	# which will not work.
-	perl -pi -e 's/export PYTHON_FOR_BUILD=.*/export PYTHON_FOR_BUILD=$(PYTHON)/' config_host.mk
-endif
-
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build-non-l10n-only
 
-ifneq "$(WHEEZY_BACKPORT)" "y"
-  ifeq "$(ENABLE_PYTHON)" "y"
-    ifeq "$(ENABLE_PYTHON2)" "y"
+ifeq "$(ENABLE_PYTHON)" "y"
+  ifeq "$(ENABLE_PYTHON2)" "y"
 	$(MAKE) py2uno.clean
 	make cmd cmd='cd py2uno; export PYTHON=$(PYTHON2); export PYTHON_CFLAGS="$(shell pkg-config --cflags python-$(PY2MAJOR).$(PY2MINOR))"; export PYTHON_LIBS="$(shell pkg-config --libs python-$(PY2MAJOR).$(PY2MINOR))"; $(MAKE)'
-    endif
   endif
 endif
 
@@ -1970,13 +1859,6 @@ $(STAMP_DIR)/build-indep:
 	MARIADBCONFIG=$(MARIADBCONFIG) \
 	FIREBIRD_CFLAGS=$(FIREBIRD_CFLAGS) FIREBIRD_LIBS=$(FIREBIRD_LIBS) \
 	./autogen.sh $(CONFIGURE_FLAGS) --with-help $(CONFIGURE_FLAGS_LANG)
-
-ifneq "$(WHEEZY_BACKPORT)" "y"
-	# setting PYTHON_FOR_BUILD above does NOT work and otherwise it
-	# might pick up /usr/bin/python (python 2!) due to wheezy-backports-python.diff
-	# which will not work.
-	perl -pi -e 's/export PYTHON_FOR_BUILD=.*/export PYTHON_FOR_BUILD=$(PYTHON)/' config_host.mk
-endif
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build-nocheck
 
@@ -2579,8 +2461,7 @@ ifeq "$(ENABLE_PYTHON)" "y"
 	  echo 'PYTHONPATH=$$PYTHONHOME $$PYTHONHOME/site-packages $$PYTHONHOME/lib-dynload $$PYTHONHOME/lib-tk $$ORIGIN' \
 	) >> debian/python3-uno/$(OODIR)/program/pythonloader.unorc
 	chmod u-w debian/python3-uno/$(OODIR)/program/pythonloader.unorc
-  ifneq "$(WHEEZY_BACKPORT)" "y"
-    ifeq "$(ENABLE_PYTHON2)" "y"
+  ifeq "$(ENABLE_PYTHON2)" "y"
 	install -d $(PYTHON2_SITE)
 	cp $(PYTHON_SITE)/uno.py \
 		$(PYTHON2_SITE)
@@ -2606,7 +2487,6 @@ ifeq "$(ENABLE_PYTHON)" "y"
 		debian/python-uno/$(OODIR)/share/registry
 	cp -r debian/python3-uno/$(OODIR)/share/Scripts/python \
 		debian/python-uno/$(OODIR)/share/Scripts
-    endif
   endif
   ifeq "$(ENABLE_SCRIPT_PROVIDER_PYTHON)" "y"
 	rm -f debian/libreoffice-script-provider-python/$(OODIR)/share/extensions/script-provider-for-python/registration/LICENSE
@@ -2620,8 +2500,7 @@ ifeq "$(ENABLE_PYTHON)" "y"
 	done
 	cd debian/python3-uno/usr/share/doc/python3-uno && \
 		find . -type d -name "CVS" | xargs -r rm -rf
-  ifneq "$(WHEEZY_BACKPORT)" "y"
-    ifeq "$(ENABLE_PYTHON2)" "y"
+  ifeq "$(ENABLE_PYTHON2)" "y"
 	mkdir -p debian/python-uno/usr/share/doc/python-uno
 	cp -r $(SOURCE_TREE)/pyuno/demo \
 	  debian/python-uno/usr/share/doc/python-uno; \
@@ -2630,14 +2509,7 @@ ifeq "$(ENABLE_PYTHON)" "y"
 	done
 	cd debian/python-uno/usr/share/doc/python-uno && \
 		find . -type d -name "CVS" | xargs -r rm -rf
-    endif
   endif
-endif
-
-ifeq "$(WHEEZY_BACKPORT)" "y"
-	# OMG!!
-	rm -rf debian/python-uno
-	mv debian/python3-uno debian/python-uno
 endif
 
 	# should be empty now, remove if there
@@ -3233,21 +3105,17 @@ ifeq "$(ENABLE_JAVA)" "y"
 	dh_nativejava -plibreoffice-gcj -o
   endif
 endif
-ifeq "$(WHEEZY_BACKPORT)" "y"
-	dh_python2 -ppython-uno --no-guessing-versions --no-guessing-deps
-else
 	dh_python3 -ppython3-uno --no-guessing-deps
 	# adds a python3 (>= 3.2.3-3~)
-  ifeq "$(PYTHON_VERSION)" "current"
+ifeq "$(PYTHON_VERSION)" "current"
 	sed -i -e 's/python$(PYMAJOR) (>= .*)/python$(PYMAJOR) (>= 3.3~)/g' \
 		debian/python3-uno.substvars
-  else
+else
 	sed -i -e 's/python$(PYMAJOR) (>= .*)/python$(PYMAJOR).$(PYMINOR)/g' \
 		debian/python3-uno.substvars
-  endif
-  ifeq "$(ENABLE_PYTHON2)" "y"
+endif
+ifeq "$(ENABLE_PYTHON2)" "y"
 	dh_python2 -ppython-uno --no-guessing-versions --no-guessing-deps
-  endif
 endif
 	dh_lintian -s
 	dh_bugfiles -s -A
@@ -3337,10 +3205,6 @@ ifeq "$(ENABLE_JAVA)" "y"
 		jh_depends -p$$p -Xlibreoffice-gcj -Xlibreoffice-dbg -Xure; \
 	done
   ifeq "$(PACKAGE_BASE)" "y"
-    ifeq "$(WHEEZY_BACKPORT)" "y"
-	perl -pi -e "s/libhsqldb-java/$(BASE_HSQLDB_DEPENDS)/" \
-		debian/libreoffice-sdbc-hsqldb.substvars
-    endif
 	perl -pi -e "s/base-files,//" \
 		debian/libreoffice-sdbc-hsqldb.substvars
   endif
