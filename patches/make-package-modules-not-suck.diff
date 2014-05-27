@@ -34,24 +34,6 @@ index f7d92c1..a102275 100644
      gid_File_Share_Registry_Draw_Xcd,
      gid_File_Tmp_Userinstall_Draw_Inf);
  End
-diff --git a/scp2/source/kde/module_kde.scp b/scp2/source/kde/module_kde.scp
-index 6fa6155..bd804f1 100644
---- a/scp2/source/kde/module_kde.scp
-+++ b/scp2/source/kde/module_kde.scp
-@@ -26,5 +26,12 @@ Module gid_Module_Optional_Kde
-     PackageInfo = "packinfo_office.txt";
-     MOD_NAME_DESC(MODULE_OPTIONAL_KDE);
-     Styles = ();
--    Files = (auto_kde_ALL);
-+    Files = (auto_kde_ALL,
-+#ifdef ENABLE_KDE
-+    gid_File_Lib_Vclplug_Kde
-+#endif
-+#ifdef ENABLE_KDE4
-+    gid_File_Lib_Vclplug_Kde4
-+#endif
-+);
- End
 diff --git a/scp2/AutoInstall.mk b/scp2/AutoInstall.mk
 index 66edd78..47f17b6 100644
 --- a/scp2/AutoInstall.mk
@@ -68,6 +50,16 @@ diff --git a/Repository.mk b/Repository.mk
 index 51089bb..3cffd92 100644
 --- a/Repository.mk
 +++ b/Repository.mk
+@@ -99,9 +99,6 @@ $(eval $(call gb_Helper_register_executables,OOO, \
+ 		tdefilepicker \
+ 	) \
+ 	uri-encode \
+-	$(if $(filter $(GUIBASE)$(ENABLE_KDE),unxTRUE), \
+-		kdefilepicker \
+-	) \
+ 	ui-previewer \
+ 	tiledrendering \
+ 	$(if $(filter DESKTOP,$(BUILD_TYPE)),unopkg_bin) \
 @@ -143,13 +143,28 @@ endif
  
  $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,base, \
@@ -120,6 +112,20 @@ index 51089bb..3cffd92 100644
  ))
  
  $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,onlineupdate, \
+@@ -208,6 +228,13 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,gnome, \
+ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,kde, \
+ 	$(if $(ENABLE_KDE),kdebe1) \
+ 	$(if $(ENABLE_KDE4),kde4be1) \
++	$(if $(filter $(GUIBASE)$(ENABLE_KDE),unxTRUE), \
++		kdefilepicker \
++	) \
++	$(if $(and $(filter unx,$(GUIBASE)),$(filter-out MACOSX,$(OS))), \
++		$(if $(ENABLE_KDE),vclplug_kde) \
++		$(if $(ENABLE_KDE4),vclplug_kde4) \
++	) \
+ ))
+ 
+ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,math, \
 @@ -228,11 +252,8 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,ooo, \
  	ctl \
  	cui \
@@ -183,6 +189,15 @@ index 51089bb..3cffd92 100644
  	syssh \
  	$(if $(ENABLE_TDEAB),tdeab1) \
  	$(if $(ENABLE_TDEAB),tdeabdrv1) \
+@@ -365,8 +378,6 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,ooo, \
+ 	$(if $(and $(filter unx,$(GUIBASE)),$(filter-out MACOSX,$(OS))), \
+ 		vclplug_gen \
+ 		$(if $(ENABLE_TDE),vclplug_tde) \
+-		$(if $(ENABLE_KDE),vclplug_kde) \
+-		$(if $(ENABLE_KDE4),vclplug_kde4) \
+ 		$(if $(ENABLE_HEADLESS),,vclplug_svp) \
+ 	) \
+ 	writerperfect \
 @@ -397,6 +407,7 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,writer, \
  	hwp \
  	$(if $(ENABLE_LWP),lwpft) \
@@ -213,18 +228,3 @@ index 51089bb..3cffd92 100644
  	sofficeapp \
  	srtrs1 \
  	$(if $(filter $(OS),WNT),sysdtrans) \
-diff --git a/scp2/InstallModule_kde.mk b/scp2/InstallModule_kde.mk
-index 9130b62..6ccb07f 100644
---- a/scp2/InstallModule_kde.mk
-+++ b/scp2/InstallModule_kde.mk
-@@ -15,4 +15,10 @@ $(eval $(call gb_InstallModule_add_localized_scpfiles,scp2/kde,\
-     scp2/source/kde/module_kde \
- ))
- 
-+$(eval $(call gb_InstallModule_define_if_set,scp2/kde,\
-+        ENABLE_KAB \
-+        ENABLE_KDE \
-+        ENABLE_KDE4 \
-+))
-+
- # vim: set shiftwidth=4 tabstop=4 noexpandtab:
