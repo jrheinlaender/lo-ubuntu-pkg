@@ -802,9 +802,10 @@ else
 endif
 
 ifeq "$(ENABLE_PYTHON)" "y"
-	BUILD_DEPS += , python (>= 2.6.6-3+squeeze4)
-	# for dh_python3
-	BUILD_DEPS += , python3
+	BUILD_DEPS += , $(PYTHON)
+  ifeq "$(ENABLE_PYTHON2)" "y"
+	BUILD_DEPS += , $(PYTHON2) (>= 2.6.6-3+squeeze4)
+  endif
 	DBG_DBG_SUGGESTS+= , $(PYTHON)-dbg
   ifneq "$(WHEEZY_BACKPORT)" "y"
 	BUILD_DEPS += , $(PYTHON)-dev (>= 3.3)
@@ -816,6 +817,9 @@ ifeq "$(ENABLE_PYTHON)" "y"
   endif
 else
 	BUILD_DEPS += , python
+endif
+ifeq "$(WHEEZY_BACKPORT)" "y"
+	BUILD_DEPS += , dh-python
 endif
 
 	BUILD_DEPS += , debhelper (>= 7.2.3~)
@@ -3235,18 +3239,13 @@ ifeq "$(ENABLE_JAVA)" "y"
 endif
 ifeq "$(WHEEZY_BACKPORT)" "y"
 	dh_python2 -ppython-uno --no-guessing-versions --no-guessing-deps
+	dh_python2 -ppython-uno --no-guessing-versions --no-guessing-deps $(OODIR)/program
 else
 	dh_python3 -ppython3-uno --no-guessing-deps
-	# adds a python3 (>= 3.2.3-3~)
-  ifeq "$(PYTHON_VERSION)" "current"
-	sed -i -e 's/python$(PYMAJOR) (>= .*)/python$(PYMAJOR) (>= 3.3~)/g' \
-		debian/python3-uno.substvars
-  else
-	sed -i -e 's/python$(PYMAJOR) (>= .*)/python$(PYMAJOR).$(PYMINOR)/g' \
-		debian/python3-uno.substvars
-  endif
+	dh_python3 -ppython3-uno --no-guessing-deps $(OODIR)/program
   ifeq "$(ENABLE_PYTHON2)" "y"
 	dh_python2 -ppython-uno --no-guessing-versions --no-guessing-deps
+	dh_python2 -ppython-uno --no-guessing-versions --no-guessing-deps $(OODIR)/program
   endif
 endif
 	dh_lintian -s
