@@ -2269,6 +2269,37 @@ else
 		$$t && mv $$t $(PKGDIR)-common/$(OODIR)/share/basic/dialog.xlc && rm -f $$t
 	t=`mktemp -q`; grep -v Access2Base $(PKGDIR)-common/$(OODIR)/share/basic/script.xlc > \
 		$$t && mv $$t $(PKGDIR)-common/$(OODIR)/share/basic/script.xlc && rm -f $$t
+
+ifeq "$(PACKAGE_SDK)" "y"
+	# move gengal stuff into -dev
+	mkdir -p $(PKGDIR)-dev/$(OODIR)/program
+	mv $(PKGDIR)-core/$(OODIR)/program/gengal.bin \
+		$(PKGDIR)-dev/$(OODIR)/program
+	mv $(PKGDIR)-common/$(OODIR)/program/gengal \
+		$(PKGDIR)-dev/$(OODIR)/program
+else
+	rm -f $(PKGDIR)-core/$(OODIR)/program/gengal.bin
+	rm -f $(PKGDIR)-common/$(OODIR)/program/gengal
+endif
+
+ifneq "$(ENABLE_REPORTDESIGN)" "y"
+	# unneeded. a no-Java arch, so the report-builder can't work anyway.
+	# (and we need to remove it here anyway as it otherwise would end up
+	# in -base/-core)
+	rm -rf $(PKGDIR)-report-builder
+	rm -f $(PKGDIR)-core/$(OODIR)/program/librpt*
+else
+  ifeq "$(PACKAGE_BASE)" "y"
+	# move rpt stuff into -report-builder-bin
+	rm -rf $(PKGDIR)-report-builder-bin
+	mkdir -p $(PKGDIR)-report-builder-bin/$(OODIR)/program
+	# FIXME: it seems that --enable/--disable-reportbuiler affects the install
+	# location. sigh.
+	if [ -e $(PKGDIR)-core/$(OODIR)/program/librptlo.so ]; then \
+		i=core; else i=report-builder; fi; \
+	mv $(PKGDIR)-$$i/$(OODIR)/program/librpt* \
+		$(PKGDIR)-report-builder-bin/$(OODIR)/program
+  endif
 endif
 
 	find debian/tmp ! -perm -200 | xargs -r chmod u+w
@@ -2711,26 +2742,6 @@ endif
 		rm -rf $(PKGDIR)-$$i/$(OODIR)/program/resource; \
 	done
 
-ifneq "$(ENABLE_REPORTDESIGN)" "y"
-	# unneeded. a no-Java arch, so the report-builder can't work anyway.
-	# (and we need to remove it here anyway as it otherwise would end up
-	# in -base/-core)
-	rm -rf $(PKGDIR)-report-builder
-	rm -f $(PKGDIR)-core/$(OODIR)/program/librpt*
-else
-  ifeq "$(PACKAGE_BASE)" "y"
-	# move rpt stuff into -report-builder-bin
-	rm -rf $(PKGDIR)-report-builder-bin
-	mkdir -p $(PKGDIR)-report-builder-bin/$(OODIR)/program
-	# FIXME: it seems that --enable/--disable-reportbuiler affects the install
-	# location. sigh.
-	if [ -e $(PKGDIR)-core/$(OODIR)/program/librptlo.so ]; then \
-		i=core; else i=report-builder; fi; \
-	mv $(PKGDIR)-$$i/$(OODIR)/program/librpt* \
-		$(PKGDIR)-report-builder-bin/$(OODIR)/program
-  endif
-endif
-
 ifeq "$(ENABLE_MINIMIZER)" "y"
 	rm -f $(PKGDIR)-presentation-minimizer/$(OODIR)/share/extensions/presentation-minimizer/registration/LICENSE
 endif
@@ -2743,24 +2754,12 @@ ifeq "$(ENABLE_MYSQLNATIVE)" "y"
 	rm -f $(PKGDIR)-mysql-connector/$(OODIR)/share/extensions/mysql-connector-ooo/registration/LICENSE
 endif
 
-ifeq "$(ENABLE_MEDIAWIKI)" "y"
-	rm -f $(PKGDIR)-wiki-publisher/$(OODIR)/share/extensions/wiki-publisher/registration/LICENSE
-endif
-
 ifeq "$(PACKAGE_SDK)" "y"
-	# move gengal stuff into -dev
-	mkdir -p $(PKGDIR)-dev/$(OODIR)/program
-	mv $(PKGDIR)-core/$(OODIR)/program/gengal.bin \
-		$(PKGDIR)-dev/$(OODIR)/program
-	mv $(PKGDIR)-common/$(OODIR)/program/gengal \
-		$(PKGDIR)-dev/$(OODIR)/program
 	# move ui-previewer into -dev
 	mkdir -p $(PKGDIR)-dev/$(OODIR)/program
 	mv $(PKGDIR)-core/$(OODIR)/program/ui-previewer \
 		$(PKGDIR)-dev/$(OODIR)/program
 else
-	rm -f $(PKGDIR)-core/$(OODIR)/program/gengal.bin
-	rm -f $(PKGDIR)-common/$(OODIR)/program/gengal
 	rm -f $(PKGDIR)-core/$(OODIR)/program/ui-previewer
 endif
 
@@ -3108,6 +3107,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 endif
 
 ifeq "$(ENABLE_MEDIAWIKI)" "y"
+	rm -f $(PKGDIR)-wiki-publisher/$(OODIR)/share/extensions/wiki-publisher/registration/LICENSE
 	rm -f $(PKGDIR)-wiki-publisher/$(OODIR)/share/extensions/wiki-publisher/license/THIRDPARTYLICENSEREADME.html
 endif
 
@@ -3241,8 +3241,8 @@ ifeq "$(WHEEZY_BACKPORT)" "y"
 	dh_python2 -ppython-uno --no-guessing-versions --no-guessing-deps
 	dh_python2 -ppython-uno --no-guessing-versions --no-guessing-deps $(OODIR)/program
 else
-	dh_python3 -ppython3-uno --no-guessing-deps
-	dh_python3 -ppython3-uno --no-guessing-deps $(OODIR)/program
+	dh_python3 -ppython3-uno --no-ext-rename --no-guessing-deps
+	dh_python3 -ppython3-uno --no-ext-rename --no-guessing-deps $(OODIR)/program
   ifeq "$(ENABLE_PYTHON2)" "y"
 	dh_python2 -ppython-uno --no-guessing-versions --no-guessing-deps
 	dh_python2 -ppython-uno --no-guessing-versions --no-guessing-deps $(OODIR)/program
