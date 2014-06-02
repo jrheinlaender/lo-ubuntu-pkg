@@ -8,26 +8,27 @@ Subject: [PATCH] lp#1296715: refresh invalidated menus
 - thus we just invalidate the menu and update with all changes after 100ms once
 
 Change-Id: I48cda968cf0ae1eae0421b3424bb3e5830817e84
+
 ---
  framework/source/uielement/menubarmanager.cxx |  6 ++++
- include/vcl/helper.hxx                        |  2 ++
+ include/vcl/helper.hxx                        |  3 ++
  include/vcl/menu.hxx                          | 12 +++++++
  vcl/source/window/menu.cxx                    | 17 ++++++++++
- vcl/unx/gtk/window/gtksalmenu.cxx             | 45 ++++++++++++++++++++++++++-
- 5 files changed, 81 insertions(+), 1 deletion(-)
+ vcl/unx/gtk/window/gtksalmenu.cxx             | 45 +++++++++++++++++++++++++++
+ 5 files changed, 83 insertions(+)
 
 diff --git a/framework/source/uielement/menubarmanager.cxx b/framework/source/uielement/menubarmanager.cxx
 --- a/framework/source/uielement/menubarmanager.cxx
 +++ b/framework/source/uielement/menubarmanager.cxx
-@@ -68,6 +68,7 @@
+@@ -67,6 +67,7 @@
  #include <toolkit/helper/vclunohelper.hxx>
  #include <vcl/svapp.hxx>
  #include <vcl/window.hxx>
 +#include <vcl/menu.hxx>
+ #include <vcl/settings.hxx>
  #include <osl/mutex.hxx>
  #include <osl/file.hxx>
- #include <cppuhelper/implbase1.hxx>
-@@ -451,6 +452,10 @@ throw ( RuntimeException )
+@@ -430,6 +431,10 @@ throw ( RuntimeException, std::exception )
  
      SolarMutexGuard aSolarGuard;
      {
@@ -35,10 +36,10 @@ diff --git a/framework/source/uielement/menubarmanager.cxx b/framework/source/ui
 +        aInvalidator.Invalidated();
 +    }
 +    {
-         ResetableGuard aGuard( m_aLock );
- 
          if ( m_bDisposed )
-@@ -945,6 +950,7 @@ IMPL_LINK( MenuBarManager, Activate, Menu *, pMenu )
+             return;
+ 
+@@ -917,6 +922,7 @@ IMPL_LINK( MenuBarManager, Activate, Menu *, pMenu )
                                      // We need only an update to reflect the current state
                                      xMenuItemDispatch->addStatusListener( static_cast< XStatusListener* >( this ), aTargetURL );
                                      xMenuItemDispatch->removeStatusListener( static_cast< XStatusListener* >( this ), aTargetURL );
@@ -49,10 +50,11 @@ diff --git a/framework/source/uielement/menubarmanager.cxx b/framework/source/ui
 diff --git a/include/vcl/helper.hxx b/include/vcl/helper.hxx
 --- a/include/vcl/helper.hxx
 +++ b/include/vcl/helper.hxx
-@@ -54,6 +54,8 @@ enum whichOfficePath { InstallationRootPath, UserPath, ConfigPath };
+@@ -54,6 +54,9 @@ enum whichOfficePath { InstallationRootPath, UserPath, ConfigPath };
  OUString VCL_DLLPUBLIC getOfficePath( enum whichOfficePath ePath );
  } // namespace
  
++
 +#include <vcl/vclevent.hxx>
 +bool VCL_DLLPUBLIC GetMenuInvalidateListeners();
  #endif // INCLUDED_VCL_HELPER_HXX
@@ -61,9 +63,9 @@ diff --git a/include/vcl/helper.hxx b/include/vcl/helper.hxx
 diff --git a/include/vcl/menu.hxx b/include/vcl/menu.hxx
 --- a/include/vcl/menu.hxx
 +++ b/include/vcl/menu.hxx
-@@ -353,6 +353,18 @@ public:
-     void                DeHighlight() { HighlightItem( 0xFFFF ); } // MENUITEMPOS_INVALID
+@@ -359,6 +359,18 @@ public:
  };
+ 
  
 +#include <vcl/vclevent.hxx>
 +namespace vcl
@@ -77,13 +79,13 @@ diff --git a/include/vcl/menu.hxx b/include/vcl/menu.hxx
 +    };
 +}
 +
- // -----------
  // - MenuBar -
- // -----------
+ 
+ 
 diff --git a/vcl/source/window/menu.cxx b/vcl/source/window/menu.cxx
 --- a/vcl/source/window/menu.cxx
 +++ b/vcl/source/window/menu.cxx
-@@ -6146,4 +6146,21 @@ ImplMenuDelData::~ImplMenuDelData()
+@@ -6130,4 +6130,21 @@ ImplMenuDelData::~ImplMenuDelData()
          const_cast< Menu* >( mpMenu )->ImplRemoveDel( *this );
  }
  
@@ -108,7 +110,7 @@ diff --git a/vcl/source/window/menu.cxx b/vcl/source/window/menu.cxx
 diff --git a/vcl/unx/gtk/window/gtksalmenu.cxx b/vcl/unx/gtk/window/gtksalmenu.cxx
 --- a/vcl/unx/gtk/window/gtksalmenu.cxx
 +++ b/vcl/unx/gtk/window/gtksalmenu.cxx
-@@ -452,10 +452,15 @@ void GtkSalMenu::SetSubMenu( SalMenuItem* pSalMenuItem, SalMenu* pSubMenu, unsig
+@@ -448,9 +448,15 @@ void GtkSalMenu::SetSubMenu( SalMenuItem* pSalMenuItem, SalMenu* pSubMenu, unsig
      pItem->mpSubMenu = pGtkSubMenu;
  }
  
@@ -117,15 +119,14 @@ diff --git a/vcl/unx/gtk/window/gtksalmenu.cxx b/vcl/unx/gtk/window/gtksalmenu.c
  void GtkSalMenu::SetFrame( const SalFrame* pFrame )
  {
      SolarMutexGuard aGuard;
--
 +    {
 +        vcl::MenuInvalidator aInvalidator;
 +        aInvalidator.GetMenuInvalidateListeners()->addListener(*getRefreshLinkInstance());
 +    }
+ 
      assert(mbMenuBar);
      SAL_INFO("vcl.unity", "GtkSalMenu set to frame");
-     mpFrame = static_cast< const GtkSalFrame* >( pFrame );
-@@ -806,6 +811,44 @@ GtkSalMenuItem::~GtkSalMenuItem()
+@@ -798,6 +804,45 @@ GtkSalMenuItem::~GtkSalMenuItem()
  {
  }
  
@@ -167,6 +168,7 @@ diff --git a/vcl/unx/gtk/window/gtksalmenu.cxx b/vcl/unx/gtk/window/gtksalmenu.c
 +    }
 +    return pLink;
 +}
++
  #endif
  
  /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
