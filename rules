@@ -122,7 +122,6 @@ CHECKTARGET:=check
 SYSTEM_STUFF = dicts
 
 ENABLE_PYTHON=y
-ENABLE_PYTHON2=y
 ifeq "$(ENABLE_PYTHON)" "y"
   ENABLE_SCRIPT_PROVIDER_PYTHON=y
   PACKAGE_LIBRELOGO=y
@@ -139,14 +138,6 @@ export PYTHON=python3
 else
   PYTHON=python$(PYTHON_VERSION)
 export PYTHON=python$(PYTHON_VERSION)
-endif
-ifeq "$(ENABLE_PYTHON2)" "y"
-	PYTHON2_VERSION=current
-  ifeq "$(PYTHON2_VERSION)" "current"
-	PYTHON2=python
-  else
-	PYTHON2=python$(PYTHON2_VERSION)
-  endif
 endif
 PACKAGE_TTF_OPENSYMBOL=y
 BUILD_ONLY_EN_US=n
@@ -734,12 +725,6 @@ PYMAJOR:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[0])")
 PYMINOR:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[1])")
 PYMINORPLUS1:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[1]+1)")
 PYTHON_SITE:=debian/python3-uno/$(shell $(PYTHON) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
-ifeq "$(ENABLE_PYTHON2)" "y"
-PY2MAJOR:=$(shell $(PYTHON2) -c "import sys; print sys.version_info[0]")
-PY2MINOR:=$(shell $(PYTHON2) -c "import sys; print sys.version_info[1]")
-PY2MINORPLUS1:=$(shell $(PYTHON2) -c "import sys; print sys.version_info[1]+1")
-PYTHON2_SITE:=debian/python-uno/$(shell $(PYTHON2) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
-endif
 
 ifeq "$(PYTHON_VERSION)" "current"
 	PYTHON_VERSION_CONTROL := $(PYMAJOR).$(PYMINOR)
@@ -749,14 +734,8 @@ endif
 
 ifeq "$(ENABLE_PYTHON)" "y"
 	BUILD_DEPS += , $(PYTHON)
-  ifeq "$(ENABLE_PYTHON2)" "y"
-	BUILD_DEPS += , $(PYTHON2) (>= 2.6.6-3+squeeze4)
-  endif
 	DBG_DBG_SUGGESTS+= , $(PYTHON)-dbg
 	BUILD_DEPS += , $(PYTHON)-dev (>= 3.3)
-  ifeq "$(ENABLE_PYTHON2)" "y"
-	BUILD_DEPS += , $(PYTHON2)-dev (>= 2.6)
-  endif
 else
 	BUILD_DEPS += , python
 endif
@@ -1221,14 +1200,14 @@ else
 endif
 
 ifneq "$(ENABLE_PYTHON)" "y"
-	DEBHELPER_OPTIONS+= -Npython-uno -Npython3-uno -Nlibreoffice-script-provider-python
+	DEBHELPER_OPTIONS+= -Npython3-uno -Nlibreoffice-script-provider-python
   ifeq "$(BUILD_ISOS)" "en-US"
 	CONFIGURE_FLAGS += --disable-python
   else
 	$(error you can not disable python when building with translations)
   endif
 else
-	PYUNO_DEPENDS = python3-uno (>= 4.0~) | python-uno
+	PYUNO_DEPENDS = python3-uno (>= 4.0~)
   CONFIGURE_FLAGS += --enable-python=system
 endif
 
@@ -1503,7 +1482,6 @@ debian/control: $(wildcard debian/control*in) $(SOURCE_TREE)/bin/lo-xlate-lang  
 	    -e "s#%[A-Za-z]*=[^%]*%##g#" \
 	    -e "s#%BUILD_DEPS_INDEP%#$(strip $(BUILD_DEPS_INDEP))#g" \
 	    -e "s#@PYTHON_VERSION_CONTROL@#$(PYTHON_VERSION_CONTROL)#g" \
-	    -e "s#@PYTHON2_VERSION@#$(PYTHON2_VERSION)#g" \
 	    -e "s#@BUGS@#$(BUGS)#g" \
 	    < debian/control.in > debian/control
 
@@ -1780,15 +1758,6 @@ ifneq "$(PACKAGE_UNOWINREG_DLL)" "y"
   endif
 endif
 
-ifeq "$(ENABLE_PYTHON)" "y"
-  ifeq "$(ENABLE_PYTHON2)" "y"
-	rm -rf $(SOURCE_TREE)/py2uno
-	cp -ra $(SOURCE_TREE)/pyuno $(SOURCE_TREE)/py2uno
-	cd py2uno && \
-		patch -p1 < $(CURDIR)/debian/patches/pyuno-copy-for-python2.diff
-  endif
-endif
-
 	touch $@
 
 .PHONY: config_host.mk
@@ -1810,7 +1779,6 @@ $(STAMP_DIR)/build-arch:
 	# it exists but that causes the configure flags NOT to be hnoured
 	# somehow...
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
-	PYTHON=$(PYTHON) PYTHON_CFLAGS="$(shell pkg-config --cflags python-$(PYMAJOR).$(PYMINOR))" PYTHON_LIBS="$(shell pkg-config --libs python-$(PYMAJOR).$(PYMINOR))" \
 	MARIADBCONFIG=$(MARIADBCONFIG) \
 	FIREBIRD_CFLAGS=$(FIREBIRD_CFLAGS) FIREBIRD_LIBS=$(FIREBIRD_LIBS) \
 	./autogen.sh $(CONFIGURE_FLAGS) \
@@ -1820,13 +1788,6 @@ $(STAMP_DIR)/build-arch:
 		--with-galleries=no
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build-non-l10n-only
-
-ifeq "$(ENABLE_PYTHON)" "y"
-  ifeq "$(ENABLE_PYTHON2)" "y"
-	$(MAKE) py2uno.clean
-	make cmd cmd='cd py2uno; export PYTHON=$(PYTHON2); export PYTHON_CFLAGS="$(shell pkg-config --cflags python-$(PY2MAJOR).$(PY2MINOR))"; export PYTHON_LIBS="$(shell pkg-config --libs python-$(PY2MAJOR).$(PY2MINOR))"; $(MAKE)'
-  endif
-endif
 
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 	$(CURDIR)/debian/rules check
@@ -1859,7 +1820,6 @@ $(STAMP_DIR)/build-indep:
 	rm -f config.status autogen.lastrun
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
-	PYTHON=$(PYTHON) PYTHON_CFLAGS="$(shell pkg-config --cflags python-$(PYMAJOR).$(PYMINOR))" PYTHON_LIBS="$(shell pkg-config --libs python-$(PYMAJOR).$(PYMINOR))" \
 	MARIADBCONFIG=$(MARIADBCONFIG) \
 	FIREBIRD_CFLAGS=$(FIREBIRD_CFLAGS) FIREBIRD_LIBS=$(FIREBIRD_LIBS) \
 	./autogen.sh $(CONFIGURE_FLAGS) --with-help $(CONFIGURE_FLAGS_LANG)
@@ -2497,33 +2457,6 @@ ifeq "$(ENABLE_PYTHON)" "y"
 	  echo 'PYTHONPATH=$$PYTHONHOME $$PYTHONHOME/site-packages $$PYTHONHOME/lib-dynload $$PYTHONHOME/lib-tk $$ORIGIN' \
 	) >> debian/python3-uno/$(OODIR)/program/pythonloader.unorc
 	chmod u-w debian/python3-uno/$(OODIR)/program/pythonloader.unorc
-  ifeq "$(ENABLE_PYTHON2)" "y"
-	install -d $(PYTHON2_SITE)
-	cp $(PYTHON_SITE)/uno.py \
-		$(PYTHON2_SITE)
-	cp $(PYTHON_SITE)/unohelper.py \
-		$(PYTHON2_SITE)
-	mkdir -p debian/python-uno/$(OODIR)/program
-	mkdir -p debian/python-uno/$(OODIR)/share/registry
-	mkdir -p debian/python-uno/$(OODIR)/share/Scripts
-	cat debian/python3-uno/$(OODIR)/program/pythonloader.unorc \
-		| sed -e "s/$(PYMAJOR).$(PYMINOR)/$(PY2MAJOR).$(PY2MINOR)/" \
-		> debian/python-uno/$(OODIR)/program/pythonloader.unorc
-	for i in py2uno.so libpy2uno.so; do \
-		install -m644 $(SOURCE_TREE)/instdir/program/$$i \
-			debian/python-uno/$(OODIR)/program/$$i; \
-			ln -s $$i debian/python-uno/$(OODIR)/program/`echo $$i | sed -e s/2//`; \
-	done
-	install -m644 $(SOURCE_TREE)/instdir/program/libpython2loaderlo.so \
-		debian/python-uno/$(OODIR)/program/libpython2loaderlo.so
-	ln -s libpython2loaderlo.so debian/python-uno/$(OODIR)/program/libpythonloaderlo.so
-	cp debian/python3-uno/$(OODIR)/program/pythonloader.py \
-		debian/python-uno/$(OODIR)/program
-	cp debian/python3-uno/$(OODIR)/share/registry/pyuno.xcd \
-		debian/python-uno/$(OODIR)/share/registry
-	cp -r debian/python3-uno/$(OODIR)/share/Scripts/python \
-		debian/python-uno/$(OODIR)/share/Scripts
-  endif
   ifeq "$(ENABLE_SCRIPT_PROVIDER_PYTHON)" "y"
 	rm -f debian/libreoffice-script-provider-python/$(OODIR)/share/extensions/script-provider-for-python/registration/LICENSE
   endif
@@ -2536,16 +2469,6 @@ ifeq "$(ENABLE_PYTHON)" "y"
 	done
 	cd debian/python3-uno/usr/share/doc/python3-uno && \
 		find . -type d -name "CVS" | xargs -r rm -rf
-  ifeq "$(ENABLE_PYTHON2)" "y"
-	mkdir -p debian/python-uno/usr/share/doc/python-uno
-	cp -r $(SOURCE_TREE)/pyuno/demo \
-	  debian/python-uno/usr/share/doc/python-uno; \
-	for i in $(SOURCE_TREE)/pyuno/doc/*; do \
-		cp $$i debian/python-uno/usr/share/doc/python-uno; \
-	done
-	cd debian/python-uno/usr/share/doc/python-uno && \
-		find . -type d -name "CVS" | xargs -r rm -rf
-  endif
 endif
 
 	# should be empty now, remove if there
@@ -2721,7 +2644,7 @@ endif
 	done
 	for PKG in $(ARCH_DEP_PACKAGES); do \
 		case $$PKG in \
-		python-uno|uno-libs*|ure*) \
+		uno-libs*|ure*) \
 			;; \
 		*) \
 			cat debian/changelog \
@@ -3112,10 +3035,6 @@ ifeq "$(ENABLE_JAVA)" "y"
 endif
 	dh_python3 -ppython3-uno --no-ext-rename --no-guessing-deps
 	dh_python3 -ppython3-uno --no-ext-rename --no-guessing-deps $(OODIR)/program
-  ifeq "$(ENABLE_PYTHON2)" "y"
-	dh_python2 -ppython-uno --no-guessing-versions --no-guessing-deps
-	dh_python2 -ppython-uno --no-guessing-versions --no-guessing-deps $(OODIR)/program
-  endif
 	dh_lintian -s
 	dh_bugfiles -s -A
 	dh_link -s -X.desktop
