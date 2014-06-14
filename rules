@@ -1581,7 +1581,7 @@ clean:
 	rm -rf */*.pro.obsolete
 
 	rm -rf $(SOURCE_TREE)/file-lists
-	rm -rf $(SOURCE_TREE)/py2uno
+	rm -rf $(SOURCE_TREE)/pyuno-for*
 	rm -f autogen.lastrun
 	rm -f build_error.log
 	rm -f config/config_version.h
@@ -1890,17 +1890,6 @@ ifneq "$(PACKAGE_UNOWINREG_DLL)" "y"
   endif
 endif
 
-ifneq "$(WHEEZY_BACKPORT)" "y"
-   ifeq "$(ENABLE_PYTHON)" "y"
-    ifeq "$(ENABLE_PYTHON2)" "y"
-	rm -rf $(SOURCE_TREE)/py2uno
-	cp -ra $(SOURCE_TREE)/pyuno $(SOURCE_TREE)/py2uno
-	cd py2uno && \
-		patch -p1 < $(CURDIR)/debian/patches/pyuno-copy-for-python2.diff
-    endif
-  endif
-endif
-
 	touch $@
 
 .PHONY: config_host.mk
@@ -1940,17 +1929,29 @@ endif
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build-non-l10n-only
 
+ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
+	$(CURDIR)/debian/rules check
+endif
+
 ifneq "$(WHEEZY_BACKPORT)" "y"
   ifeq "$(ENABLE_PYTHON)" "y"
     ifeq "$(ENABLE_PYTHON2)" "y"
-	$(MAKE) py2uno.clean
-	make cmd cmd='cd py2uno; export PYTHON=$(PYTHON2); export PYTHON_CFLAGS="$(shell pkg-config --cflags python-$(PY2MAJOR).$(PY2MINOR))"; export PYTHON_LIBS="$(shell pkg-config --libs python-$(PY2MAJOR).$(PY2MINOR))"; $(MAKE)'
+	# remove python3 pyUNO...
+	$(MAKE) pyuno.clean
+	# ... so that we can build it for python2...
+	make cmd cmd='cd pyuno; export PYTHON=$(PYTHON2); export PYTHON_CFLAGS="$(shell pkg-config --cflags python-$(PY2MAJOR).$(PY2MINOR))"; export PYTHON_LIBS="$(shell pkg-config --libs python-$(PY2MAJOR).$(PY2MINOR))"; $(MAKE)'
+	# copy the libs away
+	rm -rf debian/pyuno-for-$(PY2MAJOR).$(PY2MINOR)
+	mkdir -p debian/pyuno-for-$(PY2MAJOR).$(PY2MINOR)
+	for i in pyuno.so libpyuno.so libpythonloaderlo.so; do \
+		cp $(SOURCE_TREE)/instdir/program/$$i \
+			debian/pyuno-for-$(PY2MAJOR).$(PY2MINOR); \
+	done
+	# and build the correct one again
+	$(MAKE) pyuno.clean
+	make pyuno
     endif
   endif
-endif
-
-ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
-	$(CURDIR)/debian/rules check
 endif
 
 ifneq "$(BUILD_ISOS)" "en-US"
@@ -2638,14 +2639,10 @@ ifeq "$(ENABLE_PYTHON)" "y"
 	cat debian/python3-uno/$(OODIR)/program/pythonloader.unorc \
 		| sed -e "s/$(PYMAJOR).$(PYMINOR)/$(PY2MAJOR).$(PY2MINOR)/" \
 		> debian/python-uno/$(OODIR)/program/pythonloader.unorc
-	for i in py2uno.so libpy2uno.so; do \
-		install -m644 $(SOURCE_TREE)/instdir/program/$$i \
+	for i in pyuno.so libpyuno.so libpythonloaderlo.so; do \
+		install -m644 debian/pyuno-for-$(PY2MAJOR).$(PY2MINOR)/$$i \
 			debian/python-uno/$(OODIR)/program/$$i; \
-			ln -s $$i debian/python-uno/$(OODIR)/program/`echo $$i | sed -e s/2//`; \
 	done
-	install -m644 $(SOURCE_TREE)/instdir/program/libpython2loaderlo.so \
-		debian/python-uno/$(OODIR)/program/libpython2loaderlo.so
-	ln -s libpython2loaderlo.so debian/python-uno/$(OODIR)/program/libpythonloaderlo.so
 	cp debian/python3-uno/$(OODIR)/program/pythonloader.py \
 		debian/python-uno/$(OODIR)/program
 	cp debian/python3-uno/$(OODIR)/program/services/pyuno.rdb \
