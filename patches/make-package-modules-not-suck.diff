@@ -1,22 +1,65 @@
-From: Debian LibreOffice Maintainers <debian-openoffice@lists.debian.org>
-Date: Sat, 9 Nov 2013 02:00:33 +0100
-Subject: [PATCH] make-package-modules-not-suck.diff
-
-Change-Id: I5c8b4941b6bdedfd877ba34e6d351c39cb45f5ad
-
----
- Repository.mk                    | 45 +++++++++++++++++++++++-----------------
- scp2/AutoInstall.mk              |  1 +
- scp2/InstallModule_draw.mk       |  2 ++
- scp2/InstallModule_kde.mk        |  6 ++++++
- scp2/source/draw/module_draw.scp |  5 ++++-
- scp2/source/kde/module_kde.scp   |  9 +++++++-
- 6 files changed, 47 insertions(+), 21 deletions(-)
-
+diff --git a/scp2/InstallModule_draw.mk b/scp2/InstallModule_draw.mk
+index 63a29f8..5e455a5 100644
+--- a/scp2/InstallModule_draw.mk
++++ b/scp2/InstallModule_draw.mk
+@@ -9,6 +9,8 @@
+ 
+ $(eval $(call gb_InstallModule_InstallModule,scp2/draw))
+ 
++$(eval $(call gb_InstallModule_use_auto_install_libs,scp2/draw,draw))
++
+ $(eval $(call gb_InstallModule_define_if_set,scp2/draw,\
+ 	ENABLE_MACOSX_MACLIKE_APP_STRUCTURE \
+ 	ENABLE_MACOSX_SANDBOX \
+diff --git a/scp2/source/draw/module_draw.scp b/scp2/source/draw/module_draw.scp
+index f7d92c1..a102275 100644
+--- a/scp2/source/draw/module_draw.scp
++++ b/scp2/source/draw/module_draw.scp
+@@ -18,6 +18,8 @@
+ 
+ #include "macros.inc"
+ 
++#include "AutoInstall/draw"
++
+ Module gid_Module_Prg_Draw
+     MOD_NAME_DESC ( MODULE_PRG_DRAW );
+     ParentID = gid_Module_Prg;
+@@ -33,7 +35,8 @@ Module gid_Module_Prg_Draw_Bin
+     Minimal = YES;
+     Default = YES;
+     Styles = (HIDDEN_ROOT);
+-    Files = (gid_File_Extra_Urldesktop_Draw,gid_File_Extra_Urlnew_Draw,gid_File_Extra_Urlstart_Draw,gid_File_Extra_Urltasks_Draw,
++    Files = (auto_draw_ALL
++    gid_File_Extra_Urldesktop_Draw,gid_File_Extra_Urlnew_Draw,gid_File_Extra_Urlstart_Draw,gid_File_Extra_Urltasks_Draw,
+     gid_File_Share_Registry_Draw_Xcd,
+     gid_File_Tmp_Userinstall_Draw_Inf);
+ End
+diff --git a/scp2/AutoInstall.mk b/scp2/AutoInstall.mk
+index 66edd78..47f17b6 100644
+--- a/scp2/AutoInstall.mk
++++ b/scp2/AutoInstall.mk
+@@ -12,6 +12,7 @@ $(eval $(call gb_AutoInstall_AutoInstall))
+ $(eval $(call gb_AutoInstall_add_module,calc,LIBO_LIB_FILE))
+ $(eval $(call gb_AutoInstall_add_module,extensions_bsh,,,LIBO_JAR_FILE))
+ $(eval $(call gb_AutoInstall_add_module,extensions_rhino,,,LIBO_JAR_FILE))
++$(eval $(call gb_AutoInstall_add_module,draw,LIBO_LIB_FILE))
+ $(eval $(call gb_AutoInstall_add_module,gnome,LIBO_LIB_FILE))
+ $(eval $(call gb_AutoInstall_add_module,graphicfilter,LIBO_LIB_FILE))
+ $(eval $(call gb_AutoInstall_add_module,impress,LIBO_LIB_FILE))
 diff --git a/Repository.mk b/Repository.mk
 --- a/Repository.mk
 +++ b/Repository.mk
-@@ -149,13 +149,28 @@ endif
+@@ -99,9 +99,6 @@ $(eval $(call gb_Helper_register_executables,OOO, \
+ 		tdefilepicker \
+ 	) \
+ 	uri-encode \
+-	$(if $(filter $(GUIBASE)$(ENABLE_KDE),unxTRUE), \
+-		kdefilepicker \
+-	) \
+ 	ui-previewer \
+ 	tiledrendering \
+ 	$(if $(filter DESKTOP,$(BUILD_TYPE)),unopkg_bin) \
+@@ -143,13 +143,28 @@ endif
  
  $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,base, \
  	abp \
@@ -68,7 +111,21 @@ diff --git a/Repository.mk b/Repository.mk
  ))
  
  $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,onlineupdate, \
-@@ -234,11 +257,8 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,ooo, \
+@@ -208,6 +228,13 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,gnome, \
+ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,kde, \
+ 	$(if $(ENABLE_KDE),kdebe1) \
+ 	$(if $(ENABLE_KDE4),kde4be1) \
++	$(if $(filter $(GUIBASE)$(ENABLE_KDE),unxTRUE), \
++		kdefilepicker \
++	) \
++	$(if $(and $(filter unx,$(GUIBASE)),$(filter-out MACOSX,$(OS))), \
++		$(if $(ENABLE_KDE),vclplug_kde) \
++		$(if $(ENABLE_KDE4),vclplug_kde4) \
++	) \
+ ))
+ 
+ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,math, \
+@@ -228,11 +252,8 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,ooo, \
  	ctl \
  	cui \
  	$(call gb_Helper_optional,DBCONNECTIVITY, \
@@ -131,7 +188,16 @@ diff --git a/Repository.mk b/Repository.mk
  	syssh \
  	$(if $(ENABLE_TDEAB),tdeab1) \
  	$(if $(ENABLE_TDEAB),tdeabdrv1) \
-@@ -405,6 +414,7 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,writer, \
+@@ -365,8 +378,6 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,ooo, \
+ 	$(if $(and $(filter unx,$(GUIBASE)),$(filter-out MACOSX,$(OS))), \
+ 		vclplug_gen \
+ 		$(if $(ENABLE_TDE),vclplug_tde) \
+-		$(if $(ENABLE_KDE),vclplug_kde) \
+-		$(if $(ENABLE_KDE4),vclplug_kde4) \
+ 		$(if $(ENABLE_HEADLESS),,vclplug_svp) \
+ 	) \
+ 	writerperfect \
+@@ -397,6 +407,7 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,writer, \
  	hwp \
  	$(if $(ENABLE_LWP),lwpft) \
  	msword \
@@ -161,82 +227,3 @@ diff --git a/Repository.mk b/Repository.mk
  	sofficeapp \
  	srtrs1 \
  	$(if $(filter $(OS),WNT),sysdtrans) \
-diff --git a/scp2/AutoInstall.mk b/scp2/AutoInstall.mk
---- a/scp2/AutoInstall.mk
-+++ b/scp2/AutoInstall.mk
-@@ -14,6 +14,7 @@ $(eval $(call gb_AutoInstall_add_module,base,LIBO_LIB_FILE))
- $(eval $(call gb_AutoInstall_add_module,calc,LIBO_LIB_FILE))
- $(eval $(call gb_AutoInstall_add_module,extensions_bsh,,,LIBO_JAR_FILE))
- $(eval $(call gb_AutoInstall_add_module,extensions_rhino,,,LIBO_JAR_FILE))
-+$(eval $(call gb_AutoInstall_add_module,draw,LIBO_LIB_FILE))
- $(eval $(call gb_AutoInstall_add_module,gnome,LIBO_LIB_FILE))
- $(eval $(call gb_AutoInstall_add_module,graphicfilter,LIBO_LIB_FILE))
- $(eval $(call gb_AutoInstall_add_module,impress,LIBO_LIB_FILE))
-diff --git a/scp2/InstallModule_draw.mk b/scp2/InstallModule_draw.mk
---- a/scp2/InstallModule_draw.mk
-+++ b/scp2/InstallModule_draw.mk
-@@ -9,6 +9,8 @@
- 
- $(eval $(call gb_InstallModule_InstallModule,scp2/draw))
- 
-+$(eval $(call gb_InstallModule_use_auto_install_libs,scp2/draw,draw))
-+
- $(eval $(call gb_InstallModule_define_if_set,scp2/draw,\
- 	ENABLE_MACOSX_MACLIKE_APP_STRUCTURE \
- 	ENABLE_MACOSX_SANDBOX \
-diff --git a/scp2/InstallModule_kde.mk b/scp2/InstallModule_kde.mk
---- a/scp2/InstallModule_kde.mk
-+++ b/scp2/InstallModule_kde.mk
-@@ -15,4 +15,10 @@ $(eval $(call gb_InstallModule_add_localized_scpfiles,scp2/kde,\
-     scp2/source/kde/module_kde \
- ))
- 
-+$(eval $(call gb_InstallModule_define_if_set,scp2/kde,\
-+        ENABLE_KAB \
-+        ENABLE_KDE \
-+        ENABLE_KDE4 \
-+))
-+
- # vim: set shiftwidth=4 tabstop=4 noexpandtab:
-diff --git a/scp2/source/draw/module_draw.scp b/scp2/source/draw/module_draw.scp
---- a/scp2/source/draw/module_draw.scp
-+++ b/scp2/source/draw/module_draw.scp
-@@ -18,6 +18,8 @@
- 
- #include "macros.inc"
- 
-+#include "AutoInstall/draw"
-+
- Module gid_Module_Prg_Draw
-     MOD_NAME_DESC ( MODULE_PRG_DRAW );
-     ParentID = gid_Module_Prg;
-@@ -33,7 +35,8 @@ Module gid_Module_Prg_Draw_Bin
-     Minimal = YES;
-     Default = YES;
-     Styles = (HIDDEN_ROOT);
--    Files = (gid_File_Extra_Urldesktop_Draw,gid_File_Extra_Urlnew_Draw,gid_File_Extra_Urlstart_Draw,gid_File_Extra_Urltasks_Draw,
-+    Files = (auto_draw_ALL
-+    gid_File_Extra_Urldesktop_Draw,gid_File_Extra_Urlnew_Draw,gid_File_Extra_Urlstart_Draw,gid_File_Extra_Urltasks_Draw,
-     gid_File_Share_Registry_Draw_Xcd,
-     gid_File_Tmp_Userinstall_Draw_Inf);
- End
-diff --git a/scp2/source/kde/module_kde.scp b/scp2/source/kde/module_kde.scp
---- a/scp2/source/kde/module_kde.scp
-+++ b/scp2/source/kde/module_kde.scp
-@@ -26,5 +26,12 @@ Module gid_Module_Optional_Kde
-     PackageInfo = "packinfo_office.txt";
-     MOD_NAME_DESC(MODULE_OPTIONAL_KDE);
-     Styles = ();
--    Files = (auto_kde_ALL);
-+    Files = (auto_kde_ALL,
-+#ifdef ENABLE_KDE
-+    gid_File_Lib_Vclplug_Kde
-+#endif
-+#ifdef ENABLE_KDE4
-+    gid_File_Lib_Vclplug_Kde4
-+#endif
-+);
- End
--- 
-1.9.1
-

@@ -202,6 +202,7 @@ USE_EXTERNAL_CXXLIBS=y
 SYSTEM_STUFF += mythes
 SYSTEM_STUFF += icu
 ICU_MINVER= (>= 4.6)
+SYSTEM_STUFF += librevenge
 SYSTEM_STUFF += libwpd libwpg libwps
 SYSTEM_STUFF += libvisio
 SYSTEM_STUFF += libcdr
@@ -437,9 +438,7 @@ ENABLE_EOT=y
 ifeq "$(ENABLE_EOT)" "y"
 SYSTEM_STUFF += libeot
 endif
-# need patched/git glm?!
-# 15:17 <@moggi> _rene_: interesting that this extension is not available in older glm versions
-#SYSTEM_STUFF += glm
+SYSTEM_STUFF += glm
 
 # Default flags to pass to configure
 CONFIGURE_FLAGS= \
@@ -624,7 +623,7 @@ endif
 # Debian WHeezy
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "wheezy-backports"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub libmwaw libodfgen mdds liblangtag orcus harfbuzz libatomic-ops libwpd redland libetonyek libfreehand libebook libvisio libeot libabw glew glm,$(SYSTEM_STUFF))
+  SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub libmwaw libodfgen mdds liblangtag orcus harfbuzz libatomic-ops libwpd redland libetonyek libfreehand libebook libvisio libeot libabw glew glm librevenge libwpg libwps boost,$(SYSTEM_STUFF))
   PACKAGE_SDK_DOCS=n
   WHEEZY_BACKPORT=y
 endif
@@ -713,11 +712,13 @@ endif
 ifneq "$(PACKAGE_SDK)" "y"
 	CONFIGURE_FLAGS += --disable-odk
  ifneq "$(PACKAGE_SDK_DOCS)" "y"
-	CONFIGURE_FLAGS += --without-doxygen
+	CONFIGURE_FLAGS += --without-doxygen --without-javadoc
  endif
 else
   ifeq "$(PACKAGE_SDK_DOCS)" "y"
 	BUILD_DEPS_INDEP += , doxygen (>= 1.8.4)
+  else
+	CONFIGURE_FLAGS += --without-doxygen --without-javadoc
   endif
 endif
 
@@ -850,9 +851,10 @@ else
 endif
 
 ifeq "$(ENABLE_PYTHON)" "y"
-	BUILD_DEPS += , python (>= 2.6.6-3+squeeze4)
-	# for dh_python3
-	BUILD_DEPS += , python3
+	BUILD_DEPS += , $(PYTHON)
+  ifeq "$(ENABLE_PYTHON2)" "y"
+	BUILD_DEPS += , $(PYTHON2) (>= 2.6.6-3+squeeze4)
+  endif
 	DBG_DBG_SUGGESTS+= , $(PYTHON)-dbg
   ifneq "$(WHEEZY_BACKPORT)" "y"
 	BUILD_DEPS += , $(PYTHON)-dev (>= 3.3)
@@ -864,6 +866,9 @@ ifeq "$(ENABLE_PYTHON)" "y"
   endif
 else
 	BUILD_DEPS += , python
+endif
+ifeq "$(WHEEZY_BACKPORT)" "y"
+	BUILD_DEPS += , dh-python
 endif
 
 	BUILD_DEPS += , debhelper (>= 7.2.3~)
@@ -1147,44 +1152,47 @@ ifneq (,$(filter clucene, $(SYSTEM_STUFF)))
 endif
 
 ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
+  ifneq (,$(filter librevenge, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , librevenge-dev
+  endif
   ifneq (,$(filter libwpd, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libwpd-dev (>= 0.9.5)
+	BUILD_DEPS += , libwpd-dev (>= 0.10)
   endif
   ifneq (,$(filter mythes, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libmythes-dev (>= 2:1.2)
   endif
   ifneq (,$(filter libwps, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libwps-dev (>= 0.2.0)
+	BUILD_DEPS += , libwps-dev (>= 0.3)
   endif
   ifneq (,$(filter libwpg, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libwpg-dev (>= 0.2.0)
+	BUILD_DEPS += , libwpg-dev (>= 0.3)
   endif
   ifneq (,$(filter libvisio, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libvisio-dev
+	BUILD_DEPS += , libvisio-dev (>= 0.1)
   endif
   ifneq (,$(filter libcdr, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libcdr-dev
+	BUILD_DEPS += , libcdr-dev (>= 0.1)
   endif
   ifneq (,$(filter libmspub, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libmspub-dev
+	BUILD_DEPS += , libmspub-dev (>= 0.1)
   endif
   ifneq (,$(filter libmwaw, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libmwaw-dev (>= 0.2.0)
+	BUILD_DEPS += , libmwaw-dev (>= 0.3.1)
   endif
   ifneq (,$(filter libodfgen, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libodfgen-dev (>= 0.0.3)
+	BUILD_DEPS += , libodfgen-dev (>= 0.1)
   endif
   ifneq (,$(filter libetonyek, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libetonyek-dev
+	BUILD_DEPS += , libetonyek-dev (>= 0.1.1)
   endif
   ifneq (,$(filter libfreehand, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libfreehand-dev
+	BUILD_DEPS += , libfreehand-dev (>= 0.1)
   endif
   ifneq (,$(filter libabw, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libabw-dev
+	BUILD_DEPS += , libabw-dev (>= 0.1)
   endif
   ifneq (,$(filter libebook, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libe-book-dev
+	BUILD_DEPS += , libe-book-dev (>= 0.1.1)
   endif
   ifneq (,$(filter libcmis, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libcmis-dev (>= 0.4.0)
@@ -1849,7 +1857,7 @@ $(STAMP_DIR)/build-arch:
 	MARIADBCONFIG=$(MARIADBCONFIG) \
 	FIREBIRD_CFLAGS=$(FIREBIRD_CFLAGS) FIREBIRD_LIBS=$(FIREBIRD_LIBS) \
 	./autogen.sh $(CONFIGURE_FLAGS) \
-		--without-doxygen --disable-ext-wiki-publisher \
+		--without-doxygen --without-javadoc --disable-ext-wiki-publisher \
 		--disable-report-builder --disable-scripting-javascript \
 		--disable-scripting-beanshell \
 		--with-galleries=no
@@ -2133,6 +2141,38 @@ else
 		$$t && mv $$t $(PKGDIR)-common/$(OODIR)/share/basic/dialog.xlc && rm -f $$t
 	t=`mktemp -q`; grep -v Access2Base $(PKGDIR)-common/$(OODIR)/share/basic/script.xlc > \
 		$$t && mv $$t $(PKGDIR)-common/$(OODIR)/share/basic/script.xlc && rm -f $$t
+endif
+
+ifeq "$(PACKAGE_SDK)" "y"
+	# move gengal stuff into -dev
+	mkdir -p $(PKGDIR)-dev/$(OODIR)/program
+	mv $(PKGDIR)-core/$(OODIR)/program/gengal.bin \
+		$(PKGDIR)-dev/$(OODIR)/program
+	mv $(PKGDIR)-common/$(OODIR)/program/gengal \
+		$(PKGDIR)-dev/$(OODIR)/program
+else
+	rm -f $(PKGDIR)-core/$(OODIR)/program/gengal.bin
+	rm -f $(PKGDIR)-common/$(OODIR)/program/gengal
+endif
+
+ifneq "$(ENABLE_REPORTDESIGN)" "y"
+	# unneeded. a no-Java arch, so the report-builder can't work anyway.
+	# (and we need to remove it here anyway as it otherwise would end up
+	# in -base/-core)
+	rm -rf $(PKGDIR)-report-builder
+	rm -f $(PKGDIR)-core/$(OODIR)/program/librpt*
+else
+  ifeq "$(PACKAGE_BASE)" "y"
+	# move rpt stuff into -report-builder-bin
+	rm -rf $(PKGDIR)-report-builder-bin
+	mkdir -p $(PKGDIR)-report-builder-bin/$(OODIR)/program
+	# FIXME: it seems that --enable/--disable-reportbuiler affects the install
+	# location. sigh.
+	if [ -e $(PKGDIR)-core/$(OODIR)/program/librptlo.so ]; then \
+		i=core; else i=report-builder; fi; \
+	mv $(PKGDIR)-$$i/$(OODIR)/program/librpt* \
+		$(PKGDIR)-report-builder-bin/$(OODIR)/program
+  endif
 endif
 
 	find debian/tmp ! -perm -200 | xargs -r chmod u+w
@@ -2505,26 +2545,6 @@ endif
 		rm -rf $(PKGDIR)-$$i/$(OODIR)/program/resource; \
 	done
 
-ifneq "$(ENABLE_REPORTDESIGN)" "y"
-	# unneeded. a no-Java arch, so the report-builder can't work anyway.
-	# (and we need to remove it here anyway as it otherwise would end up
-	# in -base/-core)
-	rm -rf $(PKGDIR)-report-builder
-	rm -f $(PKGDIR)-core/$(OODIR)/program/librpt*
-else
-  ifeq "$(PACKAGE_BASE)" "y"
-	# move rpt stuff into -report-builder-bin
-	rm -rf $(PKGDIR)-report-builder-bin
-	mkdir -p $(PKGDIR)-report-builder-bin/$(OODIR)/program
-	# FIXME: it seems that --enable/--disable-reportbuiler affects the install
-	# location. sigh.
-	if [ -e $(PKGDIR)-core/$(OODIR)/program/librptlo.so ]; then \
-		i=core; else i=report-builder; fi; \
-	mv $(PKGDIR)-$$i/$(OODIR)/program/librpt* \
-		$(PKGDIR)-report-builder-bin/$(OODIR)/program
-  endif
-endif
-
 ifeq "$(ENABLE_MINIMIZER)" "y"
 	rm -f $(PKGDIR)-presentation-minimizer/$(OODIR)/share/extensions/presentation-minimizer/registration/LICENSE
 endif
@@ -2537,24 +2557,12 @@ ifeq "$(ENABLE_MYSQLNATIVE)" "y"
 	rm -f $(PKGDIR)-mysql-connector/$(OODIR)/share/extensions/mysql-connector-ooo/registration/LICENSE
 endif
 
-ifeq "$(ENABLE_MEDIAWIKI)" "y"
-	rm -f $(PKGDIR)-wiki-publisher/$(OODIR)/share/extensions/wiki-publisher/registration/LICENSE
-endif
-
 ifeq "$(PACKAGE_SDK)" "y"
-	# move gengal stuff into -dev
-	mkdir -p $(PKGDIR)-dev/$(OODIR)/program
-	mv $(PKGDIR)-core/$(OODIR)/program/gengal.bin \
-		$(PKGDIR)-dev/$(OODIR)/program
-	mv $(PKGDIR)-common/$(OODIR)/program/gengal \
-		$(PKGDIR)-dev/$(OODIR)/program
 	# move ui-previewer into -dev
 	mkdir -p $(PKGDIR)-dev/$(OODIR)/program
 	mv $(PKGDIR)-core/$(OODIR)/program/ui-previewer \
 		$(PKGDIR)-dev/$(OODIR)/program
 else
-	rm -f $(PKGDIR)-core/$(OODIR)/program/gengal.bin
-	rm -f $(PKGDIR)-common/$(OODIR)/program/gengal
 	rm -f $(PKGDIR)-core/$(OODIR)/program/ui-previewer
 endif
 
@@ -2901,6 +2909,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 endif
 
 ifeq "$(ENABLE_MEDIAWIKI)" "y"
+	rm -f $(PKGDIR)-wiki-publisher/$(OODIR)/share/extensions/wiki-publisher/registration/LICENSE
 	rm -f $(PKGDIR)-wiki-publisher/$(OODIR)/share/extensions/wiki-publisher/license/THIRDPARTYLICENSEREADME.html
 endif
 
@@ -3032,18 +3041,13 @@ ifeq "$(ENABLE_JAVA)" "y"
 endif
 ifeq "$(WHEEZY_BACKPORT)" "y"
 	dh_python2 -ppython-uno --no-guessing-versions --no-guessing-deps
+	dh_python2 -ppython-uno --no-guessing-versions --no-guessing-deps $(OODIR)/program
 else
-	dh_python3 -ppython3-uno --no-guessing-deps
-	# adds a python3 (>= 3.2.3-3~)
-  ifeq "$(PYTHON_VERSION)" "current"
-	sed -i -e 's/python$(PYMAJOR) (>= .*)/python$(PYMAJOR) (>= 3.3~)/g' \
-		debian/python3-uno.substvars
-  else
-	sed -i -e 's/python$(PYMAJOR) (>= .*)/python$(PYMAJOR).$(PYMINOR)/g' \
-		debian/python3-uno.substvars
-  endif
+	dh_python3 -ppython3-uno --no-ext-rename --no-guessing-deps
+	dh_python3 -ppython3-uno --no-ext-rename --no-guessing-deps $(OODIR)/program
   ifeq "$(ENABLE_PYTHON2)" "y"
 	dh_python2 -ppython-uno --no-guessing-versions --no-guessing-deps
+	dh_python2 -ppython-uno --no-guessing-versions --no-guessing-deps $(OODIR)/program
   endif
 endif
 	dh_lintian -s
@@ -3098,6 +3102,15 @@ ifeq (,$(filter icu, $(SYSTEM_STUFF)))
 endif
 ifneq (,$(filter libvisio, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.libvisio >> debian/shlibs.local
+endif
+ifeq (,$(filter libwps, $(SYSTEM_STUFF)))
+	cat debian/shlibs.override.libwps >> debian/shlibs.local
+endif
+ifeq (,$(filter libodfgen, $(SYSTEM_STUFF)))
+	cat debian/shlibs.override.libodfgen >> debian/shlibs.local
+endif
+ifeq (,$(filter libmwaw, $(SYSTEM_STUFF)))
+	cat debian/shlibs.override.libmwaw >> debian/shlibs.local
 endif
 	# we need to do it in two steps. The new dpkg-shlibdeps doesn't find
 	# /usr/lib/libgcj-bc.so when specifying -l$(GCJ_JAWT_DIR)
