@@ -6,10 +6,12 @@ Change-Id: Ia839387250d13d67098c60dab8a6575990883164
 
 ---
  configure.ac                | 64 ++++++++++++++++++++++++++++++---------------
+ odk/CustomTarget_check.mk   |  2 +-
  odk/Module_odk.mk           |  6 +++--
- scp2/InstallModule_sdkoo.mk |  6 +++++
+ odk/util/check.pl           |  2 +-
+ scp2/InstallModule_sdkoo.mk | 12 +++++++++
  scp2/source/sdkoo/sdkoo.scp |  2 ++
- 4 files changed, 55 insertions(+), 23 deletions(-)
+ 6 files changed, 63 insertions(+), 25 deletions(-)
 
 diff --git a/configure.ac b/configure.ac
 --- a/configure.ac
@@ -100,6 +102,18 @@ diff --git a/configure.ac b/configure.ac
  if test "$ENABLE_JAVA" != ""; then
      # check if JAVA_HOME was (maybe incorrectly?) set automatically to /usr
      if test "$JAVA_HOME" = "/usr" -a "x$with_jdk_home" = "x"; then
+diff --git a/odk/CustomTarget_check.mk b/odk/CustomTarget_check.mk
+--- a/odk/CustomTarget_check.mk
++++ b/odk/CustomTarget_check.mk
+@@ -35,7 +35,7 @@ $(call gb_CustomTarget_get_workdir,odk/check)/checkbin : \
+ 		$(if $(filter WNT,$(OS)),$(call gb_Package_get_target,odk_config_win)) \
+ 		$(call gb_Package_get_target,odk_docs) \
+ 		$(call gb_Package_get_target,odk_html) \
+-		$(if $(ENABLE_JAVA),$(call gb_GeneratedPackage_get_target,odk_javadoc)) \
++		$(if $(JAVADOC),$(call gb_GeneratedPackage_get_target,odk_javadoc)) \
+ 		$(call gb_Package_get_target,odk_lib) \
+ 		$(call gb_Package_get_target,odk_settings) \
+ 		$(call gb_Package_get_target,odk_settings_generated) \
 diff --git a/odk/Module_odk.mk b/odk/Module_odk.mk
 --- a/odk/Module_odk.mk
 +++ b/odk/Module_odk.mk
@@ -119,13 +133,31 @@ diff --git a/odk/Module_odk.mk b/odk/Module_odk.mk
  ))
  endif
  
+diff --git a/odk/util/check.pl b/odk/util/check.pl
+--- a/odk/util/check.pl
++++ b/odk/util/check.pl
+@@ -188,7 +188,7 @@ if (-d "$SdkDir") {
+     # improvement required
+     my $solar_java = $ENV{"ENABLE_JAVA"};
+     my $JDK = $ENV{"JDK"};
+-    if (defined($solar_java) && $solar_java ne "" && (!defined($JDK) || $JDK ne "gcj")) {
++    if (defined($solar_java) && $solar_java ne "" && $ENV{"JAVADOC"} ne "") {
+     print "check java docu: ";
+     if (check_dir("docs/java/ref")) {
+         if (!check_file("docs/java/ref/index.html")) {
 diff --git a/scp2/InstallModule_sdkoo.mk b/scp2/InstallModule_sdkoo.mk
 --- a/scp2/InstallModule_sdkoo.mk
 +++ b/scp2/InstallModule_sdkoo.mk
-@@ -17,6 +17,12 @@ $(eval $(call gb_InstallModule_add_defs,scp2/sdkoo,\
+@@ -17,6 +17,18 @@ $(eval $(call gb_InstallModule_add_defs,scp2/sdkoo,\
  ))
  endif
  
++ifneq ($(JAVADOC),)
++$(eval $(call gb_InstallModule_add_defs,scp2/sdkoo,\
++	-DJAVADOC \
++))
++endif
++
 +ifneq ($(JAVADOC),)
 +$(eval $(call gb_InstallModule_add_defs,scp2/sdkoo,\
 +	-DJAVADOC \
@@ -154,44 +186,6 @@ diff --git a/scp2/source/sdkoo/sdkoo.scp b/scp2/source/sdkoo/sdkoo.scp
  
  File gid_File_Package_odk_lib
      TXT_FILE_BODY;
---- a/scp2/InstallModule_sdkoo.mk-old	2013-09-23 22:46:56.034054736 +0200
-+++ b/scp2/InstallModule_sdkoo.mk	2013-09-23 22:46:47.914054950 +0200
-@@ -15,6 +15,12 @@
- ))
- endif
- 
-+ifneq ($(JAVADOC),)
-+$(eval $(call gb_InstallModule_add_defs,scp2/sdkoo,\
-+	-DJAVADOC \
-+))
-+endif
-+
- $(eval $(call gb_InstallModule_add_scpfiles,scp2/sdkoo,\
-     scp2/source/sdkoo/sdkoo \
- ))
-diff --git a/odk/CustomTarget_check.mk b/odk/CustomTarget_check.mk
-index a9b542d..707829a 100644
---- a/odk/CustomTarget_check.mk
-+++ b/odk/CustomTarget_check.mk
-@@ -35,7 +35,7 @@ $(call gb_CustomTarget_get_workdir,odk/check)/checkbin : \
- 		$(if $(filter WNT,$(OS)),$(call gb_Package_get_target,odk_config_win)) \
- 		$(call gb_Package_get_target,odk_docs) \
- 		$(call gb_Package_get_target,odk_html) \
--		$(if $(ENABLE_JAVA),$(call gb_GeneratedPackage_get_target,odk_javadoc)) \
-+		$(if $(JAVADOC),$(call gb_GeneratedPackage_get_target,odk_javadoc)) \
- 		$(call gb_Package_get_target,odk_lib) \
- 		$(call gb_Package_get_target,odk_settings) \
- 		$(call gb_Package_get_target,odk_settings_generated) \
-diff --git a/odk/util/check.pl b/odk/util/check.pl
-index 899b42c..2c7a780 100644
---- a/odk/util/check.pl
-+++ b/odk/util/check.pl
-@@ -188,7 +188,7 @@ if (-d "$SdkDir") {
-     # improvement required
-     my $solar_java = $ENV{"ENABLE_JAVA"};
-     my $JDK = $ENV{"JDK"};
--    if (defined($solar_java) && $solar_java ne "" && (!defined($JDK) || $JDK ne "gcj")) {
-+    if (defined($solar_java) && $solar_java ne "" && $ENV{"JAVADOC"} ne "") {
-     print "check java docu: ";
-     if (check_dir("docs/java/ref")) {
-         if (!check_file("docs/java/ref/index.html")) {
+-- 
+1.9.1
+
