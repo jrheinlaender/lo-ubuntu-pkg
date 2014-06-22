@@ -245,14 +245,17 @@ ENABLE_AVAHI=y
 USE_GSTREAMER=y
 GSTREAMER_VERSION=1.0
 USE_VLC=y
-ENABLE_NEON=y
-ifeq "$(ENABLE_NEON)" "y"
-SYSTEM_STUFF += neon
-NEON_SECTYPE=gnutls
-NEONSONR=27
-else
-SYSTEM_STUFF += apr
-SYSTEM_STUFF += serf
+ENABLE_WEBDAV=y
+ifeq "$(ENABLE_WEBDAV)" "y"
+WEBDAV_LIB=neon
+  ifeq "$(WEBDAV_LIB)" "neon"
+    SYSTEM_STUFF += neon
+    NEON_SECTYPE=gnutls
+    NEONSONR=27
+  else
+   SYSTEM_STUFF += apr
+   SYSTEM_STUFF += serf
+  endif
 endif
 SYSTEM_STUFF += redland
 PACKAGE_SDK=y
@@ -977,7 +980,7 @@ endif
 
 ifneq (,$(filter boost, $(SYSTEM_STUFF)))
   ifneq "$(BOOST_VERSION)" "default"
-	BUILD_DEPS += , libboost$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-date-time$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-ipstreams$(BOOST_VERSION)-dev
+	BUILD_DEPS += , libboost$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-date-time$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-iostreams$(BOOST_VERSION)-dev
 	#BUILD_DEPS += , libboost-thread$(BOOST_VERSION)-dev, libboost-program-options$(BOOST_VERSION)-dev
     ifeq "$(ENABLE_ORCUS)" "y"
       ifeq (,$(filter orcus, $(SYSTEM_STUFF)))
@@ -1304,23 +1307,28 @@ else
 	DEBHELPER_OPTIONS += -Nlibreoffice-avmedia-backend-vlc
 endif
 
-ifeq "$(ENABLE_NEON)" "y"
-  ifneq (,$(filter neon, $(SYSTEM_STUFF)))
-    ifneq "$(NEON_SECTYPE)" "openssl"
+ifeq "$(ENABLE_WEBDAV)" "y"
+  ifeq "$(WEBDAV_LIB)" "neon"
+    ifneq (,$(filter neon, $(SYSTEM_STUFF)))
+      ifneq "$(NEON_SECTYPE)" "openssl"
 	BUILD_DEPS += , libneon$(NEONSONR)-$(NEON_SECTYPE)-dev
 	DBG_DBG_SUGGESTS+= , libneon$(NEONSONR)-$(NEON_SECTYPE)-dbg
-    else
+      else
 	BUILD_DEPS += , libneon$(NEONSONR)-dev
 	DBG_DBG_SUGGESTS+= , libneon$(NEONSONR)-dbg
+      endif
+    endif
+  else
+    ifneq (,$(filter apr, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libaprutil1-dev
+    endif
+    ifneq (,$(filter serf, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libserf-dev
     endif
   endif
+  CONFIGURE_FLAGS += --with-webdav=$(WEBDAV_LIB)
 else
-  ifneq (,$(filter apr, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libaprutil1-dev
-  endif
-  ifneq (,$(filter serf, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libserf-dev
-  endif
+  CONFIGURE_FLAGS += --with-webdav=no
 endif
 
 ifeq "$(ENABLE_HELP)" "n"
@@ -1351,7 +1359,7 @@ ifeq "$(ENABLE_GVFS)" "y"
 endif
 
 ifeq "$(ENABLE_GCONF)" "y"
-	BUILD_DEPS += , libgconf2-dev, liborbit2-dev
+	BUILD_DEPS += , libgconf2-dev
 else
 	CONFIGURE_FLAGS += --disable-gconf
 endif
@@ -1801,10 +1809,8 @@ ifneq "$(BUILD_ISOS)" "en-US"
 	# build sysui and some extensions again with all languages; as it contains language-specific help
 	# and/or descriptions...
 	$(MAKE) sysui.clean
-	$(MAKE) sdext.clean
 	$(MAKE) mysqlc.clean
 	make cmd cmd="cd sysui; export WITH_LANG='$(LANGPACKISOS)'; export WITH_LANG_LIST='$(LANGPACKISOS)'; $(MAKE)"
-	make cmd cmd="cd sdext; export WITH_LANG='$(LANGPACKISOS)'; export WITH_LANG_LIST='$(LANGPACKISOS)'; $(MAKE)"
 	make cmd cmd="cd mysqlc; export WITH_LANG='$(LANGPACKISOS)'; export WITH_LANG_LIST='$(LANGPACKISOS)'; $(MAKE)"
 endif
 
@@ -2156,7 +2162,7 @@ endif
 #
 # Generate maintainer scripts
 maintscripts: $(STAMP_DIR)/maintscripts
-$(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*.sh) $(wildcard debian/*.preinst.in) $(wildcard debian/*.postinst.in) $(wildcard debian/*.prerm.in) $(wildcard debian/*.postrm.in) debian/vars.$(DEB_HOST_ARCH) debian/control
+$(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*.sh) $(wildcard debian/*.preinst.in) $(wildcard debian/*.postinst.in) $(wildcard debian/*.prerm.in) $(wildcard debian/*.postrm.in) debian/control
 	dh_testdir
 
 	rm -f debian/*.{pre,post}{inst,rm}
@@ -2167,10 +2173,6 @@ $(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*.sh) $(wildcard debian/*.
 	    MAINTSCRIPT=debian/$$PKG.$$FILE ; \
 	    if [ -e $$MAINTSCRIPT.in ]; then \
 	      sed -n '1,/^#INCLUDE_SHELL_LIB#$$/p' < $$MAINTSCRIPT.in | sed -e '/^#INCLUDE_SHELL_LIB#$$/d' > $$MAINTSCRIPT; \
-	      if echo $(ARCH_DEP_PACKAGES) | grep -q $$PKG && [ "$$FILE" != "triggers" ]; then \
-	        grep PLATFORMID debian/vars.$(DEB_HOST_ARCH) >> $$MAINTSCRIPT; \
-	      fi; \
-	      echo "" >> $$MAINTSCRIPT; \
 	      if egrep -q "(validate_extension|sync_extension)" $$MAINTSCRIPT.in; then \
 		 cat debian/shell-lib-extensions.sh >> $$MAINTSCRIPT; \
 	      fi; \
@@ -3100,6 +3102,12 @@ ifeq (,$(filter libodfgen, $(SYSTEM_STUFF)))
 endif
 ifeq (,$(filter libmwaw, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.libmwaw >> debian/shlibs.local
+endif
+ifeq (,$(filter librevenge, $(SYSTEM_STUFF)))
+	cat debian/shlibs.override.librevenge >> debian/shlibs.local
+endif
+ifeq (,$(filter glew, $(SYSTEM_STUFF)))
+	cat debian/shlibs.override.glew >> debian/shlibs.local
 endif
 	# we need to do it in two steps. The new dpkg-shlibdeps doesn't find
 	# /usr/lib/libgcj-bc.so when specifying -l$(GCJ_JAWT_DIR)
