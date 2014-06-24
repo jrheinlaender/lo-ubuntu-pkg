@@ -83,6 +83,7 @@ mv ./usr/share/mime* \
 create_package_directory gid_Module_Root_Files_Images           pkg/libreoffice-common
 create_package_directory gid_Module_Oo_Linguistic               pkg/libreoffice-common
 create_package_directory gid_Module_Optional_Xsltfiltersamples  pkg/libreoffice-common
+create_package_directory gid_Module_Filter                      pkg/libreoffice-common
 create_package_directory gid_Module_Optional_Grfflt             pkg/libreoffice-draw
 create_package_directory gid_Module_Prg_Calc_Bin                pkg/libreoffice-calc
 create_package_directory gid_Module_Prg_Math_Bin                pkg/libreoffice-math
