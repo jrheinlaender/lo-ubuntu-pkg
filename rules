@@ -72,7 +72,7 @@ GIT_BASEURL:=git://anongit.freedesktop.org/libreoffice
 lo_sources_ver=4.2.3~rc2
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
-GIT_TAG=libreoffice-4.3.0.1
+GIT_TAG=libreoffice-4.3.0.2
 GIT_BRANCH=master
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
@@ -278,14 +278,17 @@ else
    GSTREAMER_VERSION=0.10
 endif
 USE_VLC=y
-ENABLE_NEON=y
-ifeq "$(ENABLE_NEON)" "y"
-SYSTEM_STUFF += neon
-NEON_SECTYPE=gnutls
-NEONSONR=27
-else
-SYSTEM_STUFF += apr
-SYSTEM_STUFF += serf
+ENABLE_WEBDAV=y
+ifeq "$(ENABLE_WEBDAV)" "y"
+WEBDAV_LIB=neon
+  ifeq "$(WEBDAV_LIB)" "neon"
+    SYSTEM_STUFF += neon
+    NEON_SECTYPE=gnutls
+    NEONSONR=27
+  else
+   SYSTEM_STUFF += apr
+   SYSTEM_STUFF += serf
+  endif
 endif
 SYSTEM_STUFF += redland
 PACKAGE_SDK=y
@@ -371,7 +374,7 @@ ENABLE_RANDR=y
 ifeq "$(BUILD_GTK)" "y"
   PACKAGE_NSPLUGIN=y
   ifeq "$(PACKAGE_NSPLUGIN)" "y"
-	SYSTEM_STUFF += npapi-headers
+	#SYSTEM_STUFF += npapi-headers
   endif
 endif
 PACKAGE_BASE=y
@@ -1069,7 +1072,12 @@ ifneq (,$(filter nss, $(SYSTEM_STUFF)))
 	DBG_DBG_SUGGESTS+= , libnss3-1d-dbg
 endif
 ifneq (,$(filter npapi-headers, $(SYSTEM_STUFF)))
-	BUILD_DEPS+= , firefox-dev$(OOO_NO_NSPLUGIN_ARCHS) | xulrunner-dev$(OOO_NO_NSPLUGIN_ARCHS)
+  ifneq "$(WHEEZY_BACKPORT)" "y"
+	# 30.0-1 doesn't contain the .pc file
+	BUILD_DEPS+= , iceweasel-dev (>= 30.0-2)$(OOO_NO_NSPLUGIN_ARCHS)
+  else
+	BUILD_DEPS+= , xulrunner-dev$(OOO_NO_NSPLUGIN_ARCHS)
+  endif
 endif
 ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NSPLUGIN_ARCHS)))
 	PACKAGE_NSPLUGIN=n
@@ -1106,7 +1114,7 @@ endif
 
 ifneq (,$(filter boost, $(SYSTEM_STUFF)))
   ifneq "$(BOOST_VERSION)" "default"
-	BUILD_DEPS += , libboost$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-date-time$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-ipstreams$(BOOST_VERSION)-dev
+	BUILD_DEPS += , libboost$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-date-time$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-iostreams$(BOOST_VERSION)-dev
 	#BUILD_DEPS += , libboost-thread$(BOOST_VERSION)-dev, libboost-program-options$(BOOST_VERSION)-dev
     ifeq "$(ENABLE_ORCUS)" "y"
       ifeq (,$(filter orcus, $(SYSTEM_STUFF)))
@@ -1305,7 +1313,7 @@ endif
 ifeq "$(BUILD_GTK)" "n"
 	CONFIGURE_FLAGS+= --disable-gtk
 	DEBHELPER_OPTIONS+= -Nlibreoffice-gtk -Nlibreoffice-gnome
-	CONFIGURE_FLAGS+= --with-theme="$(patsubst galaxy,default,$(IMAGES))"
+	CONFIGURE_FLAGS+= --with-theme="$(patsubst $(DEFAULT_IMAGE),default,$(IMAGES))"
 else
 	BUILD_DEPS += , libgtk2.0-dev (>= 2.10)
 endif
@@ -1355,7 +1363,11 @@ else
 	DEBHELPER_OPTIONS+= -Npython3-uno
 	PYUNO_DEPENDS = python-uno
   else
+    ifeq "$(ENABLE_PYTHON2)" "y"
+	PYUNO_DEPENDS = python3-uno (>= 4.0~) | python-uno
+    else
 	PYUNO_DEPENDS = python3-uno (>= 4.0~)
+    endif
   endif
   CONFIGURE_FLAGS += --enable-python=system
 endif
@@ -1460,23 +1472,28 @@ else
 	DEBHELPER_OPTIONS += -Nlibreoffice-avmedia-backend-vlc
 endif
 
-ifeq "$(ENABLE_NEON)" "y"
-  ifneq (,$(filter neon, $(SYSTEM_STUFF)))
-    ifneq "$(NEON_SECTYPE)" "openssl"
+ifeq "$(ENABLE_WEBDAV)" "y"
+  ifeq "$(WEBDAV_LIB)" "neon"
+    ifneq (,$(filter neon, $(SYSTEM_STUFF)))
+      ifneq "$(NEON_SECTYPE)" "openssl"
 	BUILD_DEPS += , libneon$(NEONSONR)-$(NEON_SECTYPE)-dev
 	DBG_DBG_SUGGESTS+= , libneon$(NEONSONR)-$(NEON_SECTYPE)-dbg
-    else
+      else
 	BUILD_DEPS += , libneon$(NEONSONR)-dev
 	DBG_DBG_SUGGESTS+= , libneon$(NEONSONR)-dbg
+      endif
+    endif
+  else
+    ifneq (,$(filter apr, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libaprutil1-dev
+    endif
+    ifneq (,$(filter serf, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libserf-dev
     endif
   endif
+  CONFIGURE_FLAGS += --with-webdav=$(WEBDAV_LIB)
 else
-  ifneq (,$(filter apr, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libaprutil1-dev
-  endif
-  ifneq (,$(filter serf, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libserf-dev
-  endif
+  CONFIGURE_FLAGS += --with-webdav=no
 endif
 
 ifeq "$(ENABLE_HELP)" "n"
@@ -1507,7 +1524,7 @@ ifeq "$(ENABLE_GVFS)" "y"
 endif
 
 ifeq "$(ENABLE_GCONF)" "y"
-	BUILD_DEPS += , libgconf2-dev, liborbit2-dev
+	BUILD_DEPS += , libgconf2-dev
 else
 	CONFIGURE_FLAGS += --disable-gconf
 endif
@@ -1621,7 +1638,7 @@ clean:
 	rm -rf */*.pro.obsolete
 
 	rm -rf $(SOURCE_TREE)/file-lists
-	rm -rf $(SOURCE_TREE)/py2uno
+	rm -rf $(SOURCE_TREE)/pyuno-for*
 	rm -f autogen.lastrun
 	rm -f build_error.log
 	rm -f config/config_version.h
@@ -1648,6 +1665,7 @@ debian/control: $(wildcard debian/control*in) $(SOURCE_TREE)/bin/lo-xlate-lang  
 	    -e "s#%BUILD_DEPS_INDEP%#$(strip $(BUILD_DEPS_INDEP))#g" \
 	    -e "s#@PYTHON_VERSION_CONTROL@#$(PYTHON_VERSION_CONTROL)#g" \
 	    -e "s#@PYTHON2_VERSION@#$(PYTHON2_VERSION)#g" \
+	    -e "s#@GIT_BRANCH@#$(GIT_BRANCH)#g" \
 	    -e "s#@BUGS@#$(BUGS)#g" \
 	    < debian/control.in > debian/control
 	cat debian/control.transitionals.in >> debian/control
@@ -1821,17 +1839,6 @@ ifneq "$(PACKAGE_UNOWINREG_DLL)" "y"
   endif
 endif
 
-ifneq "$(WHEEZY_BACKPORT)" "y"
-   ifeq "$(ENABLE_PYTHON)" "y"
-    ifeq "$(ENABLE_PYTHON2)" "y"
-	rm -rf $(SOURCE_TREE)/py2uno
-	cp -ra $(SOURCE_TREE)/pyuno $(SOURCE_TREE)/py2uno
-	cd py2uno && \
-		patch -p1 < $(CURDIR)/debian/patches/pyuno-copy-for-python2.diff
-    endif
-  endif
-endif
-
 	touch $@
 
 .PHONY: config_host.mk
@@ -1871,27 +1878,37 @@ endif
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build-nocheck
 
+ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
+	$(CURDIR)/debian/rules check
+endif
+
 ifneq "$(WHEEZY_BACKPORT)" "y"
   ifeq "$(ENABLE_PYTHON)" "y"
     ifeq "$(ENABLE_PYTHON2)" "y"
-	$(MAKE) py2uno.clean
-	make cmd cmd='cd py2uno; export PYTHON=$(PYTHON2); export PYTHON_CFLAGS="$(shell pkg-config --cflags python-$(PY2MAJOR).$(PY2MINOR))"; export PYTHON_LIBS="$(shell pkg-config --libs python-$(PY2MAJOR).$(PY2MINOR))"; $(MAKE)'
+	# remove python3 pyUNO...
+	$(MAKE) pyuno.clean
+	# ... so that we can build it for python2...
+	make cmd cmd='cd pyuno; export PYTHON=$(PYTHON2); export PYTHON_CFLAGS="$(shell pkg-config --cflags python-$(PY2MAJOR).$(PY2MINOR))"; export PYTHON_LIBS="$(shell pkg-config --libs python-$(PY2MAJOR).$(PY2MINOR))"; $(MAKE)'
+	# copy the libs away
+	rm -rf debian/pyuno-for-$(PY2MAJOR).$(PY2MINOR)
+	mkdir -p debian/pyuno-for-$(PY2MAJOR).$(PY2MINOR)
+	for i in pyuno.so libpyuno.so libpythonloaderlo.so; do \
+		cp $(SOURCE_TREE)/instdir/program/$$i \
+			debian/pyuno-for-$(PY2MAJOR).$(PY2MINOR); \
+	done
+	# and build the correct one again
+	$(MAKE) pyuno.clean
+	make pyuno
     endif
   endif
-endif
-
-ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
-	$(CURDIR)/debian/rules check
 endif
 
 ifneq "$(BUILD_ISOS)" "en-US"
 	# build sysui and some extensions again with all languages; as it contains language-specific help
 	# and/or descriptions...
 	$(MAKE) sysui.clean
-	$(MAKE) sdext.clean
 	$(MAKE) mysqlc.clean
 	make cmd cmd="cd sysui; export WITH_LANG='$(LANGPACKISOS)'; export WITH_LANG_LIST='$(LANGPACKISOS)'; $(MAKE)"
-	make cmd cmd="cd sdext; export WITH_LANG='$(LANGPACKISOS)'; export WITH_LANG_LIST='$(LANGPACKISOS)'; $(MAKE)"
 	make cmd cmd="cd mysqlc; export WITH_LANG='$(LANGPACKISOS)'; export WITH_LANG_LIST='$(LANGPACKISOS)'; $(MAKE)"
 endif
 
@@ -2182,7 +2199,7 @@ endif
 #
 # Generate maintainer scripts
 maintscripts: $(STAMP_DIR)/maintscripts
-$(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*.sh) $(wildcard debian/*.preinst.in) $(wildcard debian/*.postinst.in) $(wildcard debian/*.prerm.in) $(wildcard debian/*.postrm.in) debian/vars.$(DEB_HOST_ARCH) debian/control
+$(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*.sh) $(wildcard debian/*.preinst.in) $(wildcard debian/*.postinst.in) $(wildcard debian/*.prerm.in) $(wildcard debian/*.postrm.in) debian/control
 	dh_testdir
 
 	rm -f debian/*.{pre,post}{inst,rm}
@@ -2193,10 +2210,6 @@ $(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*.sh) $(wildcard debian/*.
 	    MAINTSCRIPT=debian/$$PKG.$$FILE ; \
 	    if [ -e $$MAINTSCRIPT.in ]; then \
 	      sed -n '1,/^#INCLUDE_SHELL_LIB#$$/p' < $$MAINTSCRIPT.in | sed -e '/^#INCLUDE_SHELL_LIB#$$/d' > $$MAINTSCRIPT; \
-	      if echo $(ARCH_DEP_PACKAGES) | grep -q $$PKG && [ "$$FILE" != "triggers" ]; then \
-	        grep PLATFORMID debian/vars.$(DEB_HOST_ARCH) >> $$MAINTSCRIPT; \
-	      fi; \
-	      echo "" >> $$MAINTSCRIPT; \
 	      if egrep -q "(validate_extension|sync_extension)" $$MAINTSCRIPT.in; then \
 		 cat debian/shell-lib-extensions.sh >> $$MAINTSCRIPT; \
 	      fi; \
@@ -2424,22 +2437,20 @@ ifeq "$(ENABLE_PYTHON)" "y"
 		$(PYTHON2_SITE)
 	cp $(PYTHON_SITE)/unohelper.py \
 		$(PYTHON2_SITE)
-	mkdir -p debian/python-uno/$(OODIR)/program
+	mkdir -p debian/python-uno/$(OODIR)/program/services
 	mkdir -p debian/python-uno/$(OODIR)/share/registry
 	mkdir -p debian/python-uno/$(OODIR)/share/Scripts
 	cat debian/python3-uno/$(OODIR)/program/pythonloader.unorc \
 		| sed -e "s/$(PYMAJOR).$(PYMINOR)/$(PY2MAJOR).$(PY2MINOR)/" \
 		> debian/python-uno/$(OODIR)/program/pythonloader.unorc
-	for i in py2uno.so libpy2uno.so; do \
-		install -m644 $(SOURCE_TREE)/instdir/program/$$i \
+	for i in pyuno.so libpyuno.so libpythonloaderlo.so; do \
+		install -m644 debian/pyuno-for-$(PY2MAJOR).$(PY2MINOR)/$$i \
 			debian/python-uno/$(OODIR)/program/$$i; \
-			ln -s $$i debian/python-uno/$(OODIR)/program/`echo $$i | sed -e s/2//`; \
 	done
-	install -m644 $(SOURCE_TREE)/instdir/program/libpython2loaderlo.so \
-		debian/python-uno/$(OODIR)/program/libpython2loaderlo.so
-	ln -s libpython2loaderlo.so debian/python-uno/$(OODIR)/program/libpythonloaderlo.so
 	cp debian/python3-uno/$(OODIR)/program/pythonloader.py \
 		debian/python-uno/$(OODIR)/program
+	cp debian/python3-uno/$(OODIR)/program/services/pyuno.rdb \
+		debian/python-uno/$(OODIR)/program/services
 	cp debian/python3-uno/$(OODIR)/share/registry/pyuno.xcd \
 		debian/python-uno/$(OODIR)/share/registry
 	cp -r debian/python3-uno/$(OODIR)/share/Scripts/python \
@@ -2847,12 +2858,9 @@ endif
 	for i in $(IMAGES); do \
 		z=images_$$i.zip; p=$$i; \
 		case "$$i" in $(DEFAULT_IMAGE)) z=images.zip; esac; \
-		mkdir -p $(PKGDIR)-style-$$p/$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config; \
-		mv $(PKGDIR)-common/$(OODIR)/share/config/$$z \
-			$(PKGDIR)-style-$$p/$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config/; \
 		mkdir -p $(PKGDIR)-style-$$p/$(OODIR)/share/config; \
-		ln -s /$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config/$$z \
-			$(PKGDIR)-style-$$p/$(OODIR)/share/config/$$z; \
+		mv $(PKGDIR)-common/$(OODIR)/share/config/$$z \
+			$(PKGDIR)-style-$$p/$(OODIR)/share/config/; \
 	done
 
 	rm -rf debian/openoffice.org-dtd-officedocument1.0
@@ -3114,6 +3122,9 @@ ifeq (,$(filter libmwaw, $(SYSTEM_STUFF)))
 endif
 ifeq (,$(filter librevenge, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.librevenge >> debian/shlibs.local
+endif
+ifeq (,$(filter glew, $(SYSTEM_STUFF)))
+	cat debian/shlibs.override.glew >> debian/shlibs.local
 endif
 	# we need to do it in two steps. The new dpkg-shlibdeps doesn't find
 	# /usr/lib/libgcj-bc.so when specifying -l$(GCJ_JAWT_DIR)
