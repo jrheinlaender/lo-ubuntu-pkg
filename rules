@@ -242,7 +242,16 @@ ifeq "$(USE_DBUS)" "y"
     SYSTEM_STUFF += bluez
   endif
 endif
-ENABLE_AVAHI=y
+#22:47 < siqi_> I think the best thing to do now is to disable avahi completely since it doesn't work anyway..
+#[...]
+#22:56 <@_rene_> I don't care much about the dependency..
+#22:57 <@_rene_> but those two bugs are bad.
+#22:57 < siqi_> I know but I'm actually not sure about wether avahi was working proprely for now
+#22:57 <@_rene_> ok
+#[...]
+#22:58 <@_rene_> so I disable it in all branches I have for now
+#22:58 < siqi_> I think it's safe to disable it for now
+ENABLE_AVAHI=n
 USE_GSTREAMER=y
 GSTREAMER_VERSION=1.0
 USE_VLC=y
@@ -290,16 +299,16 @@ ifeq "$(ENABLE_JAVA)" "y"
       BUILD_TEST_PACKAGE=n
     endif
   endif
-  ifneq (,$(findstring arm,$(DBE_HOST_ARCH)))
+  ifneq (,$(findstring arm,$(DEB_HOST_ARCH)))
     export DISABLE_CVE_TESTS=TRUE
   endif
-  ifneq (,$(findstring powerpc,$(DBE_HOST_ARCH)))
+  ifneq (,$(findstring powerpc,$(DEB_HOST_ARCH)))
     export DISABLE_CVE_TESTS=TRUE
   endif
-  ifneq (,$(findstring ppc,$(DBE_HOST_ARCH)))
+  ifneq (,$(findstring ppc,$(DEB_HOST_ARCH)))
     export DISABLE_CVE_TESTS=TRUE
   endif
-  ifneq (,$(findstring s390,$(DBE_HOST_ARCH)))
+  ifneq (,$(findstring s390,$(DEB_HOST_ARCH)))
     export DISABLE_CVE_TESTS=TRUE
   endif
 else
@@ -354,7 +363,7 @@ ENABLE_RANDR=y
 ifeq "$(BUILD_GTK)" "y"
   PACKAGE_NSPLUGIN=y
   ifeq "$(PACKAGE_NSPLUGIN)" "y"
-	#SYSTEM_STUFF += npapi-headers
+	SYSTEM_STUFF += npapi-headers
   endif
 endif
 PACKAGE_BASE=y
@@ -953,8 +962,7 @@ ifneq (,$(filter nss, $(SYSTEM_STUFF)))
 endif
 ifneq (,$(filter npapi-headers, $(SYSTEM_STUFF)))
   ifneq "$(WHEEZY_BACKPORT)" "y"
-	# 30.0-1 doesn't contain the .pc file
-	BUILD_DEPS+= , iceweasel-dev (>= 30.0-2)$(OOO_NO_NSPLUGIN_ARCHS)
+	BUILD_DEPS+= , npapi-sdk-dev$(OOO_NO_NSPLUGIN_ARCHS)
   else
 	BUILD_DEPS+= , xulrunner-dev$(OOO_NO_NSPLUGIN_ARCHS)
   endif
@@ -967,7 +975,6 @@ endif
 ifeq "$(USE_UCPP)" "y"
   ifneq (,$(filter ucpp, $(SYSTEM_STUFF)))
 	IDLC_CPP_DEPENDS := ucpp
-	BUILD_DEPS += , $(UCPP_DEPENDS)
   endif
 else
 # hardcode 4.7 as 4.8 fails:
@@ -975,8 +982,8 @@ else
 #                -P, but then idlc produces empty urd files"
 	IDLC_CPP_DEPENDS := cpp-4.7
 	CONFIGURE_FLAGS += --with-idlc-cpp=cpp-4.7
-	BUILD_DEPS += , cpp-4.7
 endif
+	BUILD_DEPS += , $(IDLC_CPP_DEPENDS)
 
 ifneq (,$(filter hunspell, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libhunspell-dev $(HUNSPELL_MIN_VER)
@@ -1510,7 +1517,6 @@ debian/control: $(wildcard debian/control*in) $(SOURCE_TREE)/bin/lo-xlate-lang  
 	    -e "s#%[A-Za-z]*=[^%]*%##g#" \
 	    -e "s#%BUILD_DEPS_INDEP%#$(strip $(BUILD_DEPS_INDEP))#g" \
 	    -e "s#@PYTHON_VERSION_CONTROL@#$(PYTHON_VERSION_CONTROL)#g" \
-	    -e "s#@GIT_BRANCH@#$(GIT_BRANCH)#g" \
 	    -e "s#@BUGS@#$(BUGS)#g" \
 	    < debian/control.in > debian/control
 
@@ -2860,14 +2866,20 @@ ifeq "$(ENABLE_HELP)" "n"
 	done
 endif
 	set -e; \
-	mkdir -p $(PKGDIR)-style-$(DEFAULT_IMAGE)/$(OODIR)/share/config; \
+	mkdir -p $(PKGDIR)-style-$(DEFAULT_IMAGE)/$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config; \
 	mv $(PKGDIR)-common/$(OODIR)/share/config/images.zip \
-                $(PKGDIR)-style-$(DEFAULT_IMAGE)/$(OODIR)/share/config; \
+                $(PKGDIR)-style-$(DEFAULT_IMAGE)/$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config; \
+	mkdir -p $(PKGDIR)-style-$(DEFAULT_IMAGE)/$(OODIR)/share/config; \
+	ln -s /$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config/images.zip \
+		$(PKGDIR)-style-$(DEFAULT_IMAGE)/$(OODIR)/share/config/images.zip; \
 	for i in $(filter-out default,$(IMAGES)); do \
 		z=images_$$i.zip; p=$$i; \
-		mkdir -p $(PKGDIR)-style-$$p/$(OODIR)/share/config; \
+		mkdir -p $(PKGDIR)-style-$$p/$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config; \
 		mv $(PKGDIR)-common/$(OODIR)/share/config/$$z \
-			$(PKGDIR)-style-$$p/$(OODIR)/share/config/; \
+			$(PKGDIR)-style-$$p/$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config/; \
+		mkdir -p $(PKGDIR)-style-$$p/$(OODIR)/share/config; \
+		ln -s /$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config/$$z \
+			$(PKGDIR)-style-$$p/$(OODIR)/share/config/$$z; \
 	done
   ifeq "$(RELEASE_BUILD)" "n"
 	mv $(PKGDIR)-common/$(OODIR)/share/config/tango_testing.zip \
