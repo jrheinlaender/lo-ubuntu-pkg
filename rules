@@ -22,8 +22,8 @@ CURDIR ?= $(realpath $(dir $(firstword $(MAKEFILE_LIST)))/..)
 BASE_VERSION:=$(shell echo $(DEB_VERSION) | cut -d: -f1):$(DEB_VERSION_UPSTREAM)
 BINARY_VERSION=$(DEB_VERSION)
 #HELP_L10N_VIRTUAL_VERSION:=$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d: -f2 | tr [~] [\\-])
-HELP_L10N_VIRTUAL_VERSION:=4.2
-OOVER:=4.2
+HELP_L10N_VIRTUAL_VERSION:=4.3
+OOVER:=4.3
 NEXT_OOVER:=$(shell echo "$(OOVER) + 0.1" | bc)
 
 ARCH_INDEP_PACKAGES := $(shell dh_listpackages -i)
@@ -71,7 +71,7 @@ lo_sources_ver=$(shell grep AC_INIT $(SOURCE_TREE)/configure.ac | grep documentf
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
 GIT_TAG=libreoffice-$(lo_sources_ver)
-GIT_BRANCH=libreoffice-4-2-5
+GIT_BRANCH=libreoffice-4-3-0
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
 lo_sources_ver=$(shell cat $(CURDIR)/sources.ver | cut -d= -f2)
@@ -198,6 +198,7 @@ USE_EXTERNAL_CXXLIBS=y
 SYSTEM_STUFF += mythes
 SYSTEM_STUFF += icu
 ICU_MINVER= (>= 4.6)
+SYSTEM_STUFF += librevenge
 SYSTEM_STUFF += libwpd libwpg libwps
 SYSTEM_STUFF += libvisio
 SYSTEM_STUFF += libcdr
@@ -252,6 +253,10 @@ endif
 SYSTEM_STUFF += lpsolve
 USE_SHARED_LPSOLVE=y
 LPSOLVE_MIN_VERSION= (>= 5.5.0.13-5+b1)
+# fails to build with -Werror=format-security....
+ENABLE_COINMP=n
+# not implemented..
+#SYSTEM_STUFF += coinmp
 USE_DBUS=y
 ifeq "$(USE_DBUS)" "y"
   ifneq (,$(findstring kfreebsd,$(DEB_HOST_ARCH)))
@@ -278,9 +283,18 @@ else
    GSTREAMER_VERSION=0.10
 endif
 USE_VLC=y
-SYSTEM_STUFF += neon
-NEON_SECTYPE=gnutls
-NEONSONR=27
+ENABLE_WEBDAV=y
+ifeq "$(ENABLE_WEBDAV)" "y"
+WEBDAV_LIB=neon
+  ifeq "$(WEBDAV_LIB)" "neon"
+    SYSTEM_STUFF += neon
+    NEON_SECTYPE=gnutls
+    NEONSONR=27
+  else
+   SYSTEM_STUFF += apr
+   SYSTEM_STUFF += serf
+  endif
+endif
 SYSTEM_STUFF += redland
 PACKAGE_SDK=y
 PACKAGE_SDK_DOCS=y
@@ -288,6 +302,7 @@ ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(JDK)" "default"
     ifeq "$(shell LANG=C /usr/lib/jvm/default-java/bin/java -version 2>&1 | tail -n 1 | awk '{ print $$1 }')" "OpenJDK"
       RUN_MAKE_CHECK=y
+      RUN_PYTESTS=y
       ifeq "$(DEB_HOST_ARCH)" "i386"
 	ENABLE_JUNIT4=y
       endif
@@ -298,6 +313,7 @@ ifeq "$(ENABLE_JAVA)" "y"
   else
     ifeq "$(JDK)" "openjdk"
       RUN_MAKE_CHECK=y
+      RUN_PYTESTS=y
       ifeq "$(DEB_HOST_ARCH)" "i386"
 	ENABLE_JUNIT4=y
       endif
@@ -307,8 +323,21 @@ ifeq "$(ENABLE_JAVA)" "y"
     else
       RUN_MAKE_CHECK=n
       ENABLE_JUNIT4=n
+      RUN_PYTESTS=n
       BUILD_TEST_PACKAGE=n
     endif
+  endif
+  ifneq (,$(findstring arm,$(DEB_HOST_ARCH)))
+    export DISABLE_CVE_TESTS=TRUE
+  endif
+  ifneq (,$(findstring powerpc,$(DEB_HOST_ARCH)))
+    export DISABLE_CVE_TESTS=TRUE
+  endif
+  ifneq (,$(findstring ppc,$(DEB_HOST_ARCH)))
+    export DISABLE_CVE_TESTS=TRUE
+  endif
+  ifneq (,$(findstring s390,$(DEB_HOST_ARCH)))
+    export DISABLE_CVE_TESTS=TRUE
   endif
 else
   RUN_MAKE_CHECK=n
@@ -326,6 +355,14 @@ PARALLEL_BUILD=y
 ENABLE_LDAP=y
 USE_OPENLDAP=y
 ENABLE_OPENGL=y
+# yes, opengl related but --enable/-disable-opengl just affects OGLTrans...
+SYSTEM_STUFF += glew
+# this is also not affected by --enable/-disable-opengl but at least has an
+# own --enable/--disable...
+# and it's a complete mess. external bundled static libraries without a buildsystem,
+# broken includes for "standard" libs (where collada2gltf even also
+# contains a gltf copy and opencollada even more "Externals"
+ENABLE_GLTF=n
 SYSTEM_STUFF += openssl
 NEW_DPKG_SHLIBDEPS=y
 ifeq "$(ENABLE_JAVA)" "y"
@@ -365,7 +402,7 @@ ALLOC=system
 SYSTEM_STUFF += libexttextcat
 SYSTEM_STUFF += cppunit
 DEFAULT_IMAGE=galaxy
-IMAGES:=$(DEFAULT_IMAGE) crystal hicontrast tango oxygen sifr
+IMAGES:=crystal default $(DEFAULT_IMAGE) hicontrast oxygen tango sifr
 ENABLE_MYSQLNATIVE=y
 USE_MARIADB=n
 # set this also to y for system-mysql..
@@ -447,6 +484,7 @@ ENABLE_EOT=y
 ifeq "$(ENABLE_EOT)" "y"
 SYSTEM_STUFF += libeot
 endif
+SYSTEM_STUFF += glm
 
 # Default flags to pass to configure
 CONFIGURE_FLAGS= \
@@ -489,6 +527,7 @@ ifeq "$(ENABLE_OPENGL)" "y"
   OOO_OGLTRANS_ARCHS = $(filter-out armel mips%, $(OOO_ARCHS))
   ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_OGLTRANS_ARCHS)))
        ENABLE_OPENGL=n
+       ENABLE_GLTF=n
   endif
   $(eval $(call gen_no_archs,OOO_OGLTRANS_ARCHS))
 endif
@@ -635,7 +674,7 @@ endif
 # Debian WHeezy
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "wheezy-backports"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub libmwaw libodfgen mdds liblangtag orcus harfbuzz libatomic-ops libwpd redland libetonyek libfreehand libebook libvisio libeot libabw boost,$(SYSTEM_STUFF))
+  SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub libmwaw libodfgen mdds liblangtag orcus harfbuzz libatomic-ops libwpd redland libetonyek libfreehand libebook libvisio libeot libabw glew glm librevenge libwpg libwps boost,$(SYSTEM_STUFF))
   PACKAGE_SDK_DOCS=n
   WHEEZY_BACKPORT=y
 endif
@@ -752,6 +791,10 @@ ifneq (,$(filter curl, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libcurl4-$(CURL_SECTYPE)-dev
 endif
 
+ifneq ($(ENABLE_COINMP),y)
+	CONFIGURE_FLAGS += --disable-coinmp
+endif
+
 ifneq (,$(filter openssl, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libssl-dev (>= 0.9.8)
 	DBG_DBG_SUGGESTS += , libssl$(shell readlink /usr/lib/$(DEB_HOST_MULTIARCH)/libssl.so | cut -d"." -f3,4,5)-dbg
@@ -855,11 +898,13 @@ ifneq (,$(filter cppunit, $(SYSTEM_STUFF)))
 endif
 ifeq "$(RUN_MAKE_CHECK)" "y"
 	BUILD_DEPS += , gdb
+	BUILD_DEPS += , fontconfig
   ifeq "$(WHEEZY_BACKPORT)" "y"
 	BUILD_DEPS += , ttf-liberation
   else
 	BUILD_DEPS += , fonts-liberation
   endif
+  	BUILD_DEPS += , fonts-crosextra-carlito
   ifeq "$(ENABLE_JUNIT4)" "y"
 	BUILD_DEPS += , junit4 $(JUNIT_MIN_VER)
   else
@@ -1075,21 +1120,21 @@ endif
 
 ifneq (,$(filter boost, $(SYSTEM_STUFF)))
   ifneq "$(BOOST_VERSION)" "default"
-	BUILD_DEPS += , libboost$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-date-time$(BOOST_VERSION)-dev $(BOOST_MINVER)
+	BUILD_DEPS += , libboost$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-date-time$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-iostreams$(BOOST_VERSION)-dev
 	#BUILD_DEPS += , libboost-thread$(BOOST_VERSION)-dev, libboost-program-options$(BOOST_VERSION)-dev
     ifeq "$(ENABLE_ORCUS)" "y"
       ifeq (,$(filter orcus, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libboost-system$(BOOST_VERSION)-dev $(BOOST_MINVER)
+	BUILD_DEPS += , libboost-system$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-iostreams$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-program-options$(BOOST_VERSION)-dev $(BOOST_MINVER),
       endif
     endif
     ifeq ($(USE_VLC),y)
 	BUILD_DEPS += , libboost-system$(BOOST_VERSION)-dev $(BOOST_MINVER)
     endif
   else
-	BUILD_DEPS += , libboost-dev $(BOOST_MINVER), libboost-date-time-dev $(BOOST_MINVER)
+	BUILD_DEPS += , libboost-dev $(BOOST_MINVER), libboost-date-time-dev $(BOOST_MINVER), libboost-iostreams-dev $(BOOST_MINVER)
 	#BUILD_DEPS += , libboost-thread-dev, libboost-program-options-dev
     ifeq (,$(filter orcus, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libboost-system-dev $(BOOST_MINVER)
+	BUILD_DEPS += , libboost-system-dev $(BOOST_MINVER), libboost-iostreams-dev $(BOOST_MINVER), libboost-program-options-dev $(BOOST_MINVER)
     endif
     ifeq ($(USE_VLC),y)
 	BUILD_DEPS += , libboost-system-dev $(BOOST_MINVER)
@@ -1106,7 +1151,7 @@ endif
 
 ifeq "$(ENABLE_ORCUS)" "y"
   ifneq (,$(filter orcus, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , liborcus-dev (>= 0.5.0)
+	BUILD_DEPS += , liborcus-dev (>= 0.7.0)
   endif
 else
 	CONFIGURE_FLAGS += --disable-orcus
@@ -1121,44 +1166,47 @@ ifneq (,$(filter clucene, $(SYSTEM_STUFF)))
 endif
 
 ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
+  ifneq (,$(filter librevenge, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , librevenge-dev
+  endif
   ifneq (,$(filter libwpd, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libwpd-dev (>= 0.9.5)
+	BUILD_DEPS += , libwpd-dev (>= 0.10)
   endif
   ifneq (,$(filter mythes, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libmythes-dev (>= 2:1.2)
   endif
   ifneq (,$(filter libwps, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libwps-dev (>= 0.2.0)
+	BUILD_DEPS += , libwps-dev (>= 0.3)
   endif
   ifneq (,$(filter libwpg, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libwpg-dev (>= 0.2.0)
+	BUILD_DEPS += , libwpg-dev (>= 0.3)
   endif
   ifneq (,$(filter libvisio, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libvisio-dev
+	BUILD_DEPS += , libvisio-dev (>= 0.1)
   endif
   ifneq (,$(filter libcdr, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libcdr-dev
+	BUILD_DEPS += , libcdr-dev (>= 0.1)
   endif
   ifneq (,$(filter libmspub, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libmspub-dev
+	BUILD_DEPS += , libmspub-dev (>= 0.1)
   endif
   ifneq (,$(filter libmwaw, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libmwaw-dev (>= 0.2.0)
+	BUILD_DEPS += , libmwaw-dev (>= 0.3.1)
   endif
   ifneq (,$(filter libodfgen, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libodfgen-dev (>= 0.0.3)
+	BUILD_DEPS += , libodfgen-dev (>= 0.1)
   endif
   ifneq (,$(filter libetonyek, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libetonyek-dev
+	BUILD_DEPS += , libetonyek-dev (>= 0.1.1)
   endif
   ifneq (,$(filter libfreehand, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libfreehand-dev
+	BUILD_DEPS += , libfreehand-dev (>= 0.1)
   endif
   ifneq (,$(filter libabw, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libabw-dev
+	BUILD_DEPS += , libabw-dev (>= 0.1)
   endif
   ifneq (,$(filter libebook, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libe-book-dev
+	BUILD_DEPS += , libe-book-dev (>= 0.1.1)
   endif
   ifneq (,$(filter libcmis, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libcmis-dev (>= 0.4.0)
@@ -1171,6 +1219,11 @@ ifeq "$(ENABLE_EOT)" "y"
  ifneq (,$(filter libeot, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libeot-dev
  endif
+endif
+
+ifneq "$(ENABLE_GLTF)" "y"
+	CONFIGURE_FLAGS += --disable-gltf
+	DEBHELPER_OPTIONS += -Nlibreoffice-avmedia-backend-opengl
 endif
 
 ifneq (,$(filter lcms2, $(SYSTEM_STUFF)))
@@ -1210,7 +1263,6 @@ endif
 ifeq "$(BUILD_KDE)" "n"
 	CONFIGURE_FLAGS+= --disable-kde
 	CONFIGURE_FLAGS-= --disable-kde4
-	CONFIGURE_FLAGS+= --with-theme="$(patsubst $(DEFAULT_IMAGE),default,$(IMAGES))"
 else
 	CONFIGURE_FLAGS += --disable-kde
 	CONFIGURE_FLAGS += --enable-kde4
@@ -1268,7 +1320,6 @@ endif
 ifeq "$(BUILD_GTK)" "n"
 	CONFIGURE_FLAGS+= --disable-gtk
 	DEBHELPER_OPTIONS+= -Nlibreoffice-gtk -Nlibreoffice-gnome
-	CONFIGURE_FLAGS+= --with-theme="$(patsubst galaxy,default,$(IMAGES))"
 else
 	BUILD_DEPS += , libgtk2.0-dev (>= 2.10)
 endif
@@ -1428,14 +1479,28 @@ else
 	DEBHELPER_OPTIONS += -Nlibreoffice-avmedia-backend-vlc
 endif
 
-ifneq (,$(filter neon, $(SYSTEM_STUFF)))
-  ifneq "$(NEON_SECTYPE)" "openssl"
+ifeq "$(ENABLE_WEBDAV)" "y"
+  ifeq "$(WEBDAV_LIB)" "neon"
+    ifneq (,$(filter neon, $(SYSTEM_STUFF)))
+      ifneq "$(NEON_SECTYPE)" "openssl"
 	BUILD_DEPS += , libneon$(NEONSONR)-$(NEON_SECTYPE)-dev
 	DBG_DBG_SUGGESTS+= , libneon$(NEONSONR)-$(NEON_SECTYPE)-dbg
-  else
+      else
 	BUILD_DEPS += , libneon$(NEONSONR)-dev
 	DBG_DBG_SUGGESTS+= , libneon$(NEONSONR)-dbg
+      endif
+    endif
+  else
+    ifneq (,$(filter apr, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libaprutil1-dev
+    endif
+    ifneq (,$(filter serf, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libserf-dev
+    endif
   endif
+  CONFIGURE_FLAGS += --with-webdav=$(WEBDAV_LIB)
+else
+  CONFIGURE_FLAGS += --with-webdav=no
 endif
 
 ifeq "$(ENABLE_HELP)" "n"
@@ -1445,6 +1510,13 @@ endif
 ifneq (,$(filter redland, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , librdf0-dev (>= 1.0.16-2)
 	SHLIBS_OVERRIDE += -Xunordf
+endif
+
+ifneq (,$(filter glew, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libglew-dev
+endif
+ifneq (,$(filter glm, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libglm-dev
 endif
 
 ifeq "$(ENABLE_GIO)" "y"
@@ -1573,7 +1645,7 @@ clean:
 	rm -rf */*.pro.obsolete
 
 	rm -rf $(SOURCE_TREE)/file-lists
-	rm -rf $(SOURCE_TREE)/py2uno
+	rm -rf $(SOURCE_TREE)/pyuno-for*
 	rm -f autogen.lastrun
 	rm -f build_error.log
 	rm -f config/config_version.h
@@ -1884,17 +1956,6 @@ ifneq "$(PACKAGE_UNOWINREG_DLL)" "y"
   endif
 endif
 
-ifneq "$(WHEEZY_BACKPORT)" "y"
-   ifeq "$(ENABLE_PYTHON)" "y"
-    ifeq "$(ENABLE_PYTHON2)" "y"
-	rm -rf $(SOURCE_TREE)/py2uno
-	cp -ra $(SOURCE_TREE)/pyuno $(SOURCE_TREE)/py2uno
-	cd py2uno && \
-		patch -p1 < $(CURDIR)/debian/patches/pyuno-copy-for-python2.diff
-    endif
-  endif
-endif
-
 	touch $@
 
 .PHONY: config_host.mk
@@ -1934,17 +1995,29 @@ endif
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build-non-l10n-only
 
+ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
+	$(CURDIR)/debian/rules check
+endif
+
 ifneq "$(WHEEZY_BACKPORT)" "y"
   ifeq "$(ENABLE_PYTHON)" "y"
     ifeq "$(ENABLE_PYTHON2)" "y"
-	$(MAKE) py2uno.clean
-	make cmd cmd='cd py2uno; export PYTHON=$(PYTHON2); export PYTHON_CFLAGS="$(shell pkg-config --cflags python-$(PY2MAJOR).$(PY2MINOR))"; export PYTHON_LIBS="$(shell pkg-config --libs python-$(PY2MAJOR).$(PY2MINOR))"; $(MAKE)'
+	# remove python3 pyUNO...
+	$(MAKE) pyuno.clean
+	# ... so that we can build it for python2...
+	make cmd cmd='cd pyuno; export PYTHON=$(PYTHON2); export PYTHON_CFLAGS="$(shell pkg-config --cflags python-$(PY2MAJOR).$(PY2MINOR))"; export PYTHON_LIBS="$(shell pkg-config --libs python-$(PY2MAJOR).$(PY2MINOR))"; $(MAKE)'
+	# copy the libs away
+	rm -rf debian/pyuno-for-$(PY2MAJOR).$(PY2MINOR)
+	mkdir -p debian/pyuno-for-$(PY2MAJOR).$(PY2MINOR)
+	for i in pyuno.so libpyuno.so libpythonloaderlo.so; do \
+		cp $(SOURCE_TREE)/instdir/program/$$i \
+			debian/pyuno-for-$(PY2MAJOR).$(PY2MINOR); \
+	done
+	# and build the correct one again
+	$(MAKE) pyuno.clean
+	make pyuno
     endif
   endif
-endif
-
-ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
-	$(CURDIR)/debian/rules check
 endif
 
 ifneq "$(BUILD_ISOS)" "en-US"
@@ -2015,6 +2088,10 @@ ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
 	cd $(SOURCE_TREE)/smoketest && \
 		patch -p1 -R < $(CURDIR)/debian/patches/smoketest-disable-extension-tests.diff
 endif
+endif
+
+ifeq "$(RUN_PYTESTS)" "y"
+	cd $(SOURCE_TREE)/pyuno && $(MAKE) PythonTest_pytests
 endif
 
 install: $(STAMP_DIR)/install-common $(STAMP_DIR)/install-arch $(STAMP_DIR)/install-indep
@@ -2245,6 +2322,28 @@ ifeq "$(PACKAGE_SDK)" "y"
 		$(PKGDIR)-dev/$(OODIR)/share/glade
 else
 	rm -rf $(PKGDIR)-common/$(OODIR)/share/glade
+endif
+
+	# Access2Base IMHO clearly is -base specific :-)
+ifeq "$(PACKAGE_BASE)" "y"
+	mkdir -p $(PKGDIR)-base/$(OODIR)/share/basic
+	mv $(PKGDIR)-common/$(OODIR)/share/basic/Access2Base \
+		$(PKGDIR)-base/$(OODIR)/share/basic
+	cp $(PKGDIR)-common/$(OODIR)/share/basic/dialog.xlc \
+		$(PKGDIR)-base/$(OODIR)/share/basic
+	cp $(PKGDIR)-common/$(OODIR)/share/basic/script.xlc \
+		$(PKGDIR)-base/$(OODIR)/share/basic
+	# FIXME. Does not scale. This has to be a diversion...
+	t=`mktemp -q`; grep -v Access2Base $(PKGDIR)-common/$(OODIR)/share/basic/dialog.xlc > \
+		$$t && mv $$t $(PKGDIR)-common/$(OODIR)/share/basic/dialog.xlc && rm -f $$t
+	t=`mktemp -q`; grep -v Access2Base $(PKGDIR)-common/$(OODIR)/share/basic/script.xlc > \
+		$$t && mv $$t $(PKGDIR)-common/$(OODIR)/share/basic/script.xlc && rm -f $$t
+else
+	rm -rf $(PKGDIR)-common/$(OODIR)/share/basic/Access2Base
+	t=`mktemp -q`; grep -v Access2Base $(PKGDIR)-common/$(OODIR)/share/basic/dialog.xlc > \
+		$$t && mv $$t $(PKGDIR)-common/$(OODIR)/share/basic/dialog.xlc && rm -f $$t
+	t=`mktemp -q`; grep -v Access2Base $(PKGDIR)-common/$(OODIR)/share/basic/script.xlc > \
+		$$t && mv $$t $(PKGDIR)-common/$(OODIR)/share/basic/script.xlc && rm -f $$t
 endif
 
 ifeq "$(PACKAGE_SDK)" "y"
@@ -2600,14 +2699,10 @@ ifeq "$(ENABLE_PYTHON)" "y"
 	cat debian/python3-uno/$(OODIR)/program/pythonloader.unorc \
 		| sed -e "s/$(PYMAJOR).$(PYMINOR)/$(PY2MAJOR).$(PY2MINOR)/" \
 		> debian/python-uno/$(OODIR)/program/pythonloader.unorc
-	for i in py2uno.so libpy2uno.so; do \
-		install -m644 $(SOURCE_TREE)/instdir/program/$$i \
+	for i in pyuno.so libpyuno.so libpythonloaderlo.so; do \
+		install -m644 debian/pyuno-for-$(PY2MAJOR).$(PY2MINOR)/$$i \
 			debian/python-uno/$(OODIR)/program/$$i; \
-			ln -s $$i debian/python-uno/$(OODIR)/program/`echo $$i | sed -e s/2//`; \
 	done
-	install -m644 $(SOURCE_TREE)/instdir/program/libpython2loaderlo.so \
-		debian/python-uno/$(OODIR)/program/libpython2loaderlo.so
-	ln -s libpython2loaderlo.so debian/python-uno/$(OODIR)/program/libpythonloaderlo.so
 	cp debian/python3-uno/$(OODIR)/program/pythonloader.py \
 		debian/python-uno/$(OODIR)/program
 	cp debian/python3-uno/$(OODIR)/program/services/pyuno.rdb \
@@ -2761,6 +2856,12 @@ ifeq "$(USE_VLC)" "y"
 		$(PKGDIR)-avmedia-backend-vlc/$(OODIR)/program
 endif
 
+ifeq "$(ENABLE_GLTF)" "y"
+	mkdir -p $(PKGDIR)-avmedia-backend-opengl/$(OODIR)/program
+	mv $(PKGDIR)-core/$(OODIR)/program/libavmediaogl.so \
+		$(PKGDIR)-avmedia-backend-opengl/$(OODIR)/program
+endif
+
 ifeq "$(ENABLE_JAVA)" "y"
 	mkdir -p $(PKGDIR)-sdbc-hsqldb/$(OODIR)/program
 	mkdir -p $(PKGDIR)-sdbc-hsqldb/usr/lib/libreoffice/program/classes
@@ -2896,7 +2997,7 @@ ifeq "$(BUILD_TEST_PACKAGE)" "y"
 		cp workdir/Jar/$$jar $(PKGDIR)-subsequentcheckbase/$(OODIR)/program/classes/; \
 	done
 	for jar in ConnectivityTools.jar; do \
-		cp instdir/program/classes/$$jar $(PKGDIR)-subsequentcheckbase/$(OODIR)/program/classes/; \
+		cp workdir/Jar/$$jar $(PKGDIR)-subsequentcheckbase/$(OODIR)/program/classes/; \
 	done
   endif
 endif
@@ -2999,7 +3100,7 @@ ifeq "$(ENABLE_HELP)" "n"
 	set -e; \
 	for i in $(IMAGES); do \
 		s=_$$i.zip; \
-		case "$$i" in $(DEFAULT_IMAGE)) s=.zip; esac; \
+		case "$$i" in default) s=.zip; esac; \
 		z=images$$s; \
 		echo "adding helpimgs to $$z..."; \
 		rm -rf $$z; mkdir $$z; \
@@ -3013,9 +3114,14 @@ ifeq "$(ENABLE_HELP)" "n"
 	done
 endif
 	set -e; \
-	for i in $(IMAGES); do \
+	mkdir -p $(PKGDIR)-style-$(DEFAULT_IMAGE)/$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config; \
+	mv $(PKGDIR)-common/$(OODIR)/share/config/images.zip \
+                $(PKGDIR)-style-$(DEFAULT_IMAGE)/$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config; \
+	mkdir -p $(PKGDIR)-style-$(DEFAULT_IMAGE)/$(OODIR)/share/config; \
+	ln -s /$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config/images.zip \
+		$(PKGDIR)-style-$(DEFAULT_IMAGE)/$(OODIR)/share/config/images.zip; \
+	for i in $(filter-out default,$(IMAGES)); do \
 		z=images_$$i.zip; p=$$i; \
-		case "$$i" in $(DEFAULT_IMAGE)) z=images.zip; esac; \
 		mkdir -p $(PKGDIR)-style-$$p/$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config; \
 		mv $(PKGDIR)-common/$(OODIR)/share/config/$$z \
 			$(PKGDIR)-style-$$p/$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config/; \
@@ -3271,6 +3377,21 @@ ifeq (,$(filter icu, $(SYSTEM_STUFF)))
 endif
 ifneq (,$(filter libvisio, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.libvisio >> debian/shlibs.local
+endif
+ifeq (,$(filter libwps, $(SYSTEM_STUFF)))
+	cat debian/shlibs.override.libwps >> debian/shlibs.local
+endif
+ifeq (,$(filter libodfgen, $(SYSTEM_STUFF)))
+	cat debian/shlibs.override.libodfgen >> debian/shlibs.local
+endif
+ifeq (,$(filter libmwaw, $(SYSTEM_STUFF)))
+	cat debian/shlibs.override.libmwaw >> debian/shlibs.local
+endif
+ifeq (,$(filter librevenge, $(SYSTEM_STUFF)))
+	cat debian/shlibs.override.librevenge >> debian/shlibs.local
+endif
+ifeq (,$(filter glew, $(SYSTEM_STUFF)))
+	cat debian/shlibs.override.glew >> debian/shlibs.local
 endif
 	# we need to do it in two steps. The new dpkg-shlibdeps doesn't find
 	# /usr/lib/libgcj-bc.so when specifying -l$(GCJ_JAWT_DIR)
