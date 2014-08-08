@@ -257,10 +257,8 @@ endif
 SYSTEM_STUFF += lpsolve
 USE_SHARED_LPSOLVE=y
 LPSOLVE_MIN_VERSION= (>= 5.5.0.13-5+b1)
-# fails to build with -Werror=format-security....
 ENABLE_COINMP=n
-# not implemented..
-#SYSTEM_STUFF += coinmp
+SYSTEM_STUFF += coinmp
 USE_DBUS=y
 ifeq "$(USE_DBUS)" "y"
   ifneq (,$(findstring kfreebsd,$(DEB_HOST_ARCH)))
@@ -270,7 +268,16 @@ ifeq "$(USE_DBUS)" "y"
     SYSTEM_STUFF += bluez
   endif
 endif
-ENABLE_AVAHI=y
+#22:47 < siqi_> I think the best thing to do now is to disable avahi completely since it doesn't work anyway..
+#[...]
+#22:56 <@_rene_> I don't care much about the dependency..
+#22:57 <@_rene_> but those two bugs are bad.
+#22:57 < siqi_> I know but I'm actually not sure about wether avahi was working proprely for now
+#22:57 <@_rene_> ok
+#[...]
+#22:58 <@_rene_> so I disable it in all branches I have for now
+#22:58 < siqi_> I think it's safe to disable it for now
+ENABLE_AVAHI=n
 USE_GSTREAMER=y
 ifneq "$(WHEEZY_BACKPORT)" "y"
   GSTREAMER_VERSION=1.0
@@ -321,6 +328,18 @@ ifeq "$(ENABLE_JAVA)" "y"
       RUN_PYTESTS=n
       BUILD_TEST_PACKAGE=n
     endif
+  endif
+  ifneq (,$(findstring arm,$(DEB_HOST_ARCH)))
+    export DISABLE_CVE_TESTS=TRUE
+  endif
+  ifneq (,$(findstring powerpc,$(DEB_HOST_ARCH)))
+    export DISABLE_CVE_TESTS=TRUE
+  endif
+  ifneq (,$(findstring ppc,$(DEB_HOST_ARCH)))
+    export DISABLE_CVE_TESTS=TRUE
+  endif
+  ifneq (,$(findstring s390,$(DEB_HOST_ARCH)))
+    export DISABLE_CVE_TESTS=TRUE
   endif
 else
   RUN_MAKE_CHECK=n
@@ -374,7 +393,7 @@ ENABLE_RANDR=y
 ifeq "$(BUILD_GTK)" "y"
   PACKAGE_NSPLUGIN=y
   ifeq "$(PACKAGE_NSPLUGIN)" "y"
-	#SYSTEM_STUFF += npapi-headers
+	SYSTEM_STUFF += npapi-headers
   endif
 endif
 PACKAGE_BASE=y
@@ -384,11 +403,8 @@ SYSTEM_STUFF += harfbuzz
 ALLOC=system
 SYSTEM_STUFF += libexttextcat
 SYSTEM_STUFF += cppunit
-# when we have a package we want to have to be installed on older things with some older
-# C++ ABI (like it was the case with libreoffice2), we need to set this. Don't touch
-# otherwise
 DEFAULT_IMAGE=galaxy
-IMAGES:=$(DEFAULT_IMAGE) crystal hicontrast tango oxygen sifr
+IMAGES:=crystal default $(DEFAULT_IMAGE) hicontrast oxygen tango sifr
 ENABLE_MYSQLNATIVE=y
 USE_MARIADB=n
 # set this also to y for system-mysql..
@@ -432,10 +448,39 @@ ifeq "$(USE_UCPP)" "y"
 endif
 ENABLE_MERGELIBS=n
 USE_OPENCL=y
+#10:15 <@_rene_> ahunt: I remember you wanted to do some endian things? did it 
+#                ever get done?
+#10:15 -!- xrmx [~rm@2-228-255-178.ip194.fastwebnet.it] has joined 
+#          #libreoffice-dev
+#10:15 <@_rene_> ahunt: for firebird sdbc that is
+#10:15 -!- xrmx [~rm@2-228-255-178.ip194.fastwebnet.it] has quit [Changing host]
+#10:15 -!- xrmx [~rm@unaffiliated/xrmx] has joined #libreoffice-dev
+#10:15 <@_rene_> because I just remember I still have 
+#https://buildd.debian.org/status/fetch.php?pkg=libreoffice&arch=powerpc&ver=1%3
+#
+#10:16 < ahunt> _rene_: Not yet -- I still need to get round to actually 
+#               debugging within firebird itself to make it work.
+#10:16 < ahunt> _rene_: Yup, basically we're not endian portable yet.
+#10:16 <@_rene_> An uncaught exception of type com.sun.star.sdbc.SQLException
+#10:16 <@_rene_> - firebird_sdbc error:
+#10:16 <@_rene_> *unsupported on-disk structure for file 
+#                /tmp/lu4va82l.tmp/firebird.fdb; found 2
+#10:16 <@_rene_> 944.512, support 11.2
+#10:16 < xrmx> morning
+#10:16 <@_rene_> aha, so disable firebird on be?
+#10:16 <@_rene_> (for now)
+#10:16 < Safa_[A_boy]> Hello. About converting dialogs to .ui files, What about 
+#                      wizards?
+#10:17 < ahunt> _rene_: yes, unfortunately.
 ENABLE_FIREBIRD=y
-SYSTEM_STUFF += firebird
-ifeq (,$(filter firebird, $(SYSTEM_STUFF)))
-SYSTEM_STUFF += libatomic-ops
+ifeq "$(DEB_HOST_ARCH_ENDIAN)" "big"
+  ENABLE_FIREBIRD=n
+endif
+ifeq "$(ENABLE_FIREBIRD)" "y"
+  SYSTEM_STUFF += firebird
+  ifeq (,$(filter firebird, $(SYSTEM_STUFF)))
+  SYSTEM_STUFF += libatomic-ops
+  endif
 endif
 ENABLE_EOT=y
 ifeq "$(ENABLE_EOT)" "y"
@@ -504,6 +549,10 @@ IGNORE_MAKE_CHECK_FAILURES=-
 endif
 
 OOO_64BIT_ARCHS = $(filter alpha amd64 ia64 kfreebsd-amd64 ppc64 s390x, $(OOO_ARCHS))
+$(eval $(call gen_no_archs,OOO_64BIT_ARCHS))
+OOO_BE_ARCHS = $(filter hppa m68k mips powerpc powerpcspe ppc64 s390 s390x sparc,$(OOO_ARCHS))
+OOO_LE_ARCHS = $(filter-out $(OOO_BE_ARCHS),$(OOO_ARCHS))
+$(eval $(call gen_no_archs,OOO_LE_ARCHS))
 
 # Java...
 ifeq "$(JDK)" "default"
@@ -560,6 +609,10 @@ ifneq ($(ENABLE_FIREBIRD),y)
   DEBHELPER_OPTIONS += -Nlibreoffice-sdbc-firebird
 endif
 
+ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_BE_ARCHS)))
+	ENABLE_FIREBIRD=n
+	DEBHELPER_OPTIONS += -Nlibreoffice-sdbc-firebird
+endif
 ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
 	ENABLE_MYSQLNATIVE=n
 	DEBHELPER_OPTIONS += -Nlibreoffice-mysql-connector
@@ -626,7 +679,7 @@ endif
 # Debian WHeezy
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "wheezy-backports"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub libmwaw libodfgen mdds liblangtag orcus harfbuzz libatomic-ops libwpd redland libetonyek libfreehand libebook libvisio libeot libabw glew glm librevenge libwpg libwps boost,$(SYSTEM_STUFF))
+  SYSTEM_STUFF := $(filter-out libcmis libcdr clucene libmspub libmwaw libodfgen mdds liblangtag orcus harfbuzz libatomic-ops libwpd redland libetonyek libfreehand libebook libvisio libeot libabw glew glm librevenge libwpg libwps boost coinmp,$(SYSTEM_STUFF))
   PACKAGE_SDK_DOCS=n
   WHEEZY_BACKPORT=y
 endif
@@ -779,6 +832,8 @@ endif
 
 ifneq ($(ENABLE_COINMP),y)
 	CONFIGURE_FLAGS += --disable-coinmp
+else
+	BUILD_DEPS += , coinor-libcoinmp-dev
 endif
 
 ifneq (,$(filter openssl, $(SYSTEM_STUFF)))
@@ -1066,8 +1121,7 @@ ifneq (,$(filter nss, $(SYSTEM_STUFF)))
 endif
 ifneq (,$(filter npapi-headers, $(SYSTEM_STUFF)))
   ifneq "$(WHEEZY_BACKPORT)" "y"
-	# 30.0-1 doesn't contain the .pc file
-	BUILD_DEPS+= , iceweasel-dev (>= 30.0-2)$(OOO_NO_NSPLUGIN_ARCHS)
+	BUILD_DEPS+= , npapi-sdk-dev$(OOO_NO_NSPLUGIN_ARCHS)
   else
 	BUILD_DEPS+= , xulrunner-dev$(OOO_NO_NSPLUGIN_ARCHS)
   endif
@@ -1080,7 +1134,6 @@ endif
 ifeq "$(USE_UCPP)" "y"
   ifneq (,$(filter ucpp, $(SYSTEM_STUFF)))
 	IDLC_CPP_DEPENDS := ucpp
-	BUILD_DEPS += , $(UCPP_DEPENDS)
   endif
 else
 # hardcode 4.7 as 4.8 fails:
@@ -1088,8 +1141,8 @@ else
 #                -P, but then idlc produces empty urd files"
 	IDLC_CPP_DEPENDS := cpp-4.7
 	CONFIGURE_FLAGS += --with-idlc-cpp=cpp-4.7
-	BUILD_DEPS += , cpp-4.7
 endif
+	BUILD_DEPS += , $(IDLC_CPP_DEPENDS)
 
 ifneq (,$(filter hunspell, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libhunspell-dev $(HUNSPELL_MIN_VER)
@@ -1250,7 +1303,6 @@ endif
 ifeq "$(BUILD_KDE)" "n"
 	CONFIGURE_FLAGS+= --disable-kde
 	CONFIGURE_FLAGS-= --disable-kde4
-	CONFIGURE_FLAGS+= --with-theme="$(patsubst $(DEFAULT_IMAGE),default,$(IMAGES))"
 else
 	CONFIGURE_FLAGS += --disable-kde
 	CONFIGURE_FLAGS += --enable-kde4
@@ -1284,29 +1336,31 @@ ifeq "$(ENABLE_MYSQLNATIVE)" "y"
   endif
 endif
 
-ifneq (,$(filter libatomic-ops, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libatomic-ops-dev (>= 7.3~alpha1+git20110913-1)
-endif
-ifeq ($(ENABLE_FIREBIRD),y)
-ifneq (,$(filter firebird, $(SYSTEM_STUFF)))
-  ifneq "$(WHEEZY_BACKPORT)" "y"
-	BUILD_DEPS += , firebird-dev (>= 2.5.2.26540.ds4-2)
+ifeq "$(ENABLE_FIREBIRD)" "y"
+  ifneq (,$(filter libatomic-ops, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libatomic-ops-dev (>= 7.3~alpha1+git20110913-1)$(OOO_NO_BE_ARCHS)
+  endif
+  ifneq (,$(filter firebird, $(SYSTEM_STUFF)))
+    ifneq "$(WHEEZY_BACKPORT)" "y"
+	BUILD_DEPS += , firebird-dev (>= 2.5.2.26540.ds4-2)$(OOO_NO_LE_ARCHS)
 	# no FIREBIRD_CFLAGS here. Have no effect as fb_config is there
 	# and configure prefers that over our values...
-  else
-	BUILD_DEPS += , firebird-dev
+    else
+	BUILD_DEPS += , firebird-dev$(OOO_NO_LE_ARCHS)
 	# firebird-dev only _Suggests_ libfbembed2.5...
-	BUILD_DEPS += , libfbembed2.5
+	BUILD_DEPS += , libfbembed2.5$(OOO_NO_LE_ARCHS)
 	FIREBIRD_CFLAGS := " "
 	FIREBIRD_LIBS := "-L/usr/lib/$(DEB_HOST_MULTIARCH) -lfbembed"
+    endif
   endif
+else
+	CONFIGURE_FLAGS += --disable-firebird-sdbc
 endif
 endif
 
 ifeq "$(BUILD_GTK)" "n"
 	CONFIGURE_FLAGS+= --disable-gtk
 	DEBHELPER_OPTIONS+= -Nlibreoffice-gtk -Nlibreoffice-gnome
-	CONFIGURE_FLAGS+= --with-theme="$(patsubst $(DEFAULT_IMAGE),default,$(IMAGES))"
 else
 	BUILD_DEPS += , libgtk2.0-dev (>= 2.10)
 endif
@@ -1658,7 +1712,6 @@ debian/control: $(wildcard debian/control*in) $(SOURCE_TREE)/bin/lo-xlate-lang  
 	    -e "s#%BUILD_DEPS_INDEP%#$(strip $(BUILD_DEPS_INDEP))#g" \
 	    -e "s#@PYTHON_VERSION_CONTROL@#$(PYTHON_VERSION_CONTROL)#g" \
 	    -e "s#@PYTHON2_VERSION@#$(PYTHON2_VERSION)#g" \
-	    -e "s#@GIT_BRANCH@#$(GIT_BRANCH)#g" \
 	    -e "s#@BUGS@#$(BUGS)#g" \
 	    < debian/control.in > debian/control
 	cat debian/control.transitionals.in >> debian/control
@@ -1716,8 +1769,13 @@ endif
 ifeq "$(PACKAGE_LIBRELOGO)" "y"
 	cat debian/control.librelogo.in >> debian/control
 endif
+ifeq "$(ENABLE_GLTF)" "y"
+	cat debian/control.gltf.in >> debian/control
+endif
 
 	perl -pi -e "s,%OOO_ARCHS%,$(OOO_ARCHS),g" debian/control
+	perl -pi -e "s,%OOO_BE_ARCHS%,$(OOO_BE_ARCHS),g" debian/control
+	perl -pi -e "s,%OOO_LE_ARCHS%,$(OOO_LE_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_BASE_ARCHS%,$(OOO_BASE_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_NO_BASE_ARCHS%,$(OOO_NO_BASE_ARCHS),"g debian/control
 	perl -pi -e "s,%OOO_JAVA_ARCHS%,$(OOO_JAVA_ARCHS),g" debian/control
@@ -2614,7 +2672,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 			$(PKGDIR)-sdbc-hsqldb/usr/$$i/libreoffice/program/classes; \
 	done
 endif
-ifeq ($(ENABLE_FIREBIRD),y)
+ifeq "$(ENABLE_FIREBIRD)" "y"
 	mkdir -p $(PKGDIR)-sdbc-firebird/$(OODIR)/program
 	mv $(PKGDIR)-base/$(OODIR)/program/libfirebird_sdbclo.so \
 		$(PKGDIR)-sdbc-firebird/$(OODIR)/program
@@ -2625,6 +2683,7 @@ endif
 		mv $$i \
 			$(PKGDIR)-base-drivers/$(OODIR)/program; \
 	done
+endif
 
 ifeq "$(ENABLE_JAVA)" "y"
 	# somehow --has-package-version doesn't overwrite version and without <version>...</version>
@@ -2834,7 +2893,7 @@ ifeq "$(ENABLE_HELP)" "n"
 	set -e; \
 	for i in $(IMAGES); do \
 		s=_$$i.zip; \
-		case "$$i" in $(DEFAULT_IMAGE)) s=.zip; esac; \
+		case "$$i" in default) s=.zip; esac; \
 		z=images$$s; \
 		echo "adding helpimgs to $$z..."; \
 		rm -rf $$z; mkdir $$z; \
@@ -2848,12 +2907,20 @@ ifeq "$(ENABLE_HELP)" "n"
 	done
 endif
 	set -e; \
-	for i in $(IMAGES); do \
+	mkdir -p $(PKGDIR)-style-$(DEFAULT_IMAGE)/$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config; \
+	mv $(PKGDIR)-common/$(OODIR)/share/config/images.zip \
+                $(PKGDIR)-style-$(DEFAULT_IMAGE)/$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config; \
+	mkdir -p $(PKGDIR)-style-$(DEFAULT_IMAGE)/$(OODIR)/share/config; \
+	ln -s /$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config/images.zip \
+		$(PKGDIR)-style-$(DEFAULT_IMAGE)/$(OODIR)/share/config/images.zip; \
+	for i in $(filter-out default,$(IMAGES)); do \
 		z=images_$$i.zip; p=$$i; \
-		case "$$i" in $(DEFAULT_IMAGE)) z=images.zip; esac; \
-		mkdir -p $(PKGDIR)-style-$$p/$(OODIR)/share/config; \
+		mkdir -p $(PKGDIR)-style-$$p/$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config; \
 		mv $(PKGDIR)-common/$(OODIR)/share/config/$$z \
-			$(PKGDIR)-style-$$p/$(OODIR)/share/config/; \
+			$(PKGDIR)-style-$$p/$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config/; \
+		mkdir -p $(PKGDIR)-style-$$p/$(OODIR)/share/config; \
+		ln -s /$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config/$$z \
+			$(PKGDIR)-style-$$p/$(OODIR)/share/config/$$z; \
 	done
 
 	rm -rf debian/openoffice.org-dtd-officedocument1.0
