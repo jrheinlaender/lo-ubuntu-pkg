@@ -324,8 +324,8 @@ SUITESPARSE_MIN_VERSION= (>= 1:3.4.0)
 PARALLEL_BUILD=y
 ENABLE_LDAP=y
 USE_OPENLDAP=y
+# --enable/-disable-opengl just affects OGLTrans...
 ENABLE_OPENGL=y
-# yes, opengl related but --enable/-disable-opengl just affects OGLTrans...
 SYSTEM_STUFF += glew
 # this is also not affected by --enable/-disable-opengl but at least has an
 # own --enable/--disable...
@@ -411,7 +411,7 @@ ENABLE_LIBLANGTAG=y
 SYSTEM_STUFF += liblangtag
 ENABLE_ORCUS=y
 SYSTEM_STUFF += orcus
-USE_UCPP=n
+USE_UCPP=y
 ifeq "$(USE_UCPP)" "y"
   SYSTEM_STUFF += ucpp
 endif
@@ -494,13 +494,22 @@ endef
 
 PLATFORMID := $(shell grep PLATFORMID debian/vars.$(DEB_HOST_ARCH) | cut -d"=" -f2)
 
-# doesn't make that much sense on armel and mips(el), does it? :)
-OOO_OGLTRANS_ARCHS = $(filter-out armel mips%, $(OOO_ARCHS))
-ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_OGLTRANS_ARCHS)))
+ifeq "$(ENABLE_OPENGL)" "y"
+  # doesn't make that much sense on armel and mips(el), does it? :)
+  OOO_OGLTRANS_ARCHS = $(filter-out armel mips%, $(OOO_ARCHS))
+  ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_OGLTRANS_ARCHS)))
        ENABLE_OPENGL=n
-       ENABLE_GLTF=n
+  endif
+  $(eval $(call gen_no_archs,OOO_OGLTRANS_ARCHS))
 endif
-$(eval $(call gen_no_archs,OOO_OGLTRANS_ARCHS))
+ifeq "$(ENABLE_GLTF)" "y"
+  # doesn't make that much sense on armel and mips(el), does it? :)
+  OOO_GLTF_ARCHS = $(filter-out armel mips%, $(OOO_ARCHS))
+  ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_GLTF_ARCHS)))
+       ENABLE_GLTF=n
+  endif
+  $(eval $(call gen_no_archs,OOO_GLTF_ARCHS))
+endif
 
 IGNORE_MAKE_CHECK_FAILURES=-
 ifneq "$(JDK)" "gcj-jdk"
@@ -670,13 +679,20 @@ endif
 
 BUILDDEB_OPTIONS ?= -- -Zxz
 
-ifneq "$(OOO_OGLTRANS_ARCHS)" ""
-  ifneq (,$(findstring mesa-headers,$(SYSTEM_STUFF)))
-	BUILD_DEPS += , libgl1-mesa-dev$(OOO_NO_OGLTRANS_ARCHS), libglu1-mesa-dev$(OOO_NO_OGLTRANS_ARCHS)
-  endif
+ifneq (,$(findstring mesa-headers,$(SYSTEM_STUFF)))
+	BUILD_DEPS += , libgl1-mesa-dev, libglu1-mesa-dev
 endif
 ifneq "$(ENABLE_OPENGL)" "y"
 	CONFIGURE_FLAGS += --disable-opengl
+endif
+ifneq "$(ENABLE_GLTF)" "y"
+	CONFIGURE_FLAGS += --disable-gltf
+	DEBHELPER_OPTIONS += -Nlibreoffice-avmedia-backend-opengl
+else
+	BUILD_DEPS += , libgltf-dev
+  ifneq "$(ENABLE_COLLADA)" "y"
+	CONFIGURE_FLAGS += --disable-collada
+  endif
 endif
 
 ifneq "$(PACKAGE_SDK)" "y"
@@ -1137,16 +1153,6 @@ ifeq "$(ENABLE_EOT)" "y"
  ifneq (,$(filter libeot, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libeot-dev
  endif
-endif
-
-ifneq "$(ENABLE_GLTF)" "y"
-	CONFIGURE_FLAGS += --disable-gltf
-	DEBHELPER_OPTIONS += -Nlibreoffice-avmedia-backend-opengl
-else
-	BUILD_DEPS += , libgltf-dev
-  ifneq "$(ENABLE_COLLADA)" "y"
-	CONFIGURE_FLAGS += --disable-collada
-  endif
 endif
 
 ifneq (,$(filter lcms2, $(SYSTEM_STUFF)))
@@ -1729,6 +1735,7 @@ endif
 	perl -pi -e "s,%OOO_GCJ_ARCHS%,$(OOO_GCJ_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_NSPLUGIN_ARCHS%,$(OOO_NSPLUGIN_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_OGLTRANS_ARCHS%,$(OOO_OGLTRANS_ARCHS),g" debian/control
+	perl -pi -e "s,%OOO_GLTF_ARCHS%,$(OOO_GLTF_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_GCJ_JDK_ARCHS%,$(OOO_GCJ_JDK_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_ARCH_DEP_EXTENSIONS_ARCHS%,$(OOO_ARCH_DEP_EXTENSIONS_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_REPORTDESIGN_ARCHS%,$(OOO_REPORTDESIGN_ARCHS),g" debian/control
