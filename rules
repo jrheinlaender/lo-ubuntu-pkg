@@ -404,7 +404,7 @@ ALLOC=system
 SYSTEM_STUFF += libexttextcat
 SYSTEM_STUFF += cppunit
 DEFAULT_IMAGE=galaxy
-IMAGES:=crystal default $(DEFAULT_IMAGE) hicontrast oxygen tango sifr
+IMAGES:=crystal $(DEFAULT_IMAGE) hicontrast oxygen tango sifr
 ENABLE_MYSQLNATIVE=y
 USE_MARIADB=n
 # set this also to y for system-mysql..
@@ -503,6 +503,8 @@ CONFIGURE_FLAGS= \
 		--disable-dependency-tracking \
 		--enable-hardlink-deliver \
 		--with-branding=$(CURDIR)/debian/branding
+
+CONFIGURE_FLAGS_INDEP=
 
 ifeq "$(shell echo $(DEB_VERSION_UPSTREAM) | grep -E '(alpha|beta)'; echo $$?)" "1"
 CONFIGURE_FLAGS += --enable-release-build
@@ -689,7 +691,7 @@ endif
 
 ifeq "$(DEB_VENDOR)" "Ubuntu"
   IMAGES+=human
-  CONFIGURE_FLAGS+= --with-theme="$(patsubst galaxy,default,$(IMAGES))"
+  CONFIGURE_FLAGS_INDEP+= --with-theme="$(patsubst $(DEFAULT_IMAGE),default,$(IMAGES))"
   ENABLE_FIREBIRD=n
   # lp#1034560: MIR troubles make it easier to use internal jfreereport
   SYSTEM_STUFF := $(filter-out jfreereport npapi-headers, $(SYSTEM_STUFF))
@@ -1981,7 +1983,8 @@ $(STAMP_DIR)/build-indep:
 	PYTHON=$(PYTHON) PYTHON_CFLAGS="$(shell pkg-config --cflags python-$(PYMAJOR).$(PYMINOR))" PYTHON_LIBS="$(shell pkg-config --libs python-$(PYMAJOR).$(PYMINOR))" \
 	MARIADBCONFIG=$(MARIADBCONFIG) \
 	FIREBIRD_CFLAGS=$(FIREBIRD_CFLAGS) FIREBIRD_LIBS=$(FIREBIRD_LIBS) \
-	./autogen.sh $(CONFIGURE_FLAGS)
+	# build indep w/ flags generic: $(CONFIGURE_FLAGS) indep: $(CONFIGURE_FLAGS_INDEP)
+	./autogen.sh $(CONFIGURE_FLAGS) $(CONFIGURE_FLAGS_INDEP)
 
 ifneq "$(WHEEZY_BACKPORT)" "y"
 	# setting PYTHON_FOR_BUILD above does NOT work and otherwise it
@@ -2911,7 +2914,7 @@ endif
 	mkdir -p $(PKGDIR)-style-$(DEFAULT_IMAGE)/$(OODIR)/share/config; \
 	ln -s /$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config/images.zip \
 		$(PKGDIR)-style-$(DEFAULT_IMAGE)/$(OODIR)/share/config/images.zip; \
-	for i in $(filter-out default,$(IMAGES)); do \
+	for i in $(filter-out galaxy,$(IMAGES)); do \
 		z=images_$$i.zip; p=$$i; \
 		mkdir -p $(PKGDIR)-style-$$p/$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config; \
 		mv $(PKGDIR)-common/$(OODIR)/share/config/$$z \
