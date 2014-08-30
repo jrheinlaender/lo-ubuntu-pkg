@@ -1,5 +1,97 @@
+From 26aa4245fba5287b2af4a5c580cd5e663ce0a002 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Caol=C3=A1n=20McNamara?= <caolanm@redhat.com>
+Date: Thu, 21 Aug 2014 08:52:16 +0100
+Subject: Resolves: rhbz#1125588 port LibreOffice to ppc64le
+
+Related: rhbz#1125588 first steps for ppc64le
+
+almost certainly won't get us too far, but a start
+
+(cherry picked from commit 170109708e6a082252efba3d2f1726bbd82b6452)
+
+Change-Id: Ic20b97a97b6d506c32322173bd8332d15c3a4555
+
+openjdk appears to use ppc64/server/libjvm.so and not ppc64le/server/libjvm.so
+
+Change-Id: Iff9e2e0ac9921b0d9d36a49fdcd2323d5dd124ee
+(cherry picked from commit 632e4095ad92196480ad82cfa1f106c4c08ae1cc)
+
+need to accept ppc64le as a lib64 using platform in ax_boost_base.m4
+
+Change-Id: I86ef068661082addbd165629d3d6905695090a6b
+(cherry picked from commit 2d48c52da712f8fa3c4a579494c824491afb8515)
+
+linux_powerpc64le->linux_powerpc64_le to match dp_platform.cxx
+
+Change-Id: Ib63e5a28d7ff12780a1051d94c5976244eab1814
+(cherry picked from commit 2ced4d39cc1b8de233cd886d3ef991b3079500d2)
+
+Related: rhbz#1125588 get as far as privateSnippetExecutor
+
+Change-Id: Icc386083ecd9faefbedebbb9d2496a4eddfa0b2b
+(cherry picked from commit 4c5bbbf059924f3aa24620a4cbbc35816978a606)
+
+Related: rhbz#1125588 get to the end of cpp_mediate on ppc64le
+
+Change-Id: Id3928ef5ac68ea13a7aa8723bc8b068ecf8075a0
+(cherry picked from commit d8fcd8ca9af087e98a2f6d9cbcf6eb42cddd0c74)
+
+Related: rhbz#1125588 force existence of argument save area
+
+ELFv2 ABI on ppc64 optimises stack allocation
+(http://gcc.gnu.org/ml/gcc-patches/2013-11/msg01149.html
+so we're getting no argument save area
+
+This now appears to pass the simple cases and onwards
+to the tricky ones
+
+Change-Id: Ie56d148ebea7fcfc023cb7183bc97f09186e66b4
+(cherry picked from commit 6396e18f4d49c24283b170310a1892db40c128d3)
+
+Related: rhbz#1125588 ppc64le has new struct passing rules
+
+http://gcc.gnu.org/ml/gcc-patches/2013-11/msg01145.html
+http://gcc.gnu.org/ml/gcc-patches/2013-11/msg01147.html
+
+now we just fail instead of crash
+
+Change-Id: I329c676337885bcf4fdfdcdb5912d75424862126
+(cherry picked from commit 970ad502e3ea2cc992c6cc1c7583231aec5bf5da)
+
+Related: rhbz#1125588 ppc64le fix simple struct returning
+
+Change-Id: I1e253922fdb606648eff9865f1125a24e35b0d9a
+(cherry picked from commit ee6fcdd18b1a839d7d60617d4fda622f6e6e7e66)
+
+Resolves: rhbz#1125588 ppc64le passes testtools
+
+*bzzt*, <lightning arcs, faint smell of ozone>, it's alive!
+
+Change-Id: I0b42f4e2603e6d76200d63ab2e26bbb856ae1173
+(cherry picked from commit 6ab1951ea2e31f47bc9f211dd9b2681c794b8e7f)
+Reviewed-on: https://gerrit.libreoffice.org/11072
+Reviewed-by: David Tardon <dtardon@redhat.com>
+Tested-by: David Tardon <dtardon@redhat.com>
+
+From 23b26d26d5e75d43a9ff298a48aacd722e8578ff Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Caol=C3=A1n=20McNamara?= <caolanm@redhat.com>
+Date: Fri, 29 Aug 2014 11:29:36 +0100
+Subject: sigh, simply forgot to include the endian header
+
+so the ppc64 bridge was broken
+
+Change-Id: Ib60274ed25531f500bcd97f5ea9b04091ce01825
+(cherry picked from commit 7da6716e98f22d6cb968c3218b5f4936f868a977)
+Reviewed-on: https://gerrit.libreoffice.org/11188
+Reviewed-by: David Tardon <dtardon@redhat.com>
+Tested-by: David Tardon <dtardon@redhat.com>
+
 diff --git a/bridges/source/cpp_uno/gcc3_linux_powerpc64/cpp2uno.cxx b/bridges/source/cpp_uno/gcc3_linux_powerpc64/cpp2uno.cxx
-index 29e134a..f30404c 100644
+index 29e134a..eaee739 100644
+--- a/bridges/source/cpp_uno/gcc3_linux_powerpc64/cpp2uno.cxx
++++ b/bridges/source/cpp_uno/gcc3_linux_powerpc64/cpp2uno.cxx
+iff --git a/bridges/source/cpp_uno/gcc3_linux_powerpc64/cpp2uno.cxx b/bridges/source/cpp_uno/gcc3_linux_powerpc64/cpp2uno.cxx
+index eaee739..acee17d 100644
 --- a/bridges/source/cpp_uno/gcc3_linux_powerpc64/cpp2uno.cxx
 +++ b/bridges/source/cpp_uno/gcc3_linux_powerpc64/cpp2uno.cxx
 @@ -21,7 +21,7 @@
@@ -85,7 +177,7 @@ index 29e134a..f30404c 100644
  }
  
 -
-+#if defined(_CALL_ELF) && _CALL_ELF == 2
++#if _CALL_ELF == 2
 +#  define PARAMSAVE 32
 +#else
 +#  define PARAMSAVE 48
@@ -106,7 +198,7 @@ index 29e134a..f30404c 100644
                  "mr     %0,    1\n\t"
                  : "=r" (sp) : );
  
-+#if defined(_CALL_ELF) && _CALL_ELF == 2
++#if _CALL_ELF == 2
 +    volatile long nRegReturn[2];
 +#else
      volatile long nRegReturn[1];
@@ -118,7 +210,7 @@ index 29e134a..f30404c 100644
          default:
              __asm__( "ld 3,%0\n\t"
                  : : "m" (nRegReturn[0]) );
-+#if defined(_CALL_ELF) && _CALL_ELF == 2
++#if _CALL_ELF == 2
 +            __asm__( "ld 4,%0\n\t"
 +                : : "m" (nRegReturn[1]) );
 +#endif
@@ -126,7 +218,7 @@ index 29e134a..f30404c 100644
      }
  }
  
-+#if defined(_CALL_ELF) && _CALL_ELF == 2
++#if _CALL_ELF == 2
 +const int codeSnippetSize = 32;
 +#else
  const int codeSnippetSize = 24;
@@ -146,7 +238,7 @@ index 29e134a..f30404c 100644
 +    if ( bHasHiddenParam )
          nOffsetAndIndex |= 0x80000000;
 -
-+#if defined(_CALL_ELF) && _CALL_ELF == 2
++#if _CALL_ELF == 2
 +    unsigned int *raw = (unsigned int *)&code[0];
 +
 +    raw[0] = 0xe96c0018;        /* 0:   ld      11,2f-0b(12)    */
@@ -209,7 +301,7 @@ index 87303b6..b5f609a 100644
  
  #endif
 diff --git a/bridges/source/cpp_uno/gcc3_linux_powerpc64/uno2cpp.cxx b/bridges/source/cpp_uno/gcc3_linux_powerpc64/uno2cpp.cxx
-index c047ebf..ab370ce 100644
+index c047ebf..391ef219 100644
 --- a/bridges/source/cpp_uno/gcc3_linux_powerpc64/uno2cpp.cxx
 +++ b/bridges/source/cpp_uno/gcc3_linux_powerpc64/uno2cpp.cxx
 @@ -37,9 +37,59 @@
@@ -220,7 +312,7 @@ index c047ebf..ab370ce 100644
 +namespace ppc64
  {
 -    switch (eTypeClass)
-+#if defined(_CALL_ELF) && _CALL_ELF == 2
++#if _CALL_ELF == 2
 +    bool is_complex_struct(const typelib_TypeDescription * type)
 +    {
 +        const typelib_CompoundTypeDescription * p
@@ -251,7 +343,7 @@ index c047ebf..ab370ce 100644
 +    {
 +        if (bridges::cpp_uno::shared::isSimpleType(pTypeRef))
 +            return false;
-+#if defined(_CALL_ELF) && _CALL_ELF == 2
++#if _CALL_ELF == 2
 +        else if (pTypeRef->eTypeClass == typelib_TypeClass_STRUCT || pTypeRef->eTypeClass == typelib_TypeClass_EXCEPTION)
 +        {
 +            typelib_TypeDescription * pTypeDescr = 0;
@@ -278,7 +370,7 @@ index c047ebf..ab370ce 100644
      case typelib_TypeClass_DOUBLE:
              *reinterpret_cast<double *>( pRegisterReturn ) = dret;
              break;
-+#if defined(_CALL_ELF) && _CALL_ELF == 2
++#if _CALL_ELF == 2
 +    case typelib_TypeClass_STRUCT:
 +    case typelib_TypeClass_EXCEPTION:
 +            if (!ppc64::return_in_hidden_param(pReturnType))
@@ -292,7 +384,19 @@ index c047ebf..ab370ce 100644
      default:
              break;
      }
-@@ -168,7 +229,7 @@ static void callVirtualMethod(void * pThis, sal_uInt32 nVtableIndex,
+@@ -114,7 +175,11 @@ static void callVirtualMethod(void * pThis, sal_uInt32 nVtableIndex,
+     pMethod += 8 * nVtableIndex;
+     pMethod = *((sal_uInt64 *)pMethod);
+ 
++#if _CALL_ELF == 2
++    typedef void (* FunctionCall )(...);
++#else
+     typedef void (* FunctionCall )( sal_uInt64, sal_uInt64, sal_uInt64, sal_uInt64, sal_uInt64, sal_uInt64, sal_uInt64, sal_uInt64 );
++#endif
+     FunctionCall pFunc = (FunctionCall)pMethod;
+ 
+     volatile double dret;
+@@ -168,7 +233,7 @@ static void callVirtualMethod(void * pThis, sal_uInt32 nVtableIndex,
                  "fmr    %0,     1\n\t"
                  : "=f" (dret), "=r" (r3), "=r" (r4) : );
  
@@ -301,7 +405,7 @@ index c047ebf..ab370ce 100644
  }
  
  // Macros for easier insertion of values to registers or stack
-@@ -251,14 +312,18 @@ static void cpp_call(
+@@ -251,14 +316,18 @@ static void cpp_call(
  
      void * pCppReturn = 0; // if != 0 && != pUnoReturn, needs reconversion
  
@@ -323,7 +427,7 @@ index c047ebf..ab370ce 100644
              pCppReturn = pUnoReturn; // direct way for simple types
  #if OSL_DEBUG_LEVEL > 2
 diff --git a/configure.ac b/configure.ac
-index bbf4775..0fd6654 100644
+index 2f19999..809b353 100644
 --- a/configure.ac
 +++ b/configure.ac
 @@ -4377,6 +4377,13 @@ linux-gnu*)
@@ -340,7 +444,7 @@ index bbf4775..0fd6654 100644
      sparc)
          CPUNAME=SPARC
          RTL_ARCH=SPARC
-@@ -7224,7 +7231,7 @@ then
+@@ -7234,7 +7241,7 @@ then
          powerpc)
              my_java_arch=ppc
              ;;
@@ -383,3 +487,6 @@ index 7a0cf52..55de0c4 100644
          libsubdirs="lib64 lib lib64"
      fi
  
+-- 
+cgit v0.10.2
+
