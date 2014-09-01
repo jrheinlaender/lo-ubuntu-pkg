@@ -1,12 +1,39 @@
-From 235fa0334e0b45c736b636ba1689e2f8c7458697 Mon Sep 17 00:00:00 2001
+From 09f49fc55104ee7b0fe18dbb5068a4cad7d9fc25 Mon Sep 17 00:00:00 2001
 From: Stephan Bergmann <sbergman@redhat.com>
 Date: Fri, 29 Aug 2014 17:17:42 +0200
-Subject: Linux AArch64 port
+Subject: [PATCH 2/2] Linux AArch64 port
+
+(cherry picked from commit 235fa0334e0b45c736b636ba1689e2f8c7458697)
+Conflicts:
+        bridges/source/cpp_uno/gcc3_linux_aarch64/abi.cxx
+        bridges/source/cpp_uno/gcc3_linux_aarch64/cpp2uno.cxx
+        bridges/source/cpp_uno/gcc3_linux_aarch64/uno2cpp.cxx
+	configure.ac
 
 Change-Id: I37044a37348b203944a8eb9d2204e619055f069d
+---
+ bridges/Library_cpp_uno.mk                         |   5 +
+ bridges/source/cpp_uno/gcc3_linux_aarch64/abi.cxx  | 310 ++++++++++++++
+ bridges/source/cpp_uno/gcc3_linux_aarch64/abi.hxx  |  87 ++++
+ .../gcc3_linux_aarch64/callvirtualfunction.cxx     |  66 +++
+ .../gcc3_linux_aarch64/callvirtualfunction.hxx     |  33 ++
+ .../source/cpp_uno/gcc3_linux_aarch64/cpp2uno.cxx  | 464 +++++++++++++++++++++
+ .../source/cpp_uno/gcc3_linux_aarch64/uno2cpp.cxx  | 376 +++++++++++++++++
+ configure.ac                                       |   6 +
+ desktop/source/deployment/misc/dp_platform.cxx     |   4 +-
+ jvmfwk/plugins/sunmajor/pluginlib/vendorbase.hxx   |   2 +
+ solenv/gbuild/platform/LINUX_AARCH64_GCC.mk        |  14 +
+ 11 files changed, 1366 insertions(+), 1 deletion(-)
+ create mode 100644 bridges/source/cpp_uno/gcc3_linux_aarch64/abi.cxx
+ create mode 100644 bridges/source/cpp_uno/gcc3_linux_aarch64/abi.hxx
+ create mode 100644 bridges/source/cpp_uno/gcc3_linux_aarch64/callvirtualfunction.cxx
+ create mode 100644 bridges/source/cpp_uno/gcc3_linux_aarch64/callvirtualfunction.hxx
+ create mode 100644 bridges/source/cpp_uno/gcc3_linux_aarch64/cpp2uno.cxx
+ create mode 100644 bridges/source/cpp_uno/gcc3_linux_aarch64/uno2cpp.cxx
+ create mode 100644 solenv/gbuild/platform/LINUX_AARCH64_GCC.mk
 
 diff --git a/bridges/Library_cpp_uno.mk b/bridges/Library_cpp_uno.mk
-index e971442..96bd293 100644
+index c6ab9a0..0fcaf6b 100644
 --- a/bridges/Library_cpp_uno.mk
 +++ b/bridges/Library_cpp_uno.mk
 @@ -35,6 +35,11 @@ $(call gb_LinkTarget_get_target,$(call gb_Library_get_linktarget,gcc3_uno)) : \
@@ -23,10 +50,10 @@ index e971442..96bd293 100644
  bridges_SELECTED_BRIDGE := gcc3_linux_alpha
 diff --git a/bridges/source/cpp_uno/gcc3_linux_aarch64/abi.cxx b/bridges/source/cpp_uno/gcc3_linux_aarch64/abi.cxx
 new file mode 100644
-index 0000000..b6d8cb6
+index 0000000..c177b22
 --- /dev/null
 +++ b/bridges/source/cpp_uno/gcc3_linux_aarch64/abi.cxx
-@@ -0,0 +1,307 @@
+@@ -0,0 +1,310 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +/*
 + * This file is part of the LibreOffice project.
@@ -259,7 +286,9 @@ index 0000000..b6d8cb6
 +    typelib_TypeDescription * td = 0;
 +    typelib_typedescription_getByName(&td, unoName.pData);
 +    if (td == 0) {
-+        css::uno::RuntimeException e("exception type not found: " + unoName);
++        css::uno::RuntimeException e(
++            "exception type not found: " + unoName,
++            css::uno::Reference<css::uno::XInterface>());
 +        uno_type_any_constructAndConvert(
 +            any, &e,
 +            cppu::UnoType<css::uno::RuntimeException>::get().getTypeLibType(),
@@ -275,7 +304,8 @@ index 0000000..b6d8cb6
 +    TYPELIB_DANGER_GET(&td, any->pType);
 +    if (td == 0) {
 +        throw css::uno::RuntimeException(
-+            "no typedescription for " + OUString(any->pType->pTypeName));
++            "no typedescription for " + OUString(any->pType->pTypeName),
++            css::uno::Reference<css::uno::XInterface>());
 +    }
 +    void * exc = __cxxabiv1::__cxa_allocate_exception(td->nSize);
 +    uno_copyAndConvertData(exc, any->pData, td, mapping);
@@ -540,10 +570,10 @@ index 0000000..b1b003f
 +/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
 diff --git a/bridges/source/cpp_uno/gcc3_linux_aarch64/cpp2uno.cxx b/bridges/source/cpp_uno/gcc3_linux_aarch64/cpp2uno.cxx
 new file mode 100644
-index 0000000..8f5a032
+index 0000000..a73d9be
 --- /dev/null
 +++ b/bridges/source/cpp_uno/gcc3_linux_aarch64/cpp2uno.cxx
-@@ -0,0 +1,466 @@
+@@ -0,0 +1,464 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +/*
 + * This file is part of the LibreOffice project.
@@ -903,7 +933,6 @@ index 0000000..8f5a032
 +        "ldp d2, d3, [%[fpr_], #16]\n\t"
 +        :: [gpr_]"r" (gpr), [fpr_]"r" (fpr)
 +        : "r0", "r1", "v0", "v1", "v2", "v3");
-+    va_end(ap);
 +}
 +#pragma GCC diagnostic pop
 +
@@ -950,8 +979,7 @@ index 0000000..8f5a032
 +
 +bridges::cpp_uno::shared::VtableFactory::Slot *
 +bridges::cpp_uno::shared::VtableFactory::initializeBlock(
-+    void * block, sal_Int32 slotCount, sal_Int32,
-+    typelib_InterfaceTypeDescription *)
++    void * block, sal_Int32 slotCount)
 +{
 +    Slot * slots = mapBlockToVtable(block);
 +    slots[-2].fn = 0;
@@ -1012,10 +1040,10 @@ index 0000000..8f5a032
 +/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
 diff --git a/bridges/source/cpp_uno/gcc3_linux_aarch64/uno2cpp.cxx b/bridges/source/cpp_uno/gcc3_linux_aarch64/uno2cpp.cxx
 new file mode 100644
-index 0000000..aa484bc
+index 0000000..9c9a24a
 --- /dev/null
 +++ b/bridges/source/cpp_uno/gcc3_linux_aarch64/uno2cpp.cxx
-@@ -0,0 +1,374 @@
+@@ -0,0 +1,376 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +/*
 + * This file is part of the LibreOffice project.
@@ -1199,12 +1227,14 @@ index 0000000..aa484bc
 +            throw;
 +        } catch (std::exception & e) {
 +            throw css::uno::RuntimeException(
-+                "C++ code threw "
-+                + OStringToOUString(typeid(e).name(), RTL_TEXTENCODING_UTF8)
-+                + ": " + OStringToOUString(e.what(), RTL_TEXTENCODING_UTF8));
++                ("C++ code threw "
++                 + OStringToOUString(typeid(e).name(), RTL_TEXTENCODING_UTF8)
++                 + ": " + OStringToOUString(e.what(), RTL_TEXTENCODING_UTF8)),
++                css::uno::Reference<css::uno::XInterface>());
 +        } catch (...) {
 +            throw css::uno::RuntimeException(
-+                "C++ code threw unknown exception");
++                "C++ code threw unknown exception",
++                css::uno::Reference<css::uno::XInterface>());
 +        }
 +    } catch (css::uno::Exception &) {
 +        abi_aarch64::mapException(
@@ -1391,7 +1421,7 @@ index 0000000..aa484bc
 +
 +/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
 diff --git a/configure.ac b/configure.ac
-index 93a7598..c4fefea 100644
+index 5ead2a0..826797f8 100644
 --- a/configure.ac
 +++ b/configure.ac
 @@ -4292,6 +4292,12 @@ linux-gnu*)
@@ -1408,10 +1438,10 @@ index 93a7598..c4fefea 100644
          CPUNAME=AXP
          RTL_ARCH=ALPHA
 diff --git a/desktop/source/deployment/misc/dp_platform.cxx b/desktop/source/deployment/misc/dp_platform.cxx
-index 6e69359..a63d527 100644
+index 09b3fcd..6b04004 100644
 --- a/desktop/source/deployment/misc/dp_platform.cxx
 +++ b/desktop/source/deployment/misc/dp_platform.cxx
-@@ -46,7 +46,7 @@
+@@ -45,7 +45,7 @@
  #define PLATFORM_LINUX_S390x        "linux_s390x"
  #define PLATFORM_LINUX_HPPA         "linux_hppa"
  #define PLATFORM_LINUX_ALPHA        "linux_alpha"
@@ -1420,7 +1450,7 @@ index 6e69359..a63d527 100644
  
  
  #define PLATFORM_SOLARIS_SPARC      "solaris_sparc"
-@@ -152,6 +152,8 @@ namespace
+@@ -149,6 +149,8 @@ namespace
              ret = checkOSandCPU("Linux", "HPPA");
          else if (token == PLATFORM_LINUX_ALPHA)
              ret = checkOSandCPU("Linux", "ALPHA");
@@ -1463,5 +1493,5 @@ index 0000000..682199e
 +
 +# vim: set noet sw=4:
 -- 
-cgit v0.10.2
+1.9.3
 
