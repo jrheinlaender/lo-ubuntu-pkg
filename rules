@@ -194,6 +194,9 @@ ifneq "$(WHEEZY_BACKPORT)" "y"
 endif
 SYSTEM_STUFF += mdds
 SYSTEM_STUFF += vigra
+ifeq "$(DEB_HOST_ARCH)" "arm64"
+SYSTEM_STUFF := $(filter-out vigra,$(SYSTEM_STUFF))
+endif
 USE_EXTERNAL_CXXLIBS=y
 SYSTEM_STUFF += mythes
 SYSTEM_STUFF += icu
@@ -216,6 +219,12 @@ BUILD_CAIROCANVAS=y
 SYSTEM_STUFF += cairo
 CAIRO_FONTS_PATCH=y
 BUILD_KDE=y
+ifeq "$(DEB_HOST_ARCH)" "ppc64el"
+BUILD_KDE=n
+endif
+ifeq "$(DEB_HOST_ARCH)" "arm64"
+BUILD_KDE=n
+endif
 # not ported to KDE 4
 ENABLE_KDEAB=n
 ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) ge 4.7 && echo true)" "true"
@@ -281,6 +290,12 @@ else
    GSTREAMER_VERSION=0.10
 endif
 USE_VLC=y
+ifeq "$(DEB_HOST_ARCH)" "ppc64"
+USE_VLC=n
+endif
+ifeq "$(DEB_HOST_ARCH)" "arm64"
+USE_VLC=n
+endif
 ENABLE_WEBDAV=y
 ifeq "$(ENABLE_WEBDAV)" "y"
 WEBDAV_LIB=neon
@@ -382,6 +397,9 @@ BUILD_GTK=y
 BUILD_GTK3=y
 #endif
 ENABLE_EVO2=y
+ifeq "$(DEB_HOST_ARCH)" "arm64"
+ENABLE_EVO2=n
+endif
 ENABLE_GVFS=n
 ENABLE_GCONF=y
 ENABLE_GIO=y
@@ -484,7 +502,7 @@ SYSTEM_STUFF += libeot
 endif
 SYSTEM_STUFF += glm
 BUILD_PPC64EL=y
-BUILD_ARM64=n
+BUILD_ARM64=y
 
 # Default flags to pass to configure
 CONFIGURE_FLAGS= \
@@ -732,7 +750,6 @@ ifneq "$(ENABLE_OPENGL)" "y"
 endif
 ifneq "$(ENABLE_GLTF)" "y"
 	CONFIGURE_FLAGS += --disable-gltf
-	DEBHELPER_OPTIONS += -Nlibreoffice-avmedia-backend-opengl
 else
   ifneq (,$(findstring libgltf,$(SYSTEM_STUFF)))
 	BUILD_DEPS += , libgltf-dev (>= 0.0.1)$(OOO_NO_GLTF_ARCHS)
@@ -1153,7 +1170,7 @@ ifneq (,$(filter boost, $(SYSTEM_STUFF)))
       endif
     endif
     ifeq ($(USE_VLC),y)
-	BUILD_DEPS += , libboost-system$(BOOST_VERSION)-dev $(BOOST_MINVER)
+	BUILD_DEPS += , libboost-system$(BOOST_VERSION)-dev $(BOOST_MINVER) [!arm64 !ppc64el]
     endif
   else
 	BUILD_DEPS += , libboost-dev $(BOOST_MINVER), libboost-date-time-dev $(BOOST_MINVER), libboost-iostreams-dev $(BOOST_MINVER)
@@ -1162,7 +1179,7 @@ ifneq (,$(filter boost, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libboost-system-dev $(BOOST_MINVER), libboost-iostreams-dev $(BOOST_MINVER), libboost-program-options-dev $(BOOST_MINVER)
     endif
     ifeq ($(USE_VLC),y)
-	BUILD_DEPS += , libboost-system-dev $(BOOST_MINVER)
+	BUILD_DEPS += , libboost-system-dev $(BOOST_MINVER) [!arm64 !ppc64el]
     endif
   endif
   ifeq "$(shell if [ -e /usr/lib/$(DEB_HOST_MULTIARCH)/libboost_date_time.so ]; then echo true; fi)" "true"
@@ -1183,7 +1200,7 @@ else
 endif
 
 ifneq (,$(filter vigra, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libvigraimpex-dev
+	BUILD_DEPS += , libvigraimpex-dev [!arm64]
 endif
 
 ifneq (,$(filter clucene, $(SYSTEM_STUFF)))
@@ -1287,7 +1304,7 @@ else
 	CONFIGURE_FLAGS += --disable-kde
 	CONFIGURE_FLAGS += --enable-kde4
 	KDE_ICONSET_DEP=libreoffice-style-oxygen
-	BUILD_DEPS += , kdelibs5-dev $(KDELIBS_MINVER)
+	BUILD_DEPS += , kdelibs5-dev $(KDELIBS_MINVER) [!arm64 !ppc64el]
 	BUILD_DEPS += , libqt4-dev $(QT_MINVER)
 	DBG_DBG_SUGGESTS+= , kdelibs5-dbg, libqt4-dbg
   ifeq "$(ENABLE_KDEAB)" "y"
@@ -1358,7 +1375,7 @@ ifeq "$(ENABLE_EVO2)" "n"
 	DEBHELPER_OPTIONS += -Nlibreoffice-evolution
 else
 	CONFIGURE_FLAGS += --enable-evolution2
-	BUILD_DEPS += , libebook1.2-dev$(OOO_NO_BASE_ARCHS)
+	BUILD_DEPS += , libebook1.2-dev$(OOO_NO_BASE_ARCHS) [!arm64]
 endif
 
 ifeq "$(ENABLE_SDBC_POSTGRESQL)" "y"
@@ -1489,7 +1506,7 @@ endif
 
 ifeq "$(USE_VLC)" "y"
 	CONFIGURE_FLAGS += --enable-vlc
-	BUILD_DEPS += , $(shell debian/scripts/get_libvlc_dep.sh)
+	BUILD_DEPS += , $(shell debian/scripts/get_libvlc_dep.sh) [!arm64 !ppc64el]
   ifeq "$(AVMEDIA_BE_DEPENDS)" ""
 	AVMEDIA_BE_DEPENDS += , libreoffice-avmedia-backend-vlc
   else
