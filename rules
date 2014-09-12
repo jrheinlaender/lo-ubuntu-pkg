@@ -376,12 +376,7 @@ ENABLE_GVFS=n
 ENABLE_GCONF=y
 ENABLE_GIO=y
 ENABLE_RANDR=y
-ifeq "$(BUILD_GTK)" "y"
-  PACKAGE_NSPLUGIN=y
-  ifeq "$(PACKAGE_NSPLUGIN)" "y"
-	SYSTEM_STUFF += npapi-headers
-  endif
-endif
+SYSTEM_STUFF += npapi-headers
 PACKAGE_BASE=y
 ENABLE_GRAPHITE=y
 SYSTEM_STUFF += graphite
@@ -652,13 +647,6 @@ endif
 ifeq "$(BUILD_TEST_PACKAGE)" "n"
 	DEBHELPER_OPTIONS += -Nlibreoffice-subsequentcheckbase
 endif
-
-ifeq "$(PACKAGE_NSPLUGIN)" "y"
-OOO_NSPLUGIN_ARCHS = $(OOO_ARCHS)
-else
-OOO_NSPLUGIN_ARCHS=
-endif
-$(eval $(call gen_no_archs,OOO_NSPLUGIN_ARCHS))
 
 ifneq (,$(findstring mips, $(OOO_ARCHS)))
   BUILD_DEPS += , binutils (>= 2.23) [mips mipsel], libc6 (>= 2.17-6) [mips mipsel]
@@ -1039,14 +1027,10 @@ ifneq (,$(filter nss, $(SYSTEM_STUFF)))
 endif
 ifneq (,$(filter npapi-headers, $(SYSTEM_STUFF)))
   ifneq "$(WHEEZY_BACKPORT)" "y"
-	BUILD_DEPS+= , npapi-sdk-dev$(OOO_NO_NSPLUGIN_ARCHS)
+	BUILD_DEPS+= , npapi-sdk-dev
   else
-	BUILD_DEPS+= , xulrunner-dev$(OOO_NO_NSPLUGIN_ARCHS)
+	BUILD_DEPS+= , xulrunner-dev
   endif
-endif
-ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NSPLUGIN_ARCHS)))
-	PACKAGE_NSPLUGIN=n
-	CONFIGURE_FLAGS += --disable-nsplugin
 endif
 
 ifeq "$(USE_UCPP)" "y"
@@ -1700,9 +1684,6 @@ ifeq "$(ENABLE_JAVA)" "y"
     endif
   endif
 endif
-ifneq "$(OOO_NSPLUGIN_ARCHS)" ""
-	cat debian/control.mozilla.in >> debian/control
-endif
 ifneq "$(OOO_OGLTRANS_ARCHS)" ""
 	cat debian/control.ogltrans.in >> debian/control
 endif
@@ -1754,7 +1735,6 @@ endif
 	perl -pi -e "s,%OOO_NO_BASE_ARCHS%,$(OOO_NO_BASE_ARCHS),"g debian/control
 	perl -pi -e "s,%OOO_JAVA_ARCHS%,$(OOO_JAVA_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_GCJ_ARCHS%,$(OOO_GCJ_ARCHS),g" debian/control
-	perl -pi -e "s,%OOO_NSPLUGIN_ARCHS%,$(OOO_NSPLUGIN_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_OGLTRANS_ARCHS%,$(OOO_OGLTRANS_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_GCJ_JDK_ARCHS%,$(OOO_GCJ_JDK_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_ARCH_DEP_EXTENSIONS_ARCHS%,$(OOO_ARCH_DEP_EXTENSIONS_ARCHS),g" debian/control
@@ -2495,17 +2475,6 @@ ifeq "$(ENABLE_EVO2)" "y"
 	mv $(PKGDIR)-gnome/$(OODIR)/share/registry/evoab.xcd \
 		$(PKGDIR)-evolution/$(OODIR)/share/registry
 	# FIXME: When the rdb is correctly generated, move here, too.
-endif
-
-ifeq "$(PACKAGE_NSPLUGIN)" "y"
-	mkdir -p -m755 debian/browser-plugin-libreoffice/$(OODIR)/program
-	for f in libnpsoplugin.so nsplugin; do \
-		mv $(PKGDIR)-core/$(OODIR)/program/$$f debian/browser-plugin-libreoffice/$(OODIR)/program; \
-	done
-	cd debian/browser-plugin-libreoffice && \
-		mkdir -p usr/lib/mozilla/plugins && \
-			ln -sf /$(OODIR)/program/libnpsoplugin.so \
-			   usr/lib/mozilla/plugins/libnpsoplugin.so
 endif
 
 ifeq "$(PACKAGE_BASE)" "y"
