@@ -1,0 +1,488 @@
+From 26aa4245fba5287b2af4a5c580cd5e663ce0a002 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Caol=C3=A1n=20McNamara?= <caolanm@redhat.com>
+Date: Thu, 21 Aug 2014 08:52:16 +0100
+Subject: Resolves: rhbz#1125588 port LibreOffice to ppc64le
+
+Related: rhbz#1125588 first steps for ppc64le
+
+almost certainly won't get us too far, but a start
+
+(cherry picked from commit 170109708e6a082252efba3d2f1726bbd82b6452)
+
+Change-Id: Ic20b97a97b6d506c32322173bd8332d15c3a4555
+
+openjdk appears to use ppc64/server/libjvm.so and not ppc64le/server/libjvm.so
+
+Change-Id: Iff9e2e0ac9921b0d9d36a49fdcd2323d5dd124ee
+(cherry picked from commit 632e4095ad92196480ad82cfa1f106c4c08ae1cc)
+
+need to accept ppc64le as a lib64 using platform in ax_boost_base.m4
+
+Change-Id: I86ef068661082addbd165629d3d6905695090a6b
+(cherry picked from commit 2d48c52da712f8fa3c4a579494c824491afb8515)
+
+linux_powerpc64le->linux_powerpc64_le to match dp_platform.cxx
+
+Change-Id: Ib63e5a28d7ff12780a1051d94c5976244eab1814
+(cherry picked from commit 2ced4d39cc1b8de233cd886d3ef991b3079500d2)
+
+Related: rhbz#1125588 get as far as privateSnippetExecutor
+
+Change-Id: Icc386083ecd9faefbedebbb9d2496a4eddfa0b2b
+(cherry picked from commit 4c5bbbf059924f3aa24620a4cbbc35816978a606)
+
+Related: rhbz#1125588 get to the end of cpp_mediate on ppc64le
+
+Change-Id: Id3928ef5ac68ea13a7aa8723bc8b068ecf8075a0
+(cherry picked from commit d8fcd8ca9af087e98a2f6d9cbcf6eb42cddd0c74)
+
+Related: rhbz#1125588 force existence of argument save area
+
+ELFv2 ABI on ppc64 optimises stack allocation
+(http://gcc.gnu.org/ml/gcc-patches/2013-11/msg01149.html
+so we're getting no argument save area
+
+This now appears to pass the simple cases and onwards
+to the tricky ones
+
+Change-Id: Ie56d148ebea7fcfc023cb7183bc97f09186e66b4
+(cherry picked from commit 6396e18f4d49c24283b170310a1892db40c128d3)
+
+Related: rhbz#1125588 ppc64le has new struct passing rules
+
+http://gcc.gnu.org/ml/gcc-patches/2013-11/msg01145.html
+http://gcc.gnu.org/ml/gcc-patches/2013-11/msg01147.html
+
+now we just fail instead of crash
+
+Change-Id: I329c676337885bcf4fdfdcdb5912d75424862126
+(cherry picked from commit 970ad502e3ea2cc992c6cc1c7583231aec5bf5da)
+
+Related: rhbz#1125588 ppc64le fix simple struct returning
+
+Change-Id: I1e253922fdb606648eff9865f1125a24e35b0d9a
+(cherry picked from commit ee6fcdd18b1a839d7d60617d4fda622f6e6e7e66)
+
+Resolves: rhbz#1125588 ppc64le passes testtools
+
+*bzzt*, <lightning arcs, faint smell of ozone>, it's alive!
+
+Change-Id: I0b42f4e2603e6d76200d63ab2e26bbb856ae1173
+(cherry picked from commit 6ab1951ea2e31f47bc9f211dd9b2681c794b8e7f)
+Reviewed-on: https://gerrit.libreoffice.org/11072
+Reviewed-by: David Tardon <dtardon@redhat.com>
+Tested-by: David Tardon <dtardon@redhat.com>
+
+From 23b26d26d5e75d43a9ff298a48aacd722e8578ff Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Caol=C3=A1n=20McNamara?= <caolanm@redhat.com>
+Date: Fri, 29 Aug 2014 11:29:36 +0100
+Subject: sigh, simply forgot to include the endian header
+
+so the ppc64 bridge was broken
+
+Change-Id: Ib60274ed25531f500bcd97f5ea9b04091ce01825
+(cherry picked from commit 7da6716e98f22d6cb968c3218b5f4936f868a977)
+Reviewed-on: https://gerrit.libreoffice.org/11188
+Reviewed-by: David Tardon <dtardon@redhat.com>
+Tested-by: David Tardon <dtardon@redhat.com>
+
+diff --git a/bridges/source/cpp_uno/gcc3_linux_powerpc64/cpp2uno.cxx b/bridges/source/cpp_uno/gcc3_linux_powerpc64/cpp2uno.cxx
+index 29e134a..eaee739 100644
+--- a/bridges/source/cpp_uno/gcc3_linux_powerpc64/cpp2uno.cxx
++++ b/bridges/source/cpp_uno/gcc3_linux_powerpc64/cpp2uno.cxx
+@@ -21,7 +21,7 @@
+ #include <com/sun/star/uno/genfunc.hxx>
+ #include <uno/data.h>
+ #include <typelib/typedescription.hxx>
+-
++#include <osl/endian.h>
+ #include "bridges/cpp_uno/shared/bridge.hxx"
+ #include "bridges/cpp_uno/shared/cppinterfaceproxy.hxx"
+ #include "bridges/cpp_uno/shared/types.hxx"
+@@ -31,6 +31,11 @@
+ #include <stdio.h>
+ #include <string.h>
+ 
++#ifdef OSL_BIGENDIAN
++#define IS_BIG_ENDIAN 1
++#else
++#define IS_BIG_ENDIAN 0
++#endif
+ 
+ using namespace ::com::sun::star::uno;
+ 
+@@ -67,7 +72,7 @@ static typelib_TypeClass cpp2uno_call(
+ 
+     if (pReturnTypeDescr)
+     {
+-        if (bridges::cpp_uno::shared::isSimpleType( pReturnTypeDescr ))
++        if (!ppc64::return_in_hidden_param(pReturnTypeRef))
+         {
+             pUnoReturn = pRegisterReturn; // direct way for simple types
+         }
+@@ -139,13 +144,13 @@ static typelib_TypeClass cpp2uno_call(
+                 case typelib_TypeClass_BOOLEAN:
+                     if (ng < ppc64::MAX_GPR_REGS)
+                     {
+-                        pCppArgs[nPos] = pUnoArgs[nPos] = (((char *)gpreg) + (sizeof(void*)-1));
++                        pCppArgs[nPos] = pUnoArgs[nPos] = (((char *)gpreg) + 7*IS_BIG_ENDIAN);
+                         ng++;
+                         gpreg++;
+                     }
+                     else
+                     {
+-                        pCppArgs[nPos] = pUnoArgs[nPos] = (((char *)ovrflw) + (sizeof(void*)-1));
++                        pCppArgs[nPos] = pUnoArgs[nPos] = (((char *)ovrflw) + 7*IS_BIG_ENDIAN);
+                         bOverflowUsed = true;
+                     }
+                     if (bOverflowUsed) ovrflw++;
+@@ -155,13 +160,13 @@ static typelib_TypeClass cpp2uno_call(
+                 case typelib_TypeClass_UNSIGNED_SHORT:
+                     if (ng < ppc64::MAX_GPR_REGS)
+                     {
+-                        pCppArgs[nPos] = pUnoArgs[nPos] = (((char *)gpreg) + (sizeof(void*)-2));
++                        pCppArgs[nPos] = pUnoArgs[nPos] = (((char *)gpreg) + 6*IS_BIG_ENDIAN);
+                         ng++;
+                         gpreg++;
+                     }
+                     else
+                     {
+-                        pCppArgs[nPos] = pUnoArgs[nPos] = (((char *)ovrflw) + (sizeof(void*)-2));
++                        pCppArgs[nPos] = pUnoArgs[nPos] = (((char *)ovrflw) + 6*IS_BIG_ENDIAN);
+                         bOverflowUsed = true;
+                     }
+                     if (bOverflowUsed) ovrflw++;
+@@ -171,13 +176,13 @@ static typelib_TypeClass cpp2uno_call(
+                 case typelib_TypeClass_UNSIGNED_LONG:
+                     if (ng < ppc64::MAX_GPR_REGS)
+                     {
+-                        pCppArgs[nPos] = pUnoArgs[nPos] = (((char *)gpreg) + (sizeof(void*)-4));
++                        pCppArgs[nPos] = pUnoArgs[nPos] = (((char *)gpreg) + 4*IS_BIG_ENDIAN);
+                         ng++;
+                         gpreg++;
+                     }
+                     else
+                     {
+-                        pCppArgs[nPos] = pUnoArgs[nPos] = (((char *)ovrflw) + (sizeof(void*)-4));
++                        pCppArgs[nPos] = pUnoArgs[nPos] = (((char *)ovrflw) + 4*IS_BIG_ENDIAN);
+                         bOverflowUsed = true;
+                     }
+                     if (bOverflowUsed) ovrflw++;
+@@ -321,7 +326,11 @@ static typelib_TypeClass cpp2uno_call(
+     }
+ }
+ 
+-
++#if _CALL_ELF == 2
++#  define PARAMSAVE 32
++#else
++#  define PARAMSAVE 48
++#endif
+ 
+ static typelib_TypeClass cpp_mediate(
+     sal_uInt64 nOffsetAndIndex,
+@@ -334,7 +343,7 @@ static typelib_TypeClass cpp_mediate(
+     sal_Int32 nFunctionIndex = (nOffsetAndIndex & 0xFFFFFFFF);
+ 
+     long sf = *(long*)sp;
+-    void ** ovrflw = (void**)(sf + 112);
++    void ** ovrflw = (void**)(sf + PARAMSAVE + 64);
+ 
+     // gpreg:  [ret *], this, [other gpr params]
+     // fpreg:  [fpr params]
+@@ -540,7 +549,11 @@ extern "C" void privateSnippetExecutor( ... )
+                 "mr     %0,    1\n\t"
+                 : "=r" (sp) : );
+ 
++#if _CALL_ELF == 2
++    volatile long nRegReturn[2];
++#else
+     volatile long nRegReturn[1];
++#endif
+ 
+     typelib_TypeClass aType =
+         cpp_mediate( nOffsetAndIndex, (void**)gpreg, (void**)fpreg, sp, (sal_Int64*)nRegReturn);
+@@ -583,14 +596,22 @@ extern "C" void privateSnippetExecutor( ... )
+         default:
+             __asm__( "ld 3,%0\n\t"
+                 : : "m" (nRegReturn[0]) );
++#if _CALL_ELF == 2
++            __asm__( "ld 4,%0\n\t"
++                : : "m" (nRegReturn[1]) );
++#endif
+             break;
+     }
+ }
+ 
++#if _CALL_ELF == 2
++const int codeSnippetSize = 32;
++#else
+ const int codeSnippetSize = 24;
++#endif
+ 
+ unsigned char *  codeSnippet( unsigned char * code, sal_Int32 nFunctionIndex, sal_Int32 nVtableOffset,
+-                              bool simpleRetType)
++                              bool bHasHiddenParam)
+ {
+ #if OSL_DEBUG_LEVEL > 2
+     fprintf(stderr,"in codeSnippet functionIndex is %x\n", nFunctionIndex);
+@@ -599,15 +620,27 @@ unsigned char *  codeSnippet( unsigned char * code, sal_Int32 nFunctionIndex, sa
+ 
+     sal_uInt64 nOffsetAndIndex = ( ( (sal_uInt64) nVtableOffset ) << 32 ) | ( (sal_uInt64) nFunctionIndex );
+ 
+-    if ( !simpleRetType )
++    if ( bHasHiddenParam )
+         nOffsetAndIndex |= 0x80000000;
+-
++#if _CALL_ELF == 2
++    unsigned int *raw = (unsigned int *)&code[0];
++
++    raw[0] = 0xe96c0018;        /* 0:   ld      11,2f-0b(12)    */
++    raw[1] = 0xe98c0010;        /*      ld      12,1f-0b(12)    */
++    raw[2] = 0x7d8903a6;        /*      mtctr   12              */
++    raw[3] = 0x4e800420;        /*      bctr                    */
++                                /* 1:   .quad   function_addr   */
++                                /* 2:   .quad   context         */
++    *(void **)&raw[4] = (void *)privateSnippetExecutor;
++    *(void **)&raw[6] = (void*)nOffsetAndIndex;
++#else
+     void ** raw = (void **)&code[0];
+     memcpy(raw, (char*) privateSnippetExecutor, 16);
+     raw[2] = (void*) nOffsetAndIndex;
++#endif
+ #if OSL_DEBUG_LEVEL > 2
+     fprintf(stderr, "in: offset/index is %x %x %d, %lx\n",
+-    nFunctionIndex, nVtableOffset, !simpleRetType, raw[2]);
++    nFunctionIndex, nVtableOffset, bHasHiddenParam, raw[2]);
+ #endif
+     return (code + codeSnippetSize);
+ }
+@@ -673,7 +706,7 @@ unsigned char * bridges::cpp_uno::shared::VtableFactory::addLocalFunctions(
+             (s++)->fn = code + writetoexecdiff;
+             code = codeSnippet(
+                 code, functionOffset++, vtableOffset,
+-                bridges::cpp_uno::shared::isSimpleType(
++                ppc64::return_in_hidden_param(
+                     reinterpret_cast<
+                     typelib_InterfaceAttributeTypeDescription * >(
+                         member)->pAttributeTypeRef));
+@@ -684,7 +717,7 @@ unsigned char * bridges::cpp_uno::shared::VtableFactory::addLocalFunctions(
+                     member)->bReadOnly)
+             {
+                 (s++)->fn = code + writetoexecdiff;
+-                code = codeSnippet(code, functionOffset++, vtableOffset, true);
++                code = codeSnippet(code, functionOffset++, vtableOffset, false);
+             }
+             break;
+ 
+@@ -692,7 +725,7 @@ unsigned char * bridges::cpp_uno::shared::VtableFactory::addLocalFunctions(
+             (s++)->fn = code + writetoexecdiff;
+             code = codeSnippet(
+                 code, functionOffset++, vtableOffset,
+-                bridges::cpp_uno::shared::isSimpleType(
++                ppc64::return_in_hidden_param(
+                     reinterpret_cast<
+                     typelib_InterfaceMethodTypeDescription * >(
+                         member)->pReturnTypeRef));
+diff --git a/bridges/source/cpp_uno/gcc3_linux_powerpc64/share.hxx b/bridges/source/cpp_uno/gcc3_linux_powerpc64/share.hxx
+index 87303b6..b5f609a 100644
+--- a/bridges/source/cpp_uno/gcc3_linux_powerpc64/share.hxx
++++ b/bridges/source/cpp_uno/gcc3_linux_powerpc64/share.hxx
+@@ -85,6 +85,7 @@ void fillUnoException(
+ namespace ppc64
+ {
+     enum ppclimits { MAX_GPR_REGS = 8, MAX_SSE_REGS = 13 };
++    bool return_in_hidden_param( typelib_TypeDescriptionReference *pTypeRef );
+ }
+ 
+ #endif
+diff --git a/bridges/source/cpp_uno/gcc3_linux_powerpc64/uno2cpp.cxx b/bridges/source/cpp_uno/gcc3_linux_powerpc64/uno2cpp.cxx
+index c047ebf..391ef219 100644
+--- a/bridges/source/cpp_uno/gcc3_linux_powerpc64/uno2cpp.cxx
++++ b/bridges/source/cpp_uno/gcc3_linux_powerpc64/uno2cpp.cxx
+@@ -37,9 +37,59 @@
+ using namespace ::rtl;
+ using namespace ::com::sun::star::uno;
+ 
+-void MapReturn(long r3, double dret, typelib_TypeClass eTypeClass, void *pRegisterReturn)
++namespace ppc64
+ {
+-    switch (eTypeClass)
++#if _CALL_ELF == 2
++    bool is_complex_struct(const typelib_TypeDescription * type)
++    {
++        const typelib_CompoundTypeDescription * p
++            = reinterpret_cast< const typelib_CompoundTypeDescription * >(type);
++        for (sal_Int32 i = 0; i < p->nMembers; ++i)
++        {
++            if (p->ppTypeRefs[i]->eTypeClass == typelib_TypeClass_STRUCT ||
++                p->ppTypeRefs[i]->eTypeClass == typelib_TypeClass_EXCEPTION)
++            {
++                typelib_TypeDescription * t = 0;
++                TYPELIB_DANGER_GET(&t, p->ppTypeRefs[i]);
++                bool b = is_complex_struct(t);
++                TYPELIB_DANGER_RELEASE(t);
++                if (b) {
++                    return true;
++                }
++            }
++            else if (!bridges::cpp_uno::shared::isSimpleType(p->ppTypeRefs[i]->eTypeClass))
++                return true;
++        }
++        if (p->pBaseTypeDescription != 0)
++            return is_complex_struct(&p->pBaseTypeDescription->aBase);
++        return false;
++    }
++#endif
++
++    bool return_in_hidden_param( typelib_TypeDescriptionReference *pTypeRef )
++    {
++        if (bridges::cpp_uno::shared::isSimpleType(pTypeRef))
++            return false;
++#if _CALL_ELF == 2
++        else if (pTypeRef->eTypeClass == typelib_TypeClass_STRUCT || pTypeRef->eTypeClass == typelib_TypeClass_EXCEPTION)
++        {
++            typelib_TypeDescription * pTypeDescr = 0;
++            TYPELIB_DANGER_GET( &pTypeDescr, pTypeRef );
++
++            //A Composite Type not larger than 16 bytes is returned in up to two GPRs
++            bool bRet = pTypeDescr->nSize > 16 || is_complex_struct(pTypeDescr);
++
++            TYPELIB_DANGER_RELEASE( pTypeDescr );
++            return bRet;
++        }
++#endif
++        return true;
++    }
++}
++
++void MapReturn(long r3, long r4, double dret, typelib_TypeDescriptionReference* pReturnType, void *pRegisterReturn)
++{
++    switch (pReturnType->eTypeClass)
+     {
+     case typelib_TypeClass_HYPER:
+     case typelib_TypeClass_UNSIGNED_HYPER:
+@@ -65,6 +115,17 @@ void MapReturn(long r3, double dret, typelib_TypeClass eTypeClass, void *pRegist
+     case typelib_TypeClass_DOUBLE:
+             *reinterpret_cast<double *>( pRegisterReturn ) = dret;
+             break;
++#if _CALL_ELF == 2
++    case typelib_TypeClass_STRUCT:
++    case typelib_TypeClass_EXCEPTION:
++            if (!ppc64::return_in_hidden_param(pReturnType))
++            {
++                sal_uInt64 *pRegisters = reinterpret_cast<sal_uInt64*>(pRegisterReturn);
++                pRegisters[0] = r3;
++                if (pReturnType->pType->nSize > 8)
++                    pRegisters[1] = r4;
++            }
++#endif
+     default:
+             break;
+     }
+@@ -114,7 +175,11 @@ static void callVirtualMethod(void * pThis, sal_uInt32 nVtableIndex,
+     pMethod += 8 * nVtableIndex;
+     pMethod = *((sal_uInt64 *)pMethod);
+ 
++#if _CALL_ELF == 2
++    typedef void (* FunctionCall )(...);
++#else
+     typedef void (* FunctionCall )( sal_uInt64, sal_uInt64, sal_uInt64, sal_uInt64, sal_uInt64, sal_uInt64, sal_uInt64, sal_uInt64 );
++#endif
+     FunctionCall pFunc = (FunctionCall)pMethod;
+ 
+     volatile double dret;
+@@ -168,7 +233,7 @@ static void callVirtualMethod(void * pThis, sal_uInt32 nVtableIndex,
+                 "fmr    %0,     1\n\t"
+                 : "=f" (dret), "=r" (r3), "=r" (r4) : );
+ 
+-    MapReturn(r3, dret, pReturnTypeDescr->eTypeClass, pRegisterReturn);
++    MapReturn(r3, r4, dret, reinterpret_cast<typelib_TypeDescriptionReference *>(pReturnTypeDescr), pRegisterReturn);
+ }
+ 
+ // Macros for easier insertion of values to registers or stack
+@@ -251,14 +316,18 @@ static void cpp_call(
+ 
+     void * pCppReturn = 0; // if != 0 && != pUnoReturn, needs reconversion
+ 
+-        bool bOverflow = false;
++    bool bOverflow = false;
++    bool bSimpleReturn = true;
+ 
+     if (pReturnTypeDescr)
+     {
+ #if OSL_DEBUG_LEVEL > 2
+         fprintf(stderr, "return type is %d\n", pReturnTypeDescr->eTypeClass);
+ #endif
+-        if (bridges::cpp_uno::shared::isSimpleType( pReturnTypeDescr ))
++        if (ppc64::return_in_hidden_param(pReturnTypeRef))
++            bSimpleReturn = false;
++
++        if (bSimpleReturn)
+         {
+             pCppReturn = pUnoReturn; // direct way for simple types
+ #if OSL_DEBUG_LEVEL > 2
+diff --git a/configure.ac b/configure.ac
+index 2f19999..809b353 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -4377,6 +4377,13 @@ linux-gnu*)
+         PLATFORMID=linux_powerpc64
+         OUTPATH=unxlngppc64
+         ;;
++    powerpc64le)
++        CPUNAME=POWERPC64
++        RTL_ARCH=PowerPC_64_LE
++        LIB64="lib64"
++        PLATFORMID=linux_powerpc64_le
++        OUTPATH=unxlngppc64
++        ;;
+     sparc)
+         CPUNAME=SPARC
+         RTL_ARCH=SPARC
+@@ -7234,7 +7241,7 @@ then
+         powerpc)
+             my_java_arch=ppc
+             ;;
+-        powerpc64)
++        powerpc64*)
+             my_java_arch=ppc64
+             ;;
+         x86_64)
+diff --git a/desktop/source/deployment/misc/dp_platform.cxx b/desktop/source/deployment/misc/dp_platform.cxx
+index 09b3fcd..a198154 100644
+--- a/desktop/source/deployment/misc/dp_platform.cxx
++++ b/desktop/source/deployment/misc/dp_platform.cxx
+@@ -35,6 +35,7 @@
+ #define PLATFORM_LINUX_SPARC        "linux_sparc"
+ #define PLATFORM_LINUX_POWERPC      "linux_powerpc"
+ #define PLATFORM_LINUX_POWERPC64    "linux_powerpc64"
++#define PLATFORM_LINUX_POWERPC64_LE "linux_powerpc64_le"
+ #define PLATFORM_LINUX_ARM_EABI     "linux_arm_eabi"
+ #define PLATFORM_LINUX_ARM_OABI     "linux_arm_oabi"
+ #define PLATFORM_LINUX_MIPS_EL      "linux_mips_el"
+@@ -129,6 +130,8 @@ namespace
+             ret = checkOSandCPU("Linux", "PowerPC");
+         else if (token == PLATFORM_LINUX_POWERPC64)
+             ret = checkOSandCPU("Linux", "PowerPC_64");
++        else if (token == PLATFORM_LINUX_POWERPC64_LE)
++            ret = checkOSandCPU("Linux", "PowerPC_64_LE");
+         else if (token == PLATFORM_LINUX_ARM_EABI)
+             ret = checkOSandCPU("Linux", "ARM_EABI");
+         else if (token == PLATFORM_LINUX_ARM_OABI)
+diff --git a/m4/ax_boost_base.m4 b/m4/ax_boost_base.m4
+index 7a0cf52..55de0c4 100644
+--- a/m4/ax_boost_base.m4
++++ b/m4/ax_boost_base.m4
+@@ -91,7 +91,7 @@ if test "x$want_boost" = "xyes"; then
+     dnl are found, e.g. when only header-only libraries are installed!
+     libsubdirs="lib"
+     ax_arch=`uname -m`
+-    if test $ax_arch = x86_64 -o $ax_arch = ppc64 -o $ax_arch = s390x -o $ax_arch = sparc64 -o $ax_arch = aarch64; then
++    if test $ax_arch = x86_64 -o $ax_arch = ppc64 -o $ax_arch = ppc64le -o $ax_arch = s390x -o $ax_arch = sparc64 -o $ax_arch = aarch64; then
+         libsubdirs="lib64 lib lib64"
+     fi
+ 
+-- 
+cgit v0.10.2
+
