@@ -1,4 +1,3 @@
-From c796db004d463cb60a5b4489a868ae8dd377d0df Mon Sep 17 00:00:00 2001
 From: Tobias Lippert <drtl@fastmail.fm>
 Date: Sat, 19 Jul 2014 13:39:21 +0200
 Subject: [PATCH] fdo#81532 Handle symlinks to icon themes correctly
@@ -6,10 +5,12 @@ Subject: [PATCH] fdo#81532 Handle symlinks to icon themes correctly
 - added logging for icon theme scanning.
 
 Change-Id: I799c5fc09879411020142f7808da0d9f2f63dc17
+
 ---
+ vcl/source/app/IconThemeScanner.cxx | 68 +++++++++++++++++++++++--------------
+ 1 file changed, 43 insertions(+), 25 deletions(-)
 
 diff --git a/vcl/source/app/IconThemeScanner.cxx b/vcl/source/app/IconThemeScanner.cxx
-index 9684bb6..29d3cd7 100644
 --- a/vcl/source/app/IconThemeScanner.cxx
 +++ b/vcl/source/app/IconThemeScanner.cxx
 @@ -12,6 +12,7 @@
@@ -20,7 +21,7 @@ index 9684bb6..29d3cd7 100644
  
  #include <vcl/svapp.hxx>
  #include <vcl/IconThemeInfo.hxx>
-@@ -20,24 +21,34 @@
+@@ -20,24 +21,34 @@ namespace vcl {
  
  namespace {
  
@@ -42,16 +43,14 @@ index 9684bb6..29d3cd7 100644
 -    osl::FileBase::RC retvalStatus = dirItem.getFileStatus(fileStatus);
 +    osl::FileBase::RC retvalStatus = dirItem.getFileStatus(status);
      if (retvalStatus != osl::FileBase::E_None) {
--        return false;
--    }
--
--    if (!fileStatus.isDirectory()) {
 +        SAL_WARN(LOG_AREA, "Could not determine status for file '" << file << "'.");
          return false;
      }
-     return true;
++    return true;
 +}
-+
+ 
+-    if (!fileStatus.isDirectory()) {
+-        return false;
 +OUString convert_to_absolute_path(const OUString& path)
 +{
 +    salhelper::LinkResolver resolver(0);
@@ -59,12 +58,13 @@ index 9684bb6..29d3cd7 100644
 +    if (rc != osl::FileBase::E_None) {
 +        SAL_WARN(LOG_AREA, "Could not resolve path '" << path << "' to search for icon themes.");
 +        throw std::runtime_error("Provided a recursive symlink to a icon theme directory that could not be resolved.");
-+    }
+     }
+-    return true;
 +    return resolver.m_aStatus.getFileURL();
  }
  
  }
-@@ -48,12 +59,20 @@
+@@ -48,12 +59,20 @@ IconThemeScanner::IconThemeScanner()
  bool
  IconThemeScanner::ScanDirectoryForIconThemes(const OUString& path)
  {
@@ -73,13 +73,13 @@ index 9684bb6..29d3cd7 100644
 +    osl::FileStatus fileStatus(osl_FileStatus_Mask_Type);
 +    bool couldSetFileStatus = set_file_status(fileStatus, path);
 +    if (!couldSetFileStatus) {
-         return false;
-     }
++        return false;
++    }
 +
 +    if (!fileStatus.isDirectory()) {
 +        SAL_INFO(LOG_AREA, "Cannot search for icon themes in '"<< path << "'. It is not a directory.");
-+        return false;
-+    }
+         return false;
+     }
 +
      std::vector<OUString> iconThemePaths = ReadIconThemesFromPath(path);
      if (iconThemePaths.empty()) {
@@ -87,7 +87,7 @@ index 9684bb6..29d3cd7 100644
          return false;
      }
      mFoundIconThemes.clear();
-@@ -70,8 +89,11 @@
+@@ -70,8 +89,11 @@ IconThemeScanner::AddIconThemeByPath(const OUString &url)
      if (!IconThemeInfo::UrlCanBeParsed(url)) {
          return false;
      }
@@ -99,7 +99,7 @@ index 9684bb6..29d3cd7 100644
      return true;
  }
  
-@@ -79,6 +101,7 @@
+@@ -79,6 +101,7 @@ IconThemeScanner::AddIconThemeByPath(const OUString &url)
  IconThemeScanner::ReadIconThemesFromPath(const OUString& dir)
  {
      std::vector<OUString> found;
@@ -107,19 +107,19 @@ index 9684bb6..29d3cd7 100644
  
      osl::Directory dirToScan(dir);
      osl::FileBase::RC retvalOpen = dirToScan.open();
-@@ -93,15 +116,12 @@
+@@ -93,15 +116,12 @@ IconThemeScanner::ReadIconThemesFromPath(const OUString& dir)
          if (retvalStatus != osl::FileBase::E_None) {
              continue;
          }
 -        if (!status.isRegular()) {
+-            continue;
+-        }
+-        if (!FileIsValidIconTheme(status.getFileURL())) {
 +
 +        OUString filename = convert_to_absolute_path(status.getFileURL());
 +        if (!FileIsValidIconTheme(filename)) {
              continue;
          }
--        if (!FileIsValidIconTheme(status.getFileURL())) {
--            continue;
--        }
 -        OUString entry;
 -        entry = status.getFileURL();
 -        found.push_back(entry);
@@ -127,7 +127,7 @@ index 9684bb6..29d3cd7 100644
      }
      return found;
  }
-@@ -111,20 +131,16 @@
+@@ -111,20 +131,16 @@ IconThemeScanner::FileIsValidIconTheme(const OUString& filename)
  {
      // check whether we can construct a IconThemeInfo from it
      if (!IconThemeInfo::UrlCanBeParsed(filename)) {
@@ -152,7 +152,7 @@ index 9684bb6..29d3cd7 100644
      if (!fileStatus.isRegular()) {
          return false;
      }
-@@ -178,6 +194,8 @@
+@@ -178,6 +194,8 @@ IconThemeScanner::GetIconThemeInfo(const OUString& themeId)
      std::vector<IconThemeInfo>::iterator info = std::find_if(mFoundIconThemes.begin(), mFoundIconThemes.end(),
          SameTheme(themeId));
      if (info == mFoundIconThemes.end()) {
@@ -161,3 +161,6 @@ index 9684bb6..29d3cd7 100644
          throw std::runtime_error("Requested information on not-installed icon theme");
      }
      return *info;
+-- 
+1.9.1
+
