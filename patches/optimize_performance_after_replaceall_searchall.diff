@@ -1,7 +1,27 @@
-Index: libreoffice-4.2.6.3/sc/inc/column.hxx
+From ee5f1d8af0eec06f185b8511b9b11192f802148b Mon Sep 17 00:00:00 2001
+From: Debian LibreOffice Maintainers <debian-openoffice@lists.debian.org>
+Date: Fri, 17 Oct 2014 23:53:24 +0200
+Subject: [PATCH] optimize_performance_after_replaceall_searchall.diff
+
+  * Optimize performance after replaceall & searchall  (LP: #1342175)
+    - upstream 1cf19ea84794ca065749667b480dfed2d27d47b7
+    - upstream 1e721077b43de84edab2a3ed2f316ddcbec6e3ec
+    - upstream 91502a72c12c559442e8bf77c27a516b49c2a68d
+
 ===================================================================
---- libreoffice-4.2.6.3.orig/sc/inc/column.hxx	2014-08-22 14:22:41.000000000 +0000
-+++ libreoffice-4.2.6.3/sc/inc/column.hxx	2014-10-16 09:40:12.721992999 +0000
+---
+ sc/inc/column.hxx                     |  3 ++-
+ sc/inc/columnspanset.hxx              |  3 +++
+ sc/source/core/data/column2.cxx       |  4 ++--
+ sc/source/core/data/columnspanset.cxx | 14 +++++++++++---
+ sc/source/core/data/table2.cxx        | 30 ++++++++++++++++++++++--------
+ sc/source/core/data/table3.cxx        |  4 +++-
+ 6 files changed, 43 insertions(+), 15 deletions(-)
+
+diff --git a/sc/inc/column.hxx b/sc/inc/column.hxx
+index 66cd524..9911772 100644
+--- a/sc/inc/column.hxx
++++ b/sc/inc/column.hxx
 @@ -24,6 +24,7 @@
  #include "global.hxx"
  #include "address.hxx"
@@ -10,7 +30,7 @@ Index: libreoffice-4.2.6.3/sc/inc/column.hxx
  #include "types.hxx"
  #include "mtvelements.hxx"
  #include "formula/types.hxx"
-@@ -251,7 +252,7 @@
+@@ -255,7 +256,7 @@ public:
      ScAttrIterator* CreateAttrIterator( SCROW nStartRow, SCROW nEndRow ) const;
  
      void UpdateSelectionFunction(
@@ -19,11 +39,11 @@ Index: libreoffice-4.2.6.3/sc/inc/column.hxx
  
      void CopyToColumn(
          sc::CopyToDocContext& rCxt, SCROW nRow1, SCROW nRow2, sal_uInt16 nFlags, bool bMarked,
-Index: libreoffice-4.2.6.3/sc/inc/columnspanset.hxx
-===================================================================
---- libreoffice-4.2.6.3.orig/sc/inc/columnspanset.hxx	2014-08-22 14:22:41.000000000 +0000
-+++ libreoffice-4.2.6.3/sc/inc/columnspanset.hxx	2014-10-16 09:40:52.649992999 +0000
-@@ -20,6 +20,7 @@
+diff --git a/sc/inc/columnspanset.hxx b/sc/inc/columnspanset.hxx
+index c12f13e..af1cc6e 100644
+--- a/sc/inc/columnspanset.hxx
++++ b/sc/inc/columnspanset.hxx
+@@ -20,6 +20,7 @@ class ScDocument;
  class ScColumn;
  class ScMarkData;
  class ScRange;
@@ -31,7 +51,7 @@ Index: libreoffice-4.2.6.3/sc/inc/columnspanset.hxx
  
  namespace sc {
  
-@@ -124,6 +125,8 @@
+@@ -124,6 +125,8 @@ public:
       */
      void scan(const ScMarkData& rMark, SCTAB nTab, SCCOL nCol);
  
@@ -40,11 +60,11 @@ Index: libreoffice-4.2.6.3/sc/inc/columnspanset.hxx
      void set(SCROW nRow1, SCROW nRow2, bool bVal);
  
      void getRows(std::vector<SCROW> &rRows) const;
-Index: libreoffice-4.2.6.3/sc/source/core/data/column2.cxx
-===================================================================
---- libreoffice-4.2.6.3.orig/sc/source/core/data/column2.cxx	2014-08-22 14:22:41.000000000 +0000
-+++ libreoffice-4.2.6.3/sc/source/core/data/column2.cxx	2014-10-16 09:41:40.389992999 +0000
-@@ -3374,10 +3374,10 @@
+diff --git a/sc/source/core/data/column2.cxx b/sc/source/core/data/column2.cxx
+index a8ba063..d64e575 100644
+--- a/sc/source/core/data/column2.cxx
++++ b/sc/source/core/data/column2.cxx
+@@ -3352,10 +3352,10 @@ public:
  
  //  multiple selections:
  void ScColumn::UpdateSelectionFunction(
@@ -57,23 +77,24 @@ Index: libreoffice-4.2.6.3/sc/source/core/data/column2.cxx
  
      // Exclude all hidden rows.
      ScFlatBoolRowSegments::RangeData aRange;
-Index: libreoffice-4.2.6.3/sc/source/core/data/columnspanset.cxx
-===================================================================
---- libreoffice-4.2.6.3.orig/sc/source/core/data/columnspanset.cxx	2014-08-22 14:22:41.000000000 +0000
-+++ libreoffice-4.2.6.3/sc/source/core/data/columnspanset.cxx	2014-10-16 09:43:22.309992999 +0000
-@@ -275,9 +275,17 @@
+diff --git a/sc/source/core/data/columnspanset.cxx b/sc/source/core/data/columnspanset.cxx
+index 7bc517b..b46033b 100644
+--- a/sc/source/core/data/columnspanset.cxx
++++ b/sc/source/core/data/columnspanset.cxx
+@@ -275,9 +275,17 @@ void SingleColumnSpanSet::scan(const ScMarkData& rMark, SCTAB nTab, SCCOL nCol)
          return;
  
      ScRangeList aRanges = rMark.GetMarkedRanges();
 -    for (size_t i = 0, n = aRanges.size(); i < n; ++i)
+-    {
+-        const ScRange* p = aRanges[i];
 +    scan(aRanges, nTab, nCol);
 +}
 +
 +void SingleColumnSpanSet::scan(const ScRangeList& rRanges, SCTAB nTab, SCCOL nCol)
 +{
 +    for (size_t i = 0, n = rRanges.size(); i < n; ++i)
-     {
--        const ScRange* p = aRanges[i];
++     {
 +        const ScRange* p = rRanges[i];
 +        if (nTab < p->aStart.Tab() || p->aEnd.Tab() < nTab)
 +            continue;
@@ -81,11 +102,11 @@ Index: libreoffice-4.2.6.3/sc/source/core/data/columnspanset.cxx
          if (nCol < p->aStart.Col() || p->aEnd.Col() < nCol)
              // This column is not in this range. Skip it.
              continue;
-Index: libreoffice-4.2.6.3/sc/source/core/data/table2.cxx
-===================================================================
---- libreoffice-4.2.6.3.orig/sc/source/core/data/table2.cxx	2014-08-22 14:22:41.000000000 +0000
-+++ libreoffice-4.2.6.3/sc/source/core/data/table2.cxx	2014-10-16 09:45:16.581992999 +0000
-@@ -1903,10 +1903,17 @@
+diff --git a/sc/source/core/data/table2.cxx b/sc/source/core/data/table2.cxx
+index 1a37801..e700987 100644
+--- a/sc/source/core/data/table2.cxx
++++ b/sc/source/core/data/table2.cxx
+@@ -1897,10 +1897,17 @@ bool ScTable::HasAttrib( SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2, sal
  
  bool ScTable::HasAttribSelection( const ScMarkData& rMark, sal_uInt16 nMask ) const
  {
@@ -107,7 +128,7 @@ Index: libreoffice-4.2.6.3/sc/source/core/data/table2.cxx
  }
  
  
-@@ -2177,10 +2184,17 @@
+@@ -2171,10 +2178,17 @@ bool ScTable::HasBlockMatrixFragment( SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCR
  
  bool ScTable::HasSelectionMatrixFragment( const ScMarkData& rMark ) const
  {
@@ -129,19 +150,19 @@ Index: libreoffice-4.2.6.3/sc/source/core/data/table2.cxx
  }
  
  
-Index: libreoffice-4.2.6.3/sc/source/core/data/table3.cxx
-===================================================================
---- libreoffice-4.2.6.3.orig/sc/source/core/data/table3.cxx	2014-08-22 14:22:41.000000000 +0000
-+++ libreoffice-4.2.6.3/sc/source/core/data/table3.cxx	2014-10-16 09:46:26.129992999 +0000
+diff --git a/sc/source/core/data/table3.cxx b/sc/source/core/data/table3.cxx
+index 946416d..4711356 100644
+--- a/sc/source/core/data/table3.cxx
++++ b/sc/source/core/data/table3.cxx
 @@ -61,6 +61,7 @@
  #include <listenercontext.hxx>
  #include <sharedformula.hxx>
  #include <refhint.hxx>
 +#include "rangelst.hxx"
+ #include <listenerquery.hxx>
+ #include <bcaslot.hxx>
  
- #include "svl/sharedstringpool.hxx"
- 
-@@ -2708,12 +2709,13 @@
+@@ -2999,12 +3000,13 @@ xub_StrLen ScTable::GetMaxNumberStringLen(
  
  void ScTable::UpdateSelectionFunction( ScFunctionData& rData, const ScMarkData& rMark )
  {
@@ -156,3 +177,6 @@ Index: libreoffice-4.2.6.3/sc/source/core/data/table3.cxx
      }
  }
  
+-- 
+1.9.1
+
