@@ -1,0 +1,158 @@
+Index: libreoffice-4.2.6.3/sc/inc/column.hxx
+===================================================================
+--- libreoffice-4.2.6.3.orig/sc/inc/column.hxx	2014-08-22 14:22:41.000000000 +0000
++++ libreoffice-4.2.6.3/sc/inc/column.hxx	2014-10-16 09:40:12.721992999 +0000
+@@ -24,6 +24,7 @@
+ #include "global.hxx"
+ #include "address.hxx"
+ #include "rangenam.hxx"
++#include "rangelst.hxx"
+ #include "types.hxx"
+ #include "mtvelements.hxx"
+ #include "formula/types.hxx"
+@@ -251,7 +252,7 @@
+     ScAttrIterator* CreateAttrIterator( SCROW nStartRow, SCROW nEndRow ) const;
+ 
+     void UpdateSelectionFunction(
+-        const ScMarkData& rMark, ScFunctionData& rData, ScFlatBoolRowSegments& rHiddenRows );
++        const ScRangeList& rRanges, ScFunctionData& rData, ScFlatBoolRowSegments& rHiddenRows );
+ 
+     void CopyToColumn(
+         sc::CopyToDocContext& rCxt, SCROW nRow1, SCROW nRow2, sal_uInt16 nFlags, bool bMarked,
+Index: libreoffice-4.2.6.3/sc/inc/columnspanset.hxx
+===================================================================
+--- libreoffice-4.2.6.3.orig/sc/inc/columnspanset.hxx	2014-08-22 14:22:41.000000000 +0000
++++ libreoffice-4.2.6.3/sc/inc/columnspanset.hxx	2014-10-16 09:40:52.649992999 +0000
+@@ -20,6 +20,7 @@
+ class ScColumn;
+ class ScMarkData;
+ class ScRange;
++class ScRangeList;
+ 
+ namespace sc {
+ 
+@@ -124,6 +125,8 @@
+      */
+     void scan(const ScMarkData& rMark, SCTAB nTab, SCCOL nCol);
+ 
++    void scan(const ScRangeList& rRanges, SCTAB nTab, SCCOL nCol);
++
+     void set(SCROW nRow1, SCROW nRow2, bool bVal);
+ 
+     void getRows(std::vector<SCROW> &rRows) const;
+Index: libreoffice-4.2.6.3/sc/source/core/data/column2.cxx
+===================================================================
+--- libreoffice-4.2.6.3.orig/sc/source/core/data/column2.cxx	2014-08-22 14:22:41.000000000 +0000
++++ libreoffice-4.2.6.3/sc/source/core/data/column2.cxx	2014-10-16 09:41:40.389992999 +0000
+@@ -3374,10 +3374,10 @@
+ 
+ //  multiple selections:
+ void ScColumn::UpdateSelectionFunction(
+-    const ScMarkData& rMark, ScFunctionData& rData, ScFlatBoolRowSegments& rHiddenRows )
++    const ScRangeList& rRanges, ScFunctionData& rData, ScFlatBoolRowSegments& rHiddenRows )
+ {
+     sc::SingleColumnSpanSet aSpanSet;
+-    aSpanSet.scan(rMark, nTab, nCol); // mark all selected rows.
++    aSpanSet.scan(rRanges, nTab, nCol); // mark all selected rows.
+ 
+     // Exclude all hidden rows.
+     ScFlatBoolRowSegments::RangeData aRange;
+Index: libreoffice-4.2.6.3/sc/source/core/data/columnspanset.cxx
+===================================================================
+--- libreoffice-4.2.6.3.orig/sc/source/core/data/columnspanset.cxx	2014-08-22 14:22:41.000000000 +0000
++++ libreoffice-4.2.6.3/sc/source/core/data/columnspanset.cxx	2014-10-16 09:43:22.309992999 +0000
+@@ -275,9 +275,17 @@
+         return;
+ 
+     ScRangeList aRanges = rMark.GetMarkedRanges();
+-    for (size_t i = 0, n = aRanges.size(); i < n; ++i)
++    scan(aRanges, nTab, nCol);
++}
++
++void SingleColumnSpanSet::scan(const ScRangeList& rRanges, SCTAB nTab, SCCOL nCol)
++{
++    for (size_t i = 0, n = rRanges.size(); i < n; ++i)
+     {
+-        const ScRange* p = aRanges[i];
++        const ScRange* p = rRanges[i];
++        if (nTab < p->aStart.Tab() || p->aEnd.Tab() < nTab)
++            continue;
++
+         if (nCol < p->aStart.Col() || p->aEnd.Col() < nCol)
+             // This column is not in this range. Skip it.
+             continue;
+Index: libreoffice-4.2.6.3/sc/source/core/data/table2.cxx
+===================================================================
+--- libreoffice-4.2.6.3.orig/sc/source/core/data/table2.cxx	2014-08-22 14:22:41.000000000 +0000
++++ libreoffice-4.2.6.3/sc/source/core/data/table2.cxx	2014-10-16 09:45:16.581992999 +0000
+@@ -1903,10 +1903,17 @@
+ 
+ bool ScTable::HasAttribSelection( const ScMarkData& rMark, sal_uInt16 nMask ) const
+ {
+-    bool bFound = false;
+-    for (SCCOL i=0; i<=MAXCOL && !bFound; i++)
+-        bFound |= aCol[i].HasAttribSelection( rMark, nMask );
+-    return bFound;
++    std::vector<sc::ColRowSpan> aSpans = rMark.GetMarkedColSpans();
++
++    for (size_t i = 0; i < aSpans.size(); ++i)
++    {
++        for (SCCOLROW j = aSpans[i].mnStart; j < aSpans[i].mnEnd; ++j)
++        {
++            if (aCol[j].HasAttribSelection(rMark, nMask))
++                return true;
++        }
++    }
++    return false;
+ }
+ 
+ 
+@@ -2177,10 +2184,17 @@
+ 
+ bool ScTable::HasSelectionMatrixFragment( const ScMarkData& rMark ) const
+ {
+-    bool bFound = false;
+-    for (SCCOL i=0; i<=MAXCOL && !bFound; i++)
+-        bFound |= aCol[i].HasSelectionMatrixFragment(rMark);
+-    return bFound;
++    std::vector<sc::ColRowSpan> aSpans = rMark.GetMarkedColSpans();
++
++    for ( size_t i=0; i<aSpans.size(); i++ )
++    {
++        for ( SCCOLROW j=aSpans[i].mnStart; j<aSpans[i].mnEnd; j++ )
++        {
++            if ( aCol[j].HasSelectionMatrixFragment(rMark) )
++                return true;
++        }
++    }
++    return false;
+ }
+ 
+ 
+Index: libreoffice-4.2.6.3/sc/source/core/data/table3.cxx
+===================================================================
+--- libreoffice-4.2.6.3.orig/sc/source/core/data/table3.cxx	2014-08-22 14:22:41.000000000 +0000
++++ libreoffice-4.2.6.3/sc/source/core/data/table3.cxx	2014-10-16 09:46:26.129992999 +0000
+@@ -61,6 +61,7 @@
+ #include <listenercontext.hxx>
+ #include <sharedformula.hxx>
+ #include <refhint.hxx>
++#include "rangelst.hxx"
+ 
+ #include "svl/sharedstringpool.hxx"
+ 
+@@ -2708,12 +2709,13 @@
+ 
+ void ScTable::UpdateSelectionFunction( ScFunctionData& rData, const ScMarkData& rMark )
+ {
++    ScRangeList aRanges = rMark.getMarkedRanges();
+     for (SCCOL nCol = 0; nCol <= MAXCOL && !rData.bError; ++nCol)
+     {
+         if (pColFlags && ColHidden(nCol))
+             continue;
+ 
+-        aCol[nCol].UpdateSelectionFunction(rMark, rData, *mpHiddenRows);
++        aCol[nCol].UpdateSelectionFunction(aRanges, rData, *mpHiddenRows);
+     }
+ }
+ 
