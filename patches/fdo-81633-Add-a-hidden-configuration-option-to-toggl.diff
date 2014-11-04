@@ -1,0 +1,593 @@
+From 67f3ce3a9df2bc62db5602dd84975047c1137b92 Mon Sep 17 00:00:00 2001
+From: Kohei Yoshida <kohei.yoshida@collabora.com>
+Date: Thu, 9 Oct 2014 16:21:59 +0100
+Subject: [PATCH] fdo#81633: Add a hidden configuration option to toggle ref
+ update on sort.
+
+This option is defaulted to off for 4.3 for back-compatibility.
+
+Reviewed-on: https://gerrit.libreoffice.org/11902
+Reviewed-by: Muthu Subramanian K <muthusuba@gmail.com>
+Reviewed-by: Eike Rathke <erack@redhat.com>
+Tested-by: Eike Rathke <erack@redhat.com>
+Signed-off-by: Andras Timar <andras.timar@collabora.com>
+
+Conflicts:
+	sc/inc/inputopt.hxx
+	sc/qa/unit/ucalc.cxx
+	sc/source/core/tool/inputopt.cxx
+
+Change-Id: I5ac686e96742df40f7d8ba5ffec23806db2988a6
+(cherry picked from commit c357fb2dbdc54d9ee8471ce4e9f9381e74a6deed)
+Signed-off-by: Andras Timar <andras.timar@collabora.com>
+---
+ .../registry/schema/org/openoffice/Office/Calc.xcs |  10 ++
+ sc/inc/document.hxx                                |   5 +-
+ sc/inc/inputopt.hxx                                |   3 +
+ sc/inc/sc.hrc                                      |   1 +
+ sc/inc/sortparam.hxx                               |   1 +
+ sc/inc/table.hxx                                   |   8 +-
+ sc/qa/unit/ucalc.cxx                               |  10 +-
+ sc/source/core/data/documen3.cxx                   |   5 +-
+ sc/source/core/data/table3.cxx                     | 115 ++++++++++++---------
+ sc/source/core/tool/inputopt.cxx                   |  34 +++---
+ sc/source/ui/app/scmod.cxx                         |   9 +-
+ sc/source/ui/docshell/dbdocfun.cxx                 |   5 +-
+ sc/source/ui/undo/undosort.cxx                     |   2 +
+ 13 files changed, 135 insertions(+), 73 deletions(-)
+
+diff --git a/officecfg/registry/schema/org/openoffice/Office/Calc.xcs b/officecfg/registry/schema/org/openoffice/Office/Calc.xcs
+index 0cdb9d5..54e15fc 100644
+--- a/officecfg/registry/schema/org/openoffice/Office/Calc.xcs
++++ b/officecfg/registry/schema/org/openoffice/Office/Calc.xcs
+@@ -678,6 +678,16 @@
+         </info>
+         <value>false</value>
+       </prop>
++      <prop oor:name="UpdateReferenceOnSort" oor:type="xs:boolean" oor:nillable="false">
++        <!-- OldPath: Calc/Input -->
++        <!-- OldLocation: Soffice.cfg -->
++        <!-- UIHints: Tools - Options -Spreadsheets - Input - [Section] Input -->
++        <info>
++          <desc>Specifies whether references get updated when performing sort on a range of cells.</desc>
++          <label>Update references when sorting range of cells</label>
++        </info>
++        <value>false</value>
++      </prop>
+       <prop oor:name="HighlightSelection" oor:type="xs:boolean" oor:nillable="false">
+         <!-- OldPath: Calc/Input -->
+         <!-- OldLocation: Soffice.cfg -->
+diff --git a/sc/inc/document.hxx b/sc/inc/document.hxx
+index 9d365cc..44107b4 100644
+--- a/sc/inc/document.hxx
++++ b/sc/inc/document.hxx
+@@ -1664,7 +1664,10 @@ public:
+     SC_DLLPUBLIC SvNumberFormatter* GetFormatTable() const;
+     SC_DLLPUBLIC SvNumberFormatter* CreateFormatTable() const;
+ 
+-    void Sort( SCTAB nTab, const ScSortParam& rSortParam, bool bKeepQuery, ScProgress* pProgress, sc::ReorderParam* pUndo );
++    void Sort(
++        SCTAB nTab, const ScSortParam& rSortParam, bool bKeepQuery, bool bUpdateRefs,
++        ScProgress* pProgress, sc::ReorderParam* pUndo );
++
+     void Reorder( const sc::ReorderParam& rParam, ScProgress* pProgress );
+ 
+     SCSIZE          Query( SCTAB nTab, const ScQueryParam& rQueryParam, bool bKeepSub );
+diff --git a/sc/inc/inputopt.hxx b/sc/inc/inputopt.hxx
+index 3a46bf6..3c33154 100644
+--- a/sc/inc/inputopt.hxx
++++ b/sc/inc/inputopt.hxx
+@@ -32,6 +32,7 @@ private:
+     sal_Bool        bExtendFormat;
+     sal_Bool        bRangeFinder;
+     sal_Bool        bExpandRefs;
++    sal_Bool        mbSortRefUpdate;
+     sal_Bool        bMarkHeader;
+     sal_Bool        bUseTabCol;
+     sal_Bool        bTextWysiwyg;
+@@ -57,6 +58,8 @@ public:
+     sal_Bool        GetRangeFinder() const          { return bRangeFinder;   }
+     void        SetExpandRefs(sal_Bool bSet)        { bExpandRefs = bSet;    }
+     sal_Bool        GetExpandRefs() const           { return bExpandRefs;    }
++    void        SetSortRefUpdate(sal_Bool bSet)     { mbSortRefUpdate = bSet; }
++    sal_Bool        GetSortRefUpdate() const        { return mbSortRefUpdate; }
+     void        SetMarkHeader(sal_Bool bSet)        { bMarkHeader = bSet;    }
+     sal_Bool        GetMarkHeader() const           { return bMarkHeader;    }
+     void        SetUseTabCol(sal_Bool bSet)         { bUseTabCol = bSet;     }
+diff --git a/sc/inc/sc.hrc b/sc/inc/sc.hrc
+index 8e517ae..63ff3ba 100644
+--- a/sc/inc/sc.hrc
++++ b/sc/inc/sc.hrc
+@@ -86,6 +86,7 @@
+ 
+ // TabPage entry - Legacy selection
+ #define SID_SC_INPUT_LEGACY_CELL_SELECTION (SC_VIEW_START + 15)
++#define SID_SC_OPT_SORT_REF_UPDATE         (SC_VIEW_START + 16)
+ 
+ // Format options
+ #define SID_SCFORMULAOPTIONS    (SC_VIEW_START + 20)
+diff --git a/sc/inc/sortparam.hxx b/sc/inc/sortparam.hxx
+index 4c3ef1b..b83e941 100644
+--- a/sc/inc/sortparam.hxx
++++ b/sc/inc/sortparam.hxx
+@@ -98,6 +98,7 @@ struct SC_DLLPUBLIC ReorderParam
+     bool mbByRow;
+     bool mbPattern;
+     bool mbHiddenFiltered;
++    bool mbUpdateRefs;
+ 
+     /**
+      * Reorder the position indices such that it can be used to undo the
+diff --git a/sc/inc/table.hxx b/sc/inc/table.hxx
+index 191a360..480cc2c 100644
+--- a/sc/inc/table.hxx
++++ b/sc/inc/table.hxx
+@@ -830,7 +830,9 @@ public:
+     void        ExtendHidden( SCCOL& rX1, SCROW& rY1, SCCOL& rX2, SCROW& rY2 );
+ 
+     void Sort(
+-        const ScSortParam& rSortParam, bool bKeepQuery, ScProgress* pProgress, sc::ReorderParam* pUndo );
++        const ScSortParam& rSortParam, bool bKeepQuery, bool bUpdateRefs,
++        ScProgress* pProgress, sc::ReorderParam* pUndo );
++
+     void Reorder( const sc::ReorderParam& rParam, ScProgress* pProgress );
+ 
+     bool ValidQuery(
+@@ -1007,7 +1009,9 @@ private:
+     short       Compare(SCCOLROW nIndex1, SCCOLROW nIndex2) const;
+     short       Compare( ScSortInfoArray*, SCCOLROW nIndex1, SCCOLROW nIndex2) const;
+     ScSortInfoArray* CreateSortInfoArray( const sc::ReorderParam& rParam );
+-    ScSortInfoArray* CreateSortInfoArray( const ScSortParam& rSortParam, SCCOLROW nInd1, SCCOLROW nInd2, bool bKeepQuery );
++    ScSortInfoArray* CreateSortInfoArray(
++        const ScSortParam& rSortParam, SCCOLROW nInd1, SCCOLROW nInd2,
++        bool bKeepQuery, bool bUpdateRefs );
+     void        QuickSort( ScSortInfoArray*, SCsCOLROW nLo, SCsCOLROW nHi);
+     void SortReorderByColumn( ScSortInfoArray* pArray, SCROW nRow1, SCROW nRow2, bool bPattern, ScProgress* pProgress );
+     void SortReorderByRow( ScSortInfoArray* pArray, SCCOL nCol1, SCCOL nCol2, ScProgress* pProgress );
+diff --git a/sc/qa/unit/ucalc.cxx b/sc/qa/unit/ucalc.cxx
+index fbc2919..1cfff7a 100644
+--- a/sc/qa/unit/ucalc.cxx
++++ b/sc/qa/unit/ucalc.cxx
+@@ -4277,7 +4277,7 @@ void Test::testSortWithFormulaRefs()
+     aSortData.maKeyState[0].bDoSort = true;
+     aSortData.maKeyState[0].nField = 0;
+ 
+-    pDoc->Sort(0, aSortData, false, NULL, NULL);
++    pDoc->Sort(0, aSortData, false, true, NULL, NULL);
+ 
+     nEnd = SAL_N_ELEMENTS( aResults );
+     for ( SCROW i = nStart; i < nEnd; ++i )
+@@ -4313,7 +4313,7 @@ void Test::testSortWithStrings()
+     aParam.maKeyState[0].bAscending = true;
+     aParam.maKeyState[0].nField = 1;
+ 
+-    m_pDoc->Sort(0, aParam, false, NULL, NULL);
++    m_pDoc->Sort(0, aParam, false, true, NULL, NULL);
+ 
+     CPPUNIT_ASSERT_EQUAL(OUString("Header"), m_pDoc->GetString(ScAddress(1,1,0)));
+     CPPUNIT_ASSERT_EQUAL(OUString("Val1"), m_pDoc->GetString(ScAddress(1,2,0)));
+@@ -4321,7 +4321,7 @@ void Test::testSortWithStrings()
+ 
+     aParam.maKeyState[0].bAscending = false;
+ 
+-    m_pDoc->Sort(0, aParam, false, NULL, NULL);
++    m_pDoc->Sort(0, aParam, false, true, NULL, NULL);
+ 
+     CPPUNIT_ASSERT_EQUAL(OUString("Header"), m_pDoc->GetString(ScAddress(1,1,0)));
+     CPPUNIT_ASSERT_EQUAL(OUString("Val2"), m_pDoc->GetString(ScAddress(1,2,0)));
+@@ -4367,7 +4367,7 @@ void Test::testSort()
+     aSortData.maKeyState[0].nField = 1;
+     aSortData.maKeyState[0].bAscending = true;
+ 
+-    m_pDoc->Sort(0, aSortData, false, NULL, NULL);
++    m_pDoc->Sort(0, aSortData, false, true, NULL, NULL);
+ 
+     double nVal = m_pDoc->GetValue(1,0,0);
+     ASSERT_DOUBLES_EQUAL(nVal, 1.0);
+@@ -4400,7 +4400,7 @@ void Test::testSort()
+     aSortData.nRow2 = aDataRange.aEnd.Row();
+     aSortData.bHasHeader = true;
+     aSortData.maKeyState[0].nField = 0;
+-    m_pDoc->Sort(0, aSortData, false, NULL, NULL);
++    m_pDoc->Sort(0, aSortData, false, true, NULL, NULL);
+ 
+     // Title should stay at the top, numbers should be sorted numerically,
+     // numbers always come before strings, and empty cells always occur at the
+diff --git a/sc/source/core/data/documen3.cxx b/sc/source/core/data/documen3.cxx
+index 75514fd..10c30f6 100644
+--- a/sc/source/core/data/documen3.cxx
++++ b/sc/source/core/data/documen3.cxx
+@@ -1355,13 +1355,14 @@ bool ScDocument::UpdateOutlineRow( SCROW nStartRow, SCROW nEndRow, SCTAB nTab, b
+ }
+ 
+ void ScDocument::Sort(
+-    SCTAB nTab, const ScSortParam& rSortParam, bool bKeepQuery, ScProgress* pProgress, sc::ReorderParam* pUndo )
++    SCTAB nTab, const ScSortParam& rSortParam, bool bKeepQuery, bool bUpdateRefs,
++    ScProgress* pProgress, sc::ReorderParam* pUndo )
+ {
+     if ( ValidTab(nTab) && nTab < static_cast<SCTAB>(maTabs.size()) && maTabs[nTab] )
+     {
+         bool bOldEnableIdle = IsIdleEnabled();
+         EnableIdle(false);
+-        maTabs[nTab]->Sort(rSortParam, bKeepQuery, pProgress, pUndo);
++        maTabs[nTab]->Sort(rSortParam, bKeepQuery, bUpdateRefs, pProgress, pUndo);
+         EnableIdle(bOldEnableIdle);
+     }
+ }
+diff --git a/sc/source/core/data/table3.cxx b/sc/source/core/data/table3.cxx
+index 946416d..589a9b1 100644
+--- a/sc/source/core/data/table3.cxx
++++ b/sc/source/core/data/table3.cxx
+@@ -261,6 +261,7 @@ private:
+ 
+     std::vector<SCCOLROW> maOrderIndices;
+     bool mbKeepQuery;
++    bool mbUpdateRefs;
+ 
+ public:
+     ScSortInfoArray( sal_uInt16 nSorts, SCCOLROW nInd1, SCCOLROW nInd2 ) :
+@@ -308,6 +309,10 @@ public:
+ 
+     bool IsKeepQuery() const { return mbKeepQuery; }
+ 
++    void SetUpdateRefs( bool b ) { mbUpdateRefs = b; }
++
++    bool IsUpdateRefs() const { return mbUpdateRefs; }
++
+     /**
+      * Call this only during normal sorting, not from reordering.
+      */
+@@ -471,6 +476,7 @@ ScSortInfoArray* ScTable::CreateSortInfoArray( const sc::ReorderParam& rParam )
+ 
+         pArray = new ScSortInfoArray(0, nRow1, nRow2);
+         pArray->SetKeepQuery(rParam.mbHiddenFiltered);
++        pArray->SetUpdateRefs(rParam.mbUpdateRefs);
+ 
+         initDataRows(
+             *pArray, *this, aCol, nCol1, nRow1, nCol2, nRow2,
+@@ -483,19 +489,22 @@ ScSortInfoArray* ScTable::CreateSortInfoArray( const sc::ReorderParam& rParam )
+ 
+         pArray = new ScSortInfoArray(0, nCol1, nCol2);
+         pArray->SetKeepQuery(rParam.mbHiddenFiltered);
++        pArray->SetUpdateRefs(rParam.mbUpdateRefs);
+     }
+ 
+     return pArray;
+ }
+ 
+ ScSortInfoArray* ScTable::CreateSortInfoArray(
+-    const ScSortParam& rSortParam, SCCOLROW nInd1, SCCOLROW nInd2, bool bKeepQuery )
++    const ScSortParam& rSortParam, SCCOLROW nInd1, SCCOLROW nInd2,
++    bool bKeepQuery, bool bUpdateRefs )
+ {
+     sal_uInt16 nUsedSorts = 1;
+     while ( nUsedSorts < rSortParam.GetSortKeyCount() && rSortParam.maKeyState[nUsedSorts].bDoSort )
+         nUsedSorts++;
+     ScSortInfoArray* pArray = new ScSortInfoArray( nUsedSorts, nInd1, nInd2 );
+     pArray->SetKeepQuery(bKeepQuery);
++    pArray->SetUpdateRefs(bUpdateRefs);
+ 
+     if ( rSortParam.bByRow )
+     {
+@@ -737,16 +746,19 @@ void ScTable::SortReorderByColumn(
+         }
+     }
+ 
+-    for (SCCOL nCol = nStart; nCol <= nLast; ++nCol)
+-        aCol[nCol].CollectListeners(aListeners, nRow1, nRow2);
++    if (pArray->IsUpdateRefs())
++    {
++        for (SCCOL nCol = nStart; nCol <= nLast; ++nCol)
++            aCol[nCol].CollectListeners(aListeners, nRow1, nRow2);
+ 
+-    // Remove any duplicate listener entries and notify all listeners
+-    // afterward.  We must ensure that we notify each unique listener only
+-    // once.
+-    std::sort(aListeners.begin(), aListeners.end());
+-    aListeners.erase(std::unique(aListeners.begin(), aListeners.end()), aListeners.end());
+-    ColReorderNotifier aFunc(aColMap, nTab, nRow1, nRow2);
+-    std::for_each(aListeners.begin(), aListeners.end(), aFunc);
++        // Remove any duplicate listener entries and notify all listeners
++        // afterward.  We must ensure that we notify each unique listener only
++        // once.
++        std::sort(aListeners.begin(), aListeners.end());
++        aListeners.erase(std::unique(aListeners.begin(), aListeners.end()), aListeners.end());
++        ColReorderNotifier aFunc(aColMap, nTab, nRow1, nRow2);
++        std::for_each(aListeners.begin(), aListeners.end(), aFunc);
++    }
+ 
+     // Re-start area listeners on the reordered columns.
+     {
+@@ -1001,39 +1013,51 @@ void ScTable::SortReorderByRow(
+         }
+     }
+ 
+-    // Collect listeners of cell broadcasters.
+-    for (SCCOL nCol = nCol1; nCol <= nCol2; ++nCol)
+-        aCol[nCol].CollectListeners(aListeners, nRow1, nRow2);
++    if (pArray->IsUpdateRefs())
++    {
++        // Collect listeners of cell broadcasters.
++        for (SCCOL nCol = nCol1; nCol <= nCol2; ++nCol)
++            aCol[nCol].CollectListeners(aListeners, nRow1, nRow2);
+ 
+-    // Remove any duplicate listener entries.  We must ensure that we notify
+-    // each unique listener only once.
+-    std::sort(aListeners.begin(), aListeners.end());
+-    aListeners.erase(std::unique(aListeners.begin(), aListeners.end()), aListeners.end());
++        // Remove any duplicate listener entries.  We must ensure that we notify
++        // each unique listener only once.
++        std::sort(aListeners.begin(), aListeners.end());
++        aListeners.erase(std::unique(aListeners.begin(), aListeners.end()), aListeners.end());
+ 
+-    // Collect positions of all shared formula cells outside the sorted range,
+-    // and make them unshared before notifying them.
+-    sc::RefQueryFormulaGroup aFormulaGroupPos;
+-    aFormulaGroupPos.setSkipRange(ScRange(nCol1, nRow1, nTab, nCol2, nRow2, nTab));
++        // Collect positions of all shared formula cells outside the sorted range,
++        // and make them unshared before notifying them.
++        sc::RefQueryFormulaGroup aFormulaGroupPos;
++        aFormulaGroupPos.setSkipRange(ScRange(nCol1, nRow1, nTab, nCol2, nRow2, nTab));
+ 
+-    std::for_each(aListeners.begin(), aListeners.end(), FormulaGroupPosCollector(aFormulaGroupPos));
+-    const sc::RefQueryFormulaGroup::TabsType& rGroupTabs = aFormulaGroupPos.getAllPositions();
+-    sc::RefQueryFormulaGroup::TabsType::const_iterator itGroupTab = rGroupTabs.begin(), itGroupTabEnd = rGroupTabs.end();
+-    for (; itGroupTab != itGroupTabEnd; ++itGroupTab)
+-    {
+-        const sc::RefQueryFormulaGroup::ColsType& rCols = itGroupTab->second;
+-        sc::RefQueryFormulaGroup::ColsType::const_iterator itCol = rCols.begin(), itColEnd = rCols.end();
+-        for (; itCol != itColEnd; ++itCol)
++        std::for_each(aListeners.begin(), aListeners.end(), FormulaGroupPosCollector(aFormulaGroupPos));
++        const sc::RefQueryFormulaGroup::TabsType& rGroupTabs = aFormulaGroupPos.getAllPositions();
++        sc::RefQueryFormulaGroup::TabsType::const_iterator itGroupTab = rGroupTabs.begin(), itGroupTabEnd = rGroupTabs.end();
++        for (; itGroupTab != itGroupTabEnd; ++itGroupTab)
++        {
++            const sc::RefQueryFormulaGroup::ColsType& rCols = itGroupTab->second;
++            sc::RefQueryFormulaGroup::ColsType::const_iterator itCol = rCols.begin(), itColEnd = rCols.end();
++            for (; itCol != itColEnd; ++itCol)
++            {
++                const sc::RefQueryFormulaGroup::ColType& rCol = itCol->second;
++                std::vector<SCROW> aBounds(rCol);
++                pDocument->UnshareFormulaCells(itGroupTab->first, itCol->first, aBounds);
++            }
++        }
++
++        // Notify the listeners.
++        RowReorderNotifier aFunc(aRowMap, nTab, nCol1, nCol2);
++        std::for_each(aListeners.begin(), aListeners.end(), aFunc);
++
++        // Re-group formulas in affected columns.
++        for (itGroupTab = rGroupTabs.begin(); itGroupTab != itGroupTabEnd; ++itGroupTab)
+         {
+-            const sc::RefQueryFormulaGroup::ColType& rCol = itCol->second;
+-            std::vector<SCROW> aBounds(rCol);
+-            pDocument->UnshareFormulaCells(itGroupTab->first, itCol->first, aBounds);
++            const sc::RefQueryFormulaGroup::ColsType& rCols = itGroupTab->second;
++            sc::RefQueryFormulaGroup::ColsType::const_iterator itCol = rCols.begin(), itColEnd = rCols.end();
++            for (; itCol != itColEnd; ++itCol)
++                pDocument->RegroupFormulaCells(itGroupTab->first, itCol->first);
+         }
+     }
+ 
+-    // Notify the listeners.
+-    RowReorderNotifier aFunc(aRowMap, nTab, nCol1, nCol2);
+-    std::for_each(aListeners.begin(), aListeners.end(), aFunc);
+-
+     // Re-start area listeners on the reordered rows.
+     {
+         std::vector<sc::AreaListener>::iterator it = aAreaListeners.begin(), itEnd = aAreaListeners.end();
+@@ -1050,15 +1074,6 @@ void ScTable::SortReorderByRow(
+         }
+     }
+ 
+-    // Re-group formulas in affected columns.
+-    for (itGroupTab = rGroupTabs.begin(); itGroupTab != itGroupTabEnd; ++itGroupTab)
+-    {
+-        const sc::RefQueryFormulaGroup::ColsType& rCols = itGroupTab->second;
+-        sc::RefQueryFormulaGroup::ColsType::const_iterator itCol = rCols.begin(), itColEnd = rCols.end();
+-        for (; itCol != itColEnd; ++itCol)
+-            pDocument->RegroupFormulaCells(itGroupTab->first, itCol->first);
+-    }
+-
+     // Re-group columns in the sorted range too.
+     for (SCCOL i = nCol1; i <= nCol2; ++i)
+         aCol[i].RegroupFormulaCells();
+@@ -1281,7 +1296,8 @@ void ScTable::DecoladeRow( ScSortInfoArray* pArray, SCROW nRow1, SCROW nRow2 )
+ }
+ 
+ void ScTable::Sort(
+-    const ScSortParam& rSortParam, bool bKeepQuery, ScProgress* pProgress, sc::ReorderParam* pUndo )
++    const ScSortParam& rSortParam, bool bKeepQuery, bool bUpdateRefs,
++    ScProgress* pProgress, sc::ReorderParam* pUndo )
+ {
+     aSortParam = rSortParam;
+     InitSortCollator( rSortParam );
+@@ -1293,6 +1309,7 @@ void ScTable::Sort(
+         pUndo->mbByRow = rSortParam.bByRow;
+         pUndo->mbPattern = rSortParam.bIncludePattern;
+         pUndo->mbHiddenFiltered = bKeepQuery;
++        pUndo->mbUpdateRefs = bUpdateRefs;
+     }
+ 
+     if (rSortParam.bByRow)
+@@ -1308,7 +1325,7 @@ void ScTable::Sort(
+             if(pProgress)
+                 pProgress->SetState( 0, nLastRow-nRow1 );
+ 
+-            boost::scoped_ptr<ScSortInfoArray> pArray(CreateSortInfoArray(aSortParam, nRow1, nLastRow, bKeepQuery));
++            boost::scoped_ptr<ScSortInfoArray> pArray(CreateSortInfoArray(aSortParam, nRow1, nLastRow, bKeepQuery, bUpdateRefs));
+ 
+             if ( nLastRow - nRow1 > 255 )
+                 DecoladeRow(pArray.get(), nRow1, nLastRow);
+@@ -1337,7 +1354,7 @@ void ScTable::Sort(
+             if(pProgress)
+                 pProgress->SetState( 0, nLastCol-nCol1 );
+ 
+-            boost::scoped_ptr<ScSortInfoArray> pArray(CreateSortInfoArray(aSortParam, nCol1, nLastCol, bKeepQuery));
++            boost::scoped_ptr<ScSortInfoArray> pArray(CreateSortInfoArray(aSortParam, nCol1, nLastCol, bKeepQuery, bUpdateRefs));
+ 
+             QuickSort(pArray.get(), nCol1, nLastCol);
+             SortReorderByColumn(pArray.get(), aSortParam.nRow1, aSortParam.nRow2, aSortParam.bIncludePattern, pProgress);
+@@ -2369,7 +2386,7 @@ void ScTable::TopTenQuery( ScQueryParam& rParam )
+                     bSortCollatorInitialized = true;
+                     InitSortCollator( aLocalSortParam );
+                 }
+-                boost::scoped_ptr<ScSortInfoArray> pArray(CreateSortInfoArray(aSortParam, nRow1, rParam.nRow2, bGlobalKeepQuery));
++                boost::scoped_ptr<ScSortInfoArray> pArray(CreateSortInfoArray(aSortParam, nRow1, rParam.nRow2, bGlobalKeepQuery, false));
+                 DecoladeRow( pArray.get(), nRow1, rParam.nRow2 );
+                 QuickSort( pArray.get(), nRow1, rParam.nRow2 );
+                 ScSortInfo** ppInfo = pArray->GetFirstArray();
+diff --git a/sc/source/core/tool/inputopt.cxx b/sc/source/core/tool/inputopt.cxx
+index e36cd85..756bf9d 100644
+--- a/sc/source/core/tool/inputopt.cxx
++++ b/sc/source/core/tool/inputopt.cxx
+@@ -55,6 +55,7 @@ void ScInputOptions::SetDefaults()
+     bExtendFormat   = false;
+     bRangeFinder    = sal_True;
+     bExpandRefs     = false;
++    mbSortRefUpdate = sal_True;
+     bMarkHeader     = sal_True;
+     bUseTabCol      = false;
+     bTextWysiwyg    = false;
+@@ -70,6 +71,7 @@ const ScInputOptions& ScInputOptions::operator=( const ScInputOptions& rCpy )
+     bExtendFormat   = rCpy.bExtendFormat;
+     bRangeFinder    = rCpy.bRangeFinder;
+     bExpandRefs     = rCpy.bExpandRefs;
++    mbSortRefUpdate = rCpy.mbSortRefUpdate;
+     bMarkHeader     = rCpy.bMarkHeader;
+     bUseTabCol      = rCpy.bUseTabCol;
+     bTextWysiwyg    = rCpy.bTextWysiwyg;
+@@ -83,18 +85,19 @@ const ScInputOptions& ScInputOptions::operator=( const ScInputOptions& rCpy )
+ 
+ #define CFGPATH_INPUT           "Office.Calc/Input"
+ 
+-#define SCINPUTOPT_MOVEDIR                0
+-#define SCINPUTOPT_MOVESEL                1
+-#define SCINPUTOPT_EDTEREDIT              2
+-#define SCINPUTOPT_EXTENDFMT              3
+-#define SCINPUTOPT_RANGEFIND              4
+-#define SCINPUTOPT_EXPANDREFS             5
+-#define SCINPUTOPT_MARKHEADER             6
+-#define SCINPUTOPT_USETABCOL              7
+-#define SCINPUTOPT_TEXTWYSIWYG            8
+-#define SCINPUTOPT_REPLCELLSWARN          9
+-#define SCINPUTOPT_LEGACY_CELL_SELECTION 10
+-#define SCINPUTOPT_COUNT                 11
++#define SCINPUTOPT_MOVEDIR                 0
++#define SCINPUTOPT_MOVESEL                 1
++#define SCINPUTOPT_EDTEREDIT               2
++#define SCINPUTOPT_EXTENDFMT               3
++#define SCINPUTOPT_RANGEFIND               4
++#define SCINPUTOPT_EXPANDREFS              5
++#define SCINPUTOPT_SORT_REF_UPDATE         6
++#define SCINPUTOPT_MARKHEADER              7
++#define SCINPUTOPT_USETABCOL               8
++#define SCINPUTOPT_TEXTWYSIWYG             9
++#define SCINPUTOPT_REPLCELLSWARN          10
++#define SCINPUTOPT_LEGACY_CELL_SELECTION  11
++#define SCINPUTOPT_COUNT                  12
+ 
+ Sequence<OUString> ScInputCfg::GetPropertyNames()
+ {
+@@ -106,6 +109,7 @@ Sequence<OUString> ScInputCfg::GetPropertyNames()
+         "ExpandFormatting",         // SCINPUTOPT_EXTENDFMT
+         "ShowReference",            // SCINPUTOPT_RANGEFIND
+         "ExpandReference",          // SCINPUTOPT_EXPANDREFS
++        "UpdateReferenceOnSort",    // SCINPUTOPT_SORT_REF_UPDATE
+         "HighlightSelection",       // SCINPUTOPT_MARKHEADER
+         "UseTabCol",                // SCINPUTOPT_USETABCOL
+         "UsePrinterMetrics",        // SCINPUTOPT_TEXTWYSIWYG
+@@ -157,6 +161,9 @@ ScInputCfg::ScInputCfg() :
+                     case SCINPUTOPT_EXPANDREFS:
+                         SetExpandRefs( ScUnoHelpFunctions::GetBoolFromAny( pValues[nProp] ) );
+                         break;
++                    case SCINPUTOPT_SORT_REF_UPDATE:
++                        SetSortRefUpdate(ScUnoHelpFunctions::GetBoolFromAny(pValues[nProp]));
++                        break;
+                     case SCINPUTOPT_MARKHEADER:
+                         SetMarkHeader( ScUnoHelpFunctions::GetBoolFromAny( pValues[nProp] ) );
+                         break;
+@@ -206,6 +213,9 @@ void ScInputCfg::Commit()
+             case SCINPUTOPT_EXPANDREFS:
+                 ScUnoHelpFunctions::SetBoolInAny( pValues[nProp], GetExpandRefs() );
+                 break;
++            case SCINPUTOPT_SORT_REF_UPDATE:
++                ScUnoHelpFunctions::SetBoolInAny( pValues[nProp], GetSortRefUpdate() );
++                break;
+             case SCINPUTOPT_MARKHEADER:
+                 ScUnoHelpFunctions::SetBoolInAny( pValues[nProp], GetMarkHeader() );
+                 break;
+diff --git a/sc/source/ui/app/scmod.cxx b/sc/source/ui/app/scmod.cxx
+index 61b53c4..5e13cd1 100644
+--- a/sc/source/ui/app/scmod.cxx
++++ b/sc/source/ui/app/scmod.cxx
+@@ -1272,6 +1272,12 @@ void ScModule::ModifyOptions( const SfxItemSet& rOptSet )
+         pInputCfg->SetExpandRefs( ((const SfxBoolItem*)pItem)->GetValue() );
+         bSaveInputOptions = sal_True;
+     }
++    if (rOptSet.HasItem(SID_SC_OPT_SORT_REF_UPDATE, &pItem))
++    {
++        pInputCfg->SetSortRefUpdate(static_cast<const SfxBoolItem*>(pItem)->GetValue());
++        bSaveInputOptions = true;
++    }
++
+     if ( rOptSet.HasItem(SID_SC_INPUT_MARK_HEADER,&pItem) )
+     {
+         pInputCfg->SetMarkHeader( ((const SfxBoolItem*)pItem)->GetValue() );
+@@ -2034,7 +2040,7 @@ SfxItemSet*  ScModule::CreateItemSet( sal_uInt16 nId )
+                             SID_SC_INPUT_SELECTION,SID_SC_INPUT_MARK_HEADER,
+                             SID_SC_INPUT_TEXTWYSIWYG,SID_SC_INPUT_TEXTWYSIWYG,
+                             SID_SC_INPUT_REPLCELLSWARN,SID_SC_INPUT_REPLCELLSWARN,
+-                            SID_SC_INPUT_LEGACY_CELL_SELECTION,SID_SC_INPUT_LEGACY_CELL_SELECTION,
++                            SID_SC_INPUT_LEGACY_CELL_SELECTION,SID_SC_OPT_SORT_REF_UPDATE,
+                             // TP_USERLISTS:
+                             SCITEM_USERLIST,        SCITEM_USERLIST,
+                             // TP_PRINT:
+@@ -2097,6 +2103,7 @@ SfxItemSet*  ScModule::CreateItemSet( sal_uInt16 nId )
+                     rInpOpt.GetRangeFinder() ) );
+         pRet->Put( SfxBoolItem( SID_SC_INPUT_REF_EXPAND,
+                     rInpOpt.GetExpandRefs() ) );
++        pRet->Put( SfxBoolItem(SID_SC_OPT_SORT_REF_UPDATE, rInpOpt.GetSortRefUpdate()));
+         pRet->Put( SfxBoolItem( SID_SC_INPUT_MARK_HEADER,
+                     rInpOpt.GetMarkHeader() ) );
+         pRet->Put( SfxBoolItem( SID_SC_INPUT_TEXTWYSIWYG,
+diff --git a/sc/source/ui/docshell/dbdocfun.cxx b/sc/source/ui/docshell/dbdocfun.cxx
+index aa1e322..9163a84 100644
+--- a/sc/source/ui/docshell/dbdocfun.cxx
++++ b/sc/source/ui/docshell/dbdocfun.cxx
+@@ -48,6 +48,7 @@
+ #include "markdata.hxx"
+ #include "progress.hxx"
+ #include <undosort.hxx>
++#include <inputopt.hxx>
+ 
+ #include <set>
+ #include <memory>
+@@ -517,8 +518,10 @@ sal_Bool ScDBDocFunc::Sort( SCTAB nTab, const ScSortParam& rSortParam,
+     // don't call ScDocument::Sort with an empty SortParam (may be empty here if bCopy is set)
+     if (aLocalParam.GetSortKeyCount() && aLocalParam.maKeyState[0].bDoSort)
+     {
++        ScInputOptions aInputOption = SC_MOD()->GetInputOptions();
++        bool bUpdateRefs = aInputOption.GetSortRefUpdate();
+         ScProgress aProgress(&rDocShell, ScGlobal::GetRscString(STR_PROGRESS_SORTING), 0);
+-        pDoc->Sort(nTab, aLocalParam, bRepeatQuery, &aProgress, &aUndoParam);
++        pDoc->Sort(nTab, aLocalParam, bRepeatQuery, bUpdateRefs, &aProgress, &aUndoParam);
+     }
+ 
+     if (bRecord)
+diff --git a/sc/source/ui/undo/undosort.cxx b/sc/source/ui/undo/undosort.cxx
+index 4ff0960..36156fe 100644
+--- a/sc/source/ui/undo/undosort.cxx
++++ b/sc/source/ui/undo/undosort.cxx
+@@ -48,6 +48,8 @@ void UndoSort::Execute( bool bUndo )
+ 
+     pDocShell->PostPaint(maParam.maSortRange, PAINT_GRID);
+     pDocShell->PostDataChanged();
++    if (!aParam.mbUpdateRefs)
++        rDoc.BroadcastCells(aParam.maSortRange, SC_HINT_DATACHANGED);
+ }
+ 
+ }
+-- 
+1.9.1
+
