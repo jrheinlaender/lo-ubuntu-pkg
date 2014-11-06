@@ -326,6 +326,14 @@ SYSTEM_STUFF += libgltf
 # and system-collada2gltf working
 ifeq "$(ENABLE_GLTF)" "y"
   ENABLE_COLLADA=n
+  # enable COLLADA (if any) only on i386/amd64 for now, rapidjson does seem
+  # to have alignment problems on other archs (e.g. arm*)
+#  ifeq "$(DEB_HOST_ARCH)" "amd64"
+#    ENABLE_COLLADA=y
+#  endif
+#  ifeq "$(DEB_HOST_ARCH)" "i386"
+#    ENABLE_COLLADA=y
+#  endif
   ifeq "$(ENABLE_COLLADA)" "y"
     SYSTEM_STUFF += opencollada
     OPENCOLLADA_CFLAGS="-I/usr/include/opencollada/COLLADABaseUtils -I/usr/include/opencollada/COLLADAFramework -I/usr/include/opencollada/COLLADASaxFrameworkLoader -I/usr/include/opencollada/GeneratedSaxParser -I/usr/include/opencollada"
@@ -503,8 +511,8 @@ ifeq "$(ENABLE_GLTF)" "y"
        ENABLE_GLTF=n
   endif
   $(eval $(call gen_no_archs,OOO_GLTF_ARCHS))
-  OOO_COLLADA_ARCHS=$(OOO_GLTF_ARCHS)
-  OOO_NO_COLLADA_ARCHS=$(OOO_NO_GLTF_ARCHS)
+  OOO_COLLADA_ARCHS=amd64 i386
+  $(eval $(call gen_no_archs,OOO_COLLADA_ARCHS))
 endif
 
 IGNORE_MAKE_CHECK_FAILURES=-
@@ -684,8 +692,8 @@ else
 	CONFIGURE_FLAGS += --disable-collada
   else
     ifneq (,$(findstring opencollada,$(SYSTEM_STUFF)))
-       BUILD_DEPS += , opencollada-dev$(OOO_NO_COLLADA_ARCHS)
-       BUILD_DEPS += , libpcre3-dev$(OOO_NO_COLLADA_ARCHS)
+       BUILD_DEPS += , opencollada-dev [$(OOO_COLLADA_ARCHS)]
+       BUILD_DEPS += , libpcre3-dev [$(OOO_COLLADA_ARCHS)]
     endif
   endif
 endif
