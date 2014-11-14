@@ -1,0 +1,117 @@
+From b7b3934b052365e5fb19b4c62a7d78aa6ed8a536 Mon Sep 17 00:00:00 2001
+From: Kohei Yoshida <kohei.yoshida@collabora.com>
+Date: Mon, 27 Oct 2014 07:32:32 -0700
+Subject: [PATCH] fdo#85282: Correct adjustment of range reference on delete &
+ shift.
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf8
+Content-Transfer-Encoding: 8bit
+
+Change-Id: I6e01c160f77599dfa4a2e55b60e23d256184c822
+(cherry picked from commit c3c16d5b74fb5707691283538a969a03c2f918b0)
+Reviewed-on: https://gerrit.libreoffice.org/12111
+Reviewed-by: Eike Rathke <erack@redhat.com>
+Tested-by: Eike Rathke <erack@redhat.com>
+(cherry picked from commit bc38612d349b9efd877dec23f3e68a3f7b945cec)
+Reviewed-on: https://gerrit.libreoffice.org/12305
+Reviewed-by: CaolÃ¡n McNamara <caolanm@redhat.com>
+Tested-by: CaolÃ¡n McNamara <caolanm@redhat.com>
+---
+ sc/source/core/tool/token.cxx |   67 +++++++++++++++++++++++++++++++++++++----
+ 1 file changed, 61 insertions(+), 6 deletions(-)
+
+diff --git a/sc/source/core/tool/token.cxx b/sc/source/core/tool/token.cxx
+index fd362e3..03ecc49 100644
+--- a/sc/source/core/tool/token.cxx
++++ b/sc/source/core/tool/token.cxx
+@@ -2536,6 +2536,9 @@ void setRefDeleted( ScComplexRefData& rRef, const sc::RefUpdateContext& rCxt )
+ 
+ bool shrinkRange( const sc::RefUpdateContext& rCxt, ScRange& rRefRange, const ScRange& rDeletedRange )
+ {
++    if (!rDeletedRange.Intersects(rRefRange))
++        return false;
++
+     if (rCxt.mnColDelta < 0)
+     {
+         // Shifting left.
+@@ -2543,9 +2546,35 @@ bool shrinkRange( const sc::RefUpdateContext& rCxt, ScRange& rRefRange, const Sc
+             // Deleted range is only partially overlapping in vertical direction. Bail out.
+             return false;
+ 
+-        // Move the last column position to the left.
+-        SCCOL nDelta = rDeletedRange.aStart.Col() - rDeletedRange.aEnd.Col() - 1;
+-        rRefRange.aEnd.IncCol(nDelta);
++        if (rDeletedRange.aStart.Col() <= rRefRange.aStart.Col())
++        {
++            if (rRefRange.aEnd.Col() <= rDeletedRange.aEnd.Col())
++            {
++                // Reference is entirely deleted.
++                rRefRange.SetInvalid();
++            }
++            else
++            {
++                // The reference range is truncated on the left.
++                SCCOL nOffset = rDeletedRange.aStart.Col() - rRefRange.aStart.Col();
++                SCCOL nDelta = rRefRange.aStart.Col() - rDeletedRange.aEnd.Col() - 1;
++                rRefRange.aStart.IncCol(nOffset);
++                rRefRange.aEnd.IncCol(nDelta+nOffset);
++            }
++        }
++        else if (rDeletedRange.aEnd.Col() < rRefRange.aEnd.Col())
++        {
++            // Reference is deleted in the middle. Move the last column
++            // position to the left.
++            SCCOL nDelta = rDeletedRange.aStart.Col() - rDeletedRange.aEnd.Col() - 1;
++            rRefRange.aEnd.IncCol(nDelta);
++        }
++        else
++        {
++            // The reference range is truncated on the right.
++            SCCOL nDelta = rDeletedRange.aStart.Col() - rRefRange.aEnd.Col() - 1;
++            rRefRange.aEnd.IncCol(nDelta);
++        }
+         return true;
+     }
+     else if (rCxt.mnRowDelta < 0)
+@@ -2556,9 +2585,35 @@ bool shrinkRange( const sc::RefUpdateContext& rCxt, ScRange& rRefRange, const Sc
+             // Deleted range is only partially overlapping in horizontal direction. Bail out.
+             return false;
+ 
+-        // Move the last row position up.
+-        SCROW nDelta = rDeletedRange.aStart.Row() - rDeletedRange.aEnd.Row() - 1;
+-        rRefRange.aEnd.IncRow(nDelta);
++        if (rDeletedRange.aStart.Row() <= rRefRange.aStart.Row())
++        {
++            if (rRefRange.aEnd.Row() <= rDeletedRange.aEnd.Row())
++            {
++                // Reference is entirely deleted.
++                rRefRange.SetInvalid();
++            }
++            else
++            {
++                // The reference range is truncated on the top.
++                SCCOL nOffset = rDeletedRange.aStart.Row() - rRefRange.aStart.Row();
++                SCCOL nDelta = rRefRange.aStart.Row() - rDeletedRange.aEnd.Row() - 1;
++                rRefRange.aStart.IncRow(nOffset);
++                rRefRange.aEnd.IncRow(nDelta+nOffset);
++            }
++        }
++        else if (rDeletedRange.aEnd.Row() < rRefRange.aEnd.Row())
++        {
++            // Reference is deleted in the middle. Move the last row
++            // position upward.
++            SCCOL nDelta = rDeletedRange.aStart.Row() - rDeletedRange.aEnd.Row() - 1;
++            rRefRange.aEnd.IncRow(nDelta);
++        }
++        else
++        {
++            // The reference range is truncated on the bottom.
++            SCCOL nDelta = rDeletedRange.aStart.Row() - rRefRange.aEnd.Row() - 1;
++            rRefRange.aEnd.IncRow(nDelta);
++        }
+         return true;
+     }
+ 
+-- 
+1.7.9.5
+
