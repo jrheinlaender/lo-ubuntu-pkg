@@ -102,12 +102,7 @@ create_package_directory gid_Module_Optional_Pyuno_LibreLogo	pkg/libreoffice-lib
 create_package_directory gid_Module_Script_Provider_For_Python		pkg/libreoffice-script-provider-python
 create_package_directory gid_Module_Optional_Gnome              pkg/libreoffice-gnome
 create_package_directory gid_Module_Optional_Kde                pkg/libreoffice-kde
-create_package_directory gid_Module_Root_Files_2                pkg/libreoffice-common
-create_package_directory gid_Module_Root_Files_3                pkg/libreoffice-common
-create_package_directory gid_Module_Root_Files_4                pkg/libreoffice-common
-create_package_directory gid_Module_Root_Files_5                pkg/libreoffice-common
-create_package_directory gid_Module_Root_Files_6                pkg/libreoffice-common
-create_package_directory gid_Module_Root_Files_7                pkg/libreoffice-common
+create_package_directory gid_Module_Root_Files
 create_package_directory gid_Module_Optional_OGLTrans		pkg/libreoffice-ogltrans
 create_package_directory gid_Module_Root_SDK                    pkg/libreoffice-dev
 create_package_directory gid_Module_Optional_Extensions_Script_Provider_For_BS	pkg/libreoffice-script-provider-bsh
@@ -152,7 +147,7 @@ mkdir -p $OODESTDIR/pkg/libreoffice-core/$OOINSTBASE/program; \
 fi &&
 ( cd pkg/libreoffice-common/$OOINSTBASE/program
   find -maxdepth 1 \
-     -regex '\./\(.*\.so.*\|.*\.bin\|pagein\|nsplugin\|kdefilepicker\|msfontextract\|.*\.rdb\|javaldx\|oosplash\|uri-encode\|xpdfimport\|ui-previewer\)' \
+     -regex '\./\(.*\.so.*\|.*\.bin\|pagein\|kdefilepicker\|msfontextract\|.*\.rdb\|javaldx\|oosplash\|uri-encode\|xpdfimport\|ui-previewer\)' \
      -exec mv {} $OODESTDIR/pkg/libreoffice-core/$OOINSTBASE/program \;
 );
 
