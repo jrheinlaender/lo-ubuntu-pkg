@@ -1,0 +1,49 @@
+From 1f0bca308e677a3e7a75837f93f14b679f698846 Mon Sep 17 00:00:00 2001
+From: Kohei Yoshida <kohei.yoshida@collabora.com>
+Date: Sun, 26 Oct 2014 14:43:14 -0700
+Subject: [PATCH] fdo#85215: Don't adjust references wrt cell position when
+ disabled.
+
+Change-Id: Ie1a12cc189bcb66fad59ea9901ac0dc95bb68788
+(cherry picked from commit 10fc138307afb4b39baddb0d56eb8e986e5d29ea)
+Signed-off-by: Eike Rathke <erack@redhat.com>
+---
+ sc/source/core/data/table3.cxx | 7 +++++--
+ sc/source/ui/undo/undosort.cxx | 3 +--
+ 2 files changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/sc/source/core/data/table3.cxx b/sc/source/core/data/table3.cxx
+index c36b4cd..d646678 100644
+--- a/sc/source/core/data/table3.cxx
++++ b/sc/source/core/data/table3.cxx
+@@ -864,8 +864,11 @@ void ScTable::SortReorderByRow(
+                     ScAddress aOldPos = rCell.maCell.mpFormula->aPos;
+ 
+                     ScFormulaCell* pNew = rCell.maCell.mpFormula->Clone( aCellPos, SC_CLONECELL_DEFAULT);
+-                    pNew->CopyAllBroadcasters(*rCell.maCell.mpFormula);
+-                    pNew->GetCode()->AdjustReferenceOnMovedOrigin(aOldPos, aCellPos);
++                    if (pArray->IsUpdateRefs())
++                    {
++                        pNew->CopyAllBroadcasters(*rCell.maCell.mpFormula);
++                        pNew->GetCode()->AdjustReferenceOnMovedOrigin(aOldPos, aCellPos);
++                    }
+ 
+                     sc::CellStoreType::iterator itBlk = rCellStore.push_back(pNew);
+                 }
+diff --git a/sc/source/ui/undo/undosort.cxx b/sc/source/ui/undo/undosort.cxx
+index 36156fe..4a00707 100644
+--- a/sc/source/ui/undo/undosort.cxx
++++ b/sc/source/ui/undo/undosort.cxx
+@@ -46,8 +46,7 @@ void UndoSort::Execute( bool bUndo )
+ 
+     ScUndoUtil::MarkSimpleBlock(pDocShell, maParam.maSortRange);
+ 
+-    pDocShell->PostPaint(maParam.maSortRange, PAINT_GRID);
+-    pDocShell->PostDataChanged();
++    rDoc.SetDirty(maParam.maSortRange);
+     if (!aParam.mbUpdateRefs)
+         rDoc.BroadcastCells(aParam.maSortRange, SC_HINT_DATACHANGED);
+ }
+-- 
+1.9.1
+
