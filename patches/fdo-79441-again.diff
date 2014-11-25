@@ -1,0 +1,125 @@
+From: Eike Rathke <erack@redhat.com>
+Date: Mon, 24 Nov 2014 23:29:32 +0100
+Subject: [PATCH] fix fdo#79441 again and keep references to other sheets
+ during sort
+
+... also if other references are not updated. References to other sheets
+are never to be treated as relative during sort, they are always
+absolute, even if they have relative row/column part references.
+
+Broken again during the big sort mess. Even if there was a unit test,
+which didn't help as it got disabled / adapted to the change..
+
+(cherry picked from commit f0e7364603c9566bc158303c515c3274ccba62ca)
+
+Backported.
+
+Change-Id: Ic0e61c5e1cb0728e20725c29e450ab0eb55c3305
+Reviewed-on: https://gerrit.libreoffice.org/13118
+Reviewed-by: Kohei Yoshida <libreoffice@kohei.us>
+Tested-by: Kohei Yoshida <libreoffice@kohei.us>
+---
+ sc/inc/tokenarray.hxx           |  6 ++++++
+ sc/source/core/data/column4.cxx |  2 ++
+ sc/source/core/data/table3.cxx  |  4 ++++
+ sc/source/core/tool/token.cxx   | 43 +++++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 55 insertions(+)
+
+diff --git a/sc/inc/tokenarray.hxx b/sc/inc/tokenarray.hxx
+--- a/sc/inc/tokenarray.hxx
++++ b/sc/inc/tokenarray.hxx
+@@ -208,6 +208,12 @@ public:
+     void AdjustReferenceOnMovedOrigin( const ScAddress& rOldPos, const ScAddress& rNewPos );
+ 
+     /**
++     * Adjust all internal references on base position change if they point to
++     * a sheet other than the one of rOldPos.
++     */
++    void AdjustReferenceOnMovedOriginIfOtherSheet( const ScAddress& rOldPos, const ScAddress& rNewPos );
++
++    /**
+      * Clear sheet deleted flag from internal reference tokens if the sheet
+      * index falls within specified range.  Note that when a reference is on a
+      * sheet that's been deleted, its referenced sheet index retains the
+diff --git a/sc/source/core/data/column4.cxx b/sc/source/core/data/column4.cxx
+--- a/sc/source/core/data/column4.cxx
++++ b/sc/source/core/data/column4.cxx
+@@ -454,6 +454,8 @@ public:
+             pCell->aPos.SetRow(nRow);
+             if (mbUpdateRefs)
+                 pCell->GetCode()->AdjustReferenceOnMovedOrigin(aOldPos, pCell->aPos);
++            else
++                pCell->GetCode()->AdjustReferenceOnMovedOriginIfOtherSheet(aOldPos, pCell->aPos);
+         }
+         else
+         {
+diff --git a/sc/source/core/data/table3.cxx b/sc/source/core/data/table3.cxx
+--- a/sc/source/core/data/table3.cxx
++++ b/sc/source/core/data/table3.cxx
+@@ -871,6 +871,10 @@ void ScTable::SortReorderByRow(
+                         pNew->CopyAllBroadcasters(*rCell.maCell.mpFormula);
+                         pNew->GetCode()->AdjustReferenceOnMovedOrigin(aOldPos, aCellPos);
+                     }
++                    else
++                    {
++                        pNew->GetCode()->AdjustReferenceOnMovedOriginIfOtherSheet(aOldPos, aCellPos);
++                    }
+ 
+                     sc::CellStoreType::iterator itBlk = rCellStore.push_back(pNew);
+                 }
+diff --git a/sc/source/core/tool/token.cxx b/sc/source/core/tool/token.cxx
+--- a/sc/source/core/tool/token.cxx
++++ b/sc/source/core/tool/token.cxx
+@@ -3548,6 +3548,49 @@ void ScTokenArray::AdjustReferenceOnMovedOrigin( const ScAddress& rOldPos, const
+     }
+ }
+ 
++void ScTokenArray::AdjustReferenceOnMovedOriginIfOtherSheet( const ScAddress& rOldPos, const ScAddress& rNewPos )
++{
++    FormulaToken** p = pCode;
++    FormulaToken** pEnd = p + static_cast<size_t>(nLen);
++    for (; p != pEnd; ++p)
++    {
++        bool bAdjust = false;
++        switch ((*p)->GetType())
++        {
++            case svExternalSingleRef:
++                bAdjust = true;     // always
++                // fallthru
++            case svSingleRef:
++            {
++                ScToken* pToken = static_cast<ScToken*>(*p);
++                ScSingleRefData& rRef = pToken->GetSingleRef();
++                ScAddress aAbs = rRef.toAbs(rOldPos);
++                if (!bAdjust)
++                    bAdjust = (aAbs.Tab() != rOldPos.Tab());
++                if (bAdjust)
++                    rRef.SetAddress(aAbs, rNewPos);
++            }
++            break;
++            case svExternalDoubleRef:
++                bAdjust = true;     // always
++                // fallthru
++            case svDoubleRef:
++            {
++                ScToken* pToken = static_cast<ScToken*>(*p);
++                ScComplexRefData& rRef = pToken->GetDoubleRef();
++                ScRange aAbs = rRef.toAbs(rOldPos);
++                if (!bAdjust)
++                    bAdjust = (rOldPos.Tab() < aAbs.aStart.Tab() || aAbs.aEnd.Tab() < rOldPos.Tab());
++                if (bAdjust)
++                    rRef.SetRange(aAbs, rNewPos);
++            }
++            break;
++            default:
++                ;
++        }
++    }
++}
++
+ namespace {
+ 
+ void clearTabDeletedFlag( ScSingleRefData& rRef, const ScAddress& rPos, SCTAB nStartTab, SCTAB nEndTab )
+-- 
+1.9.1
+

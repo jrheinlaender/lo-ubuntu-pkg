@@ -1,0 +1,104 @@
+From: Eike Rathke <erack@redhat.com>
+Date: Mon, 17 Nov 2014 22:44:56 +0100
+Subject: [PATCH] fdo#83765 do not update references in SortReorderByColumn()
+ if disabled
+
+Similar to SortReorderByRow()
+
+(cherry picked from commit 115a4b7ca36f65d93070d2e81048320d202e87a3)
+
+Conflicts:
+	sc/inc/column.hxx
+
+Change-Id: I2d2fe243c91a663b14e5bd75ee30225d1b8073da
+Reviewed-on: https://gerrit.libreoffice.org/13117
+Reviewed-by: Kohei Yoshida <libreoffice@kohei.us>
+Tested-by: Kohei Yoshida <libreoffice@kohei.us>
+---
+ sc/inc/column.hxx               | 12 +++++++-----
+ sc/source/core/data/column4.cxx | 10 ++++++----
+ sc/source/core/data/table3.cxx  |  3 ++-
+ 3 files changed, 15 insertions(+), 10 deletions(-)
+
+diff --git a/sc/inc/column.hxx b/sc/inc/column.hxx
+--- a/sc/inc/column.hxx
++++ b/sc/inc/column.hxx
+@@ -576,18 +576,20 @@ public:
+ 
+     /**
+      * Reset column position of formula cells within specified row range.
+-     * Reference positions are also adjusted to reflect the new position so
+-     * that the formula cells still reference the same cells or ranges after
+-     * the the position change.  The position of a formula cell before the
+-     * call is interpreted as the old position of that cell.
++     * If bUpdateRefs==true then reference positions are also adjusted to
++     * reflect the new position so that the formula cells still reference the
++     * same cells or ranges after the the position change.
++     * The position of a formula cell before the call is interpreted as the old
++     * position of that cell.
+      *
+      * Caller needs to ensure that no formula groups cross the top and bottom
+      * row boundaries.
+      *
+      * @param nRow1 top row boundary
+      * @param nRow2 bottom row boundary
++     * @param bUpdateRefs whether to adjust references
+      */
+-    void ResetFormulaCellPositions( SCROW nRow1, SCROW nRow2 );
++    void ResetFormulaCellPositions( SCROW nRow1, SCROW nRow2, bool bUpdateRefs );
+ 
+     void SplitFormulaGroupByRelativeRef( const ScRange& rBoundRange );
+ 
+diff --git a/sc/source/core/data/column4.cxx b/sc/source/core/data/column4.cxx
+--- a/sc/source/core/data/column4.cxx
++++ b/sc/source/core/data/column4.cxx
+@@ -439,8 +439,9 @@ namespace {
+ class FormulaColPosSetter
+ {
+     SCCOL mnCol;
++    bool  mbUpdateRefs;
+ public:
+-    FormulaColPosSetter( SCCOL nCol ) : mnCol(nCol) {}
++    FormulaColPosSetter( SCCOL nCol, bool bUpdateRefs ) : mnCol(nCol), mbUpdateRefs(bUpdateRefs) {}
+ 
+     void operator() ( size_t nRow, ScFormulaCell* pCell )
+     {
+@@ -451,7 +452,8 @@ public:
+             ScAddress aOldPos = pCell->aPos;
+             pCell->aPos.SetCol(mnCol);
+             pCell->aPos.SetRow(nRow);
+-            pCell->GetCode()->AdjustReferenceOnMovedOrigin(aOldPos, pCell->aPos);
++            if (mbUpdateRefs)
++                pCell->GetCode()->AdjustReferenceOnMovedOrigin(aOldPos, pCell->aPos);
+         }
+         else
+         {
+@@ -463,9 +465,9 @@ public:
+ 
+ }
+ 
+-void ScColumn::ResetFormulaCellPositions( SCROW nRow1, SCROW nRow2 )
++void ScColumn::ResetFormulaCellPositions( SCROW nRow1, SCROW nRow2, bool bUpdateRefs )
+ {
+-    FormulaColPosSetter aFunc(nCol);
++    FormulaColPosSetter aFunc(nCol, bUpdateRefs);
+     sc::ProcessFormula(maCells.begin(), maCells, nRow1, nRow2, aFunc);
+ }
+ 
+diff --git a/sc/source/core/data/table3.cxx b/sc/source/core/data/table3.cxx
+--- a/sc/source/core/data/table3.cxx
++++ b/sc/source/core/data/table3.cxx
+@@ -717,8 +717,9 @@ void ScTable::SortReorderByColumn(
+     }
+ 
+     // Reset formula cell positions which became out-of-sync after column reordering.
++    bool bUpdateRefs = pArray->IsUpdateRefs();
+     for (SCCOL nCol = nStart; nCol <= nLast; ++nCol)
+-        aCol[nCol].ResetFormulaCellPositions(nRow1, nRow2);
++        aCol[nCol].ResetFormulaCellPositions(nRow1, nRow2, bUpdateRefs);
+ 
+     // Set up column reorder map (for later broadcasting of reference updates).
+     sc::ColRowReorderMapType aColMap;
+-- 
+1.9.1
+
