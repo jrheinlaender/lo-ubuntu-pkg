@@ -27,12 +27,14 @@ Conflicts:
 Change-Id: I2df0eeefbe27b6a267e960f9ffedab0d4774c8a8
 ---
  sc/inc/column.hxx                     |  3 ++-
- sc/inc/columnspanset.hxx              |  3 +++
+ sc/inc/columnspanset.hxx              | 12 ++++++++++++
+ sc/inc/markdata.hxx                   |  4 ++++
  sc/source/core/data/column2.cxx       |  4 ++--
- sc/source/core/data/columnspanset.cxx | 12 ++++++++++--
- sc/source/core/data/table2.cxx        | 33 +++++++++++++++++++++++++--------
+ sc/source/core/data/columnspanset.cxx | 14 +++++++++++--
+ sc/source/core/data/markdata.cxx      | 37 +++++++++++++++++++++++++++++++++++
+ sc/source/core/data/table2.cxx        | 31 +++++++++++++++++++++--------
  sc/source/core/data/table3.cxx        |  4 +++-
- 6 files changed, 45 insertions(+), 14 deletions(-)
+ 8 files changed, 95 insertions(+), 14 deletions(-)
 
 diff --git a/sc/inc/column.hxx b/sc/inc/column.hxx
 --- a/sc/inc/column.hxx
@@ -65,7 +67,23 @@ diff --git a/sc/inc/columnspanset.hxx b/sc/inc/columnspanset.hxx
  
  namespace sc {
  
-@@ -124,6 +125,8 @@ public:
+@@ -33,6 +34,15 @@ struct RowSpan
+     RowSpan(SCROW nRow1, SCROW nRow2);
+ };
+ 
++struct SC_DLLPUBLIC ColRowSpan
++{
++    SCCOLROW mnStart;
++    SCCOLROW mnEnd;
++
++    ColRowSpan(SCCOLROW nStart, SCCOLROW nEnd);
++};
++
++
+ /**
+  * Structure that stores segments of boolean flags per column, and perform
+  * custom action on those segments.
+@@ -124,6 +134,8 @@ public:
       */
      void scan(const ScMarkData& rMark, SCTAB nTab, SCCOL nCol);
  
@@ -74,6 +92,27 @@ diff --git a/sc/inc/columnspanset.hxx b/sc/inc/columnspanset.hxx
      void set(SCROW nRow1, SCROW nRow2, bool bVal);
  
      void getRows(std::vector<SCROW> &rRows) const;
+diff --git a/sc/inc/markdata.hxx b/sc/inc/markdata.hxx
+--- a/sc/inc/markdata.hxx
++++ b/sc/inc/markdata.hxx
+@@ -29,6 +29,7 @@
+ namespace sc {
+ 
+ struct RowSpan;
++struct ColRowSpan;
+ 
+ }
+ 
+@@ -106,6 +107,9 @@ public:
+ 
+     void        MarkFromRangeList( const ScRangeList& rList, bool bReset );
+ 
++    std::vector<sc::ColRowSpan> GetMarkedRowSpans() const;
++    std::vector<sc::ColRowSpan> GetMarkedColSpans() const;
++
+     SCCOLROW    GetMarkColumnRanges( SCCOLROW* pRanges );
+     SCCOLROW    GetMarkRowRanges( SCCOLROW* pRanges );
+ 
 diff --git a/sc/source/core/data/column2.cxx b/sc/source/core/data/column2.cxx
 --- a/sc/source/core/data/column2.cxx
 +++ b/sc/source/core/data/column2.cxx
@@ -93,7 +132,16 @@ diff --git a/sc/source/core/data/column2.cxx b/sc/source/core/data/column2.cxx
 diff --git a/sc/source/core/data/columnspanset.cxx b/sc/source/core/data/columnspanset.cxx
 --- a/sc/source/core/data/columnspanset.cxx
 +++ b/sc/source/core/data/columnspanset.cxx
-@@ -275,9 +275,17 @@ void SingleColumnSpanSet::scan(const ScMarkData& rMark, SCTAB nTab, SCCOL nCol)
+@@ -45,6 +45,8 @@ public:
+ 
+ RowSpan::RowSpan(SCROW nRow1, SCROW nRow2) : mnRow1(nRow1), mnRow2(nRow2) {}
+ 
++ColRowSpan::ColRowSpan(SCCOLROW nStart, SCCOLROW nEnd) : mnStart(nStart), mnEnd(nEnd) {}
++
+ ColumnSpanSet::ColumnType::ColumnType(SCROW nStart, SCROW nEnd, bool bInit) :
+     maSpans(nStart, nEnd+1, bInit), miPos(maSpans.begin()) {}
+ 
+@@ -275,9 +277,17 @@ void SingleColumnSpanSet::scan(const ScMarkData& rMark, SCTAB nTab, SCCOL nCol)
          return;
  
      ScRangeList aRanges = rMark.GetMarkedRanges();
@@ -113,20 +161,72 @@ diff --git a/sc/source/core/data/columnspanset.cxx b/sc/source/core/data/columns
          if (nCol < p->aStart.Col() || p->aEnd.Col() < nCol)
              // This column is not in this range. Skip it.
              continue;
+diff --git a/sc/source/core/data/markdata.cxx b/sc/source/core/data/markdata.cxx
+--- a/sc/source/core/data/markdata.cxx
++++ b/sc/source/core/data/markdata.cxx
+@@ -21,6 +21,9 @@
+ #include "markarr.hxx"
+ #include "rangelst.hxx"
+ #include <columnspanset.hxx>
++#include <fstalgorithm.hxx>
++
++#include <mdds/flat_segment_tree.hpp>
+ 
+ // STATIC DATA -----------------------------------------------------------
+ 
+@@ -434,6 +437,40 @@ ScRangeList ScMarkData::GetMarkedRanges() const
+     return aRet;
+ }
+ 
++std::vector<sc::ColRowSpan> ScMarkData::GetMarkedRowSpans() const
++{
++    typedef mdds::flat_segment_tree<SCCOLROW, bool> SpansType;
++
++    ScRangeList aRanges = GetMarkedRanges();
++    SpansType aSpans(0, MAXROW+1, false);
++    SpansType::const_iterator itPos = aSpans.begin();
++
++    for (size_t i = 0, n = aRanges.size(); i < n; ++i)
++    {
++        const ScRange& r = *aRanges[i];
++        itPos = aSpans.insert(itPos, r.aStart.Row(), r.aEnd.Row()+1, true).first;
++    }
++
++    return sc::toSpanArray<SCCOLROW, sc::ColRowSpan>(aSpans);
++}
++
++std::vector<sc::ColRowSpan> ScMarkData::GetMarkedColSpans() const
++{
++    typedef mdds::flat_segment_tree<SCCOLROW, bool> SpansType;
++
++    ScRangeList aRanges = GetMarkedRanges();
++    SpansType aSpans(0, MAXCOL+1, false);
++    SpansType::const_iterator itPos = aSpans.begin();
++
++    for (size_t i = 0, n = aRanges.size(); i < n; ++i)
++    {
++        const ScRange& r = *aRanges[i];
++        itPos = aSpans.insert(itPos, r.aStart.Col(), r.aEnd.Col()+1, true).first;
++    }
++
++    return sc::toSpanArray<SCCOLROW, sc::ColRowSpan>(aSpans);
++}
++
+ SCCOLROW ScMarkData::GetMarkColumnRanges( SCCOLROW* pRanges )
+ {
+     if (bMarked)
 diff --git a/sc/source/core/data/table2.cxx b/sc/source/core/data/table2.cxx
 --- a/sc/source/core/data/table2.cxx
 +++ b/sc/source/core/data/table2.cxx
-@@ -49,6 +49,9 @@
+@@ -49,6 +49,7 @@
  #include "mtvcellfunc.hxx"
  #include "refupdatecontext.hxx"
  #include "scopetools.hxx"
-+#include "tabprotection.hxx"
 +#include "columnspanset.hxx"
-+#include <rowheightcontext.hxx>
  #include <refhint.hxx>
  
  #include "scitems.hxx"
-@@ -1897,10 +1900,17 @@ bool ScTable::HasAttrib( SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2, sal
+@@ -1897,10 +1898,17 @@ bool ScTable::HasAttrib( SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2, sal
  
  bool ScTable::HasAttribSelection( const ScMarkData& rMark, sal_uInt16 nMask ) const
  {
@@ -148,7 +248,7 @@ diff --git a/sc/source/core/data/table2.cxx b/sc/source/core/data/table2.cxx
  }
  
  
-@@ -2171,10 +2181,17 @@ bool ScTable::HasBlockMatrixFragment( SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCR
+@@ -2171,10 +2179,17 @@ bool ScTable::HasBlockMatrixFragment( SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCR
  
  bool ScTable::HasSelectionMatrixFragment( const ScMarkData& rMark ) const
  {
