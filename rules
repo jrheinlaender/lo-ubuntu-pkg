@@ -1944,7 +1944,7 @@ $(STAMP_DIR)/install-common:
 	export OOO_LANGS_LIST="$(ISOS)"; \
 	$(CURDIR)/debian/scripts/gid2pkgdirs.sh
 ifeq "$(BUILD_DBG_PACKAGE)" "y"
-	make cmd cmd="export DESTDIR=$(CURDIR)/debian/tmp; install-gdb-printers -a /usr/share/gdb/auto-load/$(OODIR) -c -i /$(OODIR) -p /usr/share/libreoffice/gdb"
+	make cmd cmd="export DESTDIR=$(CURDIR)/debian/tmp; $(CURDIR)/solenv/bin/install-gdb-printers -a /usr/share/gdb/auto-load/$(OODIR) -c -i /$(OODIR) -p /usr/share/libreoffice/gdb"
 endif
 
 	# FIXME
@@ -2359,37 +2359,32 @@ $(STAMP_DIR)/install-arch: $(STAMP_DIR)/install-common $(STAMP_NATIVE_JARS)
 	dh_testroot
 	umask 022
 
-	# move the URE to /usr/lib/ure
-	mv debian/ure/$(OODIR)/ure debian/ure/usr/lib
-	chmod 644 debian/ure/$(OOUREDIR)/lib/unorc
 	# move URE Java stuff to /usr/share/java
 	mkdir -p debian/ure/usr/share/java
 ifeq "$(ENABLE_JAVA)" "y"
-	mv debian/ure/$(OOUREDIR)/share/java/* \
+	mv debian/ure/$(OODIR)/program/classes/* \
 		debian/ure/usr/share/java
-	cd debian/ure/$(OOUREDIR)/share/java && \
+	cd debian/ure/$(OODIR)/program/classes && \
 		for i in $(CURDIR)/debian/ure/usr/share/java/*.jar; do \
 			ln -sf `echo $$i | sed -e 's,$(CURDIR)/debian/ure,,'` `basename $$i`; \
 		done
 	# fix up Class-Path of jurt.jar to be able to find libjpipe.so.
 	# See See http://www.openoffice.org/servlets/ReadMsg?list=dev&msgNo=27765
-	jh_classpath --classpath="ridl.jar unoloader.jar ../../lib /$(OOUREDIR)/lib/ ../bin/" \
+	jh_classpath --classpath="ridl.jar unoloader.jar ../../lib /$(OODIR)/program ../bin/" \
 		$(CURDIR)/debian/ure/usr/share/java/jurt.jar
 endif
 	# and the public libs to uno-libs3
-	mkdir -p debian/uno-libs3/$(OOUREDIR)/lib
-	for i in debian/ure/$(OOUREDIR)/lib/libuno_*so.3; do \
-		mv $$i debian/uno-libs3/$(OOUREDIR)/lib; \
-		ln -sf /$(OOUREDIR)/lib/`basename $$i` debian/uno-libs3/usr/lib/`basename $$i`; \
+	mkdir -p debian/uno-libs3/$(OODIR)/program
+	for i in debian/ure/$(OODIR)/program/libuno_*so.3; do \
+		mv $$i debian/uno-libs3/$(OODIR)/program; \
+		ln -sf /$(OODIR)/program/`basename $$i` debian/uno-libs3/usr/lib/`basename $$i`; \
 	done
 	# we also need libxmlreaderlo.so and libreglo.so (libuno_cppuhelpergcc3.so.3 needs it)
 	# and libstorelo.so (libreglo.so needs it)
 	for i in libxmlreaderlo.so libreglo.so libstorelo.so; do \
-		mv debian/ure/$(OOUREDIR)/lib/$$i \
-			debian/uno-libs3/$(OOUREDIR)/lib; \
+		mv debian/ure/$(OODIR)/program/$$i \
+			debian/uno-libs3/$(OODIR)/program; \
 	done
-	cd debian/ure/$(OODIR) && \
-		rm ure-link && ln -sf /$(OOUREDIR) ure-link
 
 
 ifeq "$(BUILD_KDE)" "y"
@@ -2579,12 +2574,6 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
 endif
 
-ifeq "$(ENABLE_JAVA)" "y"
-	# hrmpf, again something like that, we really need to find the root cause for that
-	ln -s libjava_uno.so \
-		debian/ure/$(OOUREDIR)/lib/libjava_uno
-endif
-
 	# remove empty resource directories
 	for i in draw base writer impress calc math; do \
 		rm -rf $(PKGDIR)-$$i/$(OODIR)/program/resource; \
@@ -2665,7 +2654,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 	done
 	mh_installpoms -pure
 	for i in juh jurt ridl; do \
-		mh_installjar -pure -l debian/pom.$$i.xml instdir/ure/share/java/$$i.jar; \
+		mh_installjar -pure -l debian/pom.$$i.xml instdir/program/classes/$$i.jar; \
 	done
 endif
 
@@ -3003,9 +2992,6 @@ endif
 	# compat dirs, the split icons thing need it
 	mkdir -p $(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/program
 	mkdir -p $(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/program
-	# three-layer symlinks also for /usr/share
-	ln -s /$(OOUREDIR) \
-		$(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/ure-link
 
 	# enable session handling and recovery
 	perl -pi -e 's,<prop oor:name="DocumentStoreUIEnabled" oor:type="xs:boolean"><value>false</value></prop>,<prop oor:name="DocumentStoreUIEnabled" oor:type="xs:boolean"><value>true</value></prop>,' $(PKGDIR)-common/$(OODIR)/share/registry/main.xcd
@@ -3101,16 +3087,7 @@ ifeq "$(BUILD_DBG_PACKAGE)" "y"
 	mkdir -p $(PKGDIR)-dbg/usr/share/libreoffice/gdb
 	mv $(CURDIR)/debian/tmp/usr/share/libreoffice/gdb/libreoffice \
 		$(PKGDIR)-dbg/usr/share/libreoffice/gdb
-	# FIXME: or better ure-dbg (ure/lib?). Then again ure-link is a link which is in -common
-	# anyways...
-	mkdir -p debian/uno-libs3-dbg/usr/share/gdb/auto-load/$(OOUREDIR)/lib
-	mv $(CURDIR)/debian/tmp//usr/share/gdb/auto-load/$(OODIR)/ure/lib/* \
-		debian/uno-libs3-dbg/usr/share/gdb/auto-load/$(OOUREDIR)/lib
-	mkdir -p debian/uno-libs3-dbg/usr/share/libreoffice/gdb/libreoffice
-	mv $(PKGDIR)-dbg/usr/share/libreoffice/gdb/libreoffice/cppu.py \
-		debian/uno-libs3-dbg/usr/share/libreoffice/gdb/libreoffice
-	mv $(PKGDIR)-dbg/usr/share/libreoffice/gdb/libreoffice/sal.py \
-		debian/uno-libs3-dbg/usr/share/libreoffice/gdb/libreoffice
+	# FIXME. Move stuff which was in ure-dbg back to it here.
 endif
 else
 	dh_strip -s
