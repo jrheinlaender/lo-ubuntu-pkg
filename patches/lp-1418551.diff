@@ -1,0 +1,50 @@
+From be88e305eeac88e51f83efc004d4b60b87f1e757 Mon Sep 17 00:00:00 2001
+From: Michael Stahl <mstahl@redhat.com>
+Date: Tue, 12 May 2015 13:47:38 +0200
+Subject: tdf#90969: basic: add horrible hack to avoid crash due to ...
+
+... the stupid global variable GaDocBasicItems.
+
+Change-Id: Ib849e0e2b661e54005d00091f6d6fc474dc5549b
+
+diff --git a/basic/source/classes/sb.cxx b/basic/source/classes/sb.cxx
+index 559cb3c..a8f1bc6 100644
+--- a/basic/source/classes/sb.cxx
++++ b/basic/source/classes/sb.cxx
+@@ -24,6 +24,7 @@
+ #include <tools/rcid.h>
+ #include <tools/stream.hxx>
+ #include <tools/errinf.hxx>
++#include <tools/solarmutex.hxx>
+ #include <basic/sbx.hxx>
+ #include <tools/rc.hxx>
+ #include <vcl/svapp.hxx>
+@@ -109,10 +110,22 @@ DocBasicItem::DocBasicItem( StarBASIC& rDocBasic ) :
+ 
+ DocBasicItem::~DocBasicItem()
+ {
+-    SolarMutexGuard g;
++    // tdf#90969 HACK: don't use SolarMutexGuard - there is a horrible global
++    // map GaDocBasicItems holding instances, and these get deleted from exit
++    // handlers, when the SolarMutex is already dead
++    tools::SolarMutex::Acquire();
+ 
+-    stopListening();
+-    mxClassModules.Clear(); // release with SolarMutex locked
++    try
++    {
++        stopListening();
++        mxClassModules.Clear(); // release with SolarMutex locked
++    }
++    catch (...)
++    {
++        assert(false);
++    }
++
++    tools::SolarMutex::Release();
+ }
+ 
+ void DocBasicItem::clearDependingVarsOnDelete( StarBASIC& rDeletedBasic )
+-- 
+cgit v0.10.2
+
