@@ -1,0 +1,255 @@
+From: Stephan Bergmann <sbergman@redhat.com>
+Date: Tue, 23 Jun 2015 08:26:36 +0200
+Subject: [PATCH] LinkUpdateMode is a global setting
+
+(cherry picked from commit 77cc71476bae2b3655102e2c29d36af40a393201)
+Conflicts:
+	sw/source/core/doc/DocumentLinksAdministrationManager.cxx
+	sw/source/filter/xml/xmlimp.cxx
+
+Reviewed-on: https://gerrit.libreoffice.org/16424
+Reviewed-by: Miklos Vajna <vmiklos@collabora.co.uk>
+Reviewed-by: Christian Lohmaier <lohmaier+LibreOffice@googlemail.com>
+Tested-by: Christian Lohmaier <lohmaier+LibreOffice@googlemail.com>
+
+Change-Id: Ida1257337c6e0916f2228fe053d9c9f085183af6
+---
+ include/unotools/securityoptions.hxx       |  2 +
+ sc/source/filter/xml/xmlimprt.cxx          | 10 +++-
+ sc/source/ui/docshell/docsh4.cxx           | 18 +++++--
+ sw/source/core/doc/docnew.cxx              | 10 ++++
+ sw/source/filter/xml/xmlimp.cxx            | 78 +++++++++++++++---------------
+ unotools/source/config/securityoptions.cxx |  9 ++++
+ 6 files changed, 84 insertions(+), 43 deletions(-)
+
+diff --git a/include/unotools/securityoptions.hxx b/include/unotools/securityoptions.hxx
+--- a/include/unotools/securityoptions.hxx
++++ b/include/unotools/securityoptions.hxx
+@@ -195,6 +195,8 @@ class UNOTOOLS_DLLPUBLIC SAL_WARN_UNUSED SvtSecurityOptions : public utl::detail
+          */
+         bool isUntrustedReferer(OUString const & referer) const;
+ 
++        bool isTrustedLocationUriForUpdatingLinks(OUString const & uri) const;
++
+         /**
+            Check whether the given uri is a trusted location.
+         */
+diff --git a/sc/source/filter/xml/xmlimprt.cxx b/sc/source/filter/xml/xmlimprt.cxx
+--- a/sc/source/filter/xml/xmlimprt.cxx
++++ b/sc/source/filter/xml/xmlimprt.cxx
+@@ -2619,6 +2619,9 @@ void ScXMLImport::SetConfigurationSettings(const uno::Sequence<beans::PropertyVa
+             OUString sCTName("TrackedChangesProtectionKey");
+             OUString sVBName("VBACompatibilityMode");
+             OUString sSCName("ScriptConfiguration");
++            css::uno::Sequence<css::beans::PropertyValue> aFilteredProps(
++                aConfigProps.getLength());
++            sal_Int32 nFilteredPropsLen = 0;
+             for (sal_Int32 i = nCount - 1; i >= 0; --i)
+             {
+                 if (aConfigProps[i].Name == sCTName)
+@@ -2653,11 +2656,16 @@ void ScXMLImport::SetConfigurationSettings(const uno::Sequence<beans::PropertyVa
+                             xImportInfo->setPropertyValue( aConfigProps[i].Name, aConfigProps[i].Value );
+                     }
+                 }
++                if (aConfigProps[i].Name != "LinkUpdateMode")
++                {
++                    aFilteredProps[nFilteredPropsLen++] = aConfigProps[i];
++                }
+             }
++            aFilteredProps.realloc(nFilteredPropsLen);
+             uno::Reference <uno::XInterface> xInterface = xMultiServiceFactory->createInstance("com.sun.star.comp.SpreadsheetSettings");
+             uno::Reference <beans::XPropertySet> xProperties(xInterface, uno::UNO_QUERY);
+             if (xProperties.is())
+-                SvXMLUnitConverter::convertPropertySet(xProperties, aConfigProps);
++                SvXMLUnitConverter::convertPropertySet(xProperties, aFilteredProps);
+         }
+     }
+ }
+diff --git a/sc/source/ui/docshell/docsh4.cxx b/sc/source/ui/docshell/docsh4.cxx
+--- a/sc/source/ui/docshell/docsh4.cxx
++++ b/sc/source/ui/docshell/docsh4.cxx
+@@ -48,6 +48,7 @@ using namespace ::com::sun::star;
+ #include <svl/PasswordHelper.hxx>
+ #include <svl/documentlockfile.hxx>
+ #include <svl/sharecontrolfile.hxx>
++#include <unotools/securityoptions.hxx>
+ 
+ #include <comphelper/processfactory.hxx>
+ #include "docuno.hxx"
+@@ -426,12 +427,23 @@ void ScDocShell::Execute( SfxRequest& rReq )
+ 
+                 if (nCanUpdate == com::sun::star::document::UpdateDocMode::NO_UPDATE)
+                     nSet = LM_NEVER;
+-                else if (nCanUpdate == com::sun::star::document::UpdateDocMode::QUIET_UPDATE &&
+-                    nSet == LM_ON_DEMAND)
+-                    nSet = LM_NEVER;
+                 else if (nCanUpdate == com::sun::star::document::UpdateDocMode::FULL_UPDATE)
+                     nSet = LM_ALWAYS;
+ 
++                if (nSet == LM_ALWAYS
++                    && !(SvtSecurityOptions()
++                         .isTrustedLocationUriForUpdatingLinks(
++                             GetMedium() == nullptr
++                             ? OUString() : GetMedium()->GetName())))
++                {
++                    nSet = LM_ON_DEMAND;
++                }
++                if (nCanUpdate == css::document::UpdateDocMode::QUIET_UPDATE
++                    && nSet == LM_ON_DEMAND)
++                {
++                    nSet = LM_NEVER;
++                }
++
+                 if(nSet==LM_ON_DEMAND)
+                 {
+                     QueryBox aBox( GetActiveDialogParent(), WinBits(WB_YES_NO | WB_DEF_YES),
+diff --git a/sw/source/core/doc/docnew.cxx b/sw/source/core/doc/docnew.cxx
+--- a/sw/source/core/doc/docnew.cxx
++++ b/sw/source/core/doc/docnew.cxx
+@@ -42,6 +42,7 @@
+ #include <svl/zforlist.hxx>
+ #include <unotools/compatibility.hxx>
+ #include <unotools/lingucfg.hxx>
++#include <unotools/securityoptions.hxx>
+ #include <svx/svdpage.hxx>
+ #include <paratr.hxx>
+ #include <fchrfmt.hxx>
+@@ -980,6 +981,15 @@ void SwDoc::UpdateLinks( bool bUI )
+                 case document::UpdateDocMode::QUIET_UPDATE:bAskUpdate = false; break;
+                 case document::UpdateDocMode::FULL_UPDATE: bAskUpdate = true; break;
+             }
++            if (nLinkMode == AUTOMATIC && !bAskUpdate)
++            {
++                SfxMedium * medium = GetDocShell()->GetMedium();
++                if (!SvtSecurityOptions().isTrustedLocationUriForUpdatingLinks(
++                        medium == nullptr ? OUString() : medium->GetName()))
++                {
++                    bAskUpdate = true;
++                }
++            }
+             if( bUpdate && (bUI || !bAskUpdate) )
+             {
+                 SfxMedium* pMedium = GetDocShell()->GetMedium();
+diff --git a/sw/source/filter/xml/xmlimp.cxx b/sw/source/filter/xml/xmlimp.cxx
+--- a/sw/source/filter/xml/xmlimp.cxx
++++ b/sw/source/filter/xml/xmlimp.cxx
+@@ -1095,45 +1095,45 @@ void SwXMLImport::SetConfigurationSettings(const Sequence < PropertyValue > & aC
+     if( !xInfo.is() )
+         return;
+ 
+-    boost::unordered_set< OUString, OUStringHash > aSet;
+-    aSet.insert(OUString("ForbiddenCharacters"));
+-    aSet.insert(OUString("IsKernAsianPunctuation"));
+-    aSet.insert(OUString("CharacterCompressionType"));
+-    aSet.insert(OUString("LinkUpdateMode"));
+-    aSet.insert(OUString("FieldAutoUpdate"));
+-    aSet.insert(OUString("ChartAutoUpdate"));
+-    aSet.insert(OUString("AddParaTableSpacing"));
+-    aSet.insert(OUString("AddParaTableSpacingAtStart"));
+-    aSet.insert(OUString("PrintAnnotationMode"));
+-    aSet.insert(OUString("PrintBlackFonts"));
+-    aSet.insert(OUString("PrintControls"));
+-    aSet.insert(OUString("PrintDrawings"));
+-    aSet.insert(OUString("PrintGraphics"));
+-    aSet.insert(OUString("PrintLeftPages"));
+-    aSet.insert(OUString("PrintPageBackground"));
+-    aSet.insert(OUString("PrintProspect"));
+-    aSet.insert(OUString("PrintReversed"));
+-    aSet.insert(OUString("PrintRightPages"));
+-    aSet.insert(OUString("PrintFaxName"));
+-    aSet.insert(OUString("PrintPaperFromSetup"));
+-    aSet.insert(OUString("PrintTables"));
+-    aSet.insert(OUString("PrintSingleJobs"));
+-    aSet.insert(OUString("UpdateFromTemplate"));
+-    aSet.insert(OUString("PrinterIndependentLayout"));
+-    aSet.insert(OUString("PrintEmptyPages"));
+-    aSet.insert(OUString("SmallCapsPercentage66"));
+-    aSet.insert(OUString("TabOverflow"));
+-    aSet.insert(OUString("UnbreakableNumberings"));
+-    aSet.insert(OUString("ClippedPictures"));
+-    aSet.insert(OUString("BackgroundParaOverDrawings"));
+-    aSet.insert(OUString("TabOverMargin"));
++    boost::unordered_set< OUString, OUStringHash > aExcludeAlways;
++    aExcludeAlways.insert("LinkUpdateMode");
++    boost::unordered_set< OUString, OUStringHash > aExcludeWhenNotLoadingUserSettings;
++    aExcludeWhenNotLoadingUserSettings.insert(OUString("ForbiddenCharacters"));
++    aExcludeWhenNotLoadingUserSettings.insert(OUString("IsKernAsianPunctuation"));
++    aExcludeWhenNotLoadingUserSettings.insert(OUString("CharacterCompressionType"));
++    aExcludeWhenNotLoadingUserSettings.insert(OUString("FieldAutoUpdate"));
++    aExcludeWhenNotLoadingUserSettings.insert(OUString("ChartAutoUpdate"));
++    aExcludeWhenNotLoadingUserSettings.insert(OUString("AddParaTableSpacing"));
++    aExcludeWhenNotLoadingUserSettings.insert(OUString("AddParaTableSpacingAtStart"));
++    aExcludeWhenNotLoadingUserSettings.insert(OUString("PrintAnnotationMode"));
++    aExcludeWhenNotLoadingUserSettings.insert(OUString("PrintBlackFonts"));
++    aExcludeWhenNotLoadingUserSettings.insert(OUString("PrintControls"));
++    aExcludeWhenNotLoadingUserSettings.insert(OUString("PrintDrawings"));
++    aExcludeWhenNotLoadingUserSettings.insert(OUString("PrintGraphics"));
++    aExcludeWhenNotLoadingUserSettings.insert(OUString("PrintLeftPages"));
++    aExcludeWhenNotLoadingUserSettings.insert(OUString("PrintPageBackground"));
++    aExcludeWhenNotLoadingUserSettings.insert(OUString("PrintProspect"));
++    aExcludeWhenNotLoadingUserSettings.insert(OUString("PrintReversed"));
++    aExcludeWhenNotLoadingUserSettings.insert(OUString("PrintRightPages"));
++    aExcludeWhenNotLoadingUserSettings.insert(OUString("PrintFaxName"));
++    aExcludeWhenNotLoadingUserSettings.insert(OUString("PrintPaperFromSetup"));
++    aExcludeWhenNotLoadingUserSettings.insert(OUString("PrintTables"));
++    aExcludeWhenNotLoadingUserSettings.insert(OUString("PrintSingleJobs"));
++    aExcludeWhenNotLoadingUserSettings.insert(OUString("UpdateFromTemplate"));
++    aExcludeWhenNotLoadingUserSettings.insert(OUString("PrinterIndependentLayout"));
++    aExcludeWhenNotLoadingUserSettings.insert(OUString("PrintEmptyPages"));
++    aExcludeWhenNotLoadingUserSettings.insert(OUString("SmallCapsPercentage66"));
++    aExcludeWhenNotLoadingUserSettings.insert(OUString("TabOverflow"));
++    aExcludeWhenNotLoadingUserSettings.insert(OUString("UnbreakableNumberings"));
++    aExcludeWhenNotLoadingUserSettings.insert(OUString("ClippedPictures"));
++    aExcludeWhenNotLoadingUserSettings.insert(OUString("BackgroundParaOverDrawings"));
++    aExcludeWhenNotLoadingUserSettings.insert(OUString("TabOverMargin"));
+ 
+     sal_Int32 nCount = aConfigProps.getLength();
+     const PropertyValue* pValues = aConfigProps.getConstArray();
+ 
+     SvtSaveOptions aSaveOpt;
+-    sal_Bool bIsUserSetting = aSaveOpt.IsLoadUserSettings(),
+-         bSet = bIsUserSetting;
++    bool bIsUserSetting = aSaveOpt.IsLoadUserSettings();
+ 
+     // for some properties we don't want to use the application
+     // default if they're missing. So we watch for them in the loop
+@@ -1173,12 +1173,12 @@ void SwXMLImport::SetConfigurationSettings(const Sequence < PropertyValue > & aC
+ 
+     while( nCount-- )
+     {
+-        if( !bIsUserSetting )
++        bool bSet = aExcludeAlways.find(pValues->Name) == aExcludeAlways.end();
++        if( bSet && !bIsUserSetting
++            && (aExcludeWhenNotLoadingUserSettings.find(pValues->Name)
++                != aExcludeWhenNotLoadingUserSettings.end()) )
+         {
+-            // test over the hash value if the entry is in the table.
+-            OUString aStr(pValues->Name);
+-
+-            bSet = aSet.find(aStr) == aSet.end();
++            bSet = false;
+         }
+ 
+         if( bSet )
+diff --git a/unotools/source/config/securityoptions.cxx b/unotools/source/config/securityoptions.cxx
+--- a/unotools/source/config/securityoptions.cxx
++++ b/unotools/source/config/securityoptions.cxx
+@@ -1082,6 +1082,15 @@ bool SvtSecurityOptions::isTrustedLocationUri(OUString const & uri) const {
+     return false;
+ }
+ 
++bool SvtSecurityOptions::isTrustedLocationUriForUpdatingLinks(
++    OUString const & uri) const
++{
++    return GetMacroSecurityLevel() == 0 || uri.isEmpty()
++        || uri.startsWithIgnoreAsciiCase("private:")
++        || isTrustedLocationUri(uri);
++}
++
++
+ sal_Int32 SvtSecurityOptions::GetMacroSecurityLevel() const
+ {
+     MutexGuard aGuard( GetInitMutex() );
+-- 
+1.9.1
+
