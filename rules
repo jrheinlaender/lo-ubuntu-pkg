@@ -266,10 +266,10 @@ ifeq "$(ENABLE_JAVA)" "y"
       RUN_MAKE_CHECK=y
       RUN_PYTESTS=y
       ifeq "$(DEB_HOST_ARCH)" "i386"
-	ENABLE_JUNIT4=n
+	ENABLE_JUNIT4=y
       endif
       ifeq "$(DEB_HOST_ARCH)" "amd64"
-	ENABLE_JUNIT4=n
+	ENABLE_JUNIT4=y
       endif
     endif
   else
@@ -277,10 +277,10 @@ ifeq "$(ENABLE_JAVA)" "y"
       RUN_MAKE_CHECK=y
       RUN_PYTESTS=y
       ifeq "$(DEB_HOST_ARCH)" "i386"
-	ENABLE_JUNIT4=n
+	ENABLE_JUNIT4=y
       endif
       ifeq "$(DEB_HOST_ARCH)" "amd64"
-	ENABLE_JUNIT4=n
+	ENABLE_JUNIT4=y
       endif
     else
       RUN_MAKE_CHECK=n
@@ -2404,9 +2404,9 @@ endif
 		mv $$i debian/uno-libs3/$(OODIR)/program; \
 		ln -sf /$(OODIR)/program/`basename $$i` debian/uno-libs3/usr/lib/`basename $$i`; \
 	done
-	# we also need libxmlreaderlo.so and libreglo.so (libuno_cppuhelpergcc3.so.3 needs it)
-	# and libstorelo.so (libreglo.so needs it)
-	for i in libxmlreaderlo.so libreglo.so libstorelo.so; do \
+	# we also need libxmlreaderlo.so, libreglo.so and libunoidllo.so (libuno_cppuhelpergcc3.so.3
+        # needs it) and libstorelo.so (libreglo.so needs it)
+	for i in libxmlreaderlo.so libreglo.so libstorelo.so libunoidllo.so; do \
 		mv debian/ure/$(OODIR)/program/$$i \
 			debian/uno-libs3/$(OODIR)/program; \
 	done
@@ -2449,6 +2449,7 @@ ifeq "$(BUILD_GTK3)" "y"
 	mv $(PKGDIR)-gnome/$(OODIR)/program/libvclplug_gtk3lo.so $(PKGDIR)-gtk3/$(OODIR)/program/
 endif
 	mv $(PKGDIR)-gnome/$(OODIR)/program/* $(PKGDIR)-gtk/$(OODIR)/program/
+	mv $(PKGDIR)-gtk/$(OODIR)/program/gnome-open-url $(PKGDIR)-gnome/$(OODIR)/program
 ifeq "$(BUILD_GTK)" "y"
 	mkdir -p -m755 $(PKGDIR)-gtk/$(OODIR)/share
 	mv $(PKGDIR)-gnome/$(OODIR)/share/xdg $(PKGDIR)-gtk/$(OODIR)/share
@@ -3084,7 +3085,18 @@ ifeq "$(BUILD_DBG_PACKAGE)" "y"
 	mkdir -p $(PKGDIR)-dbg/usr/share/libreoffice/gdb
 	mv $(CURDIR)/debian/tmp/usr/share/libreoffice/gdb/libreoffice \
 		$(PKGDIR)-dbg/usr/share/libreoffice/gdb
-	# FIXME. Move stuff which was in ure-dbg back to it here.
+	# FIXME: or better ure-dbg (ure/lib?). Then again ure is a link which is in -common
+	# anyways...
+	mkdir -p debian/uno-libs3-dbg/usr/share/gdb/auto-load/$(OODIR)/program
+	mv $(PKGDIR)-dbg/usr/share/gdb/auto-load/$(OODIR)/program/libuno_cppu.so.3-gdb.py \
+		debian/uno-libs3-dbg/usr/share/gdb/auto-load/$(OODIR)/program
+	mv $(PKGDIR)-dbg/usr/share/gdb/auto-load/$(OODIR)/program/libuno_sal.so.3-gdb.py \
+		debian/uno-libs3-dbg/usr/share/gdb/auto-load/$(OODIR)/program
+	mkdir -p debian/uno-libs3-dbg/usr/share/libreoffice/gdb/libreoffice
+	mv $(PKGDIR)-dbg/usr/share/libreoffice/gdb/libreoffice/cppu.py \
+		debian/uno-libs3-dbg/usr/share/libreoffice/gdb/libreoffice
+	mv $(PKGDIR)-dbg/usr/share/libreoffice/gdb/libreoffice/sal.py \
+		debian/uno-libs3-dbg/usr/share/libreoffice/gdb/libreoffice
 endif
 else
 	dh_strip -s
@@ -3107,6 +3119,12 @@ ifeq (,$(filter icu, $(SYSTEM_STUFF)))
 endif
 ifneq (,$(filter libvisio, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.libvisio >> debian/shlibs.local
+endif
+ifeq (,$(filter libwpd, $(SYSTEM_STUFF)))
+	cat debian/shlibs.override.libwpd >> debian/shlibs.local
+endif
+ifeq (,$(filter libwpg, $(SYSTEM_STUFF)))
+	cat debian/shlibs.override.libwpg >> debian/shlibs.local
 endif
 ifeq (,$(filter libwps, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.libwps >> debian/shlibs.local
