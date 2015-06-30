@@ -640,7 +640,7 @@ endif
 # Debian Jessie
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "jessie-backports"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out opencollada collada2gltf libmwaw libcmis mdds glm libwps,$(SYSTEM_STUFF))
+  SYSTEM_STUFF := $(filter-out opencollada collada2gltf libmwaw libcmis mdds glm libwps libetonyek orcus,$(SYSTEM_STUFF))
   JESSIE_BACKPORT=y
 endif
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "UNRELEASED"
@@ -1123,7 +1123,7 @@ endif
 
 ifeq "$(ENABLE_ORCUS)" "y"
   ifneq (,$(filter orcus, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , liborcus-dev (>= 0.7.0)
+	BUILD_DEPS += , liborcus-dev (>= 0.9.0)
   endif
 else
 	CONFIGURE_FLAGS += --disable-orcus
@@ -1169,7 +1169,7 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
 	BUILD_DEPS += , libodfgen-dev (>= 0.1)
   endif
   ifneq (,$(filter libetonyek, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libetonyek-dev (>= 0.1.1)
+	BUILD_DEPS += , libetonyek-dev (>= 0.1.2)
   endif
   ifneq (,$(filter libfreehand, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libfreehand-dev (>= 0.1)
@@ -1561,7 +1561,6 @@ clean-debdir:
 
 	rm -f debian/libreoffice-dev-doc.doc-base.*
 	rm -f debian/*.install debian/*.dirs debian/*.changelog
-	rm -f debian/catalog.xml
 	rm -f debian/*.postinst debian/*.postrm debian/*.preinst debian/*.prerm debian/*.triggers
 	rm -f debian/pom*.xml
 
@@ -2211,9 +2210,9 @@ endif
 		mv $$i debian/uno-libs3/$(OODIR)/program; \
 		ln -sf /$(OODIR)/program/`basename $$i` debian/uno-libs3/usr/lib/`basename $$i`; \
 	done
-	# we also need libxmlreaderlo.so and libreglo.so (libuno_cppuhelpergcc3.so.3 needs it)
-	# and libstorelo.so (libreglo.so needs it)
-	for i in libxmlreaderlo.so libreglo.so libstorelo.so; do \
+	# we also need libxmlreaderlo.so, libreglo.so and libunoidllo.so (libuno_cppuhelpergcc3.so.3
+        # needs it) and libstorelo.so (libreglo.so needs it)
+	for i in libxmlreaderlo.so libreglo.so libstorelo.so libunoidllo.so; do \
 		mv debian/ure/$(OODIR)/program/$$i \
 			debian/uno-libs3/$(OODIR)/program; \
 	done
@@ -2256,6 +2255,7 @@ ifeq "$(BUILD_GTK3)" "y"
 	mv $(PKGDIR)-gnome/$(OODIR)/program/libvclplug_gtk3lo.so $(PKGDIR)-gtk3/$(OODIR)/program/
 endif
 	mv $(PKGDIR)-gnome/$(OODIR)/program/* $(PKGDIR)-gtk/$(OODIR)/program/
+	mv $(PKGDIR)-gtk/$(OODIR)/program/gnome-open-url $(PKGDIR)-gnome/$(OODIR)/program
 ifeq "$(BUILD_GTK)" "y"
 	mkdir -p -m755 $(PKGDIR)-gtk/$(OODIR)/share
 	mv $(PKGDIR)-gnome/$(OODIR)/share/xdg $(PKGDIR)-gtk/$(OODIR)/share
@@ -2894,7 +2894,18 @@ ifeq "$(BUILD_DBG_PACKAGE)" "y"
 	mkdir -p $(PKGDIR)-dbg/usr/share/libreoffice/gdb
 	mv $(CURDIR)/debian/tmp/usr/share/libreoffice/gdb/libreoffice \
 		$(PKGDIR)-dbg/usr/share/libreoffice/gdb
-	# FIXME. Move stuff which was in ure-dbg back to it here.
+	# FIXME: or better ure-dbg (ure/lib?). Then again ure is a link which is in -common
+	# anyways...
+	mkdir -p debian/uno-libs3-dbg/usr/share/gdb/auto-load/$(OODIR)/program
+	mv $(PKGDIR)-dbg/usr/share/gdb/auto-load/$(OODIR)/program/libuno_cppu.so.3-gdb.py \
+		debian/uno-libs3-dbg/usr/share/gdb/auto-load/$(OODIR)/program
+	mv $(PKGDIR)-dbg/usr/share/gdb/auto-load/$(OODIR)/program/libuno_sal.so.3-gdb.py \
+		debian/uno-libs3-dbg/usr/share/gdb/auto-load/$(OODIR)/program
+	mkdir -p debian/uno-libs3-dbg/usr/share/libreoffice/gdb/libreoffice
+	mv $(PKGDIR)-dbg/usr/share/libreoffice/gdb/libreoffice/cppu.py \
+		debian/uno-libs3-dbg/usr/share/libreoffice/gdb/libreoffice
+	mv $(PKGDIR)-dbg/usr/share/libreoffice/gdb/libreoffice/sal.py \
+		debian/uno-libs3-dbg/usr/share/libreoffice/gdb/libreoffice
 endif
 else
 	dh_strip -s
@@ -2917,6 +2928,12 @@ ifeq (,$(filter icu, $(SYSTEM_STUFF)))
 endif
 ifneq (,$(filter libvisio, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.libvisio >> debian/shlibs.local
+endif
+ifeq (,$(filter libwpd, $(SYSTEM_STUFF)))
+	cat debian/shlibs.override.libwpd >> debian/shlibs.local
+endif
+ifeq (,$(filter libwpg, $(SYSTEM_STUFF)))
+	cat debian/shlibs.override.libwpg >> debian/shlibs.local
 endif
 ifeq (,$(filter libwps, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.libwps >> debian/shlibs.local
@@ -3118,7 +3135,6 @@ endif
 		$(PKGDIR)-common/usr/share/applications/libreoffice-startcenter.desktop
 	dh_fixperms -i
 	dh_icons -i
-	dh_installxmlcatalogs -i
 	dh_compress -i -X.py -X.mk -X.sxd -X.xcd.sample
 	dh_installdeb -i
 ifeq "$(ENABLE_JAVA)" "y"
