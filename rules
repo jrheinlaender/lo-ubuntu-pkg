@@ -317,6 +317,11 @@ USE_OPENLDAP=y
 SYSTEM_STUFF += glew
 ENABLE_GLTF=y
 SYSTEM_STUFF += libgltf
+ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) ge 5 && echo true)" "true"
+LIBGLTF_MINVER=0.0.2-4
+else
+LIBGLTF_MINVER=0.0.1
+endif
 # I think we should only enable it when we have BOTH system-opencollasa
 # and system-collada2gltf working
 ifeq "$(ENABLE_GLTF)" "y"
@@ -336,6 +341,16 @@ ifeq "$(ENABLE_GLTF)" "y"
     SYSTEM_STUFF += collada2gltf
     COLLADA2GLTF_CFLAGS="-I/usr/include/collada2gltf -I/usr/include/collada2gltf/JSON -I/usr/include/collada2gltf/GLTF -I/usr/include/collada2gltf/helpers -I/usr/include/collada2gltf/assetModifiers -I/usr/include/rapidjson" 
     COLLADA2GLTF_LIBS="-lcollada2gltfConvert -lo3dgc_common_lib -lo3dgc_dec_lib -lo3dgc_enc_lib"
+  endif
+  ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) ge 5 && echo true)" "true"
+    OPENCOLLADA_MINVER=(>= 0.1.0~20140703.ddf8f47+dfsg1-2)
+  else
+   OPENCOLLADA_MINVER=
+  endif
+  ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) ge 5 && echo true)" "true"
+    COLLADA2GLTF_MINVER=(>= 20140924-2)
+  else
+    COLLADA2GLTF_MINVER=
   endif
 endif
 SYSTEM_STUFF += openssl
@@ -675,17 +690,17 @@ ifneq "$(ENABLE_GLTF)" "y"
 	CONFIGURE_FLAGS += --disable-gltf
 else
   ifneq (,$(findstring libgltf,$(SYSTEM_STUFF)))
-	BUILD_DEPS += , libgltf-dev (>= 0.0.1)$(OOO_NO_GLTF_ARCHS)
+	BUILD_DEPS += , libgltf-dev (>= $(LIBGLTF_MINVER))$(OOO_NO_GLTF_ARCHS)
   endif
   ifneq "$(ENABLE_COLLADA)" "y"
 	CONFIGURE_FLAGS += --disable-collada
   else
     ifneq (,$(findstring opencollada,$(SYSTEM_STUFF)))
-       BUILD_DEPS += , opencollada-dev [$(OOO_COLLADA_ARCHS)]
+       BUILD_DEPS += , opencollada-dev $(OPENCOLLADA_MINVER) [$(OOO_COLLADA_ARCHS)]
        BUILD_DEPS += , libpcre3-dev [$(OOO_COLLADA_ARCHS)]
     endif
     ifneq (,$(findstring collada2gltf,$(SYSTEM_STUFF)))
-       BUILD_DEPS += , libcollada2gltfconvert-dev [$(OOO_COLLADA_ARCHS)]
+       BUILD_DEPS += , libcollada2gltfconvert-dev $(COLLADA2GLTF_MINVER)[$(OOO_COLLADA_ARCHS)]
        BUILD_DEPS += , rapidjson-dev [$(OOO_COLLADA_ARCHS)]
        BUILD_DEPS += , libo3dgc-dev (>= 0~20131011-2) [$(OOO_COLLADA_ARCHS)]
     endif
