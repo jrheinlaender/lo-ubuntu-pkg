@@ -1,19 +1,19 @@
-From 4224d61427370149e9a9f5bd20cd9549e535398f Mon Sep 17 00:00:00 2001
+From fef2f669c1e861c685d22c18319514cec9f9f8c3 Mon Sep 17 00:00:00 2001
 From: Bjoern Michaelsen <bjoern.michaelsen@canonical.com>
-Date: Wed Mar 20 12:50:17 CET 2013
+Date: Wed, 28 Jan 2015 12:11:16 +0100
 Subject: [PATCH] run subsequentcheck standalone against installed version as
  integration test
-Forwarded: partially, where there is generic use for it
 
+Forwarded: partially, where there is generic use for it
 ---
  jurt/Module_jurt.mk                        |  2 +-
- ridljar/JunitTest_util.mk                  |  2 +-
+ postprocess/Module_postprocess.mk          |  4 ++--
  solenv/gbuild/JavaClassSet.mk              |  2 +-
  solenv/gbuild/JunitTest.mk                 |  2 +-
  solenv/gbuild/Module.mk                    |  3 +++
- solenv/gbuild/extensions/post_SkipBuild.mk | 17 +++++++++++++++++
- solenv/gbuild/platform/unxgcc.mk           |  2 +-
- 7 files changed, 25 insertions(+), 5 deletions(-)
+ solenv/gbuild/extensions/post_SkipBuild.mk | 18 ++++++++++++++++++
+ solenv/gbuild/platform/unxgcc.mk           |  1 +
+ 7 files changed, 27 insertions(+), 5 deletions(-)
  create mode 100644 solenv/gbuild/extensions/post_SkipBuild.mk
 
 diff --git a/jurt/Module_jurt.mk b/jurt/Module_jurt.mk
@@ -30,7 +30,7 @@ index 89fb397..6b27f24 100644
      InternalUnoApi_test_urp \
      JunitTest_bridgefactory \
 diff --git a/postprocess/Module_postprocess.mk b/postprocess/Module_postprocess.mk
-index d3d5a95..465f674 100644
+index 5775cfa..b2f6d44 100644
 --- a/postprocess/Module_postprocess.mk
 +++ b/postprocess/Module_postprocess.mk
 @@ -12,13 +12,13 @@ $(eval $(call gb_Module_Module,postprocess))
@@ -50,7 +50,7 @@ index d3d5a95..465f674 100644
  ))
  
 diff --git a/solenv/gbuild/JavaClassSet.mk b/solenv/gbuild/JavaClassSet.mk
-index b24cdef..cc720f9 100644
+index 58a16d9..35a2110 100644
 --- a/solenv/gbuild/JavaClassSet.mk
 +++ b/solenv/gbuild/JavaClassSet.mk
 @@ -39,7 +39,7 @@ $(call gb_Helper_abbreviate_dirs,\
@@ -63,23 +63,23 @@ index b24cdef..cc720f9 100644
  			@$$RESPONSEFILE &&) \
  		rm -f $$RESPONSEFILE &&) \
 diff --git a/solenv/gbuild/JunitTest.mk b/solenv/gbuild/JunitTest.mk
-index aee3edf..59f8d41 100644
+index 8370603..efe2660 100644
 --- a/solenv/gbuild/JunitTest.mk
 +++ b/solenv/gbuild/JunitTest.mk
-@@ -57,7 +57,7 @@ $(call gb_JunitTest_get_target,%) :
+@@ -54,7 +54,7 @@ $(call gb_JunitTest_get_target,%) :
  	$(CLEAN_CMD)
  
  define gb_JunitTest_JunitTest
--$(call gb_JunitTest_get_target,$(1)) : T_CP := $(call gb_JavaClassSet_get_classdir,$(call gb_JunitTest_get_classsetname,$(1)))$$(gb_CLASSPATHSEP)$(OOO_JUNIT_JAR)$$(gb_CLASSPATHSEP)$(INSTROOT)/$(LIBO_URE_LIB_FOLDER)
-+$(call gb_JunitTest_get_target,$(1)) : T_CP := $(call gb_JavaClassSet_get_classdir,$(call gb_JunitTest_get_classsetname,$(1)))$$(gb_CLASSPATHSEP)$(OOO_JUNIT_JAR)$$(gb_CLASSPATHSEP)$(OUTDIR)/lib:$(subst $(gb_SPACE),:,$(wildcard /usr/lib/ure/share/java/*.jar)):$(subst $(gb_SPACE),:,$(wildcard /usr/lib/libreoffice/program/classes/*.jar))
+-$(call gb_JunitTest_get_target,$(1)) : T_CP := $(call gb_JavaClassSet_get_classdir,$(call gb_JunitTest_get_classsetname,$(1)))$$(gb_CLASSPATHSEP)$(OOO_JUNIT_JAR)$(if $(HAMCREST_JAR),$$(gb_CLASSPATHSEP)$(HAMCREST_JAR))$$(gb_CLASSPATHSEP)$(INSTROOT)/$(LIBO_URE_LIB_FOLDER)
++$(call gb_JunitTest_get_target,$(1)) : T_CP := $(call gb_JavaClassSet_get_classdir,$(call gb_JunitTest_get_classsetname,$(1)))$$(gb_CLASSPATHSEP)$(OOO_JUNIT_JAR)$(if $(HAMCREST_JAR),$$(gb_CLASSPATHSEP)$(HAMCREST_JAR))$$(gb_CLASSPATHSEP)$(OUTDIR)/lib:$(subst $(gb_SPACE),:,$(wildcard /usr/lib/ure/share/java/*.jar)):$(subst $(gb_SPACE),:,$(wildcard /usr/lib/libreoffice/program/classes/*.jar))
  $(call gb_JunitTest_get_target,$(1)) : CLASSES :=
  $(eval $(call gb_JunitTest_JunitTest_platform,$(1)))
  
 diff --git a/solenv/gbuild/Module.mk b/solenv/gbuild/Module.mk
-index d08e5cb..2af72a7 100644
+index 253564c..0aad310 100644
 --- a/solenv/gbuild/Module.mk
 +++ b/solenv/gbuild/Module.mk
-@@ -263,6 +263,7 @@ endef
+@@ -278,6 +278,7 @@ endef
  # has order dependency on AllModulesButInstsetNative to be able to run
  # subsequentcheck in the same make process on "make check"
  define gb_Module_add_subsequentcheck_target
@@ -87,7 +87,7 @@ index d08e5cb..2af72a7 100644
  $(call gb_Module__read_targetfile,$(1),$(2),subsequentcheck target)
  
  $(call gb_Module_get_subsequentcheck_target,$(1)) : $$(gb_Module_CURRENTTARGET)
-@@ -270,6 +271,8 @@ $$(gb_Module_CURRENTTARGET) :| \
+@@ -285,6 +286,8 @@ $$(gb_Module_CURRENTTARGET) :| \
  	$(call gb_Postprocess_get_target,AllModulesButInstsetNative)
  $(call gb_Module_get_clean_target,$(1)) : $$(gb_Module_CURRENTCLEANTARGET)
  
@@ -95,7 +95,7 @@ index d08e5cb..2af72a7 100644
 +
  endef
  
- define gb_Module_add_moduledir
+ define gb_Module_add_perfcheck_target
 diff --git a/solenv/gbuild/extensions/post_SkipBuild.mk b/solenv/gbuild/extensions/post_SkipBuild.mk
 new file mode 100644
 index 0000000..7f8c18a
@@ -120,9 +120,11 @@ index 0000000..7f8c18a
 +gb_JunitTest_use_jar =
 +
 +# vim: set noet sw=4 ts=4:
+diff --git a/solenv/gbuild/platform/unxgcc.mk b/solenv/gbuild/platform/unxgcc.mk
+index d4539d3..5bfeb06 100644
 --- a/solenv/gbuild/platform/unxgcc.mk
 +++ b/solenv/gbuild/platform/unxgcc.mk
-@@ -333,6 +333,7 @@ $(call gb_JunitTest_get_target,$(1)) : DEFS := \
+@@ -290,6 +290,7 @@ $(call gb_JunitTest_get_target,$(1)) : DEFS := \
  	-Dorg.openoffice.test.arg.workdir=$(call gb_JunitTest_get_userdir,$(1)) \
  	-Dorg.openoffice.test.arg.postprocesscommand=$(SRCDIR)/solenv/bin/gdb-core-bt.sh \
  	-Dorg.openoffice.test.arg.soffice="$(gb_JunitTest_SOFFICEARG)" \
@@ -130,3 +132,6 @@ index 0000000..7f8c18a
  
  endef
  
+-- 
+1.9.1
+

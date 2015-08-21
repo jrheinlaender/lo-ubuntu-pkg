@@ -8,7 +8,7 @@
 # Authors:
 # Chris Halls <halls@debian.org>
 # Rene Engelhard <rene@debian.org>
-# Copyright 2002-2013 Software in the Public Interest, Inc.
+# Copyright 2002-2015 Software in the Public Interest, Inc.
 # Portions Copyright 2010 Canonical Ltd. Author: Matthias Klose
 # Portions Copyright 2011-2013 Canonical Ltd. Author: Bjoern Michaelsen
 # Licensed under the GNU General Public License, version 2.  See the file
@@ -193,7 +193,7 @@ SYSTEM_STUFF += libpagemaker
 BUILD_CAIROCANVAS=y
 SYSTEM_STUFF += cairo
 CAIRO_FONTS_PATCH=y
-BUILD_KDE=y
+BUILD_KDE=n
 # not ported to KDE 4
 ENABLE_KDEAB=n
 # < 4.8 fails with gcc 4.7, see #667911
@@ -223,7 +223,7 @@ endif
 SYSTEM_STUFF += lpsolve
 USE_SHARED_LPSOLVE=y
 LPSOLVE_MIN_VERSION= (>= 5.5.0.13-5+b1)
-ENABLE_COINMP=y
+ENABLE_COINMP=n
 SYSTEM_STUFF += coinmp
 USE_DBUS=y
 ifeq "$(USE_DBUS)" "y"
@@ -402,7 +402,11 @@ USE_MARIADB=n
 # set this also to y for system-mysql..
 SYSTEM_STUFF += mariadb
 SYSTEM_STUFF += mysql-cppconn
+ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) ge 5 && echo true)" "true"
+MYSQLCPPCONN_MINVER= (>= 1.1.3-7)
+else
 MYSQLCPPCONN_MINVER= (>= 1.1.0~r791)
+endif
 SYSTEM_STUFF += postgresql
 DICT_DIR=/usr/share/hunspell
 HYPH_DIR=/usr/share/hyphen
@@ -423,8 +427,15 @@ SYSTEM_STUFF += mesa-headers
 SYSTEM_STUFF += poppler
 SYSTEM_STUFF += libpng
 SYSTEM_STUFF += nss
-SYSTEM_STUFF += clucene
 ENABLE_HELP=y
+ifeq "$(ENABLE_HELP)" "y"
+  SYSTEM_STUFF += clucene
+  ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) ge 5 && echo true)" "true"
+  CLUCENE_MINVER=2.3.3.4-4.1
+  else
+  CLUCENE_MINVER=2.3.3.4-2
+  endif
+endif
 SYSTEM_STUFF += lcms2
 SYSTEM_STUFF += openldap
 PACKAGE_UNOWINREG_DLL=y
@@ -451,6 +462,7 @@ endif
 ifeq (,$(findstring kfreebsd,$(DEB_HOST_ARCH)))
 ENABLE_MERGELIBS=y
 endif
+ENABLE_LTO=n
 USE_OPENCL=y
 #10:15 <@_rene_> ahunt: I remember you wanted to do some endian things? did it 
 #                ever get done?
@@ -840,6 +852,7 @@ ifeq "$(ENABLE_PYTHON)" "y"
 	BUILD_DEPS += , $(PYTHON)
 	DBG_DBG_SUGGESTS+= , $(PYTHON)-dbg
 	BUILD_DEPS += , $(PYTHON)-dev (>= 3.3)
+	BUILD_DEPS += , dh-python
 else
 	BUILD_DEPS += , python
 endif
@@ -1113,7 +1126,7 @@ ifneq (,$(filter vigra, $(SYSTEM_STUFF)))
 endif
 
 ifneq (,$(filter clucene, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libclucene-dev (>= 2.3.3.4-2)
+	BUILD_DEPS += , libclucene-dev (>= $(CLUCENE_MINVER))
 endif
 
 ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
@@ -1470,6 +1483,10 @@ endif
 
 ifeq ($(ENABLE_MERGELIBS),y)
 	CONFIGURE_FLAGS += --enable-mergelibs
+endif
+
+ifeq ($(ENABLE_LTO),y)
+	CONFIGURE_FLAGS += --enable-lto
 endif
 
 DEJAVU_DEPENDS=fonts-dejavu
@@ -1873,7 +1890,12 @@ endif
 .PHONY: config_host.mk
 config_host.mk:
 	rm -f config.status autogen.lastrun
-	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ./autogen.sh $(CONFIGURE_FLAGS) $(CONFIGURE_FLAGS_LANG)
+	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
+	MARIADBCONFIG=$(MARIADBCONFIG) \
+	FIREBIRD_CFLAGS=$(FIREBIRD_CFLAGS) FIREBIRD_LIBS=$(FIREBIRD_LIBS) \
+	OPENCOLLADA_CFLAGS=$(OPENCOLLADA_CFLAGS) OPENCOLLADA_LIBS=$(OPENCOLLADA_LIBS) \
+	COLLADA2GLTF_CFLAGS=$(COLLADA2GLTF_CFLAGS) COLLADA2GLTF_LIBS=$(COLLADA2GLTF_LIBS) \
+	./autogen.sh $(CONFIGURE_FLAGS)
 
 build:
 	$(CURDIR)/debian/rules build-arch
@@ -1932,6 +1954,11 @@ $(STAMP_DIR)/build-indep:
 	./autogen.sh $(CONFIGURE_FLAGS) --with-help $(CONFIGURE_FLAGS_LANG)
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build-nocheck
+ifeq "$(BUILD_TEST_PACKAGE)" "y"
+  ifeq "$(ENABLE_JUNIT4)" "y"
+	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) Jar_{OOoRunner,test,ConnectivityTools}
+  endif
+endif
 
 	touch $@
 
@@ -2820,11 +2847,8 @@ ifeq "$(BUILD_TEST_PACKAGE)" "y"
   ifeq "$(ENABLE_JUNIT4)" "y"
 	rm -rf $(PKGDIR)-subsequentcheckbase
 	mkdir -p $(PKGDIR)-subsequentcheckbase/$(OODIR)/program/classes/
-	for jar in OOoRunner.jar OOoRunnerLight.jar test.jar test-tools.jar; do \
-		cp workdir/Jar/$$jar $(PKGDIR)-subsequentcheckbase/$(OODIR)/program/classes/; \
-	done
-	for jar in ConnectivityTools.jar; do \
-		cp workdir/Jar/$$jar $(PKGDIR)-subsequentcheckbase/$(OODIR)/program/classes/; \
+	for jar in OOoRunner test test-tools ConnectivityTools; do \
+		cp workdir/Jar/$$jar.jar $(PKGDIR)-subsequentcheckbase/$(OODIR)/program/classes/; \
 	done
   endif
 endif
