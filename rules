@@ -63,7 +63,7 @@ export QUILT_OPTIONS="-p1 -F0"
 
 SOURCE_TREE=.
 STAMP_DIR=debian/stampdir
-TARFILE_LOCATION=$(CURDIR)/external/tarballs
+TARFILE_LOCATION=$(CURDIR)/tarballs
 export TARFILE_LOCATION
 USE_SOURCE_TARBALLS=n
 USE_GIT_TARBALLS=n
@@ -3476,13 +3476,13 @@ $(call get_orig_tarball,-%):
 	$(call pack_gittarball,$*,$@,libreoffice-$(DEB_VERSION_UPSTREAM)/)
 
 # Get upstream external sources
-$(call get_orig_tarball,-external): helpcontent2/makefile.pmk translations/makefile.mk .gitignore
+$(call get_orig_tarball,-tarballs): helpcontent2/makefile.pmk translations/makefile.mk .gitignore
 	dh_testdir
-	rm -rf $(TARFIILE_LOCATION)
-	mkdir -p $(TARFILE_LOCATION)
-	./autogen.sh --with-all-tarballs
-	$(MAKE) download
-	tar cvJf $@ -C external --transform 's,./,,' .
+	rm -rf tarballs
+	mkdir -p tarballs
+	./autogen.sh $(filter-out --disable-fetch-external,$(CONFIGURE_FLAGS)) --with-all-tarballs
+	$(MAKE) download gb_LO_VER=$(DEB_VERSION_UPSTREAM)
+	tar cvJf $@ -C src --transform 's,./,,' .
 
 # using flag files for unpacking
 .gitignore: $(call get_orig_tarball)
@@ -3494,17 +3494,16 @@ translations/makefile.mk:  $(call get_orig_tarball,-translations)
 helpcontent2/makefile.pmk:  $(call get_orig_tarball,-helpcontent2)
 	$(call unpack_gittarball,helpcontent2,$<,)
 
-external/tarballs/fetch.log: $(call get_orig_tarball,-external) patched
-	$(call unpack_gittarball,external,$<,)
+tarballs/fetch.log: $(call get_orig_tarball,-tarballs) patched
+	$(call unpack_gittarball,src,$<,)
 
-get-orig-source: $(call get_orig_tarball,-external) external/tarballs/fetch.log
+get-orig-source: $(call get_orig_tarball,-tarballs) tarballs/fetch.log
 	dh_testdir
 
-unpack: external/fetch.log
+unpack: tarballs/fetch.log
 	dh_testdir
 endif
 endif
-
 
 .PHONY: control
 .PHONY: clean-debdir clean-instsetoo clean-objectdirs clean default
