@@ -8,7 +8,7 @@
 # Authors:
 # Chris Halls <halls@debian.org>
 # Rene Engelhard <rene@debian.org>
-# Copyright 2002-2013 Software in the Public Interest, Inc.
+# Copyright 2002-2015 Software in the Public Interest, Inc.
 # Portions Copyright 2010 Canonical Ltd. Author: Matthias Klose
 # Portions Copyright 2011-2013 Canonical Ltd. Author: Bjoern Michaelsen
 # Licensed under the GNU General Public License, version 2.  See the file
@@ -63,7 +63,7 @@ export QUILT_OPTIONS="-p1 -F0"
 
 SOURCE_TREE=.
 STAMP_DIR=debian/stampdir
-TARFILE_LOCATION=$(CURDIR)/external/tarballs
+TARFILE_LOCATION=$(CURDIR)/tarballs
 export TARFILE_LOCATION
 USE_SOURCE_TARBALLS=n
 USE_GIT_TARBALLS=n
@@ -193,7 +193,7 @@ SYSTEM_STUFF += libpagemaker
 BUILD_CAIROCANVAS=y
 SYSTEM_STUFF += cairo
 CAIRO_FONTS_PATCH=y
-BUILD_KDE=n
+BUILD_KDE=y
 # not ported to KDE 4
 ENABLE_KDEAB=n
 # < 4.8 fails with gcc 4.7, see #667911
@@ -461,6 +461,7 @@ endif
 ifeq (,$(findstring kfreebsd,$(DEB_HOST_ARCH)))
 ENABLE_MERGELIBS=y
 endif
+ENABLE_LTO=n
 USE_OPENCL=y
 #10:15 <@_rene_> ahunt: I remember you wanted to do some endian things? did it 
 #                ever get done?
@@ -1477,6 +1478,10 @@ ifeq ($(ENABLE_MERGELIBS),y)
 	CONFIGURE_FLAGS += --enable-mergelibs
 endif
 
+ifeq ($(ENABLE_LTO),y)
+	CONFIGURE_FLAGS += --enable-lto
+endif
+
 DEJAVU_DEPENDS=fonts-dejavu
 
 # Use compiler cache?  Include ccache in DEB_BUILD_OPTIONS for much faster rebuild times
@@ -1878,7 +1883,12 @@ endif
 .PHONY: config_host.mk
 config_host.mk:
 	rm -f config.status autogen.lastrun
-	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ./autogen.sh $(CONFIGURE_FLAGS) $(CONFIGURE_FLAGS_LANG)
+	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
+	MARIADBCONFIG=$(MARIADBCONFIG) \
+	FIREBIRD_CFLAGS=$(FIREBIRD_CFLAGS) FIREBIRD_LIBS=$(FIREBIRD_LIBS) \
+	OPENCOLLADA_CFLAGS=$(OPENCOLLADA_CFLAGS) OPENCOLLADA_LIBS=$(OPENCOLLADA_LIBS) \
+	COLLADA2GLTF_CFLAGS=$(COLLADA2GLTF_CFLAGS) COLLADA2GLTF_LIBS=$(COLLADA2GLTF_LIBS) \
+	./autogen.sh $(CONFIGURE_FLAGS)
 
 build:
 	$(CURDIR)/debian/rules build-arch
@@ -3466,13 +3476,13 @@ $(call get_orig_tarball,-%):
 	$(call pack_gittarball,$*,$@,libreoffice-$(DEB_VERSION_UPSTREAM)/)
 
 # Get upstream external sources
-$(call get_orig_tarball,-external): helpcontent2/makefile.pmk translations/makefile.mk .gitignore
+$(call get_orig_tarball,-tarballs): helpcontent2/makefile.pmk translations/makefile.mk .gitignore
 	dh_testdir
-	rm -rf $(TARFIILE_LOCATION)
-	mkdir -p $(TARFILE_LOCATION)
-	./autogen.sh --with-all-tarballs
-	$(MAKE) download
-	tar cvJf $@ -C external --transform 's,./,,' .
+	rm -rf tarballs
+	mkdir -p tarballs
+	./autogen.sh $(filter-out --disable-fetch-external,$(CONFIGURE_FLAGS)) --with-all-tarballs
+	$(MAKE) download gb_LO_VER=$(DEB_VERSION_UPSTREAM)
+	tar cvJf $@ -C src --transform 's,./,,' .
 
 # using flag files for unpacking
 .gitignore: $(call get_orig_tarball)
@@ -3484,17 +3494,16 @@ translations/makefile.mk:  $(call get_orig_tarball,-translations)
 helpcontent2/makefile.pmk:  $(call get_orig_tarball,-helpcontent2)
 	$(call unpack_gittarball,helpcontent2,$<,)
 
-external/tarballs/fetch.log: $(call get_orig_tarball,-external) patched
-	$(call unpack_gittarball,external,$<,)
+tarballs/fetch.log: $(call get_orig_tarball,-tarballs) patched
+	$(call unpack_gittarball,src,$<,)
 
-get-orig-source: $(call get_orig_tarball,-external) external/tarballs/fetch.log
+get-orig-source: $(call get_orig_tarball,-tarballs) tarballs/fetch.log
 	dh_testdir
 
-unpack: external/fetch.log
+unpack: tarballs/fetch.log
 	dh_testdir
 endif
 endif
-
 
 .PHONY: control
 .PHONY: clean-debdir clean-instsetoo clean-objectdirs clean default
