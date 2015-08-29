@@ -1945,6 +1945,28 @@ $(STAMP_DIR)/build-indep:
 
 	$(MAKE) odk.clean
 	$(MAKE) scp2.clean
+
+	rm -f config.status autogen.lastrun
+
+	# FIXME: I have no f* ideal what breaks here. Maybe gcc5/libstdc++6 transition related?
+	# Without this helpex gives loads of "parser errors" and the localized help is broken. Interestingly one needs
+	# all the three internally to fi^Wworkaround this
+ifeq "$(ENABLE_HELP)" "y"
+	$(MAKE) l10ntools.clean
+	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
+	./autogen.sh $(filter-out --with-system-boost,$(filter-out --with-system-icu,$(filter-out --with-system-expat,$(CONFIGURE_FLAGS)))) --disable-ccache --disable-collada --disable-ext-mariadb-connector --disable-firebird-sdbc
+  ifneq (,$(findstring boost,$(SYSTEM_STUFF)))
+	cd external/boost && $(MAKE)
+  endif
+  ifneq (,$(findstring icu,$(SYSTEM_STUFF)))
+	cd external/icu && $(MAKE)
+  endif
+  ifneq (,$(findstring expat,$(SYSTEM_STUFF)))
+	cd external/expat && $(MAKE)
+  endif
+	$(MAKE) l10ntools
+endif
+
 	rm -f config.status autogen.lastrun
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
@@ -1958,6 +1980,21 @@ $(STAMP_DIR)/build-indep:
 ifeq "$(BUILD_TEST_PACKAGE)" "y"
   ifeq "$(ENABLE_JUNIT4)" "y"
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) Jar_{OOoRunner,test,ConnectivityTools}
+  endif
+endif
+
+ifeq "$(ENABLE_HELP)" "y"
+	# cleanup...
+  ifneq (,$(findstring boost,$(SYSTEM_STUFF)))
+	cd external/boost && $(MAKE) clean
+  endif
+  ifneq (,$(findstring expat,$(SYSTEM_STUFF)))
+	cd external/expat && $(MAKE) clean
+  endif
+  ifneq (,$(findstring icu,$(SYSTEM_STUFF)))
+	cd external/icu && $(MAKE) clean
+	# picks up a dependency on internal icu, rebuild
+	$(MAKE) i18nutil.clean && $(MAKE) i18nutil
   endif
 endif
 
