@@ -521,6 +521,11 @@ CONFIGURE_FLAGS= \
 		--disable-dependency-tracking \
 		--enable-hardlink-deliver \
 		--with-branding=$(CURDIR)/debian/branding
+CONFIGURE_FLAGS_INDEP=
+
+ifeq "$(ENABLE_HELP)" "y"
+CONFIGURE_FLAGS_INDEP+= --with-help
+endif
 
 ifeq "$(shell echo $(DEB_VERSION_UPSTREAM) | grep -E '(alpha|beta)'; echo $$?)" "1"
 CONFIGURE_FLAGS += --enable-release-build
@@ -680,7 +685,7 @@ endif
 # Debian Jessie
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "jessie-backports"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out opencollada collada2gltf libmwaw libcmis mdds glm libwps libetonyek orcus,$(SYSTEM_STUFF))
+  SYSTEM_STUFF := $(filter-out opencollada collada2gltf libmwaw libcmis mdds glm libwps libetonyek orcus libgltf,$(SYSTEM_STUFF))
   JESSIE_BACKPORT=y
 endif
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "UNRELEASED"
@@ -937,6 +942,7 @@ BUILD_ISOS = $(ISOS)
 ifneq "$(BUILD_ONLY_EN_US)" "y"
   ifneq "$(BUILD_ISOS)" "en-US"
 	CONFIGURE_FLAGS_LANG += --with-lang="$(BUILD_ISOS)"
+	CONFIGURE_FLAGS_INDEP += $(CONFIGURE_FLAGS_LANG)
   endif
 endif
 
@@ -1946,6 +1952,30 @@ $(STAMP_DIR)/build-indep:
 
 	$(MAKE) odk.clean
 	$(MAKE) scp2.clean
+
+	rm -f config.status autogen.lastrun
+
+ifneq "$(JESSIE_BACKPORT)" "y"
+	# FIXME: I have no f* ideal what breaks here. Maybe gcc5/libstdc++6 transition related?
+	# Without this helpex gives loads of "parser errors" and the localized help is broken. Interestingly one needs
+	# all the three internally to fi^Wworkaround this
+ifeq "$(ENABLE_HELP)" "y"
+	$(MAKE) l10ntools.clean
+	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
+	./autogen.sh $(filter-out --with-system-boost,$(filter-out --with-system-icu,$(filter-out --with-system-expat,$(CONFIGURE_FLAGS)))) --disable-ccache --disable-collada --disable-ext-mariadb-connector --disable-firebird-sdbc
+  ifneq (,$(findstring boost,$(SYSTEM_STUFF)))
+	cd external/boost && $(MAKE)
+  endif
+  ifneq (,$(findstring icu,$(SYSTEM_STUFF)))
+	cd external/icu && $(MAKE)
+  endif
+  ifneq (,$(findstring expat,$(SYSTEM_STUFF)))
+	cd external/expat && $(MAKE)
+  endif
+	$(MAKE) l10ntools
+endif
+endif
+
 	rm -f config.status autogen.lastrun
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
@@ -1953,13 +1983,30 @@ $(STAMP_DIR)/build-indep:
 	FIREBIRD_CFLAGS=$(FIREBIRD_CFLAGS) FIREBIRD_LIBS=$(FIREBIRD_LIBS) \
 	OPENCOLLADA_CFLAGS=$(OPENCOLLADA_CFLAGS) OPENCOLLADA_LIBS=$(OPENCOLLADA_LIBS) \
 	COLLADA2GLTF_CFLAGS=$(COLLADA2GLTF_CFLAGS) COLLADA2GLTF_LIBS=$(COLLADA2GLTF_LIBS) \
-	./autogen.sh $(CONFIGURE_FLAGS) --with-help $(CONFIGURE_FLAGS_LANG)
+	./autogen.sh $(CONFIGURE_FLAGS) $(CONFIGURE_FLAGS_INDEP)
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build-nocheck
 ifeq "$(BUILD_TEST_PACKAGE)" "y"
   ifeq "$(ENABLE_JUNIT4)" "y"
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) Jar_{OOoRunner,test,ConnectivityTools}
   endif
+endif
+
+ifneq "$(JESSIE_BACKPORT)" "y"
+ifeq "$(ENABLE_HELP)" "y"
+	# cleanup...
+  ifneq (,$(findstring boost,$(SYSTEM_STUFF)))
+	cd external/boost && $(MAKE) clean
+  endif
+  ifneq (,$(findstring expat,$(SYSTEM_STUFF)))
+	cd external/expat && $(MAKE) clean
+  endif
+  ifneq (,$(findstring icu,$(SYSTEM_STUFF)))
+	cd external/icu && $(MAKE) clean
+	# picks up a dependency on internal icu, rebuild
+	$(MAKE) i18nutil.clean && $(MAKE) i18nutil
+  endif
+endif
 endif
 
 	touch $@
