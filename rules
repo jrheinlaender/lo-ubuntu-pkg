@@ -194,8 +194,6 @@ BUILD_CAIROCANVAS=y
 SYSTEM_STUFF += cairo
 CAIRO_FONTS_PATCH=y
 BUILD_KDE=y
-# not ported to KDE 4
-ENABLE_KDEAB=n
 # < 4.8 fails with gcc 4.7, see #667911
 QT_MINVER= (>= 4:4.8)
 KDELIBS_MINVER= (>= 4:4.3.4)
@@ -377,7 +375,6 @@ BUILD_GTK=y
 BUILD_GTK3=y
 #endif
 ENABLE_EVO2=y
-ENABLE_GVFS=n
 ENABLE_GCONF=y
 ENABLE_GIO=y
 ENABLE_DCONF=y
@@ -613,7 +610,6 @@ ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
 	ENABLE_SDBC_POSTGRESQL=n
 	ENABLE_MYSQLNATIVE=n
 	ENABLE_EVO2=n
-	ENABLE_KDEAB=n
 	ENABLE_REPORTDESIGN=n
 	DEBHELPER_OPTIONS += -Nlibreoffice-base libreoffice-base-core -Nlibreoffice-base-drivers
 	DEBHELPER_OPTIONS += -Nlibreoffice-evolution -Nlibreoffice-kab
@@ -1231,10 +1227,8 @@ else
 endif
 
 ifeq "$(BUILD_KDE)" "n"
-	CONFIGURE_FLAGS+= --disable-kde
-	CONFIGURE_FLAGS-= --disable-kde4
+	CONFIGURE_FLAGS += --disable-kde4
 else
-	CONFIGURE_FLAGS += --disable-kde
 	CONFIGURE_FLAGS += --enable-kde4
 ifneq "$(JESSIE_BACKPORT)" "y"
 	KDE_ICONSET_DEP=libreoffice-style-breeze
@@ -1244,12 +1238,6 @@ endif
 	BUILD_DEPS += , kdelibs5-dev $(KDELIBS_MINVER)
 	BUILD_DEPS += , libqt4-dev $(QT_MINVER)
 	DBG_DBG_SUGGESTS+= , kdelibs5-dbg, libqt4-dbg
-  ifeq "$(ENABLE_KDEAB)" "y"
-	ADDITIONAL_SECTIONS += KDE4Experimental
-	BUILD_DEPS += , kdepimlibs5-dev$(OOO_NO_BASE_ARCHS)
-  else
-	CONFIGURE_FLAGS+= --disable-kdeab
-  endif
 endif
 
 ifeq "$(ENABLE_MYSQLNATIVE)" "y"
@@ -1465,11 +1453,6 @@ ifeq "$(ENABLE_GIO)" "y"
 	BUILD_DEPS += , libglib2.0-dev (>= 2.15.0)
 else
 	CONFIGURE_FLAGS += --disable-gio
-endif
-
-ifeq "$(ENABLE_GVFS)" "y"
-	BUILD_DEPS += , libgnomevfs2-dev
-	CONFIGURE_FLAGS += --enable-gnome-vfs
 endif
 
 ifeq "$(ENABLE_GCONF)" "y"
@@ -1760,9 +1743,6 @@ endif
 ifeq "$(ENABLE_EVO2)" "y"
 	cat debian/control.evolution.in >> debian/control
 endif
-ifeq "$(ENABLE_KDEAB)" "y"
-	cat debian/control.kab.in >> debian/control
-endif
 ifeq "$(BUILD_TEST_PACKAGE)" "y"
   ifneq "$(OOO_JAVA_ARCHS)" ""
 	cat debian/control.subsequentcheckbase.in >> debian/control
@@ -1807,12 +1787,6 @@ ifeq (pt-BR,$(findstring pt-BR,$(LANGPACKISOS)))
 	perl -pi -e 's/libreoffice2-l10n-pt-br$$/libreoffice2-l10n-pt-br, broffice/' debian/control
 endif
 	perl -pi -e 's/Package: libreoffice-help-en-us/Package: libreoffice-help-en-us\nReplaces: libreoffice-common (<< 1:3.0.0~dev300m28)/' debian/control
-
-ifeq "$(ENABLE_GIO)" "y"
-	perl -pi -e 's/VFS/GIO/' debian/control
-	# fix up "GNOME GIO"
-	perl -pi -e 's/GNOME GIO/GIO/' debian/control
-endif
 
 ifneq "$(USE_MARIADB)" "y"
 	perl -pi -e "s/(Build-Conflicts: .*)/\1,libmariadbclient-dev,/" debian/control
@@ -2576,10 +2550,6 @@ ifeq "$(BUILD_GTK)" "y"
 	mv $(PKGDIR)-gnome/$(OODIR)/share/xdg $(PKGDIR)-gtk/$(OODIR)/share
   ifeq "$(ENABLE_GIO)" "y"
 	mv $(PKGDIR)-gtk/$(OODIR)/program/libucpgio1lo.so \
-		$(PKGDIR)-gnome/$(OODIR)/program/
-  endif
-  ifeq "$(ENABLE_GVFS)" "y"
-	mv $(PKGDIR)-gtk/$(OODIR)/program/libucpgvfs1lo.so \
 		$(PKGDIR)-gnome/$(OODIR)/program/
   endif
   ifeq "$(ENABLE_GCONF)" "y"
