@@ -1282,9 +1282,10 @@ ifeq "$(BUILD_GTK3)" "y"
   ifneq (cairo,$(findstring cairo,$(SYSTEM_STUFF)))
   $(error GTK3 build fails without system-cairo!!)
   endif
+	BUILD_DEPS += , gobject-introspection (>= 1.32.0)
 else
        CONFIGURE_FLAGS+= --disable-gtk3
-       DEBHELPER_OPTIONS+= -Nlibreoffice-gtk3
+       DEBHELPER_OPTIONS+= -Nlibreoffice-gtk3 -Ngir1.2-lokdocview-0.1
 endif
 
 ifeq "$(ENABLE_EVO2)" "n"
@@ -2542,6 +2543,12 @@ ifeq "$(BUILD_GTK3)" "y"
 	rm -rf $(PKGDIR)-gtk3
 	mkdir -p -m755 $(PKGDIR)-gtk3/$(OODIR)/program
 	mv $(PKGDIR)-gnome/$(OODIR)/program/libvclplug_gtk3lo.so $(PKGDIR)-gtk3/$(OODIR)/program/
+	mkdir -p debian/gir1.2-lokdocview-0.1/usr/share/gir-1.0
+	mkdir -p debian/gir1.2-lokdocview-0.1/usr/lib/girepository-1.0
+	mv debian/tmp/usr/share/gir-1.0/LOKDocView-0.1.gir \
+		debian/gir1.2-lokdocview-0.1/usr/share/gir-1.0/
+	mv debian/tmp/usr/lib/girepository-1.0/LOKDocView-0.1.typelib \
+		debian/gir1.2-lokdocview-0.1/usr/lib/girepository-1.0/
 endif
 	mv $(PKGDIR)-gnome/$(OODIR)/program/* $(PKGDIR)-gtk/$(OODIR)/program/
 	mv $(PKGDIR)-gtk/$(OODIR)/program/gnome-open-url $(PKGDIR)-gnome/$(OODIR)/program
@@ -3186,6 +3193,9 @@ else
 endif
 	dh_icons -s
 	dh_compress -s -X.py -X.mk -X.sxd
+ifeq "$(BUILD_GTK3)" "y"
+	dh_girepository -s $(PKGDIR)-gtk3/$(OODIR)/program
+endif
 	dh_makeshlibs -puno-libs3 -V"uno-libs3 (>= $(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }' | cut -d. -f1-3)~), ure" -- -c0 -d -V -v`echo $(BINARY_VERSION) | cut -d: -f2`
 	dh_makeshlibs -n -pure -V"ure (>= $(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }' | cut -d. -f1-3)~)" -- -d -V -v`echo $(BINARY_VERSION) | cut -d: -f2`
 	# ugly hack, but why does that happen? It's not in .symbols...
