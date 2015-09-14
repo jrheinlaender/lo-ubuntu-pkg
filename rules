@@ -374,6 +374,9 @@ BUILD_GTK=y
 #ifeq "$(DEB_DISTRIBUTION)" "experimental"
 BUILD_GTK3=y
 #endif
+ifeq "$(BUILD_GTK3)" "y"
+ENABLE_INTROSPECTION=y
+endif
 ENABLE_EVO2=y
 ENABLE_GCONF=y
 ENABLE_GIO=y
@@ -1282,7 +1285,12 @@ ifeq "$(BUILD_GTK3)" "y"
   ifneq (cairo,$(findstring cairo,$(SYSTEM_STUFF)))
   $(error GTK3 build fails without system-cairo!!)
   endif
+  ifeq "$(ENABLE_INTROSPECTION)" "y"
 	BUILD_DEPS += , gobject-introspection (>= 1.32.0), libgirepository1.0-dev (>= 1.32)
+  else
+	CONFIGURE_FLAGS += --enable-introspection=no
+	DEBHELPER_OPTIONS+= -Ngir1.2-lokdocview-0.1
+  endif
 else
        CONFIGURE_FLAGS+= --disable-gtk3
        DEBHELPER_OPTIONS+= -Nlibreoffice-gtk3 -Ngir1.2-lokdocview-0.1
@@ -2546,12 +2554,14 @@ ifeq "$(BUILD_GTK3)" "y"
 	mkdir -p -m755 $(PKGDIR)-gtk3/$(OODIR)/program
 	mv $(PKGDIR)-gnome/$(OODIR)/program/libvclplug_gtk3lo.so $(PKGDIR)-gtk3/$(OODIR)/program/
 	mv $(PKGDIR)-core/$(OODIR)/program/liblibreofficekitgtk.so $(PKGDIR)-gtk3/$(OODIR)/program/
+  ifeq "$(ENABLE_INTROSPECTION)" "y"
 	mkdir -p debian/gir1.2-lokdocview-0.1/usr/share/gir-1.0
 	mkdir -p debian/gir1.2-lokdocview-0.1/usr/lib/girepository-1.0
 	mv debian/tmp/usr/share/gir-1.0/LOKDocView-0.1.gir \
 		debian/gir1.2-lokdocview-0.1/usr/share/gir-1.0/
 	mv debian/tmp/usr/lib/girepository-1.0/LOKDocView-0.1.typelib \
 		debian/gir1.2-lokdocview-0.1/usr/lib/girepository-1.0/
+  endif
 endif
 	mv $(PKGDIR)-gnome/$(OODIR)/program/* $(PKGDIR)-gtk/$(OODIR)/program/
 	mv $(PKGDIR)-gtk/$(OODIR)/program/gnome-open-url $(PKGDIR)-gnome/$(OODIR)/program
@@ -3196,7 +3206,7 @@ else
 endif
 	dh_icons -s
 	dh_compress -s -X.py -X.mk -X.sxd
-ifeq "$(BUILD_GTK3)" "y"
+ifeq "$(ENABLE_INTROSPECTION)" "y"
 	dh_girepository -s $(PKGDIR)-gtk3/$(OODIR)/program
 endif
 	dh_makeshlibs -puno-libs3 -V"uno-libs3 (>= $(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }' | cut -d. -f1-3)~), ure" -- -c0 -d -V -v`echo $(BINARY_VERSION) | cut -d: -f2`
