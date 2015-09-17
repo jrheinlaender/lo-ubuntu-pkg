@@ -372,7 +372,7 @@ endif
 ENABLE_SDBC_POSTGRESQL=y
 BUILD_GTK=y
 #ifeq "$(DEB_DISTRIBUTION)" "experimental"
-BUILD_GTK3=y
+BUILD_GTK3=n
 #endif
 ifeq "$(BUILD_GTK3)" "y"
 ENABLE_INTROSPECTION=y
@@ -848,12 +848,6 @@ PYMINOR:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[1])")
 PYMINORPLUS1:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[1]+1)")
 PYTHON_SITE:=debian/python3-uno/$(shell $(PYTHON) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
 
-ifeq "$(PYTHON_VERSION)" "current"
-	PYTHON_VERSION_CONTROL := $(PYMAJOR).$(PYMINOR)
-else
-	PYTHON_VERSION_CONTROL := $(PYTHON_VERSION)
-endif
-
 ifeq "$(ENABLE_PYTHON)" "y"
 	BUILD_DEPS += , $(PYTHON)
 	DBG_DBG_SUGGESTS+= , $(PYTHON)-dbg
@@ -1285,6 +1279,7 @@ ifeq "$(BUILD_GTK3)" "y"
   ifneq (cairo,$(findstring cairo,$(SYSTEM_STUFF)))
   $(error GTK3 build fails without system-cairo!!)
   endif
+       GNOME_GTK_DEPENDS += libreoffice-gtk3
   ifeq "$(ENABLE_INTROSPECTION)" "y"
 	BUILD_DEPS += , gobject-introspection (>= 1.32.0), libgirepository1.0-dev (>= 1.32)
   else
@@ -1294,6 +1289,7 @@ ifeq "$(BUILD_GTK3)" "y"
 else
        CONFIGURE_FLAGS+= --disable-gtk3
        DEBHELPER_OPTIONS+= -Nlibreoffice-gtk3 -Ngir1.2-lokdocview-0.1
+       GNOME_GTK_DEPENDS += libreoffice-gtk
 endif
 
 ifeq "$(ENABLE_EVO2)" "n"
@@ -1611,7 +1607,6 @@ debian/control: $(wildcard debian/control*in) $(SOURCE_TREE)/bin/lo-xlate-lang  
 	sed -e "s#%$(DEB_VENDOR)=\([^%]*\)%#, \1#g#" \
 	    -e "s#%[A-Za-z]*=[^%]*%##g#" \
 	    -e "s#%BUILD_DEPS_INDEP%#$(strip $(BUILD_DEPS_INDEP))#g" \
-	    -e "s#@PYTHON_VERSION_CONTROL@#$(PYTHON_VERSION_CONTROL)#g" \
 	    -e "s#@BUGS@#$(BUGS)#g" \
 	    < debian/control.in > debian/control
 
@@ -1805,10 +1800,6 @@ ifeq (4.4,$(SYSTEM_GCC_VERSION))
 	perl -pi -e 's/flex \|/flex (>= 2.5.25-7) |/' debian/control
 endif
 
-ifeq "$(BUILD_TEST_PACKAGE)" "y"
-	perl -pi -e 's/Vcs-Git:/XS-Testsuite: autopkgtest\nVcs-Git:/' debian/control
-endif
-
 	python debian/scripts/joinctrl.py < debian/control > debian/control.tmp
 	mv debian/control.tmp debian/control
 
@@ -1940,10 +1931,10 @@ $(STAMP_DIR)/build-indep:
 
 ifneq "$(BUILD_ISOS)" "en-US"
 ifneq "$(JESSIE_BACKPORT)" "y"
-	# FIXME: I have no f* ideal what breaks here. Maybe gcc5/libstdc++6 transition related?
+ifeq "$(ENABLE_HELP)" "y"
+	# FIXME: I have no f* idea what breaks here. Maybe gcc5/libstdc++6 transition related?
 	# Without this helpex gives loads of "parser errors" and the localized help is broken. Interestingly one needs
 	# all the three internally to fi^Wworkaround this
-ifeq "$(ENABLE_HELP)" "y"
 	$(MAKE) l10ntools.clean
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
 	./autogen.sh $(filter-out --with-system-boost,$(filter-out --with-system-icu,$(filter-out --with-system-expat,$(CONFIGURE_FLAGS)))) --disable-ccache --disable-collada --disable-ext-mariadb-connector --disable-firebird-sdbc
@@ -1977,6 +1968,7 @@ ifeq "$(BUILD_TEST_PACKAGE)" "y"
   endif
 endif
 
+ifneq "$(BUILD_ISOS)" "en-US"
 ifneq "$(JESSIE_BACKPORT)" "y"
 ifeq "$(ENABLE_HELP)" "y"
 	# cleanup...
@@ -1991,6 +1983,7 @@ ifeq "$(ENABLE_HELP)" "y"
 	# picks up a dependency on internal icu, rebuild
 	$(MAKE) i18nutil.clean && $(MAKE) i18nutil
   endif
+endif
 endif
 endif
 
@@ -3167,7 +3160,6 @@ endif
 	dh_lintian -s
 	dh_bugfiles -s -A
 	dh_link -s -X.desktop
-	dh_fixperms -s
 ifeq "$(BUILD_DBG_PACKAGE)" "y"
 	dh_strip -s -Nure -Nuno-libs3 --dbg-package=libreoffice-dbg
 	dh_strip -pure --dbg-package=ure-dbg
@@ -3200,6 +3192,7 @@ endif
 else
 	dh_strip -s
 endif
+	dh_fixperms -s
 	dh_icons -s
 	dh_compress -s -X.py -X.mk -X.sxd
 ifeq "$(ENABLE_INTROSPECTION)" "y"
@@ -3320,6 +3313,7 @@ endif
 		-V'avmedia-be-depends=$(AVMEDIA_BE_DEPENDS)' \
 		-V'dejavu-depends=$(DEJAVU_DEPENDS)' \
 		-V'opencl-sug=$(OPENCL_SUGGESTS)' \
+		-V'gnome-gtk-depends=$(GNOME_GTK_DEPENDS)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-v$(BINARY_VERSION)
 ifeq "$(ENABLE_JAVA)" "y"
