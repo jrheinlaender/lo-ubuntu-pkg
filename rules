@@ -90,7 +90,6 @@ BUILD_DEPS=\
     bc,\
     bison,\
     bzip2,\
-    dpkg-dev (>= 1.16.1),\
     fastjar,\
     flex (>= 2.3.35), \
     gperf,\
@@ -198,13 +197,31 @@ BUILD_KDE=y
 QT_MINVER= (>= 4:4.8)
 KDELIBS_MINVER= (>= 4:4.3.4)
 BUILD_DBG_PACKAGE=y
+ifneq (noddebs,$(findstring noddebs,$(DEB_BUILD_OPTIONS)))
+BUILD_DDEBS=n
+  ifeq "$(BUILD_DDEBS)" "y"
+DH_BUILD_DDEBS=1
+export DH_BUILD_DDEBS
+DH_STRIP_DBG_OPTION_LO=--ddeb-migration=libreoffice-dbg
+DH_STRIP_DBG_OPTION_URE=--ddeb-migration=ure-dbg
+DH_STRIP_DBG_OPTION_UNO_LIBS=--ddeb-migration=uno-libs3-dbg
+  else
+DH_STRIP_DBG_OPTION_LO=--dbg-package=libreoffice-dbg
+DH_STRIP_DBG_OPTION_URE=--dbg-package=ure-dbg
+DH_STRIP_DBG_OPTION_UNO_LIBS=--dbg-package=uno-libs3-dbg
+  endif
+endif
+ifeq "$(BUILD_DDEBS)$(BUILD_DBG_PACKAGE)" "yy"
+$(error only either DDEBS or -dbg allowed)
+endif
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
   BUILD_TEST_PACKAGE=y
 endif
 ifeq "$(BUILD_TEST_PACKAGE)" "y"
   BUILD_DBG_PACKAGE=y
+  BUILD_DDEBS=n
 endif
-ifeq "$(BUILD_DBG_PACKAGE)" "y"
+ifeq "$(shell echo $(BUILD_DDEBS)$(BUILD_DBG_PACKAGE) | grep -q y && echo true)" "true"
   ENABLE_SYMBOLS=y
   SMALL_SYMBOLS=y
 endif
@@ -693,6 +710,8 @@ ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "j
   BUGS=mailto:debian-backports@lists.debian.org
   SYSTEM_STUFF := $(filter-out opencollada collada2gltf libmwaw libcmis mdds glm libwps libetonyek orcus libgltf,$(SYSTEM_STUFF))
   JESSIE_BACKPORT=y
+  BUILD_DBG_PACKAGE=y
+  BUILD_DDEBS=n
 endif
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "UNRELEASED"
   BUGS=mailto:debian-openoffice@lists.debian.org
@@ -821,7 +840,7 @@ ifneq (,$(filter openssl, $(SYSTEM_STUFF)))
 endif
 	OPENCL_SUGGESTS := ocl-icd-libopencl1
 
-ifeq "$(BUILD_DBG_PACKAGE)" "y"
+ifeq "$(shell echo $(BUILD_DDEBS)$(BUILD_DBG_PACKAGE) | grep -q y && echo true)" "true"
   ifneq (,$(findstring i386,$(DEB_HOST_ARCH)))
 	SMALL_SYMBOLS = n
   else
@@ -829,7 +848,9 @@ ifeq "$(BUILD_DBG_PACKAGE)" "y"
 	SMALL_SYMBOLS = n
     endif
   endif
+  ifeq "$(BUILD_DBG_PACKAGE)" "y"
 	DBG_DBG_SUGGESTS+= , libc6.1-dbg [alpha ia64], libc0.1-dbg [kfreebsd-i386 kfreebsd-amd64], libc0.3-dbg [hurd-i386], libc6-dbg [!alpha !ia64 !kfreebsd-i386 !kfreebsd-amd64 !hurd-i386], libatk1.0-dbg, libglib2.0-0-dbg, libgnomevfs2-0-dbg, libstdc++6-$(SYSTEM_GCC_VERSION)-dbg, libx11-6-dbg, libxext6-dbg, libxaw7-dbg, libxml2-dbg, libgtk2.0-0-dbg, libxau6-dbg, libice6-dbg, libsm6-dbg, libxinerama1-dbg, libfontconfig1-dbg, libhunspell-$(shell pkg-config --modversion hunspell | cut -d. -f1,2)-0-dbg, libcurl4-dbg
+  endif
 endif
 
 export DPKG_EXPORT_BUILDFLAGS=y 
@@ -864,7 +885,14 @@ else
 	BUILD_DEPS += , python
 endif
 
+ifeq "$(DH_BUILD_DDEBS)" "1"
+	BUILD_DEPS += , debhelper (>= 9.20150628)
+	# from debhelper changelog
+	BUILD_DEPS += , dpkg-dev (>= 1.18.2~)
+else
 	BUILD_DEPS += , debhelper (>= 7.2.3~)
+	BUILD_DEPS += , dpkg-dev (>= 1.16.1)
+endif
 
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(BUILD_JARS_NATIVE)" "y"
@@ -3167,14 +3195,14 @@ endif
 	dh_lintian -s
 	dh_bugfiles -s -A
 	dh_link -s -X.desktop
-ifeq "$(BUILD_DBG_PACKAGE)" "y"
-	dh_strip -s -Nure -Nuno-libs3 --dbg-package=libreoffice-dbg
-	dh_strip -pure --dbg-package=ure-dbg
-	dh_strip -puno-libs3 --dbg-package=uno-libs3-dbg
+ifeq "$(shell echo $(BUILD_DDEBS)$(BUILD_DBG_PACKAGE) | grep -q y && echo true)" "true"
+	dh_strip -s -Nure -Nuno-libs3 $(DH_STRIP_DBG_OPTION_LO)
+	dh_strip -pure $(DH_STRIP_DBG_OPTION_URE)
+	dh_strip -puno-libs3 $(DH_STRIP_DBG_OPTION_UNO_LIBS)
 	# dh_strip --dbg-package= is not idempotent, force copying of the binaries
 	# again...
-	rm -f $(STAMP_DIR)/install-arch
-ifeq "$(BUILD_DBG_PACKAGE)" "y"
+	rm -f $(STAMP_DIR)/install-common
+  ifeq "$(BUILD_DBG_PACKAGE)" "y"
 	mkdir -p $(PKGDIR)-dbg/usr/share/gdb/auto-load/$(OODIR)
 	mv $(CURDIR)/debian/tmp/usr/share/gdb/auto-load/$(OODIR)/program \
 		$(PKGDIR)-dbg/usr/share/gdb/auto-load/$(OODIR)
@@ -3195,7 +3223,7 @@ ifeq "$(BUILD_DBG_PACKAGE)" "y"
 		debian/uno-libs3-dbg/usr/share/libreoffice/gdb/libreoffice
 	mv $(PKGDIR)-dbg/usr/share/libreoffice/gdb/libreoffice/sal.py \
 		debian/uno-libs3-dbg/usr/share/libreoffice/gdb/libreoffice
-endif
+  endif
 else
 	dh_strip -s
 endif
