@@ -3171,9 +3171,10 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 	# not for uno-libs3/ure, as it otherwise picks up a (wrong) dependency on -core.
 	# maybe we should --link-doc=uno-libs3 as everything arch-dep needs it anyway?
 	# But how does it play with .symbols then?
-	dh_installdocs -s -A -Nure -Nuno-libs3 -Nure-dbg -Nuno-libs3-dbg -Nlibreofficekit-dev \
-		--link-doc=libreoffice-core
-	dh_installdocs -pure -puno-libs3 -pure-dbg -puno-libs3-dbg -plibreofficekit-dev
+	# Also not for extensions, as they have an own version
+	dh_installdocs -s -A -Nure -Nuno-libs3 -Nure-dbg -Nuno-libs3-dbg \
+		-Nlibreoffice-mysql-connector --link-doc=libreoffice-core
+	dh_installdocs -pure -puno-libs3 -pure-dbg -puno-libs3-dbg
 	cp workdir/CustomTarget/readlicense_oo/readme/README_en-US \
 		$(PKGDIR)-core/usr/share/doc/libreoffice-core/README
 	dh_installdebconf -s
@@ -3328,7 +3329,6 @@ endif
 # causes ldd crashes sometimes when used with fakeroot:
 #          -l $(PKGDIR)-core/$(OPENOFFICEDIR)/program
 	dh_gencontrol -s $(DEBHELPER_OPTIONS) -Nure -Nure-dbg -Nuno-libs3 -Nuno-libs3-dbg \
-		-Nlibreoffice-presentation-minimizer \
 		-Nlibreoffice-mysql-connector -- \
 		-V"ure:Version=$(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }')" \
 		-V'base-version=$(BASE_VERSION)' \
@@ -3427,10 +3427,13 @@ ifeq "$(PACKAGE_SDK)" "y"
 	# But fix it..
 	perl -pi -e 's,html/,html /,g' debian/libreoffice-dev-doc.doc-base.lo-idl-ref
 endif
+	# not for fonts-opensymbol and extensions, as they have an own version.
+	# And librelogo gets an own changelog
+	# And libreofficekit gets an own README
 	dh_installdocs -i -A -Nlibreoffice-librelogo -Nfonts-opensymbol \
-		--link-doc=libreoffice-common
-	# otherwise it gets a unfullfillable = dependency...
-	dh_installdocs -pfonts-opensymbol
+		-Nlibreoffice-wiki-publisher -Nlibreofficekit-dev --link-doc=libreoffice-common
+	dh_installdocs -plibreoffice-librelogo -pfonts-opensymbol -plibreoffice-wiki-publisher \
+		-plibreofficekit-dev
 	cp workdir/CustomTarget/readlicense_oo/readme/README_en-US \
 		$(PKGDIR)-common/usr/share/doc/libreoffice-common/README
 	dh_installman -i
