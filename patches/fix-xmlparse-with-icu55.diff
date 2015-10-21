@@ -1,0 +1,33 @@
+From 84017530bc5579e02fc4a2a9d31fe36a9ad28518 Mon Sep 17 00:00:00 2001
+From: Eike Rathke <erack@redhat.com>
+Date: Wed, 21 Oct 2015 01:48:17 +0200
+Subject: properly check for ICU status so known tags get actually recognized
+
+nIcuErr after the second RegexMatcher::find() call was
+U_STRING_NOT_TERMINATED_WARNING hence a check for U_ZERO_ERROR failed
+and a content string of "foo <emph>bar</emph> baz" became
+"foo <emph>bar&lt;/emph&gt; baz" which later provoked a missing ending
+tag error.
+
+This should had used U_SUCCESS(nIcuErr) instead and only worked by
+chance. Apparently the warning wasn't issued in earlier ICU versions and
+only introduced with 55 or 56.
+
+Change-Id: I36482c928544fc6e8c0403997af33084a47d4bea
+
+diff --git a/l10ntools/source/xmlparse.cxx b/l10ntools/source/xmlparse.cxx
+index becad85..eae496a 100644
+--- a/l10ntools/source/xmlparse.cxx
++++ b/l10ntools/source/xmlparse.cxx
+@@ -1124,7 +1124,7 @@ OString XMLUtil::QuotHTML( const OString &rString )
+     icu::UnicodeString sReturn;
+     int32_t nEndPos = 0;
+     int32_t nStartPos = 0;
+-    while( aRegexMatcher.find(nStartPos, nIcuErr) && nIcuErr == U_ZERO_ERROR )
++    while( aRegexMatcher.find(nStartPos, nIcuErr) && U_SUCCESS(nIcuErr) )
+     {
+         nStartPos = aRegexMatcher.start(nIcuErr);
+         if ( nEndPos < nStartPos )
+-- 
+cgit v0.10.2
+
