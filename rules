@@ -74,7 +74,7 @@ lo_sources_ver=5.1.0.0.beta1-buildfix1
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
 GIT_TAG=libreoffice-$(lo_sources_ver)
-GIT_BRANCH=master
+GIT_BRANCH=libreoffice-5-1
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
 lo_sources_ver=$(shell cat $(CURDIR)/sources.ver | cut -d= -f2)
@@ -288,13 +288,13 @@ PACKAGE_LOKIT=y
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(JDK)" "default"
     ifeq "$(shell LANG=C /usr/lib/jvm/default-java/bin/java -version 2>&1 | tail -n 1 | awk '{ print $$1 }')" "OpenJDK"
-      RUN_MAKE_CHECK=n
-      RUN_PYTESTS=n
+      RUN_MAKE_CHECK=y
+      RUN_PYTESTS=y
       ifeq "$(DEB_HOST_ARCH)" "i386"
-	ENABLE_JUNIT4=n
+	ENABLE_JUNIT4=y
       endif
       ifeq "$(DEB_HOST_ARCH)" "amd64"
-	ENABLE_JUNIT4=n
+	ENABLE_JUNIT4=y
       endif
     endif
   else
@@ -446,7 +446,6 @@ SYSTEM_STUFF += expat
 SYSTEM_STUFF += odbc
 SYSTEM_STUFF += curl
 SYSTEM_STUFF += sane
-SYSTEM_STUFF += mesa-headers
 SYSTEM_STUFF += poppler
 SYSTEM_STUFF += libpng
 SYSTEM_STUFF += nss
@@ -799,9 +798,6 @@ endif
 
 BUILDDEB_OPTIONS ?= -- -Zxz
 
-ifneq (,$(findstring mesa-headers,$(SYSTEM_STUFF)))
-	BUILD_DEPS += , libgl1-mesa-dev, libglu1-mesa-dev
-endif
 ifneq "$(ENABLE_GLTF)" "y"
 	CONFIGURE_FLAGS += --disable-gltf
 else
@@ -1251,7 +1247,7 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
 	BUILD_DEPS += , libodfgen-dev (>= 0.1)
   endif
   ifneq (,$(filter libetonyek, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libetonyek-dev (>= 0.1.2)
+	BUILD_DEPS += , libetonyek-dev (>= 0.1.4)
   endif
   ifneq (,$(filter libfreehand, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libfreehand-dev (>= 0.1)
@@ -1549,8 +1545,10 @@ endif
 
 	BUILD_DEPS += , gettext
 
-ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
-	BUILD_DEPS_INDEP += , fontforge
+ifeq "$(ENABLE_DCONF)" "y"
+	BUILD_DEPS += , libdconf-dev
+else
+	CONFIGURE_FLAGS += --disable-dconf
 endif
 
 ifeq ($(ENABLE_MERGELIBS),y)
@@ -1831,6 +1829,7 @@ $(STAMP_DIR)/prepare:
 		    debian/scripts/cleandupes \
 		    debian/scripts/get_libebook_dep.sh \
 		    debian/scripts/get_libvlc_dep.sh \
+		    debian/scripts/get_ttf_version.pl \
 		    autogen.sh; \
 	do \
 	  chmod 755 $$FILE ;\
@@ -2043,6 +2042,19 @@ endif
 	fi
 
 	rm -rf debian/tmp/pkg
+
+	# fix the desktop files....
+	cd $(PKGDIR)-common/$(OODIR)/share/xdg/ && \
+		for i in *.desktop; do \
+			sed -i -e "s/$(OOVER)//" $$i; \
+	done
+ifneq "$(RELEASE_BUILD)" "y"
+	cd $(PKGDIR)-common/$(OODIR)/share/xdg/ && \
+		for i in *.desktop; do \
+			sed -i -e "s/libreofficedev/libreoffice/" $$i; \
+			sed -i -e "s/LibreOfficeDev/LibreOffice/" $$i; \
+	done
+endif
 
 	# move desktop files to their correct packages
 	for i in base calc draw impress math writer; do \
@@ -3229,7 +3241,7 @@ endif
 		-v$(BINARY_VERSION)
 ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 	dh_gencontrol -pfonts-opensymbol -- \
-		-v$(shell echo `echo $(BINARY_VERSION) | cut -d: -f1` + 1 | bc):$(shell fontforge -lang=ff -c 'Open($$1); Print ($$fontversion); Quit(0);' debian/fonts-opensymbol/usr/share/fonts/truetype/openoffice/opens___.ttf)+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
+		-v$(shell echo `echo $(BINARY_VERSION) | cut -d: -f1` + 1 | bc):$(shell debian/scripts/get_ttf_version.pl debian/fonts-opensymbol/usr/share/fonts/truetype/openoffice/opens___.ttf)+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
 endif
 ifeq "$(ENABLE_MEDIAWIKI)" "y"
 	dh_gencontrol -plibreoffice-wiki-publisher -- \
