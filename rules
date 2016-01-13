@@ -83,7 +83,7 @@ endif
 #########
 # Default package configuration
 #
-OOO_ARCHS = alpha amd64 arm64 armel armhf hppa i386 ia64 kfreebsd-amd64 kfreebsd-i386 mips mipsel mips64 mips64el powerpc powerpcspe ppc64 ppc64el s390 s390x sparc
+OOO_ARCHS = alpha amd64 arm64 armel armhf hppa i386 ia64 kfreebsd-amd64 kfreebsd-i386 mips mipsel mips64 mips64el powerpc powerpcspe ppc64 ppc64el s390 s390x sparc sparc64
 PATCHSET=$(DEB_VENDOR)
 BUILD_DEPS=\
     autoconf,\
@@ -257,16 +257,7 @@ ifeq "$(USE_DBUS)" "y"
     SYSTEM_STUFF += bluez
   endif
 endif
-#22:47 < siqi_> I think the best thing to do now is to disable avahi completely since it doesn't work anyway..
-#[...]
-#22:56 <@_rene_> I don't care much about the dependency..
-#22:57 <@_rene_> but those two bugs are bad.
-#22:57 < siqi_> I know but I'm actually not sure about wether avahi was working proprely for now
-#22:57 <@_rene_> ok
-#[...]
-#22:58 <@_rene_> so I disable it in all branches I have for now
-#22:58 < siqi_> I think it's safe to disable it for now
-ENABLE_AVAHI=n
+ENABLE_AVAHI=y
 USE_GSTREAMER=y
 USE_VLC=y
 ENABLE_WEBDAV=y
@@ -406,7 +397,7 @@ ENABLE_EVO2=y
 ENABLE_GCONF=y
 ENABLE_GIO=y
 ENABLE_RANDR=y
-SYSTEM_STUFF += npapi-headers
+#SYSTEM_STUFF += npapi-headers
 PACKAGE_BASE=y
 ENABLE_GRAPHITE=y
 SYSTEM_STUFF += graphite
@@ -596,7 +587,7 @@ endif
 
 OOO_64BIT_ARCHS = $(filter alpha amd64 arm64 ia64 kfreebsd-amd64 mips64 mips64el ppc64 ppc64el s390x, $(OOO_ARCHS))
 $(eval $(call gen_no_archs,OOO_64BIT_ARCHS))
-OOO_BE_ARCHS = $(filter hppa m68k mips mips64 powerpc powerpcspe ppc64 s390 s390x sparc,$(OOO_ARCHS))
+OOO_BE_ARCHS = $(filter hppa m68k mips mips64 powerpc powerpcspe ppc64 s390 s390x sparc sparc64,$(OOO_ARCHS))
 OOO_LE_ARCHS = $(filter-out $(OOO_BE_ARCHS),$(OOO_ARCHS))
 $(eval $(call gen_no_archs,OOO_LE_ARCHS))
 
@@ -1136,9 +1127,9 @@ ifneq (,$(filter nss, $(SYSTEM_STUFF)))
 	BUILD_DEPS+= , libnss3-dev (>= 3.12.3)
 	DBG_DBG_SUGGESTS+= , libnss3-dbg
 endif
-ifneq (,$(filter npapi-headers, $(SYSTEM_STUFF)))
-	BUILD_DEPS+= , npapi-sdk-dev
-endif
+#ifneq (,$(filter npapi-headers, $(SYSTEM_STUFF)))
+#	BUILD_DEPS+= , npapi-sdk-dev
+#endif
 
 ifeq "$(USE_UCPP)" "y"
   ifneq (,$(filter ucpp, $(SYSTEM_STUFF)))
@@ -2021,6 +2012,10 @@ ifneq "$(PACKAGE_LIBRELOGO)" "y"
 	rm -rf debian/tmp/pkg/libreoffice-librelogo
 endif
 
+	for i in calc impress draw base writer; do \
+		echo "../usr/share/appdata/libreoffice-$$i.appdata.xml /usr/share/appdata/" >> $(PKGDIR)-$$i.install; \
+	done
+
 ifeq "$(PACKAGE_LOKIT)" "y"
 	echo "../../../include/LibreOfficeKit usr/include" > debian/libreofficekit-dev.install
 endif
@@ -2565,12 +2560,17 @@ endif
 ifeq "$(ENABLE_JAVA)" "y"
 	# somehow --has-package-version doesn't overwrite version and without <version>...</version>
 	# we get a NullPointerException when calling mh_installjar
-	for i in juh jurt ridl; do \
+	for i in ridl unoloader; do \
 		sed -e s/@version@/$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d~ -f1)/ \
-		< debian/pom.$$i.xml.in > debian/pom.$$i.xml; \
+			< $(SOURCE_TREE)/ridljar/pom.$$i.xml > debian/pom.$$i.xml; \
 	done
+		sed -e s/@version@/$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d~ -f1)/ \
+			< $(SOURCE_TREE)/jurt/pom.jurt.xml > debian/pom.jurt.xml
+		sed -e s/@version@/$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d~ -f1)/ \
+			< $(SOURCE_TREE)/javaunohelper/pom.juh.xml > debian/pom.juh.xml
+	
 	mh_installpoms -pure
-	for i in juh jurt ridl; do \
+	for i in juh jurt ridl unoloader; do \
 		mh_installjar -pure -l debian/pom.$$i.xml instdir/program/classes/$$i.jar; \
 	done
 endif
@@ -2899,9 +2899,13 @@ ifeq "$(ENABLE_JAVA)" "y"
 	# somehow --has-package-version doesn't overwrite version and without <version>...</version>
 	# we get a NullPointerException when calling mh_installjar
 	sed -e s/@version@/$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d~ -f1)/ \
-		< debian/pom.unoil.xml.in > debian/pom.unoil.xml
+		< $(SOURCE_TREE)/unoil/pom.unoil.xml > debian/pom.unoil.xml
+	sed -e s/@version@/$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d~ -f1)/ \
+		< $(SOURCE_TREE)/bean/pom.officebean.xml > debian/pom.officebean.xml
 	mh_installpoms -plibreoffice-java-common
 	mh_installjar -plibreoffice-java-common -l debian/pom.unoil.xml instdir/program/classes/unoil.jar
+	mh_installpoms -plibreoffice-officebean
+	mh_installjar -plibreoffice-officebean -l debian/pom.officebean.xml instdir/program/classes/officebean.jar
 endif
 
 	touch $@
