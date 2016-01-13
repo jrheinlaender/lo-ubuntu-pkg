@@ -1626,8 +1626,12 @@ endif
 
 # Generate control file, because we have so many different languages
 # Based on script by Martin Quinson <Martin.Quinson@tuxfamily.org>
+ifeq "$(BUILD_TEST_PACKAGE)" "y"
+control: debian/control debian/tests/control
+else
 control: debian/control
-debian/control: $(wildcard debian/control*in) debian/tests/control.in $(SOURCE_TREE)/bin/lo-xlate-lang  debian/rules
+endif
+debian/control: $(wildcard debian/control*in) $(SOURCE_TREE)/bin/lo-xlate-lang  debian/rules
 	chmod 755 $(SOURCE_TREE)/bin/lo-xlate-lang
 	sed -e "s#%$(DEB_VENDOR)=\([^%]*\)%#, \1#g#" \
 	    -e "s#%[A-Za-z]*=[^%]*%##g#" \
@@ -1797,8 +1801,6 @@ endif
 	perl -pi -e "s,%OOO_NO_REPORTDESIGN_ARCHS%,$(OOO_NO_REPORTDESIGN_ARCHS),g" debian/control
 	perl -pi -e "s#%BUILD_DEPS%#$(strip $(BUILD_DEPS))#g" debian/control
 ifeq "$(BUILD_TEST_PACKAGE)" "y"
-	sed -e "s/@TEST_DBG_DEPENDS@/$(TEST_DBG_DEPENDS)/" \
-		< debian/tests/control.in > debian/tests/control
 	# we want the build deps as dep on subsequentcheckbase, but strip the arch
 	# specifics as we are arch-all
 	# for now we filter out the arch-specific libc* and ia64, which is ugly,
@@ -1860,7 +1862,13 @@ ifneq "$(DICT_DIR)" "/usr/share/hunspell"
 	perl -pi -e 's/^Breaks:.*myspell.*\n//' debian/control
 endif
 
-.DELETE_ON_ERROR: debian/control
+ifeq "$(BUILD_TEST_PACKAGE)" "y"
+debian/tests/control: debian/tests/control.in debian/control
+	sed -e "s/@TEST_DBG_DEPENDS@/$(TEST_DBG_DEPENDS)/" \
+		< debian/tests/control.in > debian/tests/control
+endif
+
+.DELETE_ON_ERROR: debian/control debian/tests/control
 
 # All 'important' targets have 2 lines.  The one that is run by
 # dpkg-buildpackage or the user, and the one that does the actual work.  This
