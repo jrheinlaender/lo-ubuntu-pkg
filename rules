@@ -72,7 +72,7 @@ lo_sources_ver=$(shell grep AC_INIT $(SOURCE_TREE)/configure.ac | grep documentf
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
 GIT_TAG=libreoffice-$(lo_sources_ver)
-GIT_BRANCH=libreoffice-5-1
+GIT_BRANCH=libreoffice-5-1-0
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
 lo_sources_ver=$(shell cat $(CURDIR)/sources.ver | cut -d= -f2)
@@ -221,7 +221,7 @@ endif
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
   BUILD_TEST_PACKAGE=y
   ifeq "$(BUILD_DDEBS)" "y"
-  TEST_DBG_DEPENDS := $(shell dh_listpackages -s | grep -v "^libreoffice$$" | grep -v ^gir | sed -e s/$$/-dbgsym/g | xargs | sed -e "s/ /, /g")
+  TEST_DBG_DEPENDS := $(shell dh_listpackages -s -Nlibreoffice -Ngir1.2-lokdocview-0.1 | sed -e "s/$$/-dbgsym/g" | xargs | sed -e "s/ /, /g")
   else
     ifeq "$(BUILD_DBG_PACKAGE)" "y"
     TEST_DBG_DEPENDS := libreoffice-dbg
@@ -824,7 +824,7 @@ ifneq (,$(filter sane, $(SYSTEM_STUFF)))
        BUILD_DEPS += , libsane-dev
 endif
 ifneq (,$(filter libpng, $(SYSTEM_STUFF)))
-       BUILD_DEPS += , libpng12-dev
+       BUILD_DEPS += , libpng-dev
 endif
 
 ifneq (,$(filter curl, $(SYSTEM_STUFF)))
@@ -1620,8 +1620,12 @@ endif
 
 # Generate control file, because we have so many different languages
 # Based on script by Martin Quinson <Martin.Quinson@tuxfamily.org>
+ifeq "$(BUILD_TEST_PACKAGE)" "y"
+control: debian/control debian/tests/control
+else
 control: debian/control
-debian/control: $(wildcard debian/control*in) debian/tests/control.in $(SOURCE_TREE)/bin/lo-xlate-lang  debian/rules
+endif
+debian/control: $(wildcard debian/control*in) $(SOURCE_TREE)/bin/lo-xlate-lang  debian/rules
 	chmod 755 $(SOURCE_TREE)/bin/lo-xlate-lang
 	sed -e "s#%$(DEB_VENDOR)=\([^%]*\)%#, \1#g#" \
 	    -e "s#%[A-Za-z]*=[^%]*%##g#" \
@@ -1791,8 +1795,6 @@ endif
 	perl -pi -e "s,%OOO_NO_REPORTDESIGN_ARCHS%,$(OOO_NO_REPORTDESIGN_ARCHS),g" debian/control
 	perl -pi -e "s#%BUILD_DEPS%#$(strip $(BUILD_DEPS))#g" debian/control
 ifeq "$(BUILD_TEST_PACKAGE)" "y"
-	sed -e "s/@TEST_DBG_DEPENDS@/$(TEST_DBG_DEPENDS)/" \
-		< debian/tests/control.in > debian/tests/control
 	# we want the build deps as dep on subsequentcheckbase, but strip the arch
 	# specifics as we are arch-all
 	# for now we filter out the arch-specific libc* and ia64, which is ugly,
@@ -1850,7 +1852,13 @@ ifneq "$(DICT_DIR)" "/usr/share/hunspell"
 	perl -pi -e 's/^Breaks:.*myspell.*\n//' debian/control
 endif
 
-.DELETE_ON_ERROR: debian/control
+ifeq "$(BUILD_TEST_PACKAGE)" "y"
+debian/tests/control: debian/tests/control.in debian/control
+	sed -e "s/@TEST_DBG_DEPENDS@/$(TEST_DBG_DEPENDS)/" \
+		< debian/tests/control.in > debian/tests/control
+endif
+
+.DELETE_ON_ERROR: debian/control debian/tests/control
 
 # All 'important' targets have 2 lines.  The one that is run by
 # dpkg-buildpackage or the user, and the one that does the actual work.  This
@@ -2775,6 +2783,10 @@ ifeq "$(ENABLE_JAVA)" "y"
 	for i in juh jurt ridl unoloader; do \
 		mh_installjar -pure -l debian/pom.$$i.xml instdir/program/classes/$$i.jar; \
 	done
+	sed -e s/@version@/$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d~ -f1)/ \
+		< $(SOURCE_TREE)/bean/pom.officebean.xml > debian/pom.officebean.xml
+	mh_installpoms -plibreoffice-officebean
+	mh_installjar -plibreoffice-officebean -l debian/pom.officebean.xml instdir/program/classes/officebean.jar
 endif
 
 	for i in $(ARCH_DEP_PACKAGES); do \
@@ -3098,12 +3110,8 @@ ifeq "$(ENABLE_JAVA)" "y"
 	# we get a NullPointerException when calling mh_installjar
 	sed -e s/@version@/$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d~ -f1)/ \
 		< $(SOURCE_TREE)/unoil/pom.unoil.xml > debian/pom.unoil.xml
-	sed -e s/@version@/$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d~ -f1)/ \
-		< $(SOURCE_TREE)/bean/pom.officebean.xml > debian/pom.officebean.xml
 	mh_installpoms -plibreoffice-java-common
 	mh_installjar -plibreoffice-java-common -l debian/pom.unoil.xml instdir/program/classes/unoil.jar
-	mh_installpoms -plibreoffice-officebean
-	mh_installjar -plibreoffice-officebean -l debian/pom.officebean.xml instdir/program/classes/officebean.jar
 endif
 
 	touch $@
