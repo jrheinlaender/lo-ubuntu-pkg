@@ -202,6 +202,9 @@ UNO_LIBS_DBG=uno-libs3-dbgsym
 URE_DBG=ure-dbgsym
 CORE_DBG=libreoffice-core-dbgsym
 WRITER_DBG=libreoffice-writer-dbgsym
+URE_DBG_ROOT=.debhelper/ure/dbgsym-root
+CORE_DBG_ROOT=.debhelper/libreoffice-core/dbgsym-root
+WRITER_DBG_ROOT=.debhelper/libreoffice-writer/dbgsym-root
 DH_STRIP_DBG_OPTION_LO=--ddeb-migration=libreoffice-dbg
 DH_STRIP_DBG_OPTION_URE=--ddeb-migration=ure-dbg
 DH_STRIP_DBG_OPTION_UNO_LIBS=--ddeb-migration=uno-libs3-dbg
@@ -210,6 +213,9 @@ UNO_LIBS_DBG=uno-libs3-dbg
 URE_DBG=ure-dbg
 CORE_DBG=libreoffice-dbg
 WRITER_DBG=$(CORE_DBG)
+URE_DBG_ROOT=$(URE_DBG)
+CORE_DBG_ROOT=$(CORE_DBG)
+WRITER_DBG_ROOT=$(WRITER_DBG)
 DH_STRIP_DBG_OPTION_LO=--no-ddebs --dbg-package=$(CORE_DBG)
 DH_STRIP_DBG_OPTION_URE=--no-ddebs --dbg-package=$(URE_DBG)
 DH_STRIP_DBG_OPTION_UNO_LIBS=--no-ddebs --dbg-package=$(UNO_LIBS_DBG)
@@ -890,7 +896,7 @@ else
 endif
 
 ifeq "$(BUILD_DDEBS)" "y"
-	BUILD_DEPS += , debhelper (>= 9.20151219)
+	BUILD_DEPS += , debhelper (>= 9.20160115)
 	# from debhelper changelog
 	BUILD_DEPS += , dpkg-dev (>= 1.18.2~)
 else
@@ -1027,17 +1033,18 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
 	GCJ_JAWT_DEPENDS= $(shell dpkg -S /usr/lib/$(DEB_HOST_MULTIARCH)/gcj-$(GCJ_VERSION)-*/libgcj_bc.so.1 | cut -d: -f1 | sed -e s/$$/-awt/)
 	DBG_DBG_SUGGESTS+= , $(shell echo $(GCJ_AWT_DEPENDS) | sed -e s/awt/dbg/)
-	JAVA_RUNTIME_DEPENDS = default-jre | gcj-jre
+	JAVA_RUNTIME_DEPENDS = default-jre
 #  ifneq (,$(GCJ_JAWT_DEPENDS))
 #	JAVA_RUNTIME_DEPENDS += | $(GCJ_JAWT_DEPENDS)
 #  endif
   ifneq (,$(filter $(DEB_HOST_ARCH), $(OOO_OPENJDK_ARCHS)))
     ifneq "$(DEB_HOST_ARCH)" "ia64"
-	JAVA_RUNTIME_DEPENDS += | openjdk-7-jre | openjdk-6-jre
+	JAVA_RUNTIME_DEPENDS += | openjdk-8-jre | openjdk-7-jre | openjdk-6-jre
     else
 	JAVA_RUNTIME_DEPENDS += | openjdk-7-jre
     endif
   endif
+	JAVA_RUNTIME_DEPENDS += | gcj-jre
   ifneq (,$(filter $(DEB_HOST_ARCH), amd64 i386))
 	JAVA_RUNTIME_DEPENDS += | sun-java5-jre | sun-java6-jre
   endif
@@ -3162,44 +3169,46 @@ endif
 	dh_bugfiles -s -A
 	dh_link -s -X.desktop
 ifeq "$(shell echo $(BUILD_DDEBS)$(BUILD_DBG_PACKAGE) | grep -q y && echo true)" "true"
-	rm -rf debian/*-dbgsym
+  ifeq "$(BUILD_DDEBS)" "y"
+	rm -rf debian/$(URE_DBG_ROOT) debian/$(CORE_DBG_ROOT) debian/$(WRITER_DBG_ROOT)
+  endif
 	dh_strip -s -Nure -Nuno-libs3 $(DH_STRIP_DBG_OPTION_LO)
 	dh_strip -pure $(DH_STRIP_DBG_OPTION_URE)
 	dh_strip -puno-libs3 $(DH_STRIP_DBG_OPTION_UNO_LIBS)
 	# dh_strip --dbg-package= is not idempotent, force copying of the binaries
 	# again...
 	rm -f $(STAMP_DIR)/install-common
-	mkdir -p debian/$(CORE_DBG)/usr/share/gdb/auto-load/$(OODIR)
+	mkdir -p debian/$(CORE_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)
 	mv $(CURDIR)/debian/tmp/usr/share/gdb/auto-load/$(OODIR)/program \
-		debian/$(CORE_DBG)/usr/share/gdb/auto-load/$(OODIR)
+		debian/$(CORE_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)
 	# I think a -dbg-common is overkill. Although this means that this all only
 	# will work if libreoffice-dbg is installed..
-	mkdir -p debian/$(CORE_DBG)/usr/share/libreoffice/gdb
+	mkdir -p debian/$(CORE_DBG_ROOT)/usr/share/libreoffice/gdb
 	mv $(CURDIR)/debian/tmp/usr/share/libreoffice/gdb/libreoffice \
-		debian/$(CORE_DBG)/usr/share/libreoffice/gdb
-	mkdir -p debian/$(WRITER_DBG)/usr/share/gdb/auto-load/$(OODIR)/program
-	mkdir -p debian/$(WRITER_DBG)/usr/share/libreoffice/gdb/libreoffice/
+		debian/$(CORE_DBG_ROOT)/usr/share/libreoffice/gdb
+	mkdir -p debian/$(WRITER_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program
+	mkdir -p debian/$(WRITER_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice/
 	for i in sw writerfilter; do \
-		if [ -f debian/$(CORE_DBG)/usr/share/gdb/auto-load/$(OODIR)/program/lib$${i}lo.so-gdb.py ]; then \
-		mv debian/$(CORE_DBG)/usr/share/gdb/auto-load/$(OODIR)/program/lib$${i}lo.so-gdb.py \
-				debian/$(WRITER_DBG)/usr/share/gdb/auto-load/$(OODIR)/program/; \
+		if [ -f debian/$(CORE_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program/lib$${i}lo.so-gdb.py ]; then \
+		mv debian/$(CORE_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program/lib$${i}lo.so-gdb.py \
+				debian/$(WRITER_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program/; \
 		fi; \
-		mv debian/$(CORE_DBG)/usr/share/libreoffice/gdb/libreoffice/$$i.py \
-			debian/$(WRITER_DBG)//usr/share/libreoffice/gdb/libreoffice; \
+		mv debian/$(CORE_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice/$$i.py \
+			debian/$(WRITER_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice; \
 	done
 
 	# FIXME: or better ure-dbg (ure/lib?). Then again ure is a link which is in -common
 	# anyways...
-	mkdir -p debian/$(UNO_LIBS_DBG)/usr/share/gdb/auto-load/$(OODIR)/program
-	mv debian/$(CORE_DBG)/usr/share/gdb/auto-load/$(OODIR)/program/libuno_cppu.so.3-gdb.py \
-		debian/$(UNO_LIBS_DBG)/usr/share/gdb/auto-load/$(OODIR)/program
-	mv debian/$(CORE_DBG)/usr/share/gdb/auto-load/$(OODIR)/program/libuno_sal.so.3-gdb.py \
-		debian/$(UNO_LIBS_DBG)/usr/share/gdb/auto-load/$(OODIR)/program
-	mkdir -p debian/$(UNO_LIBS_DBG)/usr/share/libreoffice/gdb/libreoffice
-	mv debian/$(CORE_DBG)/usr/share/libreoffice/gdb/libreoffice/cppu.py \
-		debian/$(UNO_LIBS_DBG)/usr/share/libreoffice/gdb/libreoffice
-	mv debian/$(CORE_DBG)/usr/share/libreoffice/gdb/libreoffice/sal.py \
-		debian/$(UNO_LIBS_DBG)/usr/share/libreoffice/gdb/libreoffice
+	mkdir -p debian/$(UNO_LIBS_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program
+	mv debian/$(CORE_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program/libuno_cppu.so.3-gdb.py \
+		debian/$(UNO_LIBS_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program
+	mv debian/$(CORE_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program/libuno_sal.so.3-gdb.py \
+		debian/$(UNO_LIBS_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program
+	mkdir -p debian/$(UNO_LIBS_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice
+	mv debian/$(CORE_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice/cppu.py \
+		debian/$(UNO_LIBS_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice
+	mv debian/$(CORE_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice/sal.py \
+		debian/$(UNO_LIBS_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice
 else
 	dh_strip -s
 endif
@@ -3351,7 +3360,7 @@ endif
 ifeq "$(BUILD_DDEBS)" "y"
 	for i in libreoffice-core libreoffice-writer uno-libs3; do \
 		perl -pi -e 's/^(Depends:.*)/\1\nRecommends: gdb, python3-six/' \
-			debian/.debhelper/$$i/ddeb-root/DEBIAN/control; \
+		debian/.debhelper/$$i/dbgsym-root/DEBIAN/control; \
 	done
 endif
 
