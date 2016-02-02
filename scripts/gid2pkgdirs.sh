@@ -151,9 +151,9 @@ fi &&
      -exec mv {} $OODESTDIR/pkg/libreoffice-core/$OOINSTBASE/program \;
 );
 
-mkdir -p pkg/libreoffice-common/etc/bash_completion.d
+mkdir -p pkg/libreoffice-common/usr/share/bash-completion/completions
 mv etc/bash_completion.d/libreoffice$BINSUFFIX.sh \
-	pkg/libreoffice-common/etc/bash_completion.d
+	pkg/libreoffice-common/usr/share/bash-completion/completions/libreoffice$BINSUFFIX
 
 mv .$OOINSTBASE/program/java-set-classpath \
 	pkg/libreoffice-common/$OOINSTBASE/program
