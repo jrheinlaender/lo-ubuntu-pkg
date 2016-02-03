@@ -152,7 +152,7 @@ fi &&
 );
 
 mkdir -p pkg/libreoffice-common/usr/share/bash-completion/completions
-mv etc/bash_completion.d/libreoffice$BINSUFFIX.sh \
+mv usr/share/bash-completion/completions/libreoffice$BINSUFFIX.sh \
 	pkg/libreoffice-common/usr/share/bash-completion/completions/libreoffice$BINSUFFIX
 
 mv .$OOINSTBASE/program/java-set-classpath \
