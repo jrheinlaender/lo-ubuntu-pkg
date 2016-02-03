@@ -1,0 +1,34 @@
+From 384c815eda697d75706f686dc2ceb227b4d3f245 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Caol=C3=A1n=20McNamara?= <caolanm@redhat.com>
+Date: Wed, 3 Feb 2016 12:36:09 +0000
+Subject: Resolves: tdf#96653 distorted images on export to pdf
+
+regression from:
+
+commit ffe150ce903d9cdc62c25ad3437e61d24ede17d6
+Date:   Fri Dec 4 18:19:08 2015 +0100
+
+    tdf#94739 use GetScanlineSize instead of calculating it
+
+which was on the right track in the sense that the original
+code was wrong and only worked for <= 8 bit depth images
+
+Change-Id: Iee54a9f29dd0fdaf3e1f2aeb7b9898cecb453e37
+
+diff --git a/vcl/source/gdi/pdfwriter_impl.cxx b/vcl/source/gdi/pdfwriter_impl.cxx
+index de67de6..3c20b49 100644
+--- a/vcl/source/gdi/pdfwriter_impl.cxx
++++ b/vcl/source/gdi/pdfwriter_impl.cxx
+@@ -11390,7 +11390,8 @@ bool PDFWriterImpl::writeBitmapObject( BitmapEmit& rObject, bool bMask )
+         beginCompression();
+         if( ! bTrueColor || pAccess->GetScanlineFormat() == BMP_FORMAT_24BIT_TC_RGB )
+         {
+-            const int nScanLineBytes = pAccess->GetScanlineSize();
++            //With PDF bitmaps, each row is padded to a BYTE boundary (multiple of 8 bits).
++            const int nScanLineBytes = ((pAccess->GetBitCount() * pAccess->Width()) + 7U) / 8U;
+ 
+             for( long i = 0; i < pAccess->Height(); i++ )
+             {
+-- 
+cgit v0.10.2
+
