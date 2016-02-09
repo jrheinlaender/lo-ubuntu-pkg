@@ -1,0 +1,42 @@
+From: =?UTF-8?q?Caol=C3=A1n=20McNamara?= <caolanm@redhat.com>
+Date: Wed, 9 Dec 2015 11:56:52 +0000
+Subject: [PATCH] guard against corrupt ObjIndexData
+
+(cherry picked from commit c88a23b9d44118e96de41a70ab7f87eb0aafb126)
+Reviewed-on: https://gerrit.libreoffice.org/20502
+Reviewed-by: David Tardon <dtardon@redhat.com>
+Tested-by: David Tardon <dtardon@redhat.com>
+
+Change-Id: I214991e5d34c8e335cdd8ea482f8fa4913ba637b
+---
+ lotuswordpro/source/filter/lwpidxmgr.cxx  | 2 +-
+ lotuswordpro/source/filter/lwpobjstrm.cxx | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/lotuswordpro/source/filter/lwpidxmgr.cxx b/lotuswordpro/source/filter/lwpidxmgr.cxx
+--- a/lotuswordpro/source/filter/lwpidxmgr.cxx
++++ b/lotuswordpro/source/filter/lwpidxmgr.cxx
+@@ -218,7 +218,7 @@ void LwpIndexManager::ReadObjIndexData(LwpObjectStream* pObjStrm)
+             vObjIndexs[k]->offset = pObjStrm->QuickReaduInt32();
+ 
+         for (k = 0; k < LeafCount; k++)
+-            m_TempVec[k] = pObjStrm->QuickReaduInt32();
++            m_TempVec.at(k) = pObjStrm->QuickReaduInt32();
+     }
+ 
+     for( sal_uInt16 j=0; j<LeafCount; j++ )
+diff --git a/lotuswordpro/source/filter/lwpobjstrm.cxx b/lotuswordpro/source/filter/lwpobjstrm.cxx
+--- a/lotuswordpro/source/filter/lwpobjstrm.cxx
++++ b/lotuswordpro/source/filter/lwpobjstrm.cxx
+@@ -170,7 +170,7 @@ sal_uInt16 LwpObjectStream::QuickRead(void* buf, sal_uInt16 len)
+     memset(buf, 0, len);
+     if( len > m_nBufSize - m_nReadPos )
+     {
+-        assert(false);
++        SAL_WARN("lwp", "read request longer than buffer");
+         len = m_nBufSize - m_nReadPos;
+     }
+     if( m_pContentBuf && len)
+-- 
+2.5.0
+
