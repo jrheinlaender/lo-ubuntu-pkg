@@ -1,0 +1,45 @@
+From: =?UTF-8?q?Caol=C3=A1n=20McNamara?= <caolanm@redhat.com>
+Date: Wed, 9 Dec 2015 11:28:52 +0000
+Subject: [PATCH] guard against corrupt RootData
+
+(cherry picked from commit fc943ea85a7924ce0552b08eef99ed8e02f0b965)
+Reviewed-on: https://gerrit.libreoffice.org/20496
+Reviewed-by: David Tardon <dtardon@redhat.com>
+Tested-by: David Tardon <dtardon@redhat.com>
+
+Change-Id: Iad2788a7e5e7ee3b3107eab37cde2d3d38eae005
+---
+ lotuswordpro/source/filter/lwpidxmgr.cxx  | 5 ++++-
+ lotuswordpro/source/filter/lwptabrack.cxx | 2 +-
+ 2 files changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/lotuswordpro/source/filter/lwpidxmgr.cxx b/lotuswordpro/source/filter/lwpidxmgr.cxx
+--- a/lotuswordpro/source/filter/lwpidxmgr.cxx
++++ b/lotuswordpro/source/filter/lwpidxmgr.cxx
+@@ -155,7 +155,10 @@ void LwpIndexManager::ReadRootData(LwpObjectStream* pObjStrm)
+     sal_uInt16 KeyCount = pObjStrm->QuickReaduInt16();
+     m_nLeafCount = KeyCount ? KeyCount + 1 : 0;
+ 
+-    if(KeyCount)
++    if (m_nLeafCount > SAL_N_ELEMENTS(m_ChildIndex))
++        throw std::range_error("corrupt RootData");
++
++    if (KeyCount)
+     {
+         //read object keys
+         LwpKey* akey = new LwpKey();
+diff --git a/lotuswordpro/source/filter/lwptabrack.cxx b/lotuswordpro/source/filter/lwptabrack.cxx
+--- a/lotuswordpro/source/filter/lwptabrack.cxx
++++ b/lotuswordpro/source/filter/lwptabrack.cxx
+@@ -91,7 +91,7 @@ void LwpTabRack::Read()
+ 
+     m_nNumTabs = m_pObjStrm->QuickReaduInt16();
+     if (m_nNumTabs > MaxTabs)
+-        throw std::out_of_range("corrupt LwpTabRack");
++        throw std::range_error("corrupt LwpTabRack");
+     for (int i=0; i<m_nNumTabs; ++i)
+     {
+         m_aTabs[i].Read(m_pObjStrm);
+-- 
+2.5.0
+
