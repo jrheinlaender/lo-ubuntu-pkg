@@ -450,6 +450,16 @@ LIBCMIS_MINVER=0.5.0-3
 else
 LIBCMIS_MINVER=0.5.0
 endif
+ifeq "$(DEB_VENDOR)" "Debian"
+  # chromium only available on i386/amd64...
+  ifeq "$(DEB_HOST_ARCH)" "amd64"
+    ENABLE_GDRIVE=y
+  else
+    ifeq "$(DEB_HOST_ARCH)" "i386"
+      ENABLE_GDRIVE=y
+    endif
+  endif
+endif
 SYSTEM_STUFF += jpeg
 SYSTEM_STUFF += libxml
 SYSTEM_STUFF += expat
@@ -1222,6 +1232,13 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
   endif
 endif
 	CONFIGURE_FLAGS += --with-external-thes-dir=$(THES_DIR)
+
+ifeq "$(ENABLE_GDRIVE)" "y"
+  # Google API stuff for GDrive access
+  BUILD_DEPS += , chromium (>= 39.0.2171.71-1) [i386 amd64]
+  include /etc/chromium.d/apikeys
+  CONFIGURE_FLAGS += --with-gdrive-client-id=$(GOOGLE_DEFAULT_CLIENT_ID) --with-gdrive-client-secret=$(GOOGLE_DEFAULT_CLIENT_SECRET)
+endif
 
 ifeq "$(ENABLE_EOT)" "y"
  	CONFIGURE_FLAGS += --enable-eot
@@ -2249,18 +2266,17 @@ endif
 ifeq "$(PACKAGE_SDK)" "y"
 	# move SDK documentation into own package
 	rm -rf $(PKGDIR)-dev-doc
-	mkdir -p $(PKGDIR)-dev-doc/usr/share/doc/libreoffice-dev-doc
-	mv $(PKGDIR)-dev/usr/share/doc/libreoffice/sdk/* \
-		$(PKGDIR)-dev-doc/usr/share/doc/libreoffice-dev-doc
-	rmdir $(PKGDIR)-dev/usr/share/doc/libreoffice/sdk
+	mkdir -p $(PKGDIR)-dev-doc/usr/share/doc/libreoffice-dev
+	mv $(PKGDIR)-dev/usr/share/doc/libreoffice/sdk \
+		$(PKGDIR)-dev-doc/usr/share/doc/libreoffice-dev
 	mkdir -p $(PKGDIR)-dev-doc/$(OOSDKDIR)
-	ln -sf /usr/share/doc/libreoffice-dev-doc/docs \
-		$(PKGDIR)-dev/$(OOSDKDIR)/docs
+	ln -sf /usr/share/doc/libreoffice-dev/sdk/docs \
+		$(PKGDIR)-dev-doc/$(OOSDKDIR)/docs
 	mv $(PKGDIR)-dev/$(OOSDKDIR)/examples \
 		$(PKGDIR)-dev-doc/$(OOSDKDIR)
 	# and fix the symlink now dangling due to the move above
 	cd $(PKGDIR)-dev/$(OOSDKDIR) && \
-		ln -sf /usr/share/doc/libreoffice-dev-doc/index.html
+		ln -sf /usr/share/doc/libreoffice-dev/sdk/index.html
 endif
 
 ifeq "$(ENABLE_EVO2)" "y"
@@ -3016,7 +3032,7 @@ ifeq "$(PACKAGE_SDK)" "y"
 	# add symlinks for docs and examples
 	cd $(PKGDIR)-dev-doc/$(OOSDKDIR) && \
 		rm -rf docs && \
-		ln -sf /usr/share/doc/libreoffice-dev-doc/docs docs
+		ln -sf /usr/share/doc/libreoffice-dev/sdk/docs docs
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
