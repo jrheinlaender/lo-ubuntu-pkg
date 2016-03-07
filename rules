@@ -227,15 +227,6 @@ $(error only either DDEBS or -dbg allowed)
 endif
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
   BUILD_TEST_PACKAGE=y
-  ifeq "$(BUILD_DDEBS)" "y"
-  TEST_DBG_DEPENDS := $(shell dh_listpackages -s -Nlibreoffice -Ngir1.2-lokdocview-0.1 | sed -e "s/$$/-dbgsym/g" | xargs | sed -e "s/ /, /g")
-  else
-    ifeq "$(BUILD_DBG_PACKAGE)" "y"
-    TEST_DBG_DEPENDS := libreoffice-dbg
-    else
-    TEST_DBG_DEPENDS :=
-    endif
-  endif
 endif
 ifeq "$(BUILD_TEST_PACKAGE)" "y"
   BUILD_DBG_PACKAGE=n
@@ -1654,11 +1645,7 @@ endif
 
 # Generate control file, because we have so many different languages
 # Based on script by Martin Quinson <Martin.Quinson@tuxfamily.org>
-ifeq "$(BUILD_TEST_PACKAGE)" "y"
-control: debian/control debian/tests/control
-else
 control: debian/control
-endif
 debian/control: $(wildcard debian/control*in) $(SOURCE_TREE)/bin/lo-xlate-lang  debian/rules
 	chmod 755 $(SOURCE_TREE)/bin/lo-xlate-lang
 	sed -e "s#%$(DEB_VENDOR)=\([^%]*\)%#, \1#g#" \
@@ -1890,13 +1877,7 @@ ifneq "$(DICT_DIR)" "/usr/share/hunspell"
 	perl -pi -e 's/^Breaks:.*myspell.*\n//' debian/control
 endif
 
-ifeq "$(BUILD_TEST_PACKAGE)" "y"
-debian/tests/control: debian/tests/control.in debian/control
-	sed -e "s/@TEST_DBG_DEPENDS@/$(TEST_DBG_DEPENDS)/" \
-		< debian/tests/control.in > debian/tests/control
-endif
-
-.DELETE_ON_ERROR: debian/control debian/tests/control
+.DELETE_ON_ERROR: debian/control
 
 # All 'important' targets have 2 lines.  The one that is run by
 # dpkg-buildpackage or the user, and the one that does the actual work.  This
