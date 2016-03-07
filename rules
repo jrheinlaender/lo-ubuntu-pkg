@@ -1646,7 +1646,11 @@ endif
 
 # Generate control file, because we have so many different languages
 # Based on script by Martin Quinson <Martin.Quinson@tuxfamily.org>
+ifeq "$(BUILD_TEST_PACKAGE)" "y"
+control: debian/control debian/tests/control
+else
 control: debian/control
+endif
 debian/control: $(wildcard debian/control*in) $(SOURCE_TREE)/bin/lo-xlate-lang  debian/rules
 	chmod 755 $(SOURCE_TREE)/bin/lo-xlate-lang
 	sed -e "s#%$(DEB_VENDOR)=\([^%]*\)%#, \1#g#" \
@@ -1816,14 +1820,7 @@ endif
 	perl -pi -e "s,%OOO_REPORTDESIGN_ARCHS%,$(OOO_REPORTDESIGN_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_NO_REPORTDESIGN_ARCHS%,$(OOO_NO_REPORTDESIGN_ARCHS),g" debian/control
 	perl -pi -e "s#%BUILD_DEPS%#$(strip $(BUILD_DEPS))#g" debian/control
-ifeq "$(BUILD_TEST_PACKAGE)" "y"
-	# we want the build deps as dep on subsequentcheckbase, but strip the arch
-	# specifics as we are arch-all
-	# for now we filter out the arch-specific libc* and ia64, which is ugly,
-	# but better than manual bookkeeping. Also filter out the mips(el)-only
-	# binutils build-dep...
-	perl -pi -e "s#%BUILD_DEPS_ARCH_ALL%#$(strip $(shell echo '$(BUILD_DEPS), $(BUILD_DEPS_INDEP)'|sed -e 's/,/,\n /g'|grep -v libc0.1| grep -v libc6| grep -v ia64|grep -v binutils|grep -v gcj-jdk|grep -v gcj-native-helper|grep -v libgcj-common|grep -v openjdk-6-jdk|sed -e 's/\[[^]]*\]//g'))#g" debian/control
-endif
+	perl -pi -e "s#%JUNIT_MIN_VER%#$(JUNIT_MIN_VER)#g" debian/control
 ifeq "$(BUILD_KDE)" "y"
 	perl -pi -e 's/%LO-DESKTOP-INTEGRATION%/libreoffice-gnome | libreoffice-kde/' debian/control
 else
@@ -1878,7 +1875,17 @@ ifneq "$(DICT_DIR)" "/usr/share/hunspell"
 	perl -pi -e 's/^Breaks:.*myspell.*\n//' debian/control
 endif
 
-.DELETE_ON_ERROR: debian/control
+ifeq "$(BUILD_TEST_PACKAGE)" "y"
+debian/tests/control: debian/tests/control.in debian/control
+	# we want the build deps as dep on subsequentcheckbase, but strip the arch
+	# specifics as we are arch-all
+	# for now we filter out the arch-specific libc* and ia64, which is ugly,
+	# but better than manual bookkeeping. Also filter out the mips(el)-only
+	# binutils build-dep...
+	sed -e "s#%BUILD_DEPS_ARCH_ALL%#$(strip $(shell echo '$(BUILD_DEPS), $(BUILD_DEPS_INDEP)'|sed -e 's/,/,\n /g'|grep -v libc0.1| grep -v libc6| grep -v ia64|grep -v binutils|grep -v gcj-jdk|grep -v gcj-native-helper|grep -v libgcj-common|grep -v openjdk-6-jdk|sed -e 's/\[[^]]*\]//g'))#g" < debian/tests/control.in > debian/tests/control
+endif
+
+.DELETE_ON_ERROR: debian/control debian/tests/control
 
 # All 'important' targets have 2 lines.  The one that is run by
 # dpkg-buildpackage or the user, and the one that does the actual work.  This
