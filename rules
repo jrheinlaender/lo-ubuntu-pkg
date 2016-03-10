@@ -226,15 +226,6 @@ $(error only either DDEBS or -dbg allowed)
 endif
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
   BUILD_TEST_PACKAGE=y
-  ifeq "$(BUILD_DDEBS)" "y"
-  TEST_DBG_DEPENDS := $(shell dh_listpackages -s -Nlibreoffice -Ngir1.2-lokdocview-0.1 | sed -e "s/$$/-dbgsym/g" | xargs | sed -e "s/ /, /g")
-  else
-    ifeq "$(BUILD_DBG_PACKAGE)" "y"
-    TEST_DBG_DEPENDS := libreoffice-dbg
-    else
-    TEST_DBG_DEPENDS :=
-    endif
-  endif
 endif
 ifeq "$(BUILD_TEST_PACKAGE)" "y"
   BUILD_DBG_PACKAGE=n
@@ -547,6 +538,7 @@ BUILD_ARM64=y
 # Default flags to pass to configure
 CONFIGURE_FLAGS= \
 		--with-vendor='$(OOO_VENDOR)' \
+		--with-build-version='$(shell dpkg-parsechangelog |grep "^Version:" |cut -f2 -d\ )' \
                 --prefix=/usr --mandir=/usr/share/man \
                 --docdir=/usr/share/doc/libreoffice \
 		--libdir=/usr/lib \
@@ -1818,14 +1810,7 @@ endif
 	perl -pi -e "s,%OOO_REPORTDESIGN_ARCHS%,$(OOO_REPORTDESIGN_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_NO_REPORTDESIGN_ARCHS%,$(OOO_NO_REPORTDESIGN_ARCHS),g" debian/control
 	perl -pi -e "s#%BUILD_DEPS%#$(strip $(BUILD_DEPS))#g" debian/control
-ifeq "$(BUILD_TEST_PACKAGE)" "y"
-	# we want the build deps as dep on subsequentcheckbase, but strip the arch
-	# specifics as we are arch-all
-	# for now we filter out the arch-specific libc* and ia64, which is ugly,
-	# but better than manual bookkeeping. Also filter out the mips(el)-only
-	# binutils build-dep...
-	perl -pi -e "s#%BUILD_DEPS_ARCH_ALL%#$(strip $(shell echo '$(BUILD_DEPS), $(BUILD_DEPS_INDEP)'|sed -e 's/,/,\n /g'|grep -v libc0.1| grep -v libc6| grep -v ia64|grep -v binutils|grep -v gcj-jdk|grep -v gcj-native-helper|grep -v libgcj-common|grep -v openjdk-6-jdk|sed -e 's/\[[^]]*\]//g'))#g" debian/control
-endif
+	perl -pi -e "s#%JUNIT_MIN_VER%#$(JUNIT_MIN_VER)#g" debian/control
 ifeq "$(BUILD_KDE)" "y"
 	perl -pi -e 's/%LO-DESKTOP-INTEGRATION%/libreoffice-gnome | libreoffice-kde/' debian/control
 else
@@ -1878,8 +1863,12 @@ endif
 
 ifeq "$(BUILD_TEST_PACKAGE)" "y"
 debian/tests/control: debian/tests/control.in debian/control
-	sed -e "s/@TEST_DBG_DEPENDS@/$(TEST_DBG_DEPENDS)/" \
-		< debian/tests/control.in > debian/tests/control
+	# we want the build deps as dep on subsequentcheckbase, but strip the arch
+	# specifics as we are arch-all
+	# for now we filter out the arch-specific libc* and ia64, which is ugly,
+	# but better than manual bookkeeping. Also filter out the mips(el)-only
+	# binutils build-dep...
+	sed -e "s#%BUILD_DEPS_ARCH_ALL%#$(strip $(shell echo '$(BUILD_DEPS), $(BUILD_DEPS_INDEP)'|sed -e 's/,/,\n /g'|grep -v libc0.1| grep -v libc6| grep -v ia64|grep -v binutils|grep -v gcj-jdk|grep -v gcj-native-helper|grep -v libgcj-common|grep -v openjdk-6-jdk|sed -e 's/\[[^]]*\]//g'))#g" < debian/tests/control.in > debian/tests/control
 endif
 
 .DELETE_ON_ERROR: debian/control debian/tests/control
@@ -2018,6 +2007,7 @@ endif
 		export TMPDIR=$$t; \
 		export HOME=$$t; \
 		export SAL_USE_VCLPLUGIN="svp"; \
+		unset DISPLAY; \
 		if [ -x /usr/bin/gdb ]; then ulimit -c unlimited; fi && \
 		PARALLELISM=1 $(MAKE) -k $(CHECKTARGET) || PARALLELISM=1 $(MAKE) $(CHECKTARGET) && \
 	rm -rf $$t
