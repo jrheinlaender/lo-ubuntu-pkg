@@ -1,0 +1,138 @@
+From 4160870289c2db7f3ffa0041a8e2eee83578c20d Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Caol=C3=A1n=20McNamara?= <caolanm@redhat.com>
+Date: Sat, 12 Mar 2016 21:03:04 +0000
+Subject: [PATCH] Resolves: tdf#92067 with duplicate menu entries track which
+ to activate
+
+rather than just stick 2/3/4 at the end embed that this is a dup as the
+prefix and strip that off at dispatch time and pass the dup index around
+as a counter to how many dup candidates to dismiss to find the desired
+one.
+
+(cherry-picked from e22618a355c0e506b8cfac9c52e9564db26949d2)
+
+Change-Id: I81d97090a7e9b8c2995a3b27934f3ee5636d05fe
+---
+ vcl/inc/unx/gtk/gtksalmenu.hxx |  2 +-
+ vcl/unx/gtk/gtksalmenu.cxx     | 43 +++++++++++++++++++++++++++++++++++-------
+ 2 files changed, 37 insertions(+), 8 deletions(-)
+
+diff --git a/vcl/inc/unx/gtk/gtksalmenu.hxx b/vcl/inc/unx/gtk/gtksalmenu.hxx
+index 998a925..dd53a50 100644
+--- a/vcl/inc/unx/gtk/gtksalmenu.hxx
++++ b/vcl/inc/unx/gtk/gtksalmenu.hxx
+@@ -49,7 +49,7 @@ private:
+     GMenuModel*                     mpMenuModel;
+     GActionGroup*                   mpActionGroup;
+ 
+-    GtkSalMenu*                 GetMenuForItemCommand( gchar* aCommand, gboolean bGetSubmenu );
++    GtkSalMenu*                 GetMenuForItemCommand( gchar* aCommand, int& rDupsToSkip, gboolean bGetSubmenu );
+     void                        ImplUpdate( gboolean bRecurse );
+     void                        ActivateAllSubmenus(MenuBar* pMenuBar);
+ 
+diff --git a/vcl/unx/gtk/gtksalmenu.cxx b/vcl/unx/gtk/gtksalmenu.cxx
+index a0cc977..283b87b 100644
+--- a/vcl/unx/gtk/gtksalmenu.cxx
++++ b/vcl/unx/gtk/gtksalmenu.cxx
+@@ -57,14 +57,14 @@ static gchar* GetCommandForItem( GtkSalMenuItem* pSalMenuItem, gchar* aCurrentCo
+         aCommand = g_strdup( aCommandStr );
+ 
+         // Some items could have duplicated commands. A new one should be generated.
+-        for ( sal_uInt16 i = 2; ; i++ )
++        for ( sal_uInt16 i = 1; ; i++ )
+         {
+             if ( !g_action_group_has_action( pActionGroup, aCommand )
+                     || ( aCurrentCommand && g_strcmp0( aCurrentCommand, aCommand ) == 0 ) )
+                 break;
+ 
+             g_free( aCommand );
+-            aCommand = g_strdup_printf("%s%d", aCommandStr, i);
++            aCommand = g_strdup_printf("dup:%d:%s", i, aCommandStr);
+         }
+ 
+         g_free( aCommandStr );
+@@ -624,7 +624,7 @@ void GtkSalMenu::NativeSetItemCommand( unsigned nSection,
+         g_free( aCurrentCommand );
+ }
+ 
+-GtkSalMenu* GtkSalMenu::GetMenuForItemCommand( gchar* aCommand, gboolean bGetSubmenu )
++GtkSalMenu* GtkSalMenu::GetMenuForItemCommand(gchar* aCommand, int& rDupsToSkip, gboolean bGetSubmenu)
+ {
+     SolarMutexGuard aGuard;
+     GtkSalMenu* pMenu = nullptr;
+@@ -639,7 +639,13 @@ GtkSalMenu* GtkSalMenu::GetMenuForItemCommand( gchar* aCommand, gboolean bGetSub
+         OString aItemCommandOStr = OUStringToOString( aItemCommand, RTL_TEXTENCODING_UTF8 );
+         gchar* aItemCommandStr = const_cast<gchar*>(aItemCommandOStr.getStr());
+ 
+-        if ( g_strcmp0( aItemCommandStr, aCommand ) == 0 )
++        bool bFound = g_strcmp0( aItemCommandStr, aCommand ) == 0;
++        if (bFound && rDupsToSkip)
++        {
++            --rDupsToSkip;
++            bFound = false;
++        }
++        if (bFound)
+         {
+             pMenu = bGetSubmenu ? pSalItem->mpSubMenu : this;
+             break;
+@@ -647,7 +653,7 @@ GtkSalMenu* GtkSalMenu::GetMenuForItemCommand( gchar* aCommand, gboolean bGetSub
+         else
+         {
+             if ( pSalItem->mpSubMenu != nullptr )
+-                pMenu = pSalItem->mpSubMenu->GetMenuForItemCommand( aCommand, bGetSubmenu );
++                pMenu = pSalItem->mpSubMenu->GetMenuForItemCommand(aCommand, rDupsToSkip, bGetSubmenu);
+ 
+             if ( pMenu != nullptr )
+                break;
+@@ -657,6 +663,24 @@ GtkSalMenu* GtkSalMenu::GetMenuForItemCommand( gchar* aCommand, gboolean bGetSub
+     return pMenu;
+ }
+ 
++namespace
++{
++    const gchar* DetermineDupIndex(const gchar *aCommand, int& rDupsToSkip)
++    {
++        if (g_str_has_prefix(aCommand, "dup:"))
++        {
++            aCommand = aCommand + strlen("dup:");
++            gchar *endptr;
++            rDupsToSkip = g_ascii_strtoll(aCommand, &endptr, 10);
++            aCommand = endptr+1;
++        }
++        else
++            rDupsToSkip = 0;
++
++        return aCommand;
++    }
++}
++
+ void GtkSalMenu::DispatchCommand( gint itemId, const gchar *aCommand )
+ {
+     SolarMutexGuard aGuard;
+@@ -664,7 +688,10 @@ void GtkSalMenu::DispatchCommand( gint itemId, const gchar *aCommand )
+     if ( !mbMenuBar )
+         return;
+ 
+-    GtkSalMenu* pSalSubMenu = GetMenuForItemCommand( const_cast<gchar*>(aCommand), FALSE );
++    int nDupsToSkip;
++    aCommand = DetermineDupIndex(aCommand, nDupsToSkip);
++
++    GtkSalMenu* pSalSubMenu = GetMenuForItemCommand(const_cast<gchar*>(aCommand), nDupsToSkip, FALSE);
+     Menu* pSubMenu = ( pSalSubMenu != nullptr ) ? pSalSubMenu->GetMenu() : nullptr;
+ 
+     MenuBar* pMenuBar = static_cast< MenuBar* >( mpVCLMenu );
+@@ -696,8 +723,10 @@ void GtkSalMenu::Deactivate( const gchar* aMenuCommand )
+ {
+     if ( !mbMenuBar )
+         return;
++    int nDupsToSkip;
++    aMenuCommand = DetermineDupIndex(aMenuCommand, nDupsToSkip);
+ 
+-    GtkSalMenu* pSalSubMenu = GetMenuForItemCommand( const_cast<gchar*>(aMenuCommand), TRUE );
++    GtkSalMenu* pSalSubMenu = GetMenuForItemCommand(const_cast<gchar*>(aMenuCommand), nDupsToSkip, TRUE);
+ 
+     if ( pSalSubMenu != nullptr ) {
+         MenuBar* pMenuBar = static_cast< MenuBar* >( mpVCLMenu );
+-- 
+2.7.3
+
