@@ -1,0 +1,105 @@
+diff --git a/Repository.mk b/Repository.mk
+index 858be89..901085e 100644
+--- a/Repository.mk
++++ b/Repository.mk
+@@ -255,7 +278,7 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,gnome, \
+ 	$(if $(ENABLE_GTK),vclplug_gtk) \
+ 	$(if $(ENABLE_GTK3),vclplug_gtk3) \
+ 	$(if $(ENABLE_SYSTRAY_GTK),qstart_gtk) \
+-	$(if $(ENABLE_GIO),losessioninstall) \
++	$(if $(ENABLE_PACKAGEKIT),losessioninstall) \
+ 	$(if $(ENABLE_GIO),ucpgio1) \
+ ))
+ 
+diff --git a/sfx2/source/appl/appserv.cxx b/sfx2/source/appl/appserv.cxx
+index f467783..b48e763 100644
+--- a/sfx2/source/appl/appserv.cxx
++++ b/sfx2/source/appl/appserv.cxx
+@@ -159,6 +159,7 @@ namespace
+         // make sure we actually can instanciate services from base first
+         if(!lcl_isBaseAvailable())
+         {
++#if defined (ENABLE_PACKAGEKIT)
+             try
+             {
+                 using namespace org::freedesktop::PackageKit;
+@@ -176,8 +177,16 @@ namespace
+                 SAL_INFO(
+                     "sfx.appl",
+                     "trying to install LibreOffice Base, caught " << e.Message);
++#else
++                SAL_INFO(
++                    "sfx.appl",
++                    "missing LibreOffice Base");
++
++#endif
++#if defined (ENABLE_PACKAGEKIT)
+             }
+             return;
++#endif
+         }
+ 
+         try // fdo#48775
+diff --git a/shell/Module_shell.mk b/shell/Module_shell.mk
+index 17661e9..99becfd 100644
+--- a/shell/Module_shell.mk
++++ b/shell/Module_shell.mk
+@@ -16,11 +16,13 @@ $(eval $(call gb_Module_add_targets,shell,\
+ 
+ ifneq ($(filter DRAGONFLY FREEBSD LINUX NETBSD OPENBSD,$(OS)),)
+ ifeq ($(ENABLE_GIO),TRUE)
++ifeq ($(ENABLE_PACKAGEKIT),TRUE)
+ $(eval $(call gb_Module_add_targets,shell,\
+ 	Library_losessioninstall \
+ ))
+ endif
+ endif
++endif
+ 
+ ifeq ($(OS),SOLARIS)
+ ifeq ($(ENABLE_GIO),TRUE)
+diff --git a/sw/source/uibase/app/apphdl.cxx b/sw/source/uibase/app/apphdl.cxx
+index 896b365..5be6a92 100644
+--- a/sw/source/uibase/app/apphdl.cxx
++++ b/sw/source/uibase/app/apphdl.cxx
+@@ -349,6 +349,7 @@ void SwMailMergeWizardExecutor::ExecuteMailMergeWizard( const SfxItemSet * pArgs
+ {
+     if(!lcl_hasAllComponentsAvailable())
+     {
++#if defined (ENABLE_PACKAGEKIT)
+         try
+         {
+             using namespace org::freedesktop::PackageKit;
+@@ -365,8 +366,15 @@ void SwMailMergeWizardExecutor::ExecuteMailMergeWizard( const SfxItemSet * pArgs
+             SAL_INFO(
+                 "sw.core",
+                 "trying to install LibreOffice Base, caught " << e.Message);
++#else
++            SAL_INFO(
++                "sw.core",
++                "missing LibreOffice Base");
++#endif
++#if defined (ENABLE_PACKAGEKIT)
+         }
+         return;
++#endif
+     }
+     if ( m_pView )
+     {
+diff --git a/postprocess/Rdb_services.mk b/postprocess/Rdb_services.mk
+index c411fc1..d540983 100644
+--- a/postprocess/Rdb_services.mk
++++ b/postprocess/Rdb_services.mk
+@@ -194,9 +194,11 @@ $(eval $(call gb_Rdb_add_components,services,\
+         canvas/source/opengl/oglcanvas \
+ 	) \
+ 	$(if $(ENABLE_GIO), \
+-		shell/source/sessioninstall/losessioninstall \
+ 		ucb/source/ucp/gio/ucpgio \
+ 	) \
++	$(if $(ENABLE_PACKAGEKIT), \
++		shell/source/sessioninstall/losessioninstall \
++	) \
+ 	$(if $(ENABLE_GSTREAMER_1_0), \
+ 		avmedia/source/gstreamer/avmediagstreamer \
+ 	) \
