@@ -371,6 +371,7 @@ else
 endif
 ENABLE_SDBC_POSTGRESQL=y
 BUILD_GTK=y
+ENABLE_SYSTRAY=n
 #ifeq "$(DEB_DISTRIBUTION)" "experimental"
 BUILD_GTK3=y
 #endif
@@ -556,12 +557,6 @@ endef
 PLATFORMID := $(shell grep PLATFORMID debian/vars.$(DEB_HOST_ARCH) | cut -d"=" -f2)
 
 ifeq "$(ENABLE_GLTF)" "y"
-  # doesn't make that much sense on armel and mips(el), does it? :)
-  OOO_GLTF_ARCHS = $(filter-out armel mips mipsel, $(OOO_ARCHS))
-  ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_GLTF_ARCHS)))
-       ENABLE_GLTF=n
-  endif
-  $(eval $(call gen_no_archs,OOO_GLTF_ARCHS))
   OOO_COLLADA_ARCHS=amd64 i386
   $(eval $(call gen_no_archs,OOO_COLLADA_ARCHS))
 endif
@@ -767,7 +762,7 @@ ifneq "$(ENABLE_GLTF)" "y"
 	CONFIGURE_FLAGS += --disable-gltf
 else
   ifneq (,$(findstring libgltf,$(SYSTEM_STUFF)))
-	BUILD_DEPS += , libgltf-dev (>= $(LIBGLTF_MINVER))$(OOO_NO_GLTF_ARCHS)
+	BUILD_DEPS += , libgltf-dev (>= $(LIBGLTF_MINVER))
   endif
   ifneq "$(ENABLE_COLLADA)" "y"
 	CONFIGURE_FLAGS += --disable-collada
@@ -1337,6 +1332,9 @@ ifeq "$(BUILD_GTK3)" "y"
 else
        CONFIGURE_FLAGS+= --disable-gtk3
        GNOME_GTK_DEPENDS += libreoffice-gtk2
+endif
+ifeq "$(ENABLE_SYSTRAY)" "n"
+	CONFIGURE_FLAGS += --disable-systray
 endif
 
 ifeq "$(ENABLE_EVO2)" "n"
@@ -2015,7 +2013,7 @@ endif
 		export SAL_USE_VCLPLUGIN="svp"; \
 		unset DISPLAY; \
 		if [ -x /usr/bin/gdb ]; then ulimit -c unlimited; fi && \
-		PARALLELISM=1 $(MAKE) -k $(CHECKTARGET) || PARALLELISM=1 $(MAKE) $(CHECKTARGET) && \
+		$(MAKE) -k $(CHECKTARGET) || PARALLELISM=1 $(MAKE) $(CHECKTARGET) && \
 	rm -rf $$t
 
 ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
@@ -2249,10 +2247,12 @@ ifeq "$(ENABLE_JAVA)" "y"
 endif
 
 ifeq "$(BUILD_GTK)" "y"
+  ifeq "$(ENABLE_SYSTRAY)" "y"
 	# Gtk quickstarter, so to -gtk (via -gnome)
 	mkdir -p -m755 $(PKGDIR)-gnome/$(OODIR)/share/xdg
 	mv $(PKGDIR)-common/$(OODIR)/share/xdg/qstart.desktop \
 		$(PKGDIR)-gnome/$(OODIR)/share/xdg
+  endif
 endif
 
 ifeq "$(PACKAGE_SDK)" "y"
@@ -2573,7 +2573,9 @@ endif
 	mv $(PKGDIR)-gnome/$(OODIR)/program/* $(PKGDIR)-gtk2/$(OODIR)/program/
 ifeq "$(BUILD_GTK)" "y"
 	mkdir -p -m755 $(PKGDIR)-gtk2/$(OODIR)/share
+  ifeq "$(ENABLE_SYSTRAY)" "y"
 	mv $(PKGDIR)-gnome/$(OODIR)/share/xdg $(PKGDIR)-gtk2/$(OODIR)/share
+  endif
   ifeq "$(ENABLE_GIO)" "y"
 	mv $(PKGDIR)-gtk2/$(OODIR)/program/libucpgio1lo.so \
 		$(PKGDIR)-gnome/$(OODIR)/program/
@@ -2627,7 +2629,9 @@ endif
 	for i in writer calc impress draw math base; do \
 		perl -pi -e 's/Application;//; s/X-Red-Hat-Base;//; s/X-SuSE-Core-Office;//; s/X-MandrivaLinux-.*;//;' $(PKGDIR)-$$i/$(OODIR)/share/xdg/$$i.desktop; \
 	done
+  ifeq "$(ENABLE_SYSTRAY)" "y"
 	perl -pi -e 's/Application;//' $(PKGDIR)-gtk2/$(OODIR)/share/xdg/qstart.desktop
+  endif
 
 ifeq "$(ENABLE_PYTHON)" "y"
 	# PyUNO packaging
