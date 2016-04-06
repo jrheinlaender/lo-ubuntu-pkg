@@ -2258,6 +2258,38 @@ ifeq "$(BUILD_GTK)" "y"
 endif
 
 ifeq "$(PACKAGE_SDK)" "y"
+	# move arch-indep stuff into a libreoffice-dev-common
+	mkdir -p $(PKGDIR)-dev-common/usr/include
+	mv $(PKGDIR)-dev/usr/include/libreoffice \
+		$(PKGDIR)-dev-common/usr/include
+	# except include/sal/typesizes.h
+	mkdir -p $(PKGDIR)-dev/usr/include/libreoffice/sal
+	mv $(PKGDIR)-dev-common/usr/include/libreoffice/sal/typesizes.h \
+		$(PKGDIR)-dev/usr/include/libreoffice/sal
+	mkdir -p $(PKGDIR)-dev-common/usr/share/idl
+	mv $(PKGDIR)-dev/usr/share/idl/libreoffice \
+		$(PKGDIR)-dev-common/usr/share/idl
+	mkdir -p $(PKGDIR)-dev-common/$(OOSDKDIR)
+	mv $(PKGDIR)-dev/$(OOSDKDIR)/classes \
+		$(PKGDIR)-dev-common/$(OOSDKDIR)
+	mv $(PKGDIR)-dev/$(OOSDKDIR)/set* \
+		$(PKGDIR)-dev-common/$(OOSDKDIR)
+	mv $(PKGDIR)-dev/$(OOSDKDIR)/config* \
+		$(PKGDIR)-dev-common/$(OOSDKDIR)
+	mv $(PKGDIR)-dev/$(OOSDKDIR)/index.html* \
+		$(PKGDIR)-dev-common/$(OOSDKDIR)
+	mkdir -p $(PKGDIR)-dev-common/usr/share/libreoffice/sdk
+	mv $(PKGDIR)-dev/usr/share/libreoffice/sdk/classes \
+		$(PKGDIR)-dev-common/usr/share/libreoffice/sdk
+ifeq "$(PACKAGE_SDK)" "y"
+	mkdir -p $(PKGDIR)-dev-common/$(OODIR)/share/glade
+	mv $(PKGDIR)-common/$(OODIR)/share/glade/libreoffice-catalog.xml \
+		$(PKGDIR)-dev-common/$(OODIR)/share/glade
+else
+	rm -rf $(PKGDIR)-common/$(OODIR)/share/glade
+endif
+
+ ifeq "$(PACKAGE_SDK_DOCS)" "y"
 	# move SDK documentation into own package
 	rm -rf $(PKGDIR)-dev-doc
 	mkdir -p $(PKGDIR)-dev-doc/usr/share/doc/libreoffice-dev
@@ -2269,8 +2301,33 @@ ifeq "$(PACKAGE_SDK)" "y"
 	mv $(PKGDIR)-dev/$(OOSDKDIR)/examples \
 		$(PKGDIR)-dev-doc/$(OOSDKDIR)
 	# and fix the symlink now dangling due to the move above
-	cd $(PKGDIR)-dev/$(OOSDKDIR) && \
+	cd $(PKGDIR)-dev-common/$(OOSDKDIR) && \
 		ln -sf /usr/share/doc/libreoffice-dev/sdk/index.html
+  endif
+
+ifeq "$(PACKAGE_SDK)" "y"
+  ifeq "$(ENABLE_JAVA)" "y"
+	# compat/safety symlink for SDK Java stuff moved to /usr/share
+	rm -f $(PKGDIR)-dev-common/$(OOSDKDIR)/classes
+	mkdir -p $(PKGDIR)-dev-common/$(OOSDKDIR)/classes/com/sun/star/lib/loader
+	cd $(PKGDIR)-dev-common/$(OOSDKDIR)/classes/com/sun/star/lib/loader && \
+		for i in $(CURDIR)/$(PKGDIR)-dev-common/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/com/sun/star/lib/loader/*.class; do \
+			ln -s `echo $$i | sed -e 's,$(CURDIR)/$(PKGDIR)-dev-common,,'` `basename $$i`; \
+		done
+    ifeq "$(PACKAGE_UNOWINREG_DLL)" "y"
+	mkdir -p $(PKGDIR)-dev-common/$(OOSDKDIR)/classes/win
+	chmod 644 $(PKGDIR)-dev-common/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/win/unowinreg.dll
+	ln -s /$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/win/unowinreg.dll \
+		$(PKGDIR)-dev-common/$(OOSDKDIR)/classes/win/unowinreg.dll
+    else
+	rm -rf $(PKGDIR)-dev-common/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/win 
+    endif
+  endif
+	chmod 644 $(PKGDIR)-dev-common/$(OOSDKDIR)/configure.pl
+	chmod 755 $(PKGDIR)-dev-common/$(OOSDKDIR)/setsdkenv_unix
+
+	# fix permissions
+	find $(PKGDIR)-dev-common/usr/share/idl/$(OODIRNAME) -type f -exec chmod 644 {} \;
 endif
 
 ifeq "$(ENABLE_EVO2)" "y"
@@ -2278,14 +2335,6 @@ ifeq "$(ENABLE_EVO2)" "y"
 	mkdir -p $(PKGDIR)-evolution/$(OODIR)/share/registry
 	mv $(PKGDIR)-common/$(OODIR)/presets/database/evolocal.odb \
 		$(PKGDIR)-evolution/$(OODIR)/presets/database
-endif
-
-ifeq "$(PACKAGE_SDK)" "y"
-	mkdir -p $(PKGDIR)-dev/$(OODIR)/share/glade
-	mv $(PKGDIR)-common/$(OODIR)/share/glade/libreoffice-catalog.xml \
-		$(PKGDIR)-dev/$(OODIR)/share/glade
-else
-	rm -rf $(PKGDIR)-common/$(OODIR)/share/glade
 endif
 
 	# Access2Base IMHO clearly is -base specific :-)
@@ -2670,26 +2719,6 @@ endif
 	# should be empty now, remove if there
 	rm -rf $(PKGDIR)-core/$(OODIR)/ure
 
-ifeq "$(PACKAGE_SDK)" "y"
-  ifeq "$(ENABLE_JAVA)" "y"
-	# compat/safety symlink for SDK Java stuff moved to /usr/share
-	rm -f $(PKGDIR)-dev/$(OOSDKDIR)/classes
-	mkdir -p $(PKGDIR)-dev/$(OOSDKDIR)/classes/com/sun/star/lib/loader
-	cd $(PKGDIR)-dev/$(OOSDKDIR)/classes/com/sun/star/lib/loader && \
-		for i in $(CURDIR)/$(PKGDIR)-dev/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/com/sun/star/lib/loader/*.class; do \
-			ln -s `echo $$i | sed -e 's,$(CURDIR)/$(PKGDIR)-dev,,'` `basename $$i`; \
-		done
-    ifeq "$(PACKAGE_UNOWINREG_DLL)" "y"
-	mkdir -p $(PKGDIR)-dev/$(OOSDKDIR)/classes/win
-	chmod 644 $(PKGDIR)-dev/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/win/unowinreg.dll
-	ln -s /$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/win/unowinreg.dll \
-		$(PKGDIR)-dev/$(OOSDKDIR)/classes/win/unowinreg.dll
-    else
-	rm -rf $(PKGDIR)-dev/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/win 
-    endif
-  endif
-	chmod 644 $(PKGDIR)-dev/$(OOSDKDIR)/configure.pl
-	chmod 755 $(PKGDIR)-dev/$(OOSDKDIR)/setsdkenv_unix
 	# create wrapper scripts
 	cd $(PKGDIR)-dev/$(OOSDKDIR)/bin && \
 	for i in *; do \
@@ -2705,9 +2734,6 @@ ifeq "$(PACKAGE_SDK)" "y"
         # remove symlink, it should be in -dev-doc
 	cd $(PKGDIR)-dev/$(OOSDKDIR) && \
 		rm docs
-
-	# fix permissions
-	find $(PKGDIR)-dev/usr/share/idl/$(OODIRNAME) -type f -exec chmod 644 {} \;
 
 	rm -f $(PKGDIR)-dev/usr/share/doc/libreoffice/sdk/readme/LICENSE.gz
 endif
@@ -3411,6 +3437,11 @@ endif
 ifneq ($(PACKAGE_SDK_DOCS),y)
 	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 	echo "For uploads with binary-all packages, please use arches where the SDK docs are enabled!!!!"
+	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+endif
+ifneq ($(PACKAGE_UNOWINREG_DLL),y)
+	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+	echo "For uploads with binary-all packages, please use arches where unowinregl.dll is packaged!!!!"
 	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 endif
 	dh_testdir
