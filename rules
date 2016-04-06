@@ -168,6 +168,7 @@ ifeq "$(BOOST_VERSION)" "default"
   endif
 endif
 SYSTEM_STUFF += mdds
+MDDS_VER := 1.0
 SYSTEM_STUFF += vigra
 USE_EXTERNAL_CXXLIBS=y
 SYSTEM_STUFF += mythes
@@ -461,11 +462,7 @@ ENABLE_LIBLANGTAG=y
 SYSTEM_STUFF += liblangtag
 ENABLE_ORCUS=y
 SYSTEM_STUFF += orcus
-ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) ge 5 && echo true)" "true"
-LIBORCUS_MINVER=0.9.2-2
-else
-LIBORCUS_MINVER=0.9.0
-endif
+LIBORCUS_MINVER=0.11
 USE_UCPP=y
 ifeq "$(USE_UCPP)" "y"
   SYSTEM_STUFF += ucpp
@@ -695,6 +692,8 @@ ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "j
   BUILD_DBG_PACKAGE=y
   BUILD_DDEBS=n
   PYTHON_SIX_RECOMMENDS = python-six
+  MDDS_VER := 0.1
+  LIBORCUS_MINVER :=
 endif
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "UNRELEASED"
   BUGS=mailto:debian-openoffice@lists.debian.org
@@ -1159,7 +1158,13 @@ ifneq (,$(filter boost, $(SYSTEM_STUFF)))
 endif
 
 ifneq (,$(filter mdds, $(SYSTEM_STUFF)))
+  ifeq "$(MDDS_VER)" "1.0"
+	BUILD_DEPS += , libmdds-dev (>= 1.0)
+	export MDDS_CFLAGS=$(shell pkg-config --cflags mdds-1.0)
+	export MDDS_LIBS=' '
+  else
 	BUILD_DEPS += , libmdds-dev (>= 0.12)
+  endif
 endif
 
 ifeq "$(ENABLE_ORCUS)" "y"
@@ -1850,7 +1855,9 @@ ifeq "$(ENABLE_FIREBIRD)" "y"
 endif
 
 ifneq (,$(filter mdds, $(SYSTEM_STUFF)))
+  ifneq "$(MDDS_VER)" "1.0"
 	perl -pi -e "s/(Build-Conflicts: .*)/\1,libmdds-dev (>= 1.0),/" debian/control
+  endif
 endif
 
 ifeq (4.4,$(SYSTEM_GCC_VERSION))
