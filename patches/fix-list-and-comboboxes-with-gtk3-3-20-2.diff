@@ -1,0 +1,82 @@
+From 1d626b232bff810eb119cd6836f3686d2393cc5e Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Caol=C3=A1n=20McNamara?= <caolanm@redhat.com>
+Date: Thu, 7 Apr 2016 20:55:51 +0100
+Subject: gtk3: the list/combo box hack to get internal buttons no longer works
+
+with gtk3-3.20.2
+
+Change-Id: I608f3476a82233cb49e0b43c95f5a984d7c89c92
+(cherry picked from commit 70cc48f17a61296021c035f351c3db68bc5e08ad)
+Reviewed-on: https://gerrit.libreoffice.org/23907
+Tested-by: Jenkins <ci@libreoffice.org>
+Reviewed-by: Miklos Vajna <vmiklos@collabora.co.uk>
+
+diff --git a/vcl/unx/gtk3/gtk3salnativewidgets-gtk.cxx b/vcl/unx/gtk3/gtk3salnativewidgets-gtk.cxx
+index 38080e8..31758c8 100644
+--- a/vcl/unx/gtk3/gtk3salnativewidgets-gtk.cxx
++++ b/vcl/unx/gtk3/gtk3salnativewidgets-gtk.cxx
+@@ -282,10 +282,7 @@ static GtkWidget* gDumbContainer;
+ static GtkWidget* gSpinBox;
+ static GtkWidget* gEntryBox;
+ static GtkWidget* gComboBox;
+-static GtkWidget* gComboBoxButtonWidget;
+-static GtkWidget* gComboBoxEntryWidget;
+ static GtkWidget* gListBox;
+-static GtkWidget* gListBoxButtonWidget;
+ static GtkWidget* gMenuBarWidget;
+ static GtkWidget* gMenuItemMenuBarWidget;
+ static GtkWidget* gCheckMenuItemWidget;
+@@ -2299,26 +2296,6 @@ void GtkData::deInitNWF()
+         gtk_widget_destroy(gCacheWindow);
+ }
+ 
+-static void get_combo_box_entry_inner_widgets(GtkWidget *widget, gpointer)
+-{
+-    if (GTK_IS_TOGGLE_BUTTON(widget))
+-    {
+-        gComboBoxButtonWidget = widget;
+-    }
+-    else if (GTK_IS_ENTRY(widget))
+-    {
+-        gComboBoxEntryWidget = widget;
+-    }
+-}
+-
+-void get_combo_box_inner_button(GtkWidget *widget, gpointer)
+-{
+-    if (GTK_IS_TOGGLE_BUTTON(widget))
+-    {
+-        gListBoxButtonWidget = widget;
+-    }
+-}
+-
+ GtkSalGraphics::GtkSalGraphics( GtkSalFrame *pFrame, GtkWidget *pWindow )
+     : SvpSalGraphics(),
+       mpFrame( pFrame ),
+@@ -2423,21 +2400,13 @@ GtkSalGraphics::GtkSalGraphics( GtkSalFrame *pFrame, GtkWidget *pWindow )
+     /* Combobox */
+     gComboBox = gtk_combo_box_text_new_with_entry();
+     getStyleContext(&mpComboboxStyle, gComboBox);
+-    /* Get ComboBox Entry and Button */
+-    gtk_container_forall(GTK_CONTAINER(gComboBox),
+-                         get_combo_box_entry_inner_widgets,
+-                         nullptr);
+-    mpComboboxButtonStyle = gtk_widget_get_style_context(gComboBoxButtonWidget);
++    mpComboboxButtonStyle = createStyleContext(GtkControlPart::Button, mpComboboxStyle);
+ 
+     /* Listbox */
+     gListBox = gtk_combo_box_text_new();
+     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(gListBox), "sample");
+     getStyleContext(&mpListboxStyle, gListBox);
+-    /* Get ComboBox Button */
+-    gtk_container_forall(GTK_CONTAINER(gListBox),
+-                         get_combo_box_inner_button,
+-                         nullptr);
+-    mpListboxButtonStyle = gtk_widget_get_style_context(gListBoxButtonWidget);
++    mpListboxButtonStyle = createStyleContext(GtkControlPart::Button, mpListboxStyle);
+ 
+     /* Frames */
+     mpFrameOutStyle = mpFrameInStyle = createStyleContext(GtkControlPart::FrameBorder);
+-- 
+cgit v0.10.2
+
