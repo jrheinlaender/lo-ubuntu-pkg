@@ -202,6 +202,9 @@ endif
 ifeq "$(BUILD_DDEBS)$(BUILD_DBG_PACKAGE)" "yy"
 $(error only either DDEBS or -dbg allowed)
 endif
+# this changes the packages' built/contents of packages (-subsequentcheckbase)
+# This is not exactly allowed in policy but it doesn't have real practical difference,
+# does it?
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
   BUILD_TEST_PACKAGE=y
 endif
@@ -258,7 +261,11 @@ WEBDAV_LIB=neon
 endif
 SYSTEM_STUFF += redland
 PACKAGE_SDK=y
+ifneq ($(filter nodoc,$(DEB_BUILD_PROFILES)),)
+PACKAGE_SDK_DOCS=n
+else
 PACKAGE_SDK_DOCS=y
+endif
 PACKAGE_LOKIT=y
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(JDK)" "default"
@@ -786,7 +793,7 @@ ifneq "$(PACKAGE_SDK)" "y"
  endif
 else
   ifeq "$(PACKAGE_SDK_DOCS)" "y"
-	BUILD_DEPS_INDEP += , doxygen (>= 1.8.4)
+	BUILD_DEPS_INDEP += , doxygen (>= 1.8.4) <!nodoc>
   else
 	CONFIGURE_FLAGS += --without-doxygen --without-javadoc
   endif
@@ -902,7 +909,7 @@ ifeq "$(BUILD_DDEBS)" "y"
 	BUILD_DEPS += , dpkg-dev (>= 1.18.2~)
 else
 	BUILD_DEPS += , debhelper (>= 7.2.3~)
-	BUILD_DEPS += , dpkg-dev (>= 1.16.1)
+	BUILD_DEPS += , dpkg-dev (>= 1.17.14)
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
@@ -919,12 +926,12 @@ ifneq (,$(filter cppunit, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libcppunit-dev (>= $(CPPUNIT_MINVER))
 endif
 ifeq "$(RUN_MAKE_CHECK)" "y"
-	BUILD_DEPS += , gdb
-	BUILD_DEPS += , fontconfig
-	BUILD_DEPS += , fonts-liberation
-  	BUILD_DEPS += , fonts-crosextra-carlito
+	BUILD_DEPS += , gdb <!nocheck>
+	BUILD_DEPS += , fontconfig <!nocheck>
+	BUILD_DEPS += , fonts-liberation <!nocheck>
+  	BUILD_DEPS += , fonts-crosextra-carlito <!nocheck>
   ifeq "$(ENABLE_JUNIT4)" "y"
-	BUILD_DEPS += , junit4 $(JUNIT_MIN_VER)
+	BUILD_DEPS += , junit4 $(JUNIT_MIN_VER) <!nocheck>
   else
 	CONFIGURE_FLAGS += --without-junit
   endif
@@ -1872,7 +1879,7 @@ debian/tests/control: debian/tests/control.in debian/control
 	# for now we filter out the arch-specific libc* and ia64, which is ugly,
 	# but better than manual bookkeeping. Also filter out the mips(el)-only
 	# binutils build-dep...
-	sed -e "s#%BUILD_DEPS_ARCH_ALL%#$(strip $(shell echo '$(BUILD_DEPS), $(BUILD_DEPS_INDEP)'|sed -e 's/,/,\n /g'|grep -v libc0.1| grep -v libc6| grep -v ia64|grep -v binutils|grep -v gcj-jdk|grep -v gcj-native-helper|grep -v libgcj-common|grep -v openjdk-6-jdk|sed -e 's/\[[^]]*\]//g'))#g" < debian/tests/control.in > debian/tests/control
+	sed -e "s#%BUILD_DEPS_ARCH_ALL%#$(strip $(shell echo '$(BUILD_DEPS), $(BUILD_DEPS_INDEP)'|sed -e 's/,/,\n /g'|grep -v libc0.1| grep -v libc6| grep -v ia64|grep -v binutils|grep -v gcj-jdk|grep -v gcj-native-helper|grep -v libgcj-common|grep -v openjdk-6-jdk|sed -e 's/\[[^]]*\]//g'|sed -e s,\<.*\>,,g))#g" < debian/tests/control.in > debian/tests/control
 endif
 
 .DELETE_ON_ERROR: debian/control debian/tests/control
