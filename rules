@@ -1039,8 +1039,10 @@ ifeq "$(ENABLE_JAVA)" "y"
   else
 	BUILD_DEPS += , ant (>= 1.6.5)$(OOO_NO_JAVA_ARCHS)
   endif
+  ifneq "$(GCJ_VERSION)" ""
 	GCJ_JAWT_DEPENDS= $(shell dpkg -S /usr/lib/$(DEB_HOST_MULTIARCH)/gcj-$(GCJ_VERSION)-*/libgcj_bc.so.1 | cut -d: -f1 | sed -e s/$$/-awt/)
 	DBG_DBG_SUGGESTS+= , $(shell echo $(GCJ_AWT_DEPENDS) | sed -e s/awt/dbg/)
+  endif
 	JAVA_RUNTIME_DEPENDS = default-jre
 #  ifneq (,$(GCJ_JAWT_DEPENDS))
 #	JAVA_RUNTIME_DEPENDS += | $(GCJ_JAWT_DEPENDS)
@@ -1670,6 +1672,12 @@ else
 control: debian/control
 endif
 debian/control: $(wildcard debian/control*in) $(SOURCE_TREE)/bin/lo-xlate-lang  debian/rules
+ifneq "$(OOO_GCJ_JDK_ARCHS)" ""
+	if ! dpkg -l gcj-jdk | grep -q ^ii 2>/dev/null; then \
+		echo "Can not determine GCJ_VERSION. you need  gcj-jdk installed"; \
+		exit 1; \
+	fi
+endif
 	chmod 755 $(SOURCE_TREE)/bin/lo-xlate-lang
 	sed -e "s#%$(DEB_VENDOR)=\([^%]*\)%#, \1#g#" \
 	    -e "s#%[A-Za-z]*=[^%]*%##g#" \
