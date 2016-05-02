@@ -265,25 +265,29 @@ PACKAGE_LOKIT=y
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(JDK)" "default"
     ifeq "$(shell LANG=C /usr/lib/jvm/default-java/bin/java -version 2>&1 | tail -n 1 | awk '{ print $$1 }')" "OpenJDK"
-      RUN_MAKE_CHECK=y
-      RUN_PYTESTS=y
-      ifeq "$(DEB_HOST_ARCH)" "i386"
-	ENABLE_JUNIT4=y
+      ifeq (,$(findstring kfreebsd,$(DEB_HOST_ARCH)))
+        RUN_MAKE_CHECK=y
+        ifeq "$(DEB_HOST_ARCH)" "i386"
+	  ENABLE_JUNIT4=y
+        endif
+        ifeq "$(DEB_HOST_ARCH)" "amd64"
+	  ENABLE_JUNIT4=y
+        endif
       endif
-      ifeq "$(DEB_HOST_ARCH)" "amd64"
-	ENABLE_JUNIT4=y
-      endif
+	RUN_PYTESTS=y
     endif
   else
     ifeq "$(JDK)" "openjdk"
-      RUN_MAKE_CHECK=y
-      RUN_PYTESTS=y
-      ifeq "$(DEB_HOST_ARCH)" "i386"
-	ENABLE_JUNIT4=y
+      ifeq (,$(findstring kfreebsd,$(DEB_HOST_ARCH)))
+        RUN_MAKE_CHECK=y
+        ifeq "$(DEB_HOST_ARCH)" "i386"
+	  ENABLE_JUNIT4=y
+        endif
+        ifeq "$(DEB_HOST_ARCH)" "amd64"
+	  ENABLE_JUNIT4=y
+        endif
       endif
-      ifeq "$(DEB_HOST_ARCH)" "amd64"
-	ENABLE_JUNIT4=y
-      endif
+        RUN_PYTESTS=y
     else
       RUN_MAKE_CHECK=n
       ENABLE_JUNIT4=n
@@ -926,12 +930,12 @@ ifneq (,$(filter cppunit, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libcppunit-dev (>= $(CPPUNIT_MINVER))
 endif
 ifeq "$(RUN_MAKE_CHECK)" "y"
-	BUILD_DEPS += , gdb
+	BUILD_DEPS += , gdb [!kfreebsd-i386 !kfreebsd-amd64]
 	BUILD_DEPS += , fontconfig
 	BUILD_DEPS += , fonts-liberation
   	BUILD_DEPS += , fonts-crosextra-carlito
   ifeq "$(ENABLE_JUNIT4)" "y"
-	BUILD_DEPS += , junit4 $(JUNIT_MIN_VER)
+	BUILD_DEPS += , junit4 $(JUNIT_MIN_VER) [!kfreebsd-i386 !kfreebsd-amd64]
   else
 	CONFIGURE_FLAGS += --without-junit
   endif
