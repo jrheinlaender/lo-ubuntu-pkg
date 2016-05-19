@@ -142,3 +142,221 @@ index 4044b3e..70e7439 100644
 -- 
 cgit v0.10.2
 
+diff -urN mdds-old/0001-another-step-to-allow-fst-to-use-any-value-type.patch.1 mdds/0001-another-step-to-allow-fst-to-use-any-value-type.patch.1
+--- a/external/mdds/0001-another-step-to-allow-fst-to-use-any-value-type.patch.1	2016-05-04 00:51:19.000000000 +0200
++++ b/external/mdds/0001-another-step-to-allow-fst-to-use-any-value-type.patch.1	1970-01-01 01:00:00.000000000 +0100
+@@ -1,55 +0,0 @@
+-From 5fc9214fb94595e1a2c0b9e0285037f5a2fa59bf Mon Sep 17 00:00:00 2001
+-From: David Tardon <dtardon@redhat.com>
+-Date: Mon, 29 Jun 2015 14:28:42 +0200
+-Subject: [PATCH] another step to allow fst to use any value type
+-
+-For some reason this is not a problem on modern compilers...
+----
+- include/mdds/flat_segment_tree.hpp     | 1 -
+- include/mdds/flat_segment_tree_def.inl | 2 +-
+- src/flat_segment_tree_test.cpp         | 4 ++++
+- 3 files changed, 5 insertions(+), 2 deletions(-)
+-
+-diff --git a/include/mdds/flat_segment_tree.hpp b/include/mdds/flat_segment_tree.hpp
+-index b656bc3..02cf87e 100644
+---- a/include/mdds/flat_segment_tree.hpp
+-+++ b/include/mdds/flat_segment_tree.hpp
+-@@ -32,7 +32,6 @@
+- #include <sstream>
+- #include <utility>
+- #include <cassert>
+--#include <limits>
+- 
+- #include "mdds/node.hpp"
+- #include "mdds/flat_segment_tree_itr.hpp"
+-diff --git a/include/mdds/flat_segment_tree_def.inl b/include/mdds/flat_segment_tree_def.inl
+-index ebfee99..5fef1c3 100644
+---- a/include/mdds/flat_segment_tree_def.inl
+-+++ b/include/mdds/flat_segment_tree_def.inl
+-@@ -46,7 +46,7 @@ flat_segment_tree<_Key, _Value>::flat_segment_tree(key_type min_val, key_type ma
+-     // We don't ever use the value of the right leaf node, but we need the
+-     // value to be always the same, to make it easier to check for
+-     // equality.
+--    m_right_leaf->value_leaf.value = ::std::numeric_limits<value_type>::max();
+-+    m_right_leaf->value_leaf.value = init_val;
+- }
+- 
+- template<typename _Key, typename _Value>
+-diff --git a/src/flat_segment_tree_test.cpp b/src/flat_segment_tree_test.cpp
+-index 81858f5..f7aead7 100644
+---- a/src/flat_segment_tree_test.cpp
+-+++ b/src/flat_segment_tree_test.cpp
+-@@ -1943,6 +1943,10 @@ void fst_test_non_numeric_value()
+-     db.search(1, result);
+- 
+-     assert(result == "hello world");
+-+
+-+    db_type db2(db);
+-+
+-+    assert(db == db2);
+- }
+- 
+- void fst_test_non_numeric_key()
+--- 
+-2.4.2
+-
+diff -urN mdds-old/mdds_0.6.0.patch mdds/mdds_0.6.0.patch
+--- a/external/mdds/mdds_0.6.0.patch	2016-05-04 00:51:19.000000000 +0200
++++ b/external/mdds/mdds_0.6.0.patch	1970-01-01 01:00:00.000000000 +0100
+@@ -1,54 +0,0 @@
+---- misc/mdds_0.6.0/include/mdds/mixed_type_matrix_def.inl	2011-07-13 13:26:27.000000000 -0600
+-+++ misc/build/mdds_0.6.0/include/mdds/mixed_type_matrix_def.inl	2011-07-20 02:02:21.164198900 -0600
+-@@ -216,8 +216,8 @@
+-         // assignment to self.
+-         return;
+- 
+--    size_t row_count = ::std::min(mp_storage->rows(), r.mp_storage->rows());
+--    size_t col_count = ::std::min(mp_storage->cols(), r.mp_storage->cols());
+-+    size_t row_count = (::std::min)(mp_storage->rows(), r.mp_storage->rows());
+-+    size_t col_count = (::std::min)(mp_storage->cols(), r.mp_storage->cols());
+-     for (size_t i = 0; i < row_count; ++i)
+-         for (size_t j = 0; j < col_count; ++j)
+-             mp_storage->get_element(i, j) = r.mp_storage->get_element(i, j);
+---- misc/mdds_0.6.0/include/mdds/mixed_type_matrix_storage_filled_linear.inl	2011-07-13 13:26:27.000000000 -0600
+-+++ misc/build/mdds_0.6.0/include/mdds/mixed_type_matrix_storage_filled_linear.inl	2011-07-20 02:02:21.179798900 -0600
+-@@ -354,8 +354,8 @@
+-         }
+- 
+-         array_type new_array(new_size, &m_init_elem);
+--        size_t min_rows = ::std::min(row, m_rows);
+--        size_t min_cols = ::std::min(col, m_cols);
+-+        size_t min_rows = (::std::min)(row, m_rows);
+-+        size_t min_cols = (::std::min)(col, m_cols);
+-         for (size_t i = 0; i < min_rows; ++i)
+-         {
+-             for (size_t j = 0; j < min_cols; ++j)
+-@@ -612,8 +612,8 @@
+-         }
+- 
+-         array_type new_array(new_size, element(0.0));
+--        size_t min_rows = ::std::min(row, m_rows);
+--        size_t min_cols = ::std::min(col, m_cols);
+-+        size_t min_rows = (::std::min)(row, m_rows);
+-+        size_t min_cols = (::std::min)(col, m_cols);
+-         for (size_t i = 0; i < min_rows; ++i)
+-         {
+-             for (size_t j = 0; j < min_cols; ++j)
+---- misc/mdds_0.6.0/include/mdds/point_quad_tree.hpp	2011-07-13 13:26:27.000000000 -0600
+-+++ misc/build/mdds_0.6.0/include/mdds/point_quad_tree.hpp	2011-07-20 02:04:36.088835900 -0600
+-@@ -623,10 +623,10 @@
+- template<typename _Key, typename _Data>
+- void point_quad_tree<_Key,_Data>::insert(key_type x, key_type y, data_type data)
+- {
+--    m_xrange.first  = ::std::min(m_xrange.first,  x);
+--    m_xrange.second = ::std::max(m_xrange.second, x);
+--    m_yrange.first  = ::std::min(m_yrange.first,  y);
+--    m_yrange.second = ::std::max(m_yrange.second, y);
+-+    m_xrange.first  = (::std::min)(m_xrange.first,  x);
+-+    m_xrange.second = (::std::max)(m_xrange.second, x);
+-+    m_yrange.first  = (::std::min)(m_yrange.first,  y);
+-+    m_yrange.second = (::std::max)(m_yrange.second, y);
+- 
+-     if (!m_root)
+-     {
+diff -urN mdds-old/mdds-c++98.patch.0 mdds/mdds-c++98.patch.0
+--- a/external/mdds/mdds-c++98.patch.0	2016-05-04 00:51:19.000000000 +0200
++++ b/external/mdds/mdds-c++98.patch.0	1970-01-01 01:00:00.000000000 +0100
+@@ -1,84 +0,0 @@
+---- include/mdds/multi_type_vector_itr.hpp
+-+++ include/mdds/multi_type_vector_itr.hpp
+-@@ -139,14 +139,15 @@
+-     typedef typename parent_type::size_type size_type;
+-     typedef iterator_value_node<size_type, typename parent_type::element_block_type> node;
+- 
+--    iterator_common_base() : m_cur_node(0, 0) {}
+-+    iterator_common_base() : m_cur_node(0, 0), m_singular(true) {}
+- 
+-     iterator_common_base(
+-         const base_iterator_type& pos, const base_iterator_type& end,
+-         size_type start_pos, size_type block_index) :
+-         m_cur_node(start_pos, block_index),
+-         m_pos(pos),
+--        m_end(end)
+-+        m_end(end),
+-+        m_singular(false)
+-     {
+-         if (m_pos != m_end)
+-             update_node();
+-@@ -154,9 +155,13 @@
+- 
+-     iterator_common_base(const iterator_common_base& other) :
+-         m_cur_node(other.m_cur_node),
+--        m_pos(other.m_pos),
+--        m_end(other.m_end)
+-+        m_singular(other.m_singular)
+-     {
+-+        if (!m_singular)
+-+        {
+-+            m_pos = other.m_pos;
+-+            m_end = other.m_end;
+-+        }
+-     }
+- 
+-     void update_node()
+-@@ -196,6 +201,7 @@
+-     node m_cur_node;
+-     base_iterator_type m_pos;
+-     base_iterator_type m_end;
+-+    bool m_singular;
+- 
+- public:
+-     bool operator== (const iterator_common_base& other) const
+-@@ -218,8 +224,12 @@
+-     iterator_common_base& operator= (const iterator_common_base& other)
+-     {
+-         m_cur_node = other.m_cur_node;
+--        m_pos = other.m_pos;
+--        m_end = other.m_end;
+-+        m_singular = other.m_singular;
+-+        if (!m_singular)
+-+        {
+-+            m_pos = other.m_pos;
+-+            m_end = other.m_end;
+-+        }
+-         return *this;
+-     }
+- 
+-@@ -226,8 +236,22 @@
+-     void swap(iterator_common_base& other)
+-     {
+-         m_cur_node.swap(other.m_cur_node);
+--        std::swap(m_pos, other.m_pos);
+--        std::swap(m_end, other.m_end);
+-+        std::swap(m_singular, other.m_singular);
+-+        if (!(m_singular || other.m_singular))
+-+        {
+-+            std::swap(m_pos, other.m_pos);
+-+            std::swap(m_end, other.m_end);
+-+        }
+-+        else if (!m_singular)
+-+        {
+-+            m_pos = other.m_pos;
+-+            m_end = other.m_end;
+-+        }
+-+        else if (!other.m_singular)
+-+        {
+-+            other.m_pos = m_pos;
+-+            other.m_end = m_end;
+-+        }
+-     }
+- 
+-     const node& get_node() const { return m_cur_node; }
+diff -urN mdds-old/UnpackedTarball_mdds.mk mdds/UnpackedTarball_mdds.mk
+--- a/external/mdds/UnpackedTarball_mdds.mk	2016-05-19 11:39:06.621747752 +0200
++++ b/external/mdds/UnpackedTarball_mdds.mk	2016-05-19 11:41:23.009627279 +0200
+@@ -14,9 +14,6 @@
+ $(eval $(call gb_UnpackedTarball_set_patchlevel,mdds,3))
+ 
+ $(eval $(call gb_UnpackedTarball_add_patches,mdds,\
+-	external/mdds/mdds_0.6.0.patch \
+-	external/mdds/mdds-c++98.patch.0 \
+-	external/mdds/0001-another-step-to-allow-fst-to-use-any-value-type.patch.1 \
+ ))
+ 
+ # vim: set noet sw=4 ts=4:
