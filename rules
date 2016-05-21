@@ -196,11 +196,11 @@ QT_MINVER= (>= 4:4.8)
 KDELIBS_MINVER= (>= 4:4.3.4)
 BUILD_DBG_PACKAGE=n
 ifneq (noddebs,$(findstring noddebs,$(DEB_BUILD_OPTIONS)))
-BUILD_DDEBS=y
+BUILD_DBGSYM_PACKAGES=y
 endif
 
-ifeq "$(BUILD_DDEBS)$(BUILD_DBG_PACKAGE)" "yy"
-$(error only either DDEBS or -dbg allowed)
+ifeq "$(BUILD_DBGSYM_PACKAGES)$(BUILD_DBG_PACKAGE)" "yy"
+$(error only either -dbgsym or -dbg allowed)
 endif
 # this changes the packages' built/contents of packages (-subsequentcheckbase)
 # This is not exactly allowed in policy but it doesn't have real practical difference,
@@ -208,7 +208,7 @@ endif
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
   BUILD_TEST_PACKAGE=y
 endif
-ifeq "$(shell echo $(BUILD_DDEBS)$(BUILD_DBG_PACKAGE) | grep -q y && echo true)" "true"
+ifeq "$(shell echo $(BUILD_DBGSYM_PACKAGES)$(BUILD_DBG_PACKAGE) | grep -q y && echo true)" "true"
   ENABLE_SYMBOLS=y
   SMALL_SYMBOLS=y
 endif
@@ -696,14 +696,14 @@ ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "j
   SYSTEM_STUFF := $(filter-out opencollada collada2gltf libcmis mdds glm orcus libgltf libwps,$(SYSTEM_STUFF))
   JESSIE_BACKPORT=y
   BUILD_DBG_PACKAGE=y
-  BUILD_DDEBS=n
+  BUILD_DBGSYM_PACKAGES=n
   PYTHON_SIX_RECOMMENDS = python-six
 endif
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "UNRELEASED"
   BUGS=mailto:debian-openoffice@lists.debian.org
 endif
 
-ifeq "$(BUILD_DDEBS)" "y"
+ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 UNO_LIBS_DBG=uno-libs3-dbgsym
 URE_DBG=ure-dbgsym
 CORE_DBG=libreoffice-core-dbgsym
@@ -711,9 +711,9 @@ WRITER_DBG=libreoffice-writer-dbgsym
 URE_DBG_ROOT=.debhelper/ure/dbgsym-root
 CORE_DBG_ROOT=.debhelper/libreoffice-core/dbgsym-root
 WRITER_DBG_ROOT=.debhelper/libreoffice-writer/dbgsym-root
-DH_STRIP_DBG_OPTION_LO=--ddeb-migration=libreoffice-dbg
-DH_STRIP_DBG_OPTION_URE=--ddeb-migration=ure-dbg
-DH_STRIP_DBG_OPTION_UNO_LIBS=--ddeb-migration=uno-libs3-dbg
+DH_STRIP_DBG_OPTION_LO=--dbgsym-migration=libreoffice-dbg
+DH_STRIP_DBG_OPTION_URE=--dbgsym-migration=ure-dbg
+DH_STRIP_DBG_OPTION_UNO_LIBS=--dbgsym-migration=uno-libs3-dbg
 else
 UNO_LIBS_DBG=uno-libs3-dbg
 URE_DBG=ure-dbg
@@ -726,9 +726,9 @@ DH_STRIP_DBG_OPTION_LO=--dbg-package=$(CORE_DBG)
 DH_STRIP_DBG_OPTION_URE=--dbg-package=$(URE_DBG)
 DH_STRIP_DBG_OPTION_UNO_LIBS=---dbg-package=$(UNO_LIBS_DBG)
 ifneq "$(JESSIE_BACKPORT)" "y"
-DH_STRIP_DBG_OPTION_LO += --no-ddebs
-DH_STRIP_DBG_OPTION_URE += --no-ddebs
-DH_STRIP_DBG_OPTION_UNO_LIBS3 += --no-ddebs
+DH_STRIP_DBG_OPTION_LO += --no-automatic-dbgsym
+DH_STRIP_DBG_OPTION_URE += --no-automatic-dbgsym
+DH_STRIP_DBG_OPTION_UNO_LIBS3 += --no-automatic-dbgsym
 endif
 endif
 
@@ -856,7 +856,7 @@ ifneq (,$(filter openssl, $(SYSTEM_STUFF)))
 endif
 	OPENCL_SUGGESTS := ocl-icd-libopencl1
 
-ifeq "$(shell echo $(BUILD_DDEBS)$(BUILD_DBG_PACKAGE) | grep -q y && echo true)" "true"
+ifeq "$(shell echo $(BUILD_DBGSYM_PACKAGES)$(BUILD_DBG_PACKAGE) | grep -q y && echo true)" "true"
   ifneq (,$(findstring i386,$(DEB_HOST_ARCH)))
 	SMALL_SYMBOLS = n
   else
@@ -902,8 +902,8 @@ else
 	BUILD_DEPS += , python
 endif
 
-ifeq "$(BUILD_DDEBS)" "y"
-	BUILD_DEPS += , debhelper (>= 9.20160115)
+ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
+	BUILD_DEPS += , debhelper (>= 9.20160114)
 	# from debhelper changelog
 	BUILD_DEPS += , dpkg-dev (>= 1.18.2~)
 else
@@ -2067,7 +2067,7 @@ $(STAMP_DIR)/install-common:
 	export OOINSTBASE=$(OODIR); \
 	export OOO_LANGS_LIST="$(ISOS)"; \
 	$(CURDIR)/debian/scripts/gid2pkgdirs.sh
-ifeq "$(shell echo $(BUILD_DDEBS)$(BUILD_DBG_PACKAGE) | grep -q y && echo true)" "true"
+ifeq "$(shell echo $(BUILD_DBGSYM_PACKAGES)$(BUILD_DBG_PACKAGE) | grep -q y && echo true)" "true"
 	make cmd cmd="export DESTDIR=$(CURDIR)/debian/tmp; $(CURDIR)/solenv/bin/install-gdb-printers -a /usr/share/gdb/auto-load/$(OODIR) -c -i /$(OODIR) -p /usr/share/libreoffice/gdb"
 endif
 
@@ -3228,8 +3228,8 @@ endif
 	dh_lintian -s
 	dh_bugfiles -s -A
 	dh_link -s -X.desktop
-ifeq "$(shell echo $(BUILD_DDEBS)$(BUILD_DBG_PACKAGE) | grep -q y && echo true)" "true"
-  ifeq "$(BUILD_DDEBS)" "y"
+ifeq "$(shell echo $(BUILD_DBGSYM_PACKAGES)$(BUILD_DBG_PACKAGE) | grep -q y && echo true)" "true"
+  ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 	rm -rf debian/$(URE_DBG_ROOT) debian/$(CORE_DBG_ROOT) debian/$(WRITER_DBG_ROOT)
   endif
 	dh_strip -s -Nure -Nuno-libs3 $(DH_STRIP_DBG_OPTION_LO)
@@ -3248,7 +3248,7 @@ ifeq "$(shell echo $(BUILD_DDEBS)$(BUILD_DBG_PACKAGE) | grep -q y && echo true)"
 		debian/$(CORE_DBG_ROOT)/usr/share/libreoffice/gdb
 	mkdir -p debian/$(WRITER_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program
 	mkdir -p debian/$(WRITER_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice/
-  ifeq "$(BUILD_DDEBS)" "y"
+  ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 	for i in sw writerfilter; do \
 		if [ -f debian/$(CORE_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program/lib$${i}lo.so-gdb.py ]; then \
 		mv debian/$(CORE_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program/lib$${i}lo.so-gdb.py \
@@ -3422,7 +3422,7 @@ ifeq "$(BUILD_DBG_PACKAGE)" "y"
 		-V'python-six-recommends=$(PYTHON_SIX_RECOMMENDS)' \
 		-v"`echo $(BINARY_VERSION) | cut -d: -f2`"
 endif
-ifeq "$(BUILD_DDEBS)" "y"
+ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 	for i in libreoffice-core libreoffice-writer uno-libs3; do \
 		perl -pi -e 's/^(Depends:.*)/\1\nRecommends: gdb, $(PYTHON_SIX_RECOMMENDS)/' \
 		debian/.debhelper/$$i/dbgsym-root/DEBIAN/control; \
