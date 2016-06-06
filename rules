@@ -1313,12 +1313,15 @@ ifeq "$(ENABLE_FIREBIRD)" "y"
   endif
   ifneq (,$(filter firebird, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , firebird-dev (>= 2.5.2.26540.ds4-2)$(OOO_NO_LE_ARCHS)
-  # hack for firebird 3. configure expects fb_config or pkg-config, neither of
-  # which firebird 3 provides. WTF? (See http://bugs.debian.org/826320)
-  ifeq "$(shell dpkg --compare-versions `dpkg -l firebird-dev | grep ^ii | awk '{ print $$3 }'` ge 3 && echo true)" "true"
-export FIREBIRD_VERSION=3.0.0
+  # override the firebird-related variables for firebird 3 as
+  # fb_config --embedlibs gives -lfbembed which is gone..
+  ifeq "$(shell dpkg --compare-versions `fb_config --version` ge 3 && echo true)" "true"
+export FIREBIRD_VERSION=$(shell fb_config --version)
 export FIREBIRD_LIBS=-lfbclient
 export FIREBIRD_CFLAGS="-I/usr/include/firebird"
+	# we need libEngine12.so
+	BUILD_DEPS += , firebird$(shell echo $(FIREBIRD_VERSION) | cut -d. -f1,2)-server
+	FIREBIRD_SERVER_DEPENDS += firebird$(shell echo $(FIREBIRD_VERSION) | cut -d. -f1,2)-server
   endif
   endif
 else
@@ -3398,6 +3401,7 @@ endif
 		-V'gnome-gtk-recommends=$(GNOME_GTK_RECOMMENDS)' \
 		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-V'python-six-recommends=$(PYTHON_SIX_RECOMMENDS)' \
+		-V'firebird-server-depends=$(FIREBIRD_SERVER_DEPENDS)' \
 		-v$(BINARY_VERSION)
 ifeq "$(ENABLE_JAVA)" "y"
 	perl -pi -e "s/java-gcj-compat/java-gcj-compat (>= 1.0.77-4)/" \
