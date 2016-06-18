@@ -374,11 +374,13 @@ ifeq "$(ENABLE_JAVA)" "y"
   SYSTEM_STUFF += apache-commons
   ENABLE_SCRIPT_PROVIDER_BSH=y
   ENABLE_SCRIPT_PROVIDER_JS=y
+  ENABLE_NLPSOLVER=n
 else
   ENABLE_REPORTDESIGN=n
   ENABLE_MEDIAWIKI=n
   ENABLE_SCRIPT_PROVIDER_BSH=n
   ENABLE_SCRIPT_PROVIDER_JS=n
+  ENABLE_NLPSOLVER=n
 endif
 ENABLE_SDBC_POSTGRESQL=y
 BUILD_GTK=y
@@ -643,7 +645,8 @@ endif
 ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
 	ENABLE_MEDIAWIKI=n
 	ENABLE_REPORTDESIGN=n
-	DEBHELPER_OPTIONS += -Nlibreoffice-wiki-publisher -Nlibreoffice-script-provider-python
+	ENABLE_NLPSOLVER=n
+	DEBHELPER_OPTIONS += -Nlibreoffice-wiki-publisher -Nlibreoffice-script-provider-python -Nlibreoffice-nlpsolver
 	CONFIGURE_FLAGS += --disable-extension-integration --disable-extensions
 else
 	CONFIGURE_FLAGS += --enable-extension-integration
@@ -653,16 +656,19 @@ ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_JAVA_ARCHS)))
 	ENABLE_JAVA=n
 	ENABLE_REPORTDESIGN=n
 	ENABLE_MEDIAWIKI=n
+	ENABLE_NLPSOLVER=n
 	DEBHELPER_OPTIONS += -Nlibreoffice-wiki-publisher
 	DEBHELPER_OPTIONS += -Nlibreoffice-report-builder-bin -Nlibreoffice-report-builder
+	DEBHELPER_OPTIONS += -Nlibreoffice-nlpsolver
 endif
 
 ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_GCJ_JDK_ARCHS)))
   ifneq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_OPENJDK_ARCHS)))
 	ENABLE_REPORTDESIGN=n
 	ENABLE_MEDIAWIKI=n
+	ENABLE_NLPSOLVER=n
 	SYSTEM_STUFF := $(filter-out jfreereport apache-commons, $(SYSTEM_STUFF))
-	DEBHELPER_OPTIONS += -Nlibreoffice-report-builder-bin -Nlibreoffice-report-builder -Nlibreoffice-wiki-publisher
+	DEBHELPER_OPTIONS += -Nlibreoffice-report-builder-bin -Nlibreoffice-report-builder -Nlibreoffice-wiki-publisher -Nlibreoffice-nlpsolver
   endif
 endif
 # disable SRB on ia64 when building with internal jfreereport.
@@ -1079,7 +1085,7 @@ export JAVA_HOME
     endif
   endif
   ifeq "$(ENABLE_MEDIAWIKI)" "y"
-	CONFIGURE_FLAGS += --enable-ext-wiki-publisher
+	CONFIGURE_FLAGS_INDEP += --enable-ext-wiki-publisher
   endif
   ifeq "$(ENABLE_REPORTDESIGN)" "y"
 	# report-builder
@@ -1092,10 +1098,13 @@ export JAVA_HOME
     ifneq (,$(filter apache-commons, $(SYSTEM_STUFF)))
 	REPORT_BUILDER_BUILD_DEPS += , libcommons-logging-java$(OOO_NO_JAVA_ARCHS)
 	REPORT_BUILDER_JAR_DEPENDS += , libcommons-logging-java
-	CONFIGURE_FLAGS += --with-commons-logging-jar=/usr/share/java/commons-logging.jar
+	CONFIGURE_FLAGS_INDEP += --with-commons-logging-jar=/usr/share/java/commons-logging.jar
     endif
   else
 	CONFIGURE_FLAGS += --disable-report-builder
+  endif
+  ifeq "$(ENABLE_NLPSOLVER)" "y"
+	CONFIGURE_FLAGS_INDEP += --enable-ext-nlpsolver
   endif
 	OOO_OFFICEBEAN_DEP = libreoffice-officebean
 	BUILD_DEPS += , javahelper $(JAVAHELPER_MIN_VERSION)
@@ -1776,6 +1785,9 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
   ifeq "$(ENABLE_REPORTDESIGN)" "y"
 	cat debian/control.reportdesign.in >> debian/control
+  endif
+  ifeq "$(ENABLE_NLPSOLVER)" "y"
+	cat debian/control.nlpsolver.in >> debian/control
   endif
 endif
 ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
@@ -3489,9 +3501,9 @@ endif
 	# And libreofficekit gets an own README
 	# libreoffice-dev-doc installs directly into /usr/share/doc/libreoffice-dev...
 	dh_installdocs -i -A -Nlibreoffice-librelogo -Nfonts-opensymbol \
-		-Nlibreoffice-wiki-publisher -Nlibreofficekit-dev \
-		-Nlibreoffice-dev-doc --link-doc=libreoffice-common
-	dh_installdocs -plibreoffice-librelogo -pfonts-opensymbol -plibreoffice-wiki-publisher \
+		-Nlibreoffice-wiki-publisher -Nlibreoffice-nlpsolver \
+		-Nlibreofficekit-dev -Nlibreoffice-dev-doc --link-doc=libreoffice-common
+	dh_installdocs -plibreoffice-librelogo -pfonts-opensymbol -plibreoffice-wiki-publisher -plibreoffice-nlpsolver \
 		-plibreofficekit-dev -plibreoffice-dev-doc
 	cp workdir/CustomTarget/readlicense_oo/readme/README_en-US \
 		$(PKGDIR)-common/usr/share/doc/libreoffice-common/README
@@ -3536,6 +3548,7 @@ ifeq "$(BUILD_TEST_PACKAGE)" "y"
 endif
 	dh_gencontrol -i $(DEBHELPER_OPTIONS) \
 		-Nlibreoffice-wiki-publisher \
+		-Nlibreoffice-nlpsolver \
 		-Nfonts-opensymbol -- \
 		-V'base-version=$(BASE_VERSION)' \
 		-V'oover=$(OOVER)' \
@@ -3556,6 +3569,10 @@ ifeq "$(ENABLE_MEDIAWIKI)" "y"
 	dh_gencontrol -plibreoffice-wiki-publisher -- \
 		-V'java-runtime-depends=$(MEDIAWIKI_JAVA_RUNTIME_DEPENDS)' \
 		-v$(shell grep "<version" $(SOURCE_TREE)/swext/mediawiki/src/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
+endif
+ifeq "$(ENABLE_NLPSOLVER)" "y"
+	dh_gencontrol -plibreoffice-nlpsolver -- \
+		-v$(shell grep "<version" $(SOURCE_TREE)/nlpsolver/src/com/sun/star/comp/Calc/NLPSolver/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
 endif
 ifeq "$(ENABLE_REPORTDESIGN)" "y"
 	dh_gencontrol -plibreoffice-report-builder -- \
