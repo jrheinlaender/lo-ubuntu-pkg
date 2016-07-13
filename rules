@@ -27,7 +27,7 @@ OOVER:=5.1
 NEXT_OOVER:=$(shell echo "$(OOVER) + 0.1" | bc)
 
 ARCH_INDEP_PACKAGES := $(shell dh_listpackages -i)
-ARCH_DEP_PACKAGES := $(shell dh_listpackages -s)
+ARCH_DEP_PACKAGES := $(shell dh_listpackages -a)
 PACKAGES := $(ARCH_INDEP_PACKAGES) $(ARCH_DEP_PACKAGES)
 
 include /usr/share/dpkg/architecture.mk
@@ -72,7 +72,7 @@ lo_sources_ver=$(shell grep AC_INIT $(SOURCE_TREE)/configure.ac | grep documentf
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
 GIT_TAG=libreoffice-$(lo_sources_ver)
-GIT_BRANCH=libreoffice-5-1-4
+GIT_BRANCH=libreoffice-5-1-5
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
 lo_sources_ver=$(shell cat $(CURDIR)/sources.ver | cut -d= -f2)
@@ -3199,7 +3199,7 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 	# But how does it play with .symbols then?
 	# Also not for extensions, as they have an own version
 	# python3-uno has additional examples...
-	dh_installdocs -s -A -Nure -Nuno-libs3 -Nure-dbg -Nuno-libs3-dbg \
+	dh_installdocs -a -A -Nure -Nuno-libs3 -Nure-dbg -Nuno-libs3-dbg \
 		-Npython3-uno -Nlibreoffice-mysql-connector --link-doc=libreoffice-core
 	dh_installdocs -pure -puno-libs3 -ppython3-uno -plibreoffice-mysql-connector
 ifeq "$(BUILD_DBG_PACKAGE)" "y"
@@ -3217,7 +3217,7 @@ endif
 			fi; \
 		done; \
 	done
-	dh_installchangelogs -s -k
+	dh_installchangelogs -a -k
 	dh_installmime -s
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(BUILD_JARS_NATIVE)" "y"
@@ -3226,14 +3226,14 @@ ifeq "$(ENABLE_JAVA)" "y"
 endif
 	dh_python3 -ppython3-uno --no-ext-rename --no-guessing-deps
 	dh_python3 -ppython3-uno --no-ext-rename --no-guessing-deps $(OODIR)/program
-	dh_lintian -s
-	dh_bugfiles -s -A
-	dh_link -s -X.desktop
+	dh_lintian -a
+	dh_bugfiles -a -A
+	dh_link -a -X.desktop
 ifeq "$(shell echo $(BUILD_DBGSYM_PACKAGES)$(BUILD_DBG_PACKAGE) | grep -q y && echo true)" "true"
   ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 	rm -rf debian/$(URE_DBG_ROOT) debian/$(CORE_DBG_ROOT) debian/$(WRITER_DBG_ROOT)
   endif
-	dh_strip -s -Nure -Nuno-libs3 $(DH_STRIP_DBG_OPTION_LO)
+	dh_strip -a -Nure -Nuno-libs3 $(DH_STRIP_DBG_OPTION_LO)
 	dh_strip -pure $(DH_STRIP_DBG_OPTION_URE)
 	dh_strip -puno-libs3 $(DH_STRIP_DBG_OPTION_UNO_LIBS)
 	# dh_strip --dbg-package= is not idempotent, force copying of the binaries
@@ -3277,9 +3277,9 @@ else
 endif
 	dh_fixperms -s
 	dh_icons -s
-	dh_compress -s -X.py -X.mk -X.sxd
+	dh_compress -a -X.py -X.mk -X.sxd
 ifeq "$(ENABLE_INTROSPECTION)" "y"
-	dh_girepository -s $(PKGDIR)-gtk3/$(OODIR)/program
+	dh_girepository -a $(PKGDIR)-gtk3/$(OODIR)/program
 endif
 	dh_makeshlibs -puno-libs3 -V"uno-libs3 (>= $(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }' | cut -d. -f1-3)~), ure" -- -c0 -d -V -v`echo $(BINARY_VERSION) | cut -d: -f2`
 	dh_makeshlibs -n -pure -V"ure (>= $(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }' | cut -d. -f1-3)~)" -- -d -V -v`echo $(BINARY_VERSION) | cut -d: -f2`
@@ -3333,7 +3333,7 @@ endif
 	# and therefore we must not use it for -gcj. But we *do* need it
 	# for -officebean (libjawt.so is referenced there)
 	LD_LIBRARY_PATH="$(FAKEROOT_LIBDIR):debian/uno-libs3/$(OODIR)/program:debian/ure/$(OODIR)/program:$(PKGDIR)-core/$(OODIR)/program:$(PKGDIR)-base-core/$(OODIR)/program:$(PKGDIR)-base/$(OODIR)/program:$(PKGDIR)-writer/$(OODIR)/program" \
-		dh_shlibdeps -s -Nlibreoffice-officebean \
+		dh_shlibdeps -a -Nlibreoffice-officebean \
 			-Lure -Luno-libs3 \
 			-ldebian/uno-libs3/$(OODIR)/program:debian/ure/$(OODIR)/program:$(PKGDIR)-core/$(OODIR)/program:$(PKGDIR)-base/$(OODIR)/program:$(shell dirname $(shell dpkg -L `echo $(GCJ_JAWT_DEPENDS) | sed -e s/-awt//` | grep _bc)) \
 			$(SHLIBS_OVERRIDE)
@@ -3375,7 +3375,7 @@ endif
 # This switch to dh_shlibdeps reduces the 'libXXX not found' warnings but
 # causes ldd crashes sometimes when used with fakeroot:
 #          -l $(PKGDIR)-core/$(OPENOFFICEDIR)/program
-	dh_gencontrol -s $(DEBHELPER_OPTIONS) -Nure -Nure-dbg -Nuno-libs3 -Nuno-libs3-dbg \
+	dh_gencontrol -a $(DEBHELPER_OPTIONS) -Nure -Nure-dbg -Nuno-libs3 -Nuno-libs3-dbg \
 		-Nlibreoffice-mysql-connector -- \
 		-V"ure:Version=$(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }')" \
 		-V'base-version=$(BASE_VERSION)' \
@@ -3430,8 +3430,8 @@ ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 	done
 endif
 
-	dh_md5sums -s
-	dh_builddeb -s $(DEBHELPER_OPTIONS) $(BUILDDEB_OPTIONS)
+	dh_md5sums -a
+	dh_builddeb -a $(DEBHELPER_OPTIONS) $(BUILDDEB_OPTIONS)
 
 	touch $@
 
