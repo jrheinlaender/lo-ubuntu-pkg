@@ -1,4 +1,4 @@
-#! /usr/bin/python
+#! /usr/bin/python3
 
 import re, sys, fileinput
 
@@ -13,13 +13,13 @@ def splitlines():
                 field = f
                 break
         if not field:
-            print line
+            print(line)
             continue
         values = [f.strip() for f in line.split(':',1)[1].strip().split(',')]
         if len(values) > 2:
-            print '%s: %s' % (field, ',\n '.join(values))
+            print('%s: %s' % (field, ',\n '.join(values)))
         else:
-            print '%s: %s' % (field, ', '.join(values))
+            print('%s: %s' % (field, ', '.join(values)))
 
 def sort_list(unsorted_list):
     packages = [x for x in unsorted_list if re.match("[a-z0-9]", x)]
@@ -45,9 +45,9 @@ def joinlines():
                     indentation = " " * (len(field) + 2)
                     packages_with_indention = [indentation + x for x in packages]
                     packages_with_indention = ",\n".join(packages_with_indention)
-                    print field + ": " + packages_with_indention.strip()
+                    print(field + ": " + packages_with_indention.strip())
                 else:
-                    print field + ": " + ", ".join(packages).strip()
+                    print(field + ": " + ", ".join(packages).strip())
                 buffer = None
         field = None
         for f in fields:
@@ -57,7 +57,7 @@ def joinlines():
         if field:
             buffer = line.strip()
             continue
-        print line
+        print(line)
 
 def main():
     #splitlines()
