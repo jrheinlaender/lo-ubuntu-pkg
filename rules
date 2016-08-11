@@ -195,21 +195,17 @@ BUILD_KDE=y
 # < 4.8 fails with gcc 4.7, see #667911
 QT_MINVER= (>= 4:4.8)
 KDELIBS_MINVER= (>= 4:4.3.4)
-BUILD_DBG_PACKAGE=n
 ifneq (noddebs,$(findstring noddebs,$(DEB_BUILD_OPTIONS)))
 BUILD_DBGSYM_PACKAGES=y
 endif
 
-ifeq "$(BUILD_DBGSYM_PACKAGES)$(BUILD_DBG_PACKAGE)" "yy"
-$(error only either -dbgsym or -dbg allowed)
-endif
 # this changes the packages' built/contents of packages (-subsequentcheckbase)
 # This is not exactly allowed in policy but it doesn't have real practical difference,
 # does it?
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
   BUILD_TEST_PACKAGE=y
 endif
-ifeq "$(shell echo $(BUILD_DBGSYM_PACKAGES)$(BUILD_DBG_PACKAGE) | grep -q y && echo true)" "true"
+ifeq "$(shell echo $(BUILD_DBGSYM_PACKAGES) | grep -q y && echo true)" "true"
   ENABLE_SYMBOLS=y
   SMALL_SYMBOLS=y
 endif
@@ -728,21 +724,9 @@ DH_STRIP_DBG_OPTION_LO=--dbgsym-migration=libreoffice-dbg
 DH_STRIP_DBG_OPTION_URE=--dbgsym-migration=ure-dbg
 DH_STRIP_DBG_OPTION_UNO_LIBS=--dbgsym-migration=uno-libs3-dbg
 else
-UNO_LIBS_DBG=uno-libs3-dbg
-URE_DBG=ure-dbg
-CORE_DBG=libreoffice-dbg
-WRITER_DBG=$(CORE_DBG)
-URE_DBG_ROOT=$(URE_DBG)
-CORE_DBG_ROOT=$(CORE_DBG)
-WRITER_DBG_ROOT=$(WRITER_DBG)
-DH_STRIP_DBG_OPTION_LO=--dbg-package=$(CORE_DBG)
-DH_STRIP_DBG_OPTION_URE=--dbg-package=$(URE_DBG)
-DH_STRIP_DBG_OPTION_UNO_LIBS=---dbg-package=$(UNO_LIBS_DBG)
-ifneq "$(JESSIE_BACKPORT)" "y"
 DH_STRIP_DBG_OPTION_LO += --no-automatic-dbgsym
 DH_STRIP_DBG_OPTION_URE += --no-automatic-dbgsym
 DH_STRIP_DBG_OPTION_UNO_LIBS3 += --no-automatic-dbgsym
-endif
 endif
 
 CONFIGURE_FLAGS += $(foreach i, $(SYSTEM_STUFF),--with-system-$(i))
@@ -836,7 +820,6 @@ endif
 ifneq (,$(filter libxml, $(SYSTEM_STUFF)))
        BUILD_DEPS += , libxml2-dev, libxml2-utils
        BUILD_DEPS += , libxslt1-dev
-       DBG_DBG_SUGGESTS+= , libxslt1-dbg
 else
        CONFIGURE_FLAGS += --without-system-libxml
 endif
@@ -865,20 +848,16 @@ endif
 
 ifneq (,$(filter openssl, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libssl-dev (>= 0.9.8)
-	DBG_DBG_SUGGESTS += , libssl$(shell readlink /usr/lib/$(DEB_HOST_MULTIARCH)/libssl.so | cut -d"." -f3,4,5)-dbg
 endif
 	OPENCL_SUGGESTS := ocl-icd-libopencl1
 
-ifeq "$(shell echo $(BUILD_DBGSYM_PACKAGES)$(BUILD_DBG_PACKAGE) | grep -q y && echo true)" "true"
+ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
   ifneq (,$(findstring i386,$(DEB_HOST_ARCH)))
 	SMALL_SYMBOLS = n
   else
     ifneq (,$(findstring amd64,$(DEB_HOST_ARCH)))
 	SMALL_SYMBOLS = n
     endif
-  endif
-  ifeq "$(BUILD_DBG_PACKAGE)" "y"
-	DBG_DBG_SUGGESTS+= , libc6.1-dbg [alpha ia64], libc0.1-dbg [kfreebsd-any], libc0.3-dbg [hurd-i386], libc6-dbg [!alpha !ia64 !kfreebsd-i386 !kfreebsd-any !hurd-i386], libatk1.0-dbg, libglib2.0-0-dbg, libgnomevfs2-0-dbg, libstdc++6-$(SYSTEM_GCC_VERSION)-dbg, libx11-6-dbg, libxext6-dbg, libxaw7-dbg, libxml2-dbg, libgtk2.0-0-dbg, libxau6-dbg, libice6-dbg, libsm6-dbg, libxinerama1-dbg, libfontconfig1-dbg, libhunspell-$(shell pkg-config --modversion hunspell | cut -d. -f1,2)-0-dbg, libcurl4-dbg
   endif
 	PYTHON_SIX_RECOMMENDS = python3-six
 endif
@@ -908,7 +887,6 @@ PYTHON_SITE:=debian/python3-uno/$(shell $(PYTHON) -c 'from distutils import sysc
 
 	BUILD_DEPS += , $(PYTHON)
 ifeq "$(ENABLE_PYTHON)" "y"
-	DBG_DBG_SUGGESTS+= , $(PYTHON)-dbg
 	BUILD_DEPS += , $(PYTHON)-dev (>= 3.3)
 	BUILD_DEPS += , dh-python
 endif
@@ -1116,7 +1094,6 @@ endif
 
 ifneq (,$(filter nss, $(SYSTEM_STUFF)))
 	BUILD_DEPS+= , libnss3-dev (>= 3.12.3)
-	DBG_DBG_SUGGESTS+= , libnss3-dbg
 endif
 
 ifeq "$(USE_UCPP)" "y"
@@ -1299,14 +1276,9 @@ ifeq "$(BUILD_KDE)" "n"
 	CONFIGURE_FLAGS += --disable-kde4
 else
 	CONFIGURE_FLAGS += --enable-kde4
-ifneq "$(JESSIE_BACKPORT)" "y"
 	KDE_ICONSET_DEP=libreoffice-style-breeze
-else
-	KDE_ICONSET_DEP=libreoffice-style-oxygen
-endif
 	BUILD_DEPS += , kdelibs5-dev $(KDELIBS_MINVER)
 	BUILD_DEPS += , libqt4-dev $(QT_MINVER)
-	DBG_DBG_SUGGESTS+= , kdelibs5-dbg, libqt4-dbg
 endif
 
 ifeq "$(ENABLE_MYSQLNATIVE)" "y"
@@ -1442,10 +1414,8 @@ ifneq (,$(filter lpsolve, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , liblpsolve55-dev $(LPSOLVE_MIN_VERSION)
   endif
   ifeq "$(USE_LIBSUITESPARSE)" "y"
-	DBG_DBG_SUGGESTS+= , libsuitesparse-dbg
 	BUILD_DEPS += , libsuitesparse-dev $(SUITESPARSE_MIN_VERSION)
   else
-	DBG_DBG_SUGGESTS+= , libufsparse-dbg
 	BUILD_DEPS += , libufsparse-dev
   endif
 endif
@@ -1475,7 +1445,6 @@ ifeq "$(USE_GSTREAMER)" "y"
 	CONFIGURE_FLAGS += --enable-gstreamer-1-0
 	BUILD_DEPS += , libgstreamer-plugins-base1.0-dev
 	GSTREAMER_PLUGINS_SUGGESTS += , gstreamer1.0-plugins-base, gstreamer1.0-plugins-good, gstreamer1.0-plugins-ugly, gstreamer1.0-plugins-bad, gstreamer1.0-libav
-	DBG_DBG_SUGGESTS+= , libgstreamer1.0-0-dbg
 	AVMEDIA_BE_DEPENDS += , libreoffice-avmedia-backend-gstreamer
 else
 	CONFIGURE_FLAGS += --disable-gstreamer-1-0
@@ -1499,10 +1468,8 @@ ifeq "$(ENABLE_WEBDAV)" "y"
     ifneq (,$(filter neon, $(SYSTEM_STUFF)))
       ifneq "$(NEON_SECTYPE)" "openssl"
 	BUILD_DEPS += , libneon$(NEONSONR)-$(NEON_SECTYPE)-dev
-	DBG_DBG_SUGGESTS+= , libneon$(NEONSONR)-$(NEON_SECTYPE)-dbg
       else
 	BUILD_DEPS += , libneon$(NEONSONR)-dev
-	DBG_DBG_SUGGESTS+= , libneon$(NEONSONR)-dbg
       endif
     endif
   else
@@ -1805,9 +1772,6 @@ endif
 ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 	cat debian/control.fonts.in >> debian/control
 endif
-ifeq "$(BUILD_DBG_PACKAGE)" "y"
-	cat debian/control.debug.in >> debian/control
-endif
 ifeq "$(PACKAGE_SDK)" "y"
 	cat debian/control.sdk.in >> debian/control
 endif
@@ -2093,7 +2057,7 @@ $(STAMP_DIR)/install-common:
 	export OOINSTBASE=$(OODIR); \
 	export OOO_LANGS_LIST="$(ISOS)"; \
 	$(CURDIR)/debian/scripts/gid2pkgdirs.sh
-ifeq "$(shell echo $(BUILD_DBGSYM_PACKAGES)$(BUILD_DBG_PACKAGE) | grep -q y && echo true)" "true"
+ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 	make cmd cmd="export DESTDIR=$(CURDIR)/debian/tmp; $(CURDIR)/solenv/bin/install-gdb-printers -a /usr/share/gdb/auto-load/$(OODIR) -c -i /$(OODIR) -p /usr/share/libreoffice/gdb"
 endif
 
@@ -3224,12 +3188,9 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 	# But how does it play with .symbols then?
 	# Also not for extensions, as they have an own version
 	# python3-uno has additional examples...
-	dh_installdocs -a -A -Nure -Nuno-libs3 -Nure-dbg -Nuno-libs3-dbg \
+	dh_installdocs -a -A -Nure -Nuno-libs3 \
 		-Npython3-uno -Nlibreoffice-mysql-connector --link-doc=libreoffice-core
 	dh_installdocs -pure -puno-libs3 -ppython3-uno -plibreoffice-mysql-connector
-ifeq "$(BUILD_DBG_PACKAGE)" "y"
-	dh_installdocs -pure-dbg -puno-libs3-dbg
-endif
 	cp workdir/CustomTarget/readlicense_oo/readme/README_en-US \
 		$(PKGDIR)-core/usr/share/doc/libreoffice-core/README
 	dh_installdebconf -a
@@ -3254,10 +3215,8 @@ endif
 	dh_lintian -a
 	dh_bugfiles -a -A
 	dh_link -a -X.desktop
-ifeq "$(shell echo $(BUILD_DBGSYM_PACKAGES)$(BUILD_DBG_PACKAGE) | grep -q y && echo true)" "true"
-  ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
+ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 	rm -rf debian/$(URE_DBG_ROOT) debian/$(CORE_DBG_ROOT) debian/$(WRITER_DBG_ROOT)
-  endif
 	dh_strip -a -Nure -Nuno-libs3 $(DH_STRIP_DBG_OPTION_LO)
 	dh_strip -pure $(DH_STRIP_DBG_OPTION_URE)
 	dh_strip -puno-libs3 $(DH_STRIP_DBG_OPTION_UNO_LIBS)
@@ -3274,7 +3233,6 @@ ifeq "$(shell echo $(BUILD_DBGSYM_PACKAGES)$(BUILD_DBG_PACKAGE) | grep -q y && e
 		debian/$(CORE_DBG_ROOT)/usr/share/libreoffice/gdb
 	mkdir -p debian/$(WRITER_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program
 	mkdir -p debian/$(WRITER_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice/
-  ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 	for i in sw writerfilter; do \
 		if [ -f debian/$(CORE_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program/lib$${i}lo.so-gdb.py ]; then \
 		mv debian/$(CORE_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program/lib$${i}lo.so-gdb.py \
@@ -3283,7 +3241,6 @@ ifeq "$(shell echo $(BUILD_DBGSYM_PACKAGES)$(BUILD_DBG_PACKAGE) | grep -q y && e
 		mv debian/$(CORE_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice/$$i.py \
 			debian/$(WRITER_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice; \
 	done
-  endif
 
 	# FIXME: or better ure-dbg (ure/lib?). Then again ure is a link which is in -common
 	# anyways...
@@ -3394,7 +3351,7 @@ endif
 ifeq "$(ENABLE_JAVA)" "y"
 	for p in $(ARCH_DEP_PACKAGES); do \
 		if [ "$$p" = "libreoffice-presentation-console" ]; then continue; fi; \
-		jh_depends -p$$p -Xlibreoffice-gcj -Xlibreoffice-dbg -Xure; \
+		jh_depends -p$$p -Xlibreoffice-gcj -Xure; \
 	done
   ifeq "$(PACKAGE_BASE)" "y"
 	perl -pi -e "s/base-files,//" \
@@ -3409,7 +3366,7 @@ endif
 # This switch to dh_shlibdeps reduces the 'libXXX not found' warnings but
 # causes ldd crashes sometimes when used with fakeroot:
 #          -l $(PKGDIR)-core/$(OPENOFFICEDIR)/program
-	dh_gencontrol -a $(DEBHELPER_OPTIONS) -Nure -Nure-dbg -Nuno-libs3 -Nuno-libs3-dbg \
+	dh_gencontrol -a $(DEBHELPER_OPTIONS) -Nure -Nuno-libs3 \
 		-Nlibreoffice-mysql-connector -- \
 		-V"ure:Version=$(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }')" \
 		-V'base-version=$(BASE_VERSION)' \
@@ -3433,7 +3390,6 @@ endif
 		-V'dejavu-depends=$(DEJAVU_DEPENDS)' \
 		-V'opencl-sug=$(OPENCL_SUGGESTS)' \
 		-V'gnome-gtk-recommends=$(GNOME_GTK_RECOMMENDS)' \
-		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-V'python-six-recommends=$(PYTHON_SIX_RECOMMENDS)' \
 		-V'firebird-server-depends=$(FIREBIRD_SERVER_DEPENDS)' \
 		-v$(BINARY_VERSION)
@@ -3452,12 +3408,6 @@ endif
 	dh_gencontrol -pure -puno-libs3 -- \
 		-V"ure:Version=`echo $(BINARY_VERSION) | cut -d: -f2`" \
 		-v"`echo $(BINARY_VERSION) | cut -d: -f2`"
-ifeq "$(BUILD_DBG_PACKAGE)" "y"
-	dh_gencontrol -pure-dbg -puno-libs3-dbg -- \
-		-V"ure:Version=`echo $(BINARY_VERSION) | cut -d: -f2`" \
-		-V'python-six-recommends=$(PYTHON_SIX_RECOMMENDS)' \
-		-v"`echo $(BINARY_VERSION) | cut -d: -f2`"
-endif
 ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 	for i in libreoffice-core libreoffice-writer uno-libs3; do \
 		perl -pi -e 's/^(Depends:.*)/\1\nRecommends: gdb, $(PYTHON_SIX_RECOMMENDS)/' \
@@ -3560,7 +3510,7 @@ endif
 ifeq "$(ENABLE_JAVA)" "y"
 	for p in $(ARCH_INDEP_PACKAGES); do \
                 if echo "$$p" | grep -q help; then continue; fi; \
-                jh_depends -p$$p -Xlibreoffice-gcj -Xlibreoffice-dbg \
+                jh_depends -p$$p -Xlibreoffice-gcj \
 			-Xlibreoffice-report-builder; \
         done
 endif
@@ -3581,7 +3531,6 @@ endif
 		-V'textcat-data-recommends=$(TEXTCAT_DATA_RECOMMENDS)' \
 		-V'pyuno-depends=$(PYUNO_DEPENDS)' \
 		-V'Binary-Version=$(BINARY_VERSION)' \
-		-V'dbg-dbg-suggests=$(DBG_DBG_SUGGESTS)' \
 		-v$(BINARY_VERSION)
 ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 	dh_gencontrol -pfonts-opensymbol -- \
