@@ -267,10 +267,10 @@ else
 PACKAGE_SDK_DOCS=y
 endif
 PACKAGE_LOKIT=y
+
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(JDK)" "default"
     ifeq "$(shell LANG=C /usr/lib/jvm/default-java/bin/java -version 2>&1 | tail -n 1 | awk '{ print $$1 }')" "OpenJDK"
-      ifeq (,$(findstring kfreebsd,$(DEB_HOST_ARCH)))
         RUN_MAKE_CHECK=y
         ifeq "$(DEB_HOST_ARCH)" "i386"
 	  ENABLE_JUNIT4=y
@@ -278,12 +278,10 @@ ifeq "$(ENABLE_JAVA)" "y"
         ifeq "$(DEB_HOST_ARCH)" "amd64"
 	  ENABLE_JUNIT4=y
         endif
-      endif
 	RUN_PYTESTS=y
     endif
   else
     ifeq "$(JDK)" "openjdk"
-      ifeq (,$(findstring kfreebsd,$(DEB_HOST_ARCH)))
         RUN_MAKE_CHECK=y
         ifeq "$(DEB_HOST_ARCH)" "i386"
 	  ENABLE_JUNIT4=y
@@ -291,7 +289,6 @@ ifeq "$(ENABLE_JAVA)" "y"
         ifeq "$(DEB_HOST_ARCH)" "amd64"
 	  ENABLE_JUNIT4=y
         endif
-      endif
         RUN_PYTESTS=y
     else
       RUN_MAKE_CHECK=n
@@ -312,6 +309,15 @@ ifeq "$(ENABLE_JAVA)" "y"
 #  ifneq (,$(findstring s390,$(DEB_HOST_ARCH)))
 #    export DISABLE_CVE_TESTS=TRUE
 #  endif
+  ifneq (,$(findstring kfreebsd-amd64,$(DEB_HOST_ARCH)))
+    export RUN_MAKE_CHECK=n
+  endif
+  ifneq (,$(findstring kfreebsd-i386,$(DEB_HOST_ARCH)))
+    export RUN_MAKE_CHECK=n
+  endif
+  ifneq (,$(findstring sparc64,$(DEB_HOST_ARCH)))
+    export RUN_MAKE_CHECK=n
+  endif
 else
   RUN_MAKE_CHECK=n
   ENABLE_JUNIT4=n
@@ -616,6 +622,9 @@ OOO_BASE_ARCHS := $(OOO_JAVA_ARCHS)
 $(eval $(call gen_no_archs,OOO_BASE_ARCHS))
 OOO_REPORTDESIGN_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs,OOO_REPORTDESIGN_ARCHS))
+
+OOO_CHECK_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS) sparc64,$(OOO_ARCHS))
+$(eval $(call gen_no_archs,OOO_CHECK_ARCHS))
 
 ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
   ifneq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_BASE_ARCHS)))
@@ -928,19 +937,15 @@ endif
 ifneq (,$(filter cppunit, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libcppunit-dev (>= $(CPPUNIT_MINVER))
 endif
-ifeq "$(RUN_MAKE_CHECK)" "y"
-	BUILD_DEPS += , gdb [!kfreebsd-any] <!nocheck>
-	BUILD_DEPS += , fontconfig <!nocheck>
-	BUILD_DEPS += , fonts-liberation <!nocheck>
-  	BUILD_DEPS += , fonts-crosextra-carlito <!nocheck>
+	BUILD_DEPS += , gdb$(OOO_NO_CHECK_ARCHS) <!nocheck>
+	BUILD_DEPS += , fontconfig$(OOO_NO_CHECK_ARCHS) <!nocheck>
+	BUILD_DEPS += , fonts-liberation$(OOO_NO_CHECK_ARCHS) <!nocheck>
+  	BUILD_DEPS += , fonts-crosextra-carlito$(OOO_NO_CHECK_ARCHS) <!nocheck>
   ifeq "$(ENABLE_JUNIT4)" "y"
-	BUILD_DEPS += , junit4 $(JUNIT_MIN_VER) [!kfreebsd-any]
+	BUILD_DEPS += , junit4 $(JUNIT_MIN_VER)$(OOO_NO_CHECK_ARCHS) <!nocheck>
   else
 	CONFIGURE_FLAGS += --without-junit
   endif
-else
-	CONFIGURE_FLAGS += --without-junit
-endif
 
 ifneq "$(BUILD_ONLY_EN_US)" "y"
   ifeq (lang=,$(findstring lang=,$(DEB_BUILD_OPTIONS)))
