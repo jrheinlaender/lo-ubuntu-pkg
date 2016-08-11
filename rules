@@ -267,10 +267,10 @@ else
 PACKAGE_SDK_DOCS=y
 endif
 PACKAGE_LOKIT=y
+
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(JDK)" "default"
     ifeq "$(shell LANG=C /usr/lib/jvm/default-java/bin/java -version 2>&1 | tail -n 1 | awk '{ print $$1 }')" "OpenJDK"
-      ifeq (,$(findstring kfreebsd,$(DEB_HOST_ARCH)))
         RUN_MAKE_CHECK=y
         ifeq "$(DEB_HOST_ARCH)" "i386"
 	  ENABLE_JUNIT4=y
@@ -278,12 +278,10 @@ ifeq "$(ENABLE_JAVA)" "y"
         ifeq "$(DEB_HOST_ARCH)" "amd64"
 	  ENABLE_JUNIT4=y
         endif
-      endif
 	RUN_PYTESTS=y
     endif
   else
     ifeq "$(JDK)" "openjdk"
-      ifeq (,$(findstring kfreebsd,$(DEB_HOST_ARCH)))
         RUN_MAKE_CHECK=y
         ifeq "$(DEB_HOST_ARCH)" "i386"
 	  ENABLE_JUNIT4=y
@@ -291,7 +289,6 @@ ifeq "$(ENABLE_JAVA)" "y"
         ifeq "$(DEB_HOST_ARCH)" "amd64"
 	  ENABLE_JUNIT4=y
         endif
-      endif
         RUN_PYTESTS=y
     else
       RUN_MAKE_CHECK=n
@@ -312,6 +309,15 @@ ifeq "$(ENABLE_JAVA)" "y"
 #  ifneq (,$(findstring s390,$(DEB_HOST_ARCH)))
 #    export DISABLE_CVE_TESTS=TRUE
 #  endif
+  ifneq (,$(findstring kfreebsd-amd64,$(DEB_HOST_ARCH)))
+    export RUN_MAKE_CHECK=n
+  endif
+  ifneq (,$(findstring kfreebsd-i386,$(DEB_HOST_ARCH)))
+    export RUN_MAKE_CHECK=n
+  endif
+  ifneq (,$(findstring sparc64,$(DEB_HOST_ARCH)))
+    export RUN_MAKE_CHECK=n
+  endif
 else
   RUN_MAKE_CHECK=n
   ENABLE_JUNIT4=n
@@ -616,6 +622,9 @@ OOO_BASE_ARCHS := $(OOO_JAVA_ARCHS)
 $(eval $(call gen_no_archs,OOO_BASE_ARCHS))
 OOO_REPORTDESIGN_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
 $(eval $(call gen_no_archs,OOO_REPORTDESIGN_ARCHS))
+
+OOO_CHECK_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS) sparc64,$(OOO_ARCHS))
+$(eval $(call gen_no_archs,OOO_CHECK_ARCHS))
 
 ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
   ifneq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_BASE_ARCHS)))
@@ -928,19 +937,15 @@ endif
 ifneq (,$(filter cppunit, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libcppunit-dev (>= $(CPPUNIT_MINVER))
 endif
-ifeq "$(RUN_MAKE_CHECK)" "y"
-	BUILD_DEPS += , gdb [!kfreebsd-any] <!nocheck>
-	BUILD_DEPS += , fontconfig <!nocheck>
-	BUILD_DEPS += , fonts-liberation <!nocheck>
-  	BUILD_DEPS += , fonts-crosextra-carlito <!nocheck>
+	BUILD_DEPS += , gdb$(OOO_NO_CHECK_ARCHS) <!nocheck>
+	BUILD_DEPS += , fontconfig$(OOO_NO_CHECK_ARCHS) <!nocheck>
+	BUILD_DEPS += , fonts-liberation$(OOO_NO_CHECK_ARCHS) <!nocheck>
+  	BUILD_DEPS += , fonts-crosextra-carlito$(OOO_NO_CHECK_ARCHS) <!nocheck>
   ifeq "$(ENABLE_JUNIT4)" "y"
-	BUILD_DEPS += , junit4 $(JUNIT_MIN_VER) [!kfreebsd-any]
+	BUILD_DEPS += , junit4 $(JUNIT_MIN_VER)$(OOO_NO_CHECK_ARCHS) <!nocheck>
   else
 	CONFIGURE_FLAGS += --without-junit
   endif
-else
-	CONFIGURE_FLAGS += --without-junit
-endif
 
 ifneq "$(BUILD_ONLY_EN_US)" "y"
   ifeq (lang=,$(findstring lang=,$(DEB_BUILD_OPTIONS)))
@@ -1808,6 +1813,12 @@ endif
 ifeq "$(PACKAGE_LOKIT)" "y"
 	cat debian/control.lokit.in >> debian/control
 endif
+ifeq "$(BUILD_GTK)" "y"
+	cat debian/control.gtk2.in >> debian/control
+endif
+ifeq "$(ENABLE_SYSTRAY)" "y"
+	cat debian/control.systray.in >> debian/control
+endif
 ifeq "$(BUILD_GTK3)" "y"
 	cat debian/control.gtk3.in >> debian/control
 endif
@@ -1875,6 +1886,7 @@ endif
 	# make -l10n-fi suggest libreoffice-spellcheck-fi to
 	# match myspell-fi and libreoffice-soikko/-voikko
 	perl -pi -e 's/myspell-dictionary-fi/myspell-dictionary-fi | libreoffice-spellcheck-fi/' debian/control
+	perl -pi -e 's/hyphen-fi/hyphen-fi | libreoffice-hyphenation-fi/' debian/control
 	# similar for tr (libreoffice-zemberek)
 	perl -pi -e 's/myspell-dictionary-tr/myspell-dictionary-tr | libreoffice-spellcheck-tr/' debian/control
 
@@ -2273,9 +2285,9 @@ endif
 ifeq "$(BUILD_GTK)" "y"
   ifeq "$(ENABLE_SYSTRAY)" "y"
 	# Gtk quickstarter, so to -gtk (via -gnome)
-	mkdir -p -m755 $(PKGDIR)-gnome/$(OODIR)/share/xdg
+	mkdir -p -m755 $(PKGDIR)-systray/$(OODIR)/share/xdg
 	mv $(PKGDIR)-common/$(OODIR)/share/xdg/qstart.desktop \
-		$(PKGDIR)-gnome/$(OODIR)/share/xdg
+		$(PKGDIR)-systray/$(OODIR)/share/xdg
   endif
 endif
 
@@ -2647,7 +2659,7 @@ endif
 ifeq "$(BUILD_GTK)" "y"
 	mkdir -p -m755 $(PKGDIR)-gtk2/$(OODIR)/share
   ifeq "$(ENABLE_SYSTRAY)" "y"
-	mv $(PKGDIR)-gnome/$(OODIR)/share/xdg $(PKGDIR)-gtk2/$(OODIR)/share
+	mv $(PKGDIR)-gtk2/$(OODIR)/program/*qstart*so $(PKGDIR)-systray/$(OODIR)/share
   endif
   ifeq "$(ENABLE_GIO)" "y"
 	mv $(PKGDIR)-gtk2/$(OODIR)/program/libucpgio1lo.so \
@@ -2703,7 +2715,7 @@ endif
 		perl -pi -e 's/Application;//; s/X-Red-Hat-Base;//; s/X-SuSE-Core-Office;//; s/X-MandrivaLinux-.*;//;' $(PKGDIR)-$$i/$(OODIR)/share/xdg/$$i.desktop; \
 	done
   ifeq "$(ENABLE_SYSTRAY)" "y"
-	perl -pi -e 's/Application;//' $(PKGDIR)-gtk2/$(OODIR)/share/xdg/qstart.desktop
+	perl -pi -e 's/Application;//' $(PKGDIR)-systray/$(OODIR)/share/xdg/qstart.desktop
   endif
 
 ifeq "$(ENABLE_PYTHON)" "y"
@@ -3304,6 +3316,7 @@ endif
 ifeq "$(BUILD_KFREEBSD)" "y"
 	cat debian/shlibs.override.libc >> debian/shlibs.local
 endif
+	# no shlibs dependencies on internal libs (which are dynamic)
 ifeq (,$(filter icu, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.icu >> debian/shlibs.local
 endif
@@ -3339,6 +3352,11 @@ ifeq (,$(filter orcus, $(SYSTEM_STUFF)))
 endif
 ifeq (,$(filter liblangtag, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.liblangtag >> debian/shlibs.local
+endif
+	# the other way as the above, depend on a newer libcmis to that the
+	# advertised google 2-factor-auth fixes are present
+ifneq (,$(filter libcmis, $(SYSTEM_STUFF)))
+	cat debian/shlibs.override.libcmis >> debian/shlibs.local
 endif
 	# we need to do it in two steps. The new dpkg-shlibdeps doesn't find
 	# /usr/lib/libgcj-bc.so when specifying -l$(GCJ_JAWT_DIR)
