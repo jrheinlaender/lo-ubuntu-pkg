@@ -414,7 +414,7 @@ endif
 DEFAULT_IMAGE=galaxy
 IMAGES:=$(DEFAULT_IMAGE) hicontrast oxygen tango sifr breeze
 ENABLE_MYSQLNATIVE=y
-USE_MARIADB=n
+MYSQL_FLAVOUR=mysql
 # set this also to y for system-mysql..
 SYSTEM_STUFF += mariadb
 SYSTEM_STUFF += mysql-cppconn
@@ -1283,19 +1283,25 @@ endif
 
 ifeq "$(ENABLE_MYSQLNATIVE)" "y"
 	CONFIGURE_FLAGS += --enable-ext-mariadb-connector
-  ifneq "$(USE_MARIADB)" "y"
-    ifneq (,$(filter mysql-cppconn, $(SYSTEM_STUFF)))
-        BUILD_DEPS += , libmysqlclient-dev
-    endif
-     MARIADBCONFIG=/usr/bin/mysql_config
+  ifeq "$(MYSQL_FLAVOUR)" "default"
+	BUILD_DEPS += , default-libmysqlclient-dev
   else
-    ifneq (,$(filter mariadb, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libmariadb-client-lgpl-dev
+    ifeq "$(MYSQL_FLAVOUR)" "mysql"
+      ifneq (,$(filter mysql-cppconn, $(SYSTEM_STUFF)))
+        BUILD_DEPS += , libmysqlclient-dev
+      endif
+      MARIADBCONFIG=/usr/bin/mysql_config
     endif
-     MARIADBCONFIG=/usr/bin/mariadb_config
-  endif
-  ifneq (,$(filter mysql-cppconn, $(SYSTEM_STUFF)))
+    ifeq "$(MYSQL_FLAVOUR)" "mariadb"
+      ifneq (,$(filter mariadb, $(SYSTEM_STUFF)))
+	# deducted from default-libmysqlclient-dev Depends
+	BUILD_DEPS += , libmariadbclient-dev-compat
+      endif
+      MARIADBCONFIG=/usr/bin/mariadb_config
+    endif
+    ifneq (,$(filter mysql-cppconn, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libmysqlcppconn-dev $(MYSQLCPPCONN_MINVER)
+    endif
   endif
 endif
 
@@ -1837,7 +1843,7 @@ ifeq (pt-BR,$(findstring pt-BR,$(LANGPACKISOS)))
 endif
 	perl -pi -e 's/Package: libreoffice-help-en-us/Package: libreoffice-help-en-us\nReplaces: libreoffice-common (<< 1:3.0.0~dev300m28)/' debian/control
 
-ifneq "$(USE_MARIADB)" "y"
+ifeq "$(MYSQL_FLAVOUR)" "mysql"
 	perl -pi -e "s/(Build-Conflicts: .*)/\1,libmariadbclient-dev,/" debian/control
 endif
 
