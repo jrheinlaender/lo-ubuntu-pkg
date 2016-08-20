@@ -38,7 +38,6 @@ export gb_SHELL:=$(SHELL)
 #SYSTEM_GCC_VERSION = $(shell gcc --version | sed -n '/^gcc/s/.*\(.\..\)\..$$/\1/p')
 #FIXME
 SYSTEM_GCC_VERSION = $(shell gcc --version | sed -n '/^gcc/s/.*\(.\..\)\../\1/p' | cut -d" " -f1)
-SYSTEM_GCJ_VERSION = $(shell basename `readlink /usr/lib/jvm/java-gcj/bin/gcj` | sed -e s/gcj-//)
 
 PKGDIR:=debian/libreoffice
 OODIRNAME=libreoffice
@@ -145,9 +144,6 @@ ifeq "$(ENABLE_JAVA)" "y"
   include /usr/share/java/java_defaults.mk
   ifneq "$(JDK)" "default"
     JAVA_MAINVER=7
-    ifneq (,$(filter hppa, $(DEB_HOST_ARCH)))
-    JDK=gcj-jdk
-    endif
   endif
 endif
 JAVAHELPER_MIN_VERSION= (>= 0.37~)
@@ -210,9 +206,6 @@ ifeq "$(shell echo $(BUILD_DBGSYM_PACKAGES) | grep -q y && echo true)" "true"
   SMALL_SYMBOLS=y
 endif
 ifeq "$(ENABLE_JAVA)" "y"
-  # NOTE: If you change this while gcj/ant multiarch combo is still broken
-  # you need to disable bsh scripting engine completely (see disable-rhino.diff)
-  # See http://lists.debian.org/debian-java/2011/06/msg00108.html and replies
   SYSTEM_STUFF += beanshell
   SYSTEM_STUFF += hsqldb
   HSQLDB_MINVER= (>> 1.8.0.10)
@@ -275,7 +268,7 @@ ifeq "$(ENABLE_JAVA)" "y"
         ifeq "$(DEB_HOST_ARCH)" "amd64"
 	  ENABLE_JUNIT4=y
         endif
-        ENABLE_EXPORT_VALIDATION_TESTS=n
+        ENABLE_EXPORT_VALIDATION_TESTS=y
     endif
   else
     ifeq "$(JDK)" "openjdk"
@@ -582,14 +575,6 @@ ifeq "$(ENABLE_GLTF)" "y"
 endif
 
 IGNORE_MAKE_CHECK_FAILURES=-
-ifneq "$(JDK)" "gcj-jdk"
-  ifeq (i386,$(DEB_HOST_ARCH))
-IGNORE_MAKE_CHECK_FAILURES:=
-  endif
-  ifeq (amd64,$(DEB_HOST_ARCH))
-IGNORE_MAKE_CHECK_FAILURES:=
-  endif
-endif
 
 OOO_64BIT_ARCHS = $(filter alpha amd64 arm64 ia64 kfreebsd-amd64 mips64 mips64el ppc64 ppc64el s390x sparc64, $(OOO_ARCHS))
 $(eval $(call gen_no_archs,OOO_64BIT_ARCHS))
@@ -605,23 +590,13 @@ OOO_JAVA_ARCHS = $(OOO_ARCHS)
 endif
 $(eval $(call gen_no_archs,OOO_JAVA_ARCHS))
 
-ifeq "$(JDK)" "default"
-OOO_GCJ_JDK_ARCHS := $(filter $(OOO_ARCHS),$(filter-out $(java7_architectures),$(filter-out $(java6_architectures),$(java5_architectures))))
-else
-OOO_GCJ_JDK_ARCHS := hppa
-endif
-OOO_OPENJDK_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
-$(eval $(call gen_no_archs,OOO_OPENJDK_ARCHS))
-
 OOO_ARCH_DEP_EXTENSIONS_ARCHS := $(OOO_ARCHS)
 OOO_EXTENSIONS_ARCHS := $(OOO_ARCH_DEP_EXTENSIONS_ARCHS)
 
 OOO_BASE_ARCHS := $(OOO_JAVA_ARCHS)
 $(eval $(call gen_no_archs,OOO_BASE_ARCHS))
-OOO_REPORTDESIGN_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))
-$(eval $(call gen_no_archs,OOO_REPORTDESIGN_ARCHS))
 
-OOO_CHECK_ARCHS := $(filter-out $(OOO_GCJ_JDK_ARCHS) kfreebsd-i386 kfreebsd-amd64 sparc64,$(OOO_ARCHS))
+OOO_CHECK_ARCHS := $(filter-out kfreebsd-i386 kfreebsd-amd64 sparc64,$(OOO_ARCHS))
 $(eval $(call gen_no_archs,OOO_CHECK_ARCHS))
 
 ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
@@ -669,15 +644,6 @@ ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_JAVA_ARCHS)))
 	DEBHELPER_OPTIONS += -Nlibreoffice-nlpsolver
 endif
 
-ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_GCJ_JDK_ARCHS)))
-  ifneq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_OPENJDK_ARCHS)))
-	ENABLE_REPORTDESIGN=n
-	ENABLE_MEDIAWIKI=n
-	ENABLE_NLPSOLVER=n
-	SYSTEM_STUFF := $(filter-out jfreereport apache-commons, $(SYSTEM_STUFF))
-	DEBHELPER_OPTIONS += -Nlibreoffice-report-builder-bin -Nlibreoffice-report-builder -Nlibreoffice-wiki-publisher -Nlibreoffice-nlpsolver
-  endif
-endif
 # disable SRB on ia64 when building with internal jfreereport.
 # fails to build. ("The system is out of resources."). FIXME.
 ifeq (ia64,$(findstring ia64,$(OOO_OPENJDK_ARCHS)))
@@ -731,7 +697,6 @@ CONFIGURE_FLAGS += $(foreach i, $(SYSTEM_STUFF),--with-system-$(i))
 
 CC_PREFIX:=$(shell gcc -dumpmachine)-
 
-	BUILD_DEPS += , gcc-$(SYSTEM_GCJ_VERSION) [$(OOO_GCJ_JDK_ARCHS)] ,g++-$(SYSTEM_GCJ_VERSION) [$(OOO_GCJ_JDK_ARCHS)]
 #ifeq (,$(findstring i386,$(DEB_HOST_ARCH)))
 #  ifeq (,$(findstring amd64,$(DEB_HOST_ARCH)))
 #    ifneq "$(SYSTEM_GCC_VERSION)" "4.6"
@@ -739,11 +704,6 @@ CC_PREFIX:=$(shell gcc -dumpmachine)-
 #    endif
 #  endif
 #endif
-ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_GCJ_JDK_ARCHS)))
-  ifneq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_OPENJDK_ARCHS)))
-GCC_VERSION := $(SYSTEM_GCJ_VERSION)
-  endif
-endif
 ifneq "$(GCC_VERSION)" ""
   ifneq "$(SYSTEM_GCC_VERSION)" "$(GCC_VERSION)"
     BUILD_DEPS += , gcc-$(GCC_VERSION), g++-$(GCC_VERSION)
@@ -986,21 +946,12 @@ ifeq "$(ENABLE_JAVA)" "y"
     ifneq (,$(findstring sparc64,$(OOO_JAVA_ARCHS)))
 	BUILD_DEPS += , default-jdk (>= 2:1.8-55) [sparc64]
     endif
-    ifeq ($(java_default_version),5)
-	JDK=gcj-jdk
-    endif
-  endif
-  ifeq "$(JDK)" "gcj-jdk"
-	JAVA_HOME=/usr/lib/jvm/java-gcj
-	BUILD_DEPS += , gcj-jdk$(OOO_NO_JAVA_ARCHS)
-	DEBHELPER_OPTIONS += -Nlibreoffice-dev-doc
-	PACKAGE_SDK_DOCS = n
   endif
   ifeq "$(JDK)" "openjdk"
     ifeq "$(JAVA_MAINVER)" "6"
-	BUILD_DEPS += , openjdk-$(JAVA_MAINVER)-jdk (>= 6b23~pre8-2) [$(filter-out ia64 $((OOO_GCJ_JDK_ARCHS),$(filter-out $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))])
+	BUILD_DEPS += , openjdk-$(JAVA_MAINVER)-jdk (>= 6b23~pre8-2) [$(filter-out ia64,$(OOO_JAVA_ARCHS)])
     else
-	BUILD_DEPS += , openjdk-$(JAVA_MAINVER)-jdk [$(filter-out mips mipsel $(OOO_GCJ_JDK_ARCHS),$(OOO_JAVA_ARCHS))]
+	BUILD_DEPS += , openjdk-$(JAVA_MAINVER)-jdk [$(filter-out mips mipsel,$(OOO_JAVA_ARCHS))]
       # no 7 on mips(el)
       ifneq (,$(findstring mips,$(OOO_JAVA_ARCHS)))
 	BUILD_DEPS += , openjdk-6-jdk (>= 6b23~pre8-2) [mips mipsel]
@@ -1012,23 +963,12 @@ ifeq "$(ENABLE_JAVA)" "y"
 	JAVA_HOME=/usr/lib/jvm/java-$(JAVA_MAINVER)-openjdk-$(DEB_HOST_ARCH)
   endif
         TEST_JAVA_HOME=$(JAVA_HOME)
-  ifneq "$(OOO_GCJ_JDK_ARCHS)" ""
-	BUILD_DEPS += , gcj-jdk [$(OOO_GCJ_JDK_ARCHS)]
-  endif
   ifeq "$(ENABLE_MEDIAWIKI)" "y"
 	BUILD_DEPS += , ant (>= 1.7.0)$(OOO_NO_JAVA_ARCHS), ant-optional (>= 1.7.0)$(OOO_NO_JAVA_ARCHS)
   else
 	BUILD_DEPS += , ant (>= 1.6.5)$(OOO_NO_JAVA_ARCHS)
   endif
-  ifneq "$(GCJ_VERSION)" ""
-	GCJ_JAWT_DEPENDS= $(shell dpkg -S /usr/lib/$(DEB_HOST_MULTIARCH)/gcj-$(GCJ_VERSION)-*/libgcj_bc.so.1 | cut -d: -f1 | sed -e s/$$/-awt/)
-	DBG_DBG_SUGGESTS+= , $(shell echo $(GCJ_AWT_DEPENDS) | sed -e s/awt/dbg/)
-	GCJ_JAWT_DIR=$(shell dirname `dpkg -L $(GCJ_JAWT_DEPENDS) | grep libjawt.so | head -n 1`)
-  endif
 	JAVA_RUNTIME_DEPENDS = default-jre
-#  ifneq (,$(GCJ_JAWT_DEPENDS))
-#	JAVA_RUNTIME_DEPENDS += | $(GCJ_JAWT_DEPENDS)
-#  endif
   ifneq (,$(filter $(DEB_HOST_ARCH), $(OOO_OPENJDK_ARCHS)))
     ifneq "$(DEB_HOST_ARCH)" "ia64"
 	JAVA_RUNTIME_DEPENDS += | openjdk-8-jre | openjdk-7-jre | openjdk-6-jre
@@ -1036,14 +976,13 @@ ifeq "$(ENABLE_JAVA)" "y"
 	JAVA_RUNTIME_DEPENDS += | openjdk-7-jre
     endif
   endif
-	JAVA_RUNTIME_DEPENDS += | gcj-jre
   ifneq (,$(filter $(DEB_HOST_ARCH), amd64 i386))
 	JAVA_RUNTIME_DEPENDS += | sun-java5-jre | sun-java6-jre
   endif
 	JAVA_RUNTIME_DEPENDS += | java5-runtime
 	# Suns Java "packages"
 	JAVA_RUNTIME_DEPENDS += | jre
-	MEDIAWIKI_JAVA_RUNTIME_DEPENDS = $(shell echo $(JAVA_RUNTIME_DEPENDS) | sed -e "s/gcj-jre |//" | sed -e "s/sun-java5-jre//" | sed -e "s/java5-runtime/java6-runtime/")
+	MEDIAWIKI_JAVA_RUNTIME_DEPENDS = $(shell echo $(JAVA_RUNTIME_DEPENDS) | sed -e "s/sun-java5-jre//" | sed -e "s/java5-runtime/java6-runtime/")
 export JAVA_HOME
 	CONFIGURE_FLAGS += --with-jdk-home=$(JAVA_HOME)
 	JAVA_COMMON_DEPENDS= , libreoffice-java-common
@@ -1385,10 +1324,6 @@ ifeq "$(ENABLE_JAVA)" "y"
 	BASE_HSQLDB_DEPENDS = libhsqldb1.8.0-java $(HSQLDB_MINVER)
 	CONFIGURE_FLAGS += --with-hsqldb-jar=$(HSQLDB_JAR)
   else
-    ifeq "$(JDK)" "gcj-jdk"
-	# hsqldb with jdk7 buildfix from jdk7.diff fails with gcj
-	$(error hsqldb with jdk7 buildfix from jdk7.diff fails with gcj)
-    endif
 	BUILD_DEPS += , libservlet3.1-java
   endif
   ifeq "$(ENABLE_SCRIPT_PROVIDER_BSH)" "y"
@@ -1548,19 +1483,14 @@ else
 	CONFIGURE_FLAGS += --without-parallelism
 endif
 
-ifeq ($(GCC_VERSION),)
-	BUILD_PATH = /usr/lib/jvm/java-gcj/bin:$$PATH
-else
-  ifeq ($(GCC_VERSION),snapshot)
-	BUILD_PATH = /usr/lib/jvm/java-gcj/bin:/usr/lib/gcc-snapshot/bin:$$PATH
+ifeq ($(GCC_VERSION),snapshot)
+	BUILD_PATH = /usr/lib/gcc-snapshot/bin:$$PATH
 	BUILD_LD_LIBRARY_PATH = /usr/lib/gcc-snapshot/lib:$$LD_LIBRARY_PATH
 	BUILD_DEPS += , gcc-snapshot
-  else
-	BUILD_PATH = /usr/lib/jvm/java-gcj/bin:$(CURDIR)/debian/usr/bin:$$PATH
-  endif
+else
+	BUILD_PATH = $(CURDIR)/debian/usr/bin:$$PATH
 endif
 BUILD_PATH := $(CURDIR)/debian/usr/bin:$(BUILD_PATH)
-BUILD_LD_LIBRARY_PATH := $(BUILD_LD_LIBRARY_PATH):$(GCJ_JAWT_DIR)
 
 # Because of the stampdir magic, when you actually want to run a rule
 # over, you would have to remove the stamp manually.  Now, just do
@@ -1807,7 +1737,6 @@ endif
 	perl -pi -e "s,%OOO_BASE_ARCHS%,$(OOO_BASE_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_NO_BASE_ARCHS%,$(OOO_NO_BASE_ARCHS),"g debian/control
 	perl -pi -e "s,%OOO_JAVA_ARCHS%,$(OOO_JAVA_ARCHS),g" debian/control
-	perl -pi -e "s,%OOO_GCJ_JDK_ARCHS%,$(OOO_GCJ_JDK_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_ARCH_DEP_EXTENSIONS_ARCHS%,$(OOO_ARCH_DEP_EXTENSIONS_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_REPORTDESIGN_ARCHS%,$(OOO_REPORTDESIGN_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_NO_REPORTDESIGN_ARCHS%,$(OOO_NO_REPORTDESIGN_ARCHS),g" debian/control
@@ -1869,7 +1798,7 @@ debian/tests/control: debian/tests/control.in debian/control
 	# for now we filter out the arch-specific libc* and ia64, which is ugly,
 	# but better than manual bookkeeping. Also filter out the mips(el)-only
 	# binutils build-dep...
-	sed -e "s#%BUILD_DEPS_ARCH_ALL%#$(strip $(shell echo '$(BUILD_DEPS), $(BUILD_DEPS_INDEP)'|sed -e 's/,/,\n /g'|grep -v libc0.1| grep -v libc6| grep -v ia64|grep -v binutils|grep -v gcj-jdk|grep -v gcj-native-helper|grep -v libgcj-common|grep -v openjdk-6-jdk|sed -e 's/\[[^]]*\]//g'|sed -e s,\<.*\>,,g))#g" < debian/tests/control.in > debian/tests/control
+	sed -e "s#%BUILD_DEPS_ARCH_ALL%#$(strip $(shell echo '$(BUILD_DEPS), $(BUILD_DEPS_INDEP)'|sed -e 's/,/,\n /g'|grep -v libc0.1| grep -v libc6| grep -v ia64|grep -v binutils|grep -v openjdk-6-jdk|sed -e 's/\[[^]]*\]//g'|sed -e s,\<.*\>,,g))#g" < debian/tests/control.in > debian/tests/control
 endif
 
 .DELETE_ON_ERROR: debian/control debian/tests/control
@@ -3257,14 +3186,10 @@ endif
 ifneq (,$(filter libcmis, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.libcmis >> debian/shlibs.local
 endif
-	# we need to do it in two steps. The new dpkg-shlibdeps doesn't find
-	# /usr/lib/libgcj-bc.so when specifying -l$(GCJ_JAWT_DIR)
-	# and therefore we must not use it for -gcj. But we *do* need it
-	# for -officebean (libjawt.so is referenced there)
 	LD_LIBRARY_PATH="$(FAKEROOT_LIBDIR):debian/uno-libs3/$(OODIR)/program:debian/ure/$(OODIR)/program:$(PKGDIR)-core/$(OODIR)/program:$(PKGDIR)-base-core/$(OODIR)/program:$(PKGDIR)-base/$(OODIR)/program:$(PKGDIR)-writer/$(OODIR)/program" \
-		dh_shlibdeps -a -Nlibreoffice-officebean \
+		dh_shlibdeps -a \
 			-Lure -Luno-libs3 \
-			-ldebian/uno-libs3/$(OODIR)/program:debian/ure/$(OODIR)/program:$(PKGDIR)-core/$(OODIR)/program:$(PKGDIR)-base/$(OODIR)/program:$(shell dirname $(shell dpkg -L `echo $(GCJ_JAWT_DEPENDS) | sed -e s/-awt//` | grep _bc)) \
+			-ldebian/uno-libs3/$(OODIR)/program:debian/ure/$(OODIR)/program:$(PKGDIR)-core/$(OODIR)/program:$(PKGDIR)-base/$(OODIR)/program \
 			$(SHLIBS_OVERRIDE)
 ifneq (,$(filter redland, $(SYSTEM_STUFF)))
 	# dpkg-shlibdeps "in practice" always will look for this in
@@ -3279,13 +3204,6 @@ endif
 	perl -pi -e 's/, ure$$//' debian/uno-libs3.substvars
 	# 2) and prevent ure to depend on itself..
 	perl -pi -e 's/, ure \(.*\)$$//' debian/ure.substvars
-ifeq "$(ENABLE_JAVA)" "y"
-	LD_LIBRARY_PATH="$(FAKEROOT_LIBDIR):debian/uno-libs3/$(OODIR)/program:debian/ure/$(OODIR)/program:$(PKGDIR)-core/$(OODIR)/program" \
-		dh_shlibdeps -plibreoffice-officebean \
-			-Lure -Luno-libs3 \
-			-ldebian/uno-libs3/$(OODIR)/program:debian/ure/$(OODIR)/program:$(PKGDIR)-core/$(OODIR)/program:$(GCJ_JAWT_DIR) \
-			$(SHLIBS_OVERRIDE)
-endif
 ifeq "$(ENABLE_JAVA)" "y"
 	for p in $(ARCH_DEP_PACKAGES); do \
 		if [ "$$p" = "libreoffice-presentation-console" ]; then continue; fi; \
@@ -3314,7 +3232,6 @@ endif
 		-V'base-hsqldb-depends=$(BASE_HSQLDB_DEPENDS)' \
 		-V'java-common-depends=$(JAVA_COMMON_DEPENDS) $(JAVA_COMMON_DEPENDS_VERSION)' \
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
-		-V'java-gcj-depends=$(JAVA_GCJ_DEPENDS)' \
 		-V'Binary-Version=$(BINARY_VERSION)' \
 		-V'ooo-officebean-dep=$(OOO_OFFICEBEAN_DEP)' \
 		-V'kde-iconset-dep=$(KDE_ICONSET_DEP)' \
@@ -3331,10 +3248,6 @@ endif
 		-V'python-six-recommends=$(PYTHON_SIX_RECOMMENDS)' \
 		-V'firebird-server-depends=$(FIREBIRD_SERVER_DEPENDS)' \
 		-v$(BINARY_VERSION)
-ifeq "$(ENABLE_JAVA)" "y"
-	perl -pi -e "s/java-gcj-compat/java-gcj-compat (>= 1.0.77-4)/" \
-		debian/libreoffice-officebean/DEBIAN/control
-endif
 ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
 ifeq "$(PACKAGE_BASE)" "y"
   ifeq "$(ENABLE_MYSQLNATIVE)" "y"
@@ -3363,9 +3276,6 @@ $(STAMP_DIR)/binary-indep: $(STAMP_DIR)/install-indep debian/control $(STAMP_DIR
 ifneq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_JAVA_ARCHS)))
 	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 	echo "For uploads with binary-all packages, please use arches where Java is enabled"
-  ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_GCJ_JDK_ARCHS)))
-	echo "and where Java used is OpenJDK"
-  endif
 	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 endif
 	dh_testdir
