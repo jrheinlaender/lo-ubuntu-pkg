@@ -512,7 +512,7 @@ USE_OPENCL=y
 #10:16 < Safa_[A_boy]> Hello. About converting dialogs to .ui files, What about 
 #                      wizards?
 #10:17 < ahunt> _rene_: yes, unfortunately.
-ENABLE_FIREBIRD=y
+ENABLE_FIREBIRD=n
 ifeq "$(DEB_HOST_ARCH_ENDIAN)" "big"
   ENABLE_FIREBIRD=n
 endif
@@ -862,7 +862,7 @@ endif
 ifneq ($(ENABLE_COINMP),y)
 	CONFIGURE_FLAGS += --disable-coinmp
 else
-	BUILD_DEPS += , coinor-libcoinmp-dev $(COINMP_MINVER), coinor-libcoinutils-dev $(COINUTILS_MINVER)
+	BUILD_DEPS += , coinor-libcoinmp-dev $(COINMP_MINVER), coinor-libcoinutils-dev $(COINUTILS_MINVER), libbz2-dev
 endif
 
 ifneq (,$(filter openssl, $(SYSTEM_STUFF)))
@@ -1841,6 +1841,9 @@ endif
 ifeq "$(PACKAGE_LIBRELOGO)" "y"
 	cat debian/control.librelogo.in >> debian/control
 endif
+ifeq "$(ENABLE_FIREBIRD)" "y"
+	cat debian/control.firebird.in >> debian/control
+endif
 
 	perl -pi -e "s,%OOO_ARCHS%,$(OOO_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_BE_ARCHS%,$(OOO_BE_ARCHS),g" debian/control
@@ -1876,7 +1879,9 @@ ifeq "$(MYSQL_FLAVOUR)" "mysql"
 endif
 
 ifeq "$(ENABLE_FIREBIRD)" "y"
+  ifneq (,$(filter firebird, $(SYSTEM_STUFF)))
 	perl -pi -e "s/(Build-Conflicts: .*)/\1,firebird-dev (>= 3.0),/" debian/control
+  endif
 endif
 
 ifeq (4.4,$(SYSTEM_GCC_VERSION))
@@ -2303,6 +2308,8 @@ ifeq "$(PACKAGE_SDK)" "y"
 	mkdir -p $(PKGDIR)-dev/usr/include/$(DEB_HOST_MULTIARCH)/libreoffice/sal
 	mv $(PKGDIR)-dev-common/usr/include/libreoffice/sal/typesizes.h \
 		$(PKGDIR)-dev/usr/include/$(DEB_HOST_MULTIARCH)/libreoffice/sal
+	cd $(PKGDIR)-dev-common/usr/include/libreoffice/sal/ && \
+		ln -s /usr/include/$(DEB_HOST_MULTIARCH)/libreoffice/sal/typesizes.h
 	mkdir -p $(PKGDIR)-dev-common/usr/share/idl
 	mv $(PKGDIR)-dev/usr/share/idl/libreoffice \
 		$(PKGDIR)-dev-common/usr/share/idl
@@ -2851,6 +2858,10 @@ ifeq "$(ENABLE_FIREBIRD)" "y"
 	mkdir -p $(PKGDIR)-sdbc-firebird/$(OODIR)/program
 	mv $(PKGDIR)-base/$(OODIR)/program/libfirebird_sdbclo.so \
 		$(PKGDIR)-sdbc-firebird/$(OODIR)/program
+  ifeq (,$(filter firebird, $(SYSTEM_STUFF)))
+	mv $(PKGDIR)-core/$(OODIR)/program/libfbembed.so.2.5 \
+		$(PKGDIR)-sdbc-firebird/$(OODIR)/program
+  endif
 endif
 	mkdir -p $(PKGDIR)-base-drivers/$(OODIR)/program
 	for i in `find $(PKGDIR)-base/$(OODIR)/program/ -name "*.so" \
