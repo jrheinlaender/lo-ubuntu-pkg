@@ -1,52 +1,25 @@
-From: Bjoern Michaelsen <bjoern.michaelsen@canonical.com>
-Date: Mon, 10 Oct 2016 19:35:13 +0200
-Subject: [PATCH] lp#1527053: Do not try to derive tab text colors from Ubuntu
- themes
+From: =?UTF-8?q?Caol=C3=A1n=20McNamara?= <caolanm@redhat.com>
+Date: Wed, 12 Oct 2016 21:17:43 +0100
+Subject: [PATCH] Related: tdf#92776 set parent style of notebook to toplevel
+ window style
 
-tab labels are manually painted by LibreOffice still. We are not painting the
-tab background as native gtk3 would, thus using the white from the themes text
-color is rather unreadable. This a vendor-only hotfix that should not be
-upstreamed. Hopefully, for LibreOffice 5.3 a more generic solution is found.
-
+Change-Id: Iec16b2617c82c363a540f967f66c514b5b2b104b
 ---
- vcl/unx/gtk3/gtk3salnativewidgets-gtk.cxx | 16 +++++++++++++---
- 1 file changed, 13 insertions(+), 3 deletions(-)
+ vcl/unx/gtk3/gtk3salnativewidgets-gtk.cxx | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/vcl/unx/gtk3/gtk3salnativewidgets-gtk.cxx b/vcl/unx/gtk3/gtk3salnativewidgets-gtk.cxx
 --- a/vcl/unx/gtk3/gtk3salnativewidgets-gtk.cxx
 +++ b/vcl/unx/gtk3/gtk3salnativewidgets-gtk.cxx
-@@ -2029,18 +2029,28 @@ void GtkSalGraphics::updateSettings( AllSettings& rSettings )
-         gtk_style_context_set_state(pCStyle, GTK_STATE_FLAG_NORMAL);
-         gtk_style_context_get_color(pCStyle, gtk_style_context_get_state(pCStyle), &text_color);
-         aTextColor = getColor( text_color );
--        aStyleSet.SetTabTextColor(aTextColor);
-+        static gchar* pTheme(nullptr);
-+        static bool isUbuntuTheme(false);
-+        if(!pTheme)
-+        {
-+            g_object_get(pSettings, "gtk-theme-name", &pTheme, NULL);
-+            isUbuntuTheme = g_str_equal(pTheme, "Ambiance") || g_str_equal(pTheme, "Radiance");
-+        }
-+        if(!isUbuntuTheme)
-+            aStyleSet.SetTabTextColor(aTextColor);
+@@ -2422,7 +2422,7 @@ GtkSalGraphics::GtkSalGraphics( GtkSalFrame *pFrame, GtkWidget *pWindow )
+     mpSpinDownStyle = createStyleContext(GtkControlPart::SpinButtonDownButton, mpSpinStyle);
  
-         // mouse over text colors
-         gtk_style_context_set_state(pCStyle, GTK_STATE_FLAG_PRELIGHT);
-         gtk_style_context_get_color(pCStyle, gtk_style_context_get_state(pCStyle), &text_color);
-         aTextColor = getColor( text_color );
--        aStyleSet.SetTabRolloverTextColor(aTextColor);
-+        if(!isUbuntuTheme)
-+            aStyleSet.SetTabRolloverTextColor(aTextColor);
- 
-         gtk_style_context_set_state(pCStyle, ACTIVE_TAB);
-         gtk_style_context_get_color(pCStyle, gtk_style_context_get_state(pCStyle), &text_color);
-         aTextColor = getColor( text_color );
--        aStyleSet.SetTabHighlightTextColor(aTextColor);
-+        if(!isUbuntuTheme)
-+            aStyleSet.SetTabHighlightTextColor(aTextColor);
-     }
- #else
-     {
+     /* NoteBook */
+-    mpNotebookStyle = createStyleContext(GtkControlPart::Notebook);
++    mpNotebookStyle = createStyleContext(GtkControlPart::Notebook, gtk_widget_get_style_context(mpWindow));
+     mpNotebookStackStyle = createStyleContext(GtkControlPart::NotebookStack, mpNotebookStyle);
+     mpNotebookHeaderStyle = createStyleContext(GtkControlPart::NotebookHeader, mpNotebookStyle);
+     mpNotebookHeaderTabsStyle = createStyleContext(GtkControlPart::NotebookHeaderTabs, mpNotebookHeaderStyle);
 -- 
 2.7.4
 
