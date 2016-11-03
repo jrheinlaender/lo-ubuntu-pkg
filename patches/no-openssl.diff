@@ -1,0 +1,118 @@
+don't add -lssl etc if not needed (because we use system-postgresql)
+
+diff --git a/RepositoryExternal.mk b/RepositoryExternal.mk
+index 0fc7d25..952b140 100644
+--- a/RepositoryExternal.mk
++++ b/RepositoryExternal.mk
+@@ -2911,9 +2917,10 @@ $(call gb_LinkTarget_add_libs,$(1),\
+ 	$(call gb_UnpackedTarball_get_dir,postgresql)/src/interfaces/libpq/libpq$(gb_StaticLibrary_PLAINEXT) \
+ )
+ 
+-ifeq ($(OS)$(COM),WNTMSC)
+ $(call gb_LinkTarget_use_external,$(1),openssl)
+ 
++ifeq ($(OS)$(COM),WNTMSC)
++
+ $(call gb_LinkTarget_use_system_win32_libs,$(1),\
+ 	secur32 \
+ 	ws2_32 \
+diff --git a/connectivity/Library_postgresql-sdbc-impl.mk b/connectivity/Library_postgresql-sdbc-impl.mk
+index 0580a8b..7e8b778 100644
+--- a/connectivity/Library_postgresql-sdbc-impl.mk
++++ b/connectivity/Library_postgresql-sdbc-impl.mk
+@@ -46,7 +46,6 @@ $(eval $(call gb_Library_use_externals,postgresql-sdbc-impl,\
+ 	boost_headers \
+ 	postgresql \
+ 	$(if $(filter-out MSC,$(COM)), \
+-		openssl \
+ 		openldap \
+ 		nss3 \
+ 		plc4 \
+
+... and don't uselessly check for openssl in configure
+
+diff --git a/config_host.mk.in b/config_host.mk.in
+index ddd144e..19f8368 100644
+--- a/config_host.mk.in
++++ b/config_host.mk.in
+@@ -100,7 +102,6 @@ export DISABLE_ATL=@DISABLE_ATL@
+ export DISABLE_CVE_TESTS=@DISABLE_CVE_TESTS@
+ export DISABLE_DYNLOADING=@DISABLE_DYNLOADING@
+ export DISABLE_EXPORT=@DISABLE_EXPORT@
+-export DISABLE_OPENSSL=@DISABLE_OPENSSL@
+ export DISABLE_PYTHON=@DISABLE_PYTHON@
+ export DLOPEN_LIBS=@DLOPEN_LIBS@
+ export DLLTOOL=@DLLTOOL@
+@@ -438,8 +439,6 @@ export OOO_JUNIT_JAR=@OOO_JUNIT_JAR@
+ export OOO_VENDOR=@OOO_VENDOR@
+ export OPENCOLLADA_CFLAGS=$(gb_SPACE)@OPENCOLLADA_CFLAGS@
+ export OPENCOLLADA_LIBS=$(gb_SPACE)@OPENCOLLADA_LIBS@
+-export OPENSSL_CFLAGS=$(gb_SPACE)@OPENSSL_CFLAGS@
+-export OPENSSL_LIBS=$(gb_SPACE)@OPENSSL_LIBS@
+ export ORCUS_CFLAGS=$(gb_SPACE)@ORCUS_CFLAGS@
+ export ORCUS_LIBS=$(gb_SPACE)@ORCUS_LIBS@
+ export OS=@OS@
+@@ -569,7 +568,6 @@ export SYSTEM_ODBC_HEADERS=@SYSTEM_ODBC_HEADERS@
+ export SYSTEM_ODFGEN=@SYSTEM_ODFGEN@
+ export SYSTEM_OPENCOLLADA=@SYSTEM_OPENCOLLADA@
+ export SYSTEM_OPENLDAP=@SYSTEM_OPENLDAP@
+-export SYSTEM_OPENSSL=@SYSTEM_OPENSSL@
+ export SYSTEM_PAGEMAKER=@SYSTEM_PAGEMAKER@
+ export SYSTEM_POPPLER=@SYSTEM_POPPLER@
+ export SYSTEM_POSTGRESQL=@SYSTEM_POSTGRESQL@
+diff --git a/configure.ac b/configure.ac
+index 3862386..45d5e25 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -9412,51 +9451,6 @@ else
+ fi
+ 
+ dnl ===================================================================
+-dnl Check for system openssl
+-dnl ===================================================================
+-DISABLE_OPENSSL=
+-AC_MSG_CHECKING([whether to disable OpenSSL usage])
+-if test "$enable_openssl" = "yes"; then
+-    AC_MSG_RESULT([no])
+-    if test "$_os" = Darwin ; then
+-        # OpenSSL is deprecated when building for 10.7 or later.
+-        #
+-        # http://stackoverflow.com/questions/7406946/why-is-apple-deprecating-openssl-in-macos-10-7-lion
+-        # http://stackoverflow.com/questions/7475914/libcrypto-deprecated-on-mac-os-x-10-7-lion
+-
+-        with_system_openssl=no
+-        libo_CHECK_SYSTEM_MODULE([openssl],[OPENSSL],[openssl])
+-    elif test "$_os" = "NetBSD" -o "$_os" = "OpenBSD" -o "$_os" = "DragonFly" \
+-            && test "$with_system_openssl" != "no"; then
+-        with_system_openssl=yes
+-        SYSTEM_OPENSSL=TRUE
+-        OPENSSL_CFLAGS=
+-        OPENSSL_LIBS="-lssl -lcrypto"
+-    else
+-        libo_CHECK_SYSTEM_MODULE([openssl],[OPENSSL],[openssl])
+-    fi
+-    if test "$with_system_openssl" = "yes"; then
+-        libo_MINGW_CHECK_DLL([libssl])
+-        libo_MINGW_CHECK_DLL([libcrypto])
+-        AC_MSG_CHECKING([whether openssl supports SHA512])
+-        AC_LANG_PUSH([C])
+-        AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <openssl/sha.h>]],[[
+-            SHA512_CTX context;
+-]])],[AC_MSG_RESULT([yes])],[AC_MSG_ERROR([no, openssl too old. Need >= 0.9.8.])])
+-        AC_LANG_POP(C)
+-    fi
+-else
+-    AC_MSG_RESULT([yes])
+-    DISABLE_OPENSSL=TRUE
+-
+-    # warn that although OpenSSL is disabled, system libraries may be depending on it
+-    AC_MSG_WARN([OpenSSL has been disabled. No code compiled by LibO will make use of it but system librares may create indirect dependencies])
+-    add_warning "OpenSSL has been disabled. No code compiled by LibO will make use of it but system librares may create indirect dependencies"
+-fi
+-
+-AC_SUBST([DISABLE_OPENSSL])
+-
+-dnl ===================================================================
+ dnl Check for building gnutls
+ dnl ===================================================================
+ AC_MSG_CHECKING([whether to use gnutls])
