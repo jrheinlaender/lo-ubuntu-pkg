@@ -1,0 +1,679 @@
+diff --git a/embeddedobj/source/commonembedding/visobj.cxx b/embeddedobj/source/commonembedding/visobj.cxx
+index c913a85..3137dbd 100644
+--- a/embeddedobj/source/commonembedding/visobj.cxx
++++ b/embeddedobj/source/commonembedding/visobj.cxx
+@@ -174,7 +174,11 @@ embed::VisualRepresentation SAL_CALL OCommonEmbeddedObject::getPreferredVisualRe
+     sal_Bool bBackToLoaded = sal_False;
+     if ( m_nObjectState == embed::EmbedStates::LOADED )
+     {
+-        changeState( embed::EmbedStates::RUNNING );
++        awt::Size aOrigSize = getVisualAreaSize(nAspect);
++        changeState(embed::EmbedStates::RUNNING);
++        awt::Size aNewSize = getVisualAreaSize(nAspect);
++        if (aOrigSize.Width != aNewSize.Width || aOrigSize.Height != aNewSize.Height)
++            setVisualAreaSize(nAspect, aOrigSize);
+ 
+         // the links should be switched back to loaded state for now to avoid locking problems
+         bBackToLoaded = m_bIsLink;
+diff --git a/include/svx/svdoole2.hxx b/include/svx/svdoole2.hxx
+index c2cad4b..af577cd 100644
+--- a/include/svx/svdoole2.hxx
++++ b/include/svx/svdoole2.hxx
+@@ -30,6 +30,8 @@
+ #include <vcl/gdimtf.hxx>
+ #include <sot/storage.hxx>
+ #include <svx/svxdllapi.h>
++#include <sfx2/lnkbase.hxx>
++#include <sfx2/linkmgr.hxx>
+ 
+ //************************************************************
+ //   SdrOle2Obj
+@@ -193,6 +195,21 @@ public:
+     virtual SdrObject* DoConvertToPolyObj(sal_Bool bBezier, bool bAddText) const;
+ };
+ 
++class SVX_DLLPUBLIC SdrEmbedObjectLink : public sfx2::SvBaseLink
++{
++    SdrOle2Obj*         pObj;
++
++public:
++    explicit            SdrEmbedObjectLink(SdrOle2Obj* pObj);
++    virtual             ~SdrEmbedObjectLink();
++
++    virtual void        Closed() override;
++    virtual ::sfx2::SvBaseLink::UpdateResult DataChanged(
++        const OUString& rMimeType, const css::uno::Any & rValue ) override;
++
++    bool                Connect() { return GetRealObject() != nullptr; }
++};
++
+ #endif // INCLUDED_SVX_SVDOOLE2_HXX
+ 
+ /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/sc/inc/documentlinkmgr.hxx b/sc/inc/documentlinkmgr.hxx
+index d106b55..5ded32d 100644
+--- a/sc/inc/documentlinkmgr.hxx
++++ b/sc/inc/documentlinkmgr.hxx
+@@ -10,8 +10,15 @@
+ #ifndef SC_DOCUMENTLINKMGR_HXX
+ #define SC_DOCUMENTLINKMGR_HXX
+ 
++#include <rtl/ustring.hxx>
+ #include <boost/noncopyable.hpp>
+ 
++class Window;
++
++namespace sfx2 {
++    class LinkManager;
++}
++
+ namespace sc {
+ 
+ class DataStream;
+@@ -28,6 +35,17 @@ public:
+     void setDataStream( DataStream* p );
+     DataStream* getDataStream();
+     const DataStream* getDataStream() const;
++    sfx2::LinkManager* getLinkManager( bool bCreate = true );
++    const sfx2::LinkManager* getExistingLinkManager() const;
++    bool idleCheckLinks();
++    bool hasDdeLinks() const;
++    bool hasDdeOrOleLinks() const;
++    bool updateDdeLink( const OUString& rAppl, const OUString& rTopic, const OUString& rItem );
++    bool updateDdeOrOleLinks(Window* pWin);
++    size_t getDdeLinkCount() const;
++    void disconnectDdeLinks();
++private:
++    bool hasDdeOrOleLinks(bool bDde, bool bOle) const;
+ };
+ 
+ }
+diff --git a/sc/source/ui/docshell/docsh.cxx b/sc/source/ui/docshell/docsh.cxx
+index 6c03ec1..7ddf365 100644
+--- a/sc/source/ui/docshell/docsh.cxx
++++ b/sc/source/ui/docshell/docsh.cxx
+@@ -573,9 +573,12 @@ sal_Bool ScDocShell::Load( SfxMedium& rMedium )
+ 
+     GetUndoManager()->Clear();
+ 
+-    sal_Bool bRet = SfxObjectShell::Load( rMedium );
+-    if( bRet )
++    bool bRet = SfxObjectShell::Load(rMedium);
++    if (bRet)
+     {
++        comphelper::EmbeddedObjectContainer& rEmbeddedObjectContainer = getEmbeddedObjectContainer();
++        rEmbeddedObjectContainer.setUserAllowsLinkUpdate(false);
++
+         if (GetMedium())
+         {
+             SFX_ITEMSET_ARG( rMedium.GetItemSet(), pUpdateDocItem, SfxUInt16Item, SID_UPDATEDOCMODE, false);
+diff --git a/sc/source/ui/docshell/docsh4.cxx b/sc/source/ui/docshell/docsh4.cxx
+index 806549a..d6e2539 100644
+--- a/sc/source/ui/docshell/docsh4.cxx
++++ b/sc/source/ui/docshell/docsh4.cxx
+@@ -29,6 +29,7 @@ using namespace ::com::sun::star;
+ 
+ #include "scitems.hxx"
+ #include <sfx2/fcontnr.hxx>
++#include <sfx2/linkmgr.hxx>
+ #include <sfx2/objface.hxx>
+ #include <sfx2/docfile.hxx>
+ #include <svtools/ehdl.hxx>
+@@ -42,6 +43,7 @@ using namespace ::com::sun::star;
+ #include <svx/drawitem.hxx>
+ #include <svx/fmshell.hxx>
+ #include <svtools/xwindowitem.hxx>
++#include <svx/svdoole2.hxx>
+ #include <sfx2/passwd.hxx>
+ #include <sfx2/filedlghelper.hxx>
+ #include <sfx2/dispatch.hxx>
+@@ -97,6 +99,7 @@ using namespace ::com::sun::star;
+ #include "sharedocdlg.hxx"
+ #include "conditio.hxx"
+ #include "sheetevents.hxx"
++#include <documentlinkmgr.hxx>
+ 
+ //------------------------------------------------------------------
+ 
+@@ -415,6 +418,8 @@ void ScDocShell::Execute( SfxRequest& rReq )
+         case SID_UPDATETABLINKS:
+             {
+                 ScDocument* pDoc = GetDocument();
++                comphelper::EmbeddedObjectContainer& rEmbeddedObjectContainer = getEmbeddedObjectContainer();
++                rEmbeddedObjectContainer.setUserAllowsLinkUpdate(true);
+ 
+                 ScLkUpdMode nSet=pDoc->GetLinkMode();
+ 
+@@ -456,14 +461,29 @@ void ScDocShell::Execute( SfxRequest& rReq )
+                 {
+                     ReloadTabLinks();
+                     aDocument.UpdateExternalRefLinks(GetActiveDialogParent());
+-                    aDocument.UpdateDdeLinks(GetActiveDialogParent());
++
++                    bool bAnyDde = aDocument.GetDocLinkManager().updateDdeOrOleLinks(GetActiveDialogParent());
++
++                    if (bAnyDde)
++                    {
++                        //  Formeln berechnen und painten wie im TrackTimeHdl
++                        aDocument.TrackFormulas();
++                        Broadcast(SfxSimpleHint(FID_DATACHANGED));
++
++                        //  wenn FID_DATACHANGED irgendwann mal asynchron werden sollte
++                        //  (z.B. mit Invalidate am Window), muss hier ein Update erzwungen werden.
++                    }
++
+                     aDocument.UpdateAreaLinks();
+ 
+                     //! Test, ob Fehler
+                     rReq.Done();
+                 }
+                 else
++                {
++                    rEmbeddedObjectContainer.setUserAllowsLinkUpdate(false);
+                     rReq.Ignore();
++                }
+             }
+             break;
+ 
+diff --git a/sc/source/ui/docshell/documentlinkmgr.cxx b/sc/source/ui/docshell/documentlinkmgr.cxx
+index 67b88ac..1c81a09 100644
+--- a/sc/source/ui/docshell/documentlinkmgr.cxx
++++ b/sc/source/ui/docshell/documentlinkmgr.cxx
+@@ -9,15 +9,24 @@
+ 
+ #include <documentlinkmgr.hxx>
+ #include <datastream.hxx>
++#include <ddelink.hxx>
++#include <sc.hrc>
++#include <scresid.hxx>
++
++#include <svx/svdoole2.hxx>
++#include <vcl/layout.hxx>
+ 
+ #include <boost/noncopyable.hpp>
+ #include <boost/scoped_ptr.hpp>
++#include <vcl/msgbox.hxx>
+ 
+ namespace sc {
+ 
+ struct DocumentLinkManagerImpl : boost::noncopyable
+ {
++    SfxObjectShell* mpShell;
+     boost::scoped_ptr<DataStream> mpDataStream;
++    std::unique_ptr<sfx2::LinkManager> mpLinkManager;
+ 
+     DocumentLinkManagerImpl() : mpDataStream(NULL) {}
+ };
+@@ -44,6 +53,185 @@ const DataStream* DocumentLinkManager::getDataStream() const
+     return mpImpl->mpDataStream.get();
+ }
+ 
++sfx2::LinkManager* DocumentLinkManager::getLinkManager( bool bCreate )
++{
++    if (!mpImpl->mpLinkManager && bCreate && mpImpl->mpShell)
++        mpImpl->mpLinkManager.reset(new sfx2::LinkManager(mpImpl->mpShell));
++    return mpImpl->mpLinkManager.get();
++}
++
++const sfx2::LinkManager* DocumentLinkManager::getExistingLinkManager() const
++{
++    return mpImpl->mpLinkManager.get();
++}
++
++bool DocumentLinkManager::idleCheckLinks()
++{
++    if (!mpImpl->mpLinkManager)
++        return false;
++
++    bool bAnyLeft = false;
++    const sfx2::SvBaseLinks& rLinks = mpImpl->mpLinkManager->GetLinks();
++    for (size_t i = 0, n = rLinks.size(); i < n; ++i)
++    {
++        sfx2::SvBaseLink* pBase = *rLinks[i];
++        ScDdeLink* pDdeLink = dynamic_cast<ScDdeLink*>(pBase);
++        if (!pDdeLink || !pDdeLink->NeedsUpdate())
++            continue;
++
++        pDdeLink->TryUpdate();
++        if (pDdeLink->NeedsUpdate()) // Was not successful?
++            bAnyLeft = true;
++    }
++
++    return bAnyLeft;
++}
++
++bool DocumentLinkManager::hasDdeLinks() const
++{
++    return hasDdeOrOleLinks(true, false);
++}
++
++bool DocumentLinkManager::hasDdeOrOleLinks() const
++{
++    return hasDdeOrOleLinks(true, true);
++}
++
++bool DocumentLinkManager::hasDdeOrOleLinks(bool bDde, bool bOle) const
++{
++    if (!mpImpl->mpLinkManager)
++        return false;
++
++    const sfx2::SvBaseLinks& rLinks = mpImpl->mpLinkManager->GetLinks();
++    for (size_t i = 0, n = rLinks.size(); i < n; ++i)
++    {
++        sfx2::SvBaseLink* pBase = *rLinks[i];
++        if (bDde && dynamic_cast<ScDdeLink*>(pBase))
++            return true;
++        if (bOle && dynamic_cast<SdrEmbedObjectLink*>(pBase))
++            return true;
++    }
++
++    return false;
++}
++
++bool DocumentLinkManager::updateDdeOrOleLinks( Window* pWin )
++{
++    if (!mpImpl->mpLinkManager)
++        return false;
++
++    sfx2::LinkManager* pMgr = mpImpl->mpLinkManager.get();
++    const sfx2::SvBaseLinks& rLinks = pMgr->GetLinks();
++
++    // If the update takes longer, reset all values so that nothing
++    // old (wrong) is left behind
++    bool bAny = false;
++    for (size_t i = 0, n = rLinks.size(); i < n; ++i)
++    {
++        sfx2::SvBaseLink* pBase = *rLinks[i];
++
++        SdrEmbedObjectLink* pOleLink = dynamic_cast<SdrEmbedObjectLink*>(pBase);
++        if (pOleLink)
++        {
++            pOleLink->Update();
++            continue;
++        }
++
++        ScDdeLink* pDdeLink = dynamic_cast<ScDdeLink*>(pBase);
++        if (!pDdeLink)
++            continue;
++
++        if (pDdeLink->Update())
++            bAny = true;
++        else
++        {
++            // Update failed.  Notify the user.
++            OUString aFile = pDdeLink->GetTopic();
++            OUString aElem = pDdeLink->GetItem();
++            OUString aType = pDdeLink->GetAppl();
++
++            OUStringBuffer aBuf;
++            aBuf.append(OUString(ScResId(SCSTR_DDEDOC_NOT_LOADED)));
++            aBuf.append("\n\n");
++            aBuf.append("Source : ");
++            aBuf.append(aFile);
++            aBuf.append("\nElement : ");
++            aBuf.append(aElem);
++            aBuf.append("\nType : ");
++            aBuf.append(aType);
++            ErrorBox aBox(pWin, WB_OK | RET_OK, aBuf.makeStringAndClear());
++            aBox.Execute();
++        }
++    }
++
++    pMgr->CloseCachedComps();
++
++    return bAny;
++}
++
++bool DocumentLinkManager::updateDdeLink( const OUString& rAppl, const OUString& rTopic, const OUString& rItem )
++{
++    if (!mpImpl->mpLinkManager)
++        return false;
++
++    sfx2::LinkManager* pMgr = mpImpl->mpLinkManager.get();
++    const sfx2::SvBaseLinks& rLinks = pMgr->GetLinks();
++
++    bool bFound = false;
++    for (size_t i = 0, n = rLinks.size(); i < n; ++i)
++    {
++        ::sfx2::SvBaseLink* pBase = *rLinks[i];
++        ScDdeLink* pDdeLink = dynamic_cast<ScDdeLink*>(pBase);
++        if (!pDdeLink)
++            continue;
++
++        if ( OUString(pDdeLink->GetAppl()) == rAppl &&
++             OUString(pDdeLink->GetTopic()) == rTopic &&
++             OUString(pDdeLink->GetItem()) == rItem )
++        {
++            pDdeLink->TryUpdate();
++            bFound = true; // Could be multiple (Mode), so continue searching
++        }
++    }
++
++    return bFound;
++}
++
++size_t DocumentLinkManager::getDdeLinkCount() const
++{
++    if (!mpImpl->mpLinkManager)
++        return 0;
++
++    size_t nDdeCount = 0;
++    const sfx2::SvBaseLinks& rLinks = mpImpl->mpLinkManager->GetLinks();
++    for (size_t i = 0, n = rLinks.size(); i < n; ++i)
++    {
++        ::sfx2::SvBaseLink* pBase = *rLinks[i];
++        ScDdeLink* pDdeLink = dynamic_cast<ScDdeLink*>(pBase);
++        if (!pDdeLink)
++            continue;
++
++        ++nDdeCount;
++    }
++
++    return nDdeCount;
++}
++
++void DocumentLinkManager::disconnectDdeLinks()
++{
++    if (!mpImpl->mpLinkManager)
++        return;
++
++    const sfx2::SvBaseLinks& rLinks = mpImpl->mpLinkManager->GetLinks();
++    for (size_t i = 0, n = rLinks.size(); i < n; ++i)
++    {
++        ::sfx2::SvBaseLink* pBase = *rLinks[i];
++        ScDdeLink* pDdeLink = dynamic_cast<ScDdeLink*>(pBase);
++        if (pDdeLink)
++            pDdeLink->Disconnect();
++    }
++}
++
+ }
+ 
+ /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/sc/source/ui/view/tabvwsh4.cxx b/sc/source/ui/view/tabvwsh4.cxx
+index ec192da..34b43e6 100644
+--- a/sc/source/ui/view/tabvwsh4.cxx
++++ b/sc/source/ui/view/tabvwsh4.cxx
+@@ -83,6 +83,7 @@
+ #include "markdata.hxx"
+ #include "preview.hxx"
+ #include "docoptio.hxx"
++#include <documentlinkmgr.hxx>
+ 
+ #include <com/sun/star/document/XDocumentProperties.hpp>
+ 
+@@ -1605,8 +1606,11 @@ void ScTabViewShell::Construct( sal_uInt8 nForceDesignMode )
+                         bLink = true;
+             }
+             if (!bLink)
+-                if (pDoc->HasDdeLinks() || pDoc->HasAreaLinks())
+-                    bLink = sal_True;
++            {
++                const sc::DocumentLinkManager& rMgr = pDoc->GetDocLinkManager();
++                if (rMgr.hasDdeOrOleLinks() || pDoc->HasAreaLinks())
++                    bLink = true;
++            }
+             if (bLink)
+             {
+                 if ( !pFirst )
+diff --git a/sd/source/core/drawdoc.cxx b/sd/source/core/drawdoc.cxx
+index 5716b43..a897213 100644
+--- a/sd/source/core/drawdoc.cxx
++++ b/sd/source/core/drawdoc.cxx
+@@ -685,6 +685,12 @@ void SdDrawDocument::UpdateAllLinks()
+     {
+         pDocLockedInsertingLinks = this; // lock inserting links. only links in this document should by resolved
+ 
++        if (mpDocSh)
++        {
++            comphelper::EmbeddedObjectContainer& rEmbeddedObjectContainer = mpDocSh->getEmbeddedObjectContainer();
++            rEmbeddedObjectContainer.setUserAllowsLinkUpdate(true);
++        }
++
+         pLinkManager->UpdateAllLinks();  // query box: update all links?
+ 
+         if( pDocLockedInsertingLinks == this )
+diff --git a/sd/source/ui/docshell/docshel4.cxx b/sd/source/ui/docshell/docshel4.cxx
+index 9012869..12a904c 100644
+--- a/sd/source/ui/docshell/docshel4.cxx
++++ b/sd/source/ui/docshell/docshel4.cxx
+@@ -288,9 +288,12 @@ sal_Bool DrawDocShell::Load( SfxMedium& rMedium )
+     }
+ 
+     bRet = SfxObjectShell::Load( rMedium );
+-    if( bRet )
++    if (bRet)
+     {
+-        bRet = SdXMLFilter( rMedium, *this, sal_True, SDXMLMODE_Normal, SotStorage::GetVersion( rMedium.GetStorage() ) ).Import( nError );
++        comphelper::EmbeddedObjectContainer& rEmbeddedObjectContainer = getEmbeddedObjectContainer();
++        rEmbeddedObjectContainer.setUserAllowsLinkUpdate(false);
++
++        bRet = SdXMLFilter( rMedium, *this, true, SDXMLMODE_Normal, SotStorage::GetVersion( rMedium.GetStorage() ) ).Import( nError );
+     }
+ 
+     if( bRet )
+diff --git a/svx/source/svdraw/svdoole2.cxx b/svx/source/svdraw/svdoole2.cxx
+index f1f27a8..00304f5 100644
+--- a/svx/source/svdraw/svdoole2.cxx
++++ b/svx/source/svdraw/svdoole2.cxx
+@@ -57,7 +57,6 @@
+ #include <comphelper/classids.hxx>
+ 
+ #include <sot/formats.hxx>
+-#include <sfx2/linkmgr.hxx>
+ #include <svtools/transfer.hxx>
+ #include <cppuhelper/implbase5.hxx>
+ 
+@@ -592,25 +591,6 @@ void SdrLightEmbeddedClient_Impl::setWindow(const uno::Reference< awt::XWindow >
+     m_xWindow = _xWindow;
+ }
+ 
+-////////////////////////////////////////////////////////////////////////////////////////////////////
+-
+-class SdrEmbedObjectLink : public sfx2::SvBaseLink
+-{
+-    SdrOle2Obj*         pObj;
+-
+-public:
+-                        SdrEmbedObjectLink(SdrOle2Obj* pObj);
+-    virtual             ~SdrEmbedObjectLink();
+-
+-    virtual void        Closed();
+-    virtual ::sfx2::SvBaseLink::UpdateResult DataChanged(
+-        const OUString& rMimeType, const ::com::sun::star::uno::Any & rValue );
+-
+-    bool                Connect() { return GetRealObject() != NULL; }
+-};
+-
+-// -----------------------------------------------------------------------------
+-
+ SdrEmbedObjectLink::SdrEmbedObjectLink(SdrOle2Obj* pObject):
+     ::sfx2::SvBaseLink( ::sfx2::LINKUPDATE_ONCALL, SOT_FORMATSTR_ID_SVXB ),
+     pObj(pObject)
+diff --git a/svx/source/unodraw/unoshap4.cxx b/svx/source/unodraw/unoshap4.cxx
+index e932821..4411118 100644
+--- a/svx/source/unodraw/unoshap4.cxx
++++ b/svx/source/unodraw/unoshap4.cxx
+@@ -415,7 +415,7 @@ sal_Bool SvxOle2Shape::createObject( const SvGlobalName &aClassName )
+     if( xObj.is() )
+     {
+         Rectangle aRect = pOle2Obj->GetLogicRect();
+-        if ( aRect.GetWidth() == 100 && aRect.GetHeight() == 100 )
++        if ( aRect.GetWidth() == 101 && aRect.GetHeight() == 101 )
+         {
+             // TODO/LATER: is it possible that this method is used to create an iconified object?
+             // default size
+@@ -479,7 +479,7 @@ sal_Bool SvxOle2Shape::createLink( const OUString& aLinkURL )
+     if( xObj.is() )
+     {
+         Rectangle aRect = pOle2Obj->GetLogicRect();
+-        if ( aRect.GetWidth() == 100 && aRect.GetHeight() == 100 )
++        if ( aRect.GetWidth() == 101 && aRect.GetHeight() == 101 )
+         {
+             // default size
+             try
+diff --git a/sw/inc/IDocumentLinksAdministration.hxx b/sw/inc/IDocumentLinksAdministration.hxx
+index a0b3ee6..94c6c1f 100644
+--- a/sw/inc/IDocumentLinksAdministration.hxx
++++ b/sw/inc/IDocumentLinksAdministration.hxx
+@@ -43,7 +43,7 @@ namespace sfx2 { class SvLinkSource;  class LinkManager; }
+     /** #i42634# Moved common code of SwReader::Read() and
+         SwDocShell::UpdateLinks() to new SwDoc::UpdateLinks():
+     */
+-    virtual void UpdateLinks(bool bUI) = 0;
++    virtual void UpdateLinks() = 0;
+ 
+     /** SS fuers Linken von Dokumentteilen  / ?? for linking of parts of documents.
+     */
+diff --git a/sw/inc/doc.hxx b/sw/inc/doc.hxx
+index b872119..38e0e10 100644
+--- a/sw/inc/doc.hxx
++++ b/sw/inc/doc.hxx
+@@ -796,7 +796,7 @@ public:
+     virtual void SetVisibleLinks(bool bFlag);
+     virtual sfx2::LinkManager& GetLinkManager();
+     virtual const sfx2::LinkManager& GetLinkManager() const;
+-    virtual void UpdateLinks(bool bUI);
++    virtual void UpdateLinks();
+     virtual bool GetData(const OUString& rItem, const OUString& rMimeType, ::com::sun::star::uno::Any& rValue) const;
+     virtual bool SetData(const OUString& rItem, const OUString& rMimeType, const ::com::sun::star::uno::Any& rValue);
+     virtual ::sfx2::SvLinkSource* CreateLinkSource(const OUString& rItem);
+diff --git a/sw/source/core/doc/docnew.cxx b/sw/source/core/doc/docnew.cxx
+index e2f6d77..0bbc2f3 100644
+--- a/sw/source/core/doc/docnew.cxx
++++ b/sw/source/core/doc/docnew.cxx
+@@ -958,55 +958,59 @@ IGrammarContact* getGrammarContact( const SwTxtNode& rTxtNode )
+ 
+ // #i42634# Moved common code of SwReader::Read() and SwDocShell::UpdateLinks()
+ // to new SwDoc::UpdateLinks():
+-void SwDoc::UpdateLinks( bool bUI )
++void SwDoc::UpdateLinks( )
+ {
+-    SfxObjectCreateMode eMode;
+-    sal_uInt16 nLinkMode = getLinkUpdateMode( true );
+-    if ( GetDocShell()) {
+-        sal_uInt16 nUpdateDocMode = GetDocShell()->GetUpdateDocMode();
+-        if( (nLinkMode != NEVER ||  document::UpdateDocMode::FULL_UPDATE == nUpdateDocMode) &&
+-            !GetLinkManager().GetLinks().empty() &&
+-            SFX_CREATE_MODE_INTERNAL !=
+-                        ( eMode = GetDocShell()->GetCreateMode()) &&
+-            SFX_CREATE_MODE_ORGANIZER != eMode &&
+-            SFX_CREATE_MODE_PREVIEW != eMode &&
+-            !GetDocShell()->IsPreview() )
+-        {
+-            SwViewShell* pVSh = 0;
+-            bool bAskUpdate = nLinkMode == MANUAL;
+-            bool bUpdate = true;
+-            switch(nUpdateDocMode)
+-            {
+-                case document::UpdateDocMode::NO_UPDATE:   bUpdate = false;break;
+-                case document::UpdateDocMode::QUIET_UPDATE:bAskUpdate = false; break;
+-                case document::UpdateDocMode::FULL_UPDATE: bAskUpdate = true; break;
+-            }
+-            if (nLinkMode == AUTOMATIC && !bAskUpdate)
+-            {
+-                SfxMedium * medium = GetDocShell()->GetMedium();
+-                if (!SvtSecurityOptions().isTrustedLocationUriForUpdatingLinks(
+-                        medium == nullptr ? OUString() : medium->GetName()))
+-                {
+-                    bAskUpdate = true;
+-                }
+-            }
+-            if( bUpdate && (bUI || !bAskUpdate) )
+-            {
+-                SfxMedium* pMedium = GetDocShell()->GetMedium();
+-                SfxFrame* pFrm = pMedium ? pMedium->GetLoadTargetFrame() : 0;
+-                Window* pDlgParent = pFrm ? &pFrm->GetWindow() : 0;
+-                if( GetCurrentViewShell() && !GetEditShell( &pVSh ) && !pVSh )
+-                {
+-                    SwViewShell aVSh( *this, 0, 0 );
+-
+-                    SET_CURR_SHELL( &aVSh );
+-                    GetLinkManager().UpdateAllLinks( bAskUpdate , true, false, pDlgParent );
+-                }
+-                else
+-                    GetLinkManager().UpdateAllLinks( bAskUpdate, true, false, pDlgParent );
+-            }
+-        }
+-    }
++     if (!GetDocShell())
++         return;
++     SfxObjectCreateMode eMode = GetDocShell()->GetCreateMode();
++     if (eMode == SfxObjectCreateMode::SFX_CREATE_MODE_INTERNAL)
++         return;
++     if (eMode == SfxObjectCreateMode::SFX_CREATE_MODE_ORGANIZER)
++         return;
++     if (eMode == SfxObjectCreateMode::SFX_CREATE_MODE_PREVIEW)
++         return;
++     if (GetDocShell()->IsPreview())
++         return;
++     if (GetLinkManager().GetLinks().empty())
++         return;
++     sal_uInt16 nLinkMode = getLinkUpdateMode(true);
++     sal_uInt16 nUpdateDocMode = GetDocShell()->GetUpdateDocMode();
++     if (nLinkMode == NEVER && nUpdateDocMode != document::UpdateDocMode::FULL_UPDATE)
++         return;
++ 
++     bool bAskUpdate = nLinkMode == MANUAL;
++     bool bUpdate = true;
++     switch(nUpdateDocMode)
++     {
++         case document::UpdateDocMode::NO_UPDATE:   bUpdate = false;break;
++         case document::UpdateDocMode::QUIET_UPDATE:bAskUpdate = false; break;
++         case document::UpdateDocMode::FULL_UPDATE: bAskUpdate = true; break;
++     }
++     if (nLinkMode == AUTOMATIC && !bAskUpdate)
++     {
++         SfxMedium * medium = GetDocShell()->GetMedium();
++         if (!SvtSecurityOptions().isTrustedLocationUriForUpdatingLinks(
++                 medium == nullptr ? OUString() : medium->GetName()))
++         {
++             bAskUpdate = true;
++         }
++     }
++     comphelper::EmbeddedObjectContainer& rEmbeddedObjectContainer = GetDocShell()->getEmbeddedObjectContainer();
++     if (bUpdate)
++     {
++         rEmbeddedObjectContainer.setUserAllowsLinkUpdate(true);
++ 
++         SfxMedium* pMedium = GetDocShell()->GetMedium();
++         SfxFrame* pFrame = pMedium ? pMedium->GetLoadTargetFrame() : nullptr;
++      
++         Window* pDlgParent = pFrame ? &pFrame->GetWindow() : nullptr;
++ 
++         GetLinkManager().UpdateAllLinks( bAskUpdate, true, false, pDlgParent );
++     }
++     else
++     {
++         rEmbeddedObjectContainer.setUserAllowsLinkUpdate(false);
++     }
+ }
+ 
+ ::sfx2::IXmlIdRegistry&
+diff --git a/sw/source/filter/basflt/shellio.cxx b/sw/source/filter/basflt/shellio.cxx
+index 622b4b7..d6f223e 100644
+--- a/sw/source/filter/basflt/shellio.cxx
++++ b/sw/source/filter/basflt/shellio.cxx
+@@ -368,7 +368,8 @@ sal_uLong SwReader::Read( const Reader& rOptions )
+         // #i42634# Moved common code of SwReader::Read() and
+         // SwDocShell::UpdateLinks() to new SwDoc::UpdateLinks():
+     // ATM still with Update
+-        pDoc->UpdateLinks( true );
++        //pDoc->getIDocumentLinksAdministration().UpdateLinks();
++        pDoc->UpdateLinks();
+ 
+         // not insert: set the redline mode read from settings.xml
+         eOld = static_cast<RedlineMode_t>(
+diff --git a/sw/source/ui/app/docsh.cxx b/sw/source/ui/app/docsh.cxx
+index 72564f3..bbba369 100644
+--- a/sw/source/ui/app/docsh.cxx
++++ b/sw/source/ui/app/docsh.cxx
+@@ -1173,7 +1173,7 @@ void SwDocShell::CalcLayoutForOLEObjects()
+ // read by the binary filter:
+ void SwDocShell::UpdateLinks()
+ {
+-    GetDoc()->UpdateLinks(true);
++    GetDoc()->UpdateLinks();
+     // #i50703# Update footnote numbers
+     SwTxtFtn::SetUniqueSeqRefNo( *GetDoc() );
+     SwNodeIndex aTmp( GetDoc()->GetNodes() );
