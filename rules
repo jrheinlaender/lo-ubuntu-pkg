@@ -428,19 +428,14 @@ else
 LIBCMIS_MINVER=0.5.0
 endif
 ifeq "$(DEB_VENDOR)" "Debian"
-  # chromium only available here.
+  # chromium only available on i386/amd64...
+  ifeq "$(DEB_HOST_ARCH)" "i386"
+      ENABLE_GDRIVE=y
+  endif
   ifeq "$(DEB_HOST_ARCH)" "amd64"
     ENABLE_GDRIVE=y
   endif
-  ifeq "$(DEB_HOST_ARCH)" "i386"
-    ENABLE_GDRIVE=y
-  endif
-  ifeq "$(DEB_HOST_ARCH)" "arm64"
-    ENABLE_GDRIVE=y
-  endif
-  ifeq "$(DEB_HOST_ARCH)" "armhf"
-    ENABLE_GDRIVE=y
-  endif
+  OOO_GDRIVE_ARCHS += i386 amd64
 endif
 SYSTEM_STUFF += jpeg
 SYSTEM_STUFF += libxml
@@ -679,7 +674,6 @@ endif
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "stretch-backports"
   BUGS=mailto:debian-backports@lists.debian.org
   SYSTEM_STUFF := $(filter-out libzmf libstaroffice orcus,$(SYSTEM_STUFF))
-  ENABLE_FIREBIRD=n
   STRETCH_BACKPORT=y
 endif
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "UNRELEASED"
@@ -770,7 +764,7 @@ ifneq (,$(filter graphite, $(SYSTEM_STUFF)))
 endif
 
 ifneq (,$(filter harfbuzz, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libharfbuzz-dev (>= 0.9.18)
+	BUILD_DEPS += , libharfbuzz-dev (>= 0.9.42)
 endif
 
 ifneq (,$(filter libexttextcat, $(SYSTEM_STUFF)))
@@ -1157,7 +1151,7 @@ endif
 
 ifeq "$(ENABLE_GDRIVE)" "y"
   # Google API stuff for GDrive access
-  BUILD_DEPS += , chromium (>= 39.0.2171.71-1) [i386 amd64 armhf arm64]
+  BUILD_DEPS += , chromium (>= 39.0.2171.71-1) [$(OOO_GDRIVE_ARCHS)]
   include /etc/chromium.d/apikeys
   CONFIGURE_FLAGS += --with-gdrive-client-id=$(GOOGLE_DEFAULT_CLIENT_ID) --with-gdrive-client-secret=$(GOOGLE_DEFAULT_CLIENT_SECRET)
 endif
@@ -3200,9 +3194,6 @@ ifeq (,$(filter orcus, $(SYSTEM_STUFF)))
 endif
 ifeq (,$(filter liblangtag, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.liblangtag >> debian/shlibs.local
-endif
-ifeq (,$(filter mysqlcppconn, $(SYSTEM_STUFF)))
-	cat debian/shlibs.override.mysqlcppconn >> debian/shlibs.local
 endif
 	# the other way as the above, depend on a newer libcmis to that the
 	# advertised google 2-factor-auth fixes are present
