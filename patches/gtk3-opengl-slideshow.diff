@@ -1,97 +1,21 @@
-From 712af05b25bd4fd5343a5622b7a42eff177eeb83 Mon Sep 17 00:00:00 2001
-From: =?UTF-8?q?Caol=C3=A1n=20McNamara?= <caolanm@redhat.com>
-Date: Thu, 1 Dec 2016 12:32:09 +0000
-Subject: [PATCH] rework diamond transition to use only opengl core
-
-cause that's all we've got in gtk3
-
-Change-Id: I6a47e344ccd39ba63e7a51ae18f89bb05bb642c4
----
- .../OGLTrans/generic/OGLTrans_TransitionImpl.cxx   | 28 +++++++++++++++-------
- 1 file changed, 20 insertions(+), 8 deletions(-)
-
-diff --git a/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionImpl.cxx b/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionImpl.cxx
-index 8b508c6..9eb1e51 100644
---- a/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionImpl.cxx
-+++ b/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionImpl.cxx
-@@ -317,8 +317,6 @@ OGLTransitionImpl::displayUnbufferedSlide(
-         double SlideWidthScale, double SlideHeightScale )
- {
-     CHECK_GL_ERROR();
--    glPushMatrix();
--    CHECK_GL_ERROR();
-     glBindTexture(GL_TEXTURE_2D, glSlideTex);
-     CHECK_GL_ERROR();
-     glBindVertexArray(0);
-@@ -336,8 +334,6 @@ OGLTransitionImpl::displayUnbufferedSlide(
-     CHECK_GL_ERROR();
-     glBindBuffer(GL_ARRAY_BUFFER, m_nVertexBufferObject);
-     CHECK_GL_ERROR();
--    glPopMatrix();
--    CHECK_GL_ERROR();
- }
- 
- void OGLTransitionImpl::displayScene( double nTime, double SlideWidth, double SlideHeight, double DispWidth, double DispHeight )
-@@ -360,15 +356,31 @@ void Primitive::display(GLint primitiveTransformLocation, double nTime, double W
-         CHECK_GL_ERROR();
-     }
- 
--    glPushClientAttrib(GL_CLIENT_VERTEX_ARRAY_BIT);
-+    GLuint nVertexArrayObject;
-+    glGenVertexArrays(1, &nVertexArrayObject);
-+    CHECK_GL_ERROR();
-+    glBindVertexArray(nVertexArrayObject);
-+    CHECK_GL_ERROR();
-+
-+    GLuint nBuffer;
-+    glGenBuffers(1, &nBuffer);
-     CHECK_GL_ERROR();
--    glEnableClientState( GL_VERTEX_ARRAY );
-+    glBindBuffer(GL_ARRAY_BUFFER, nBuffer);
-     CHECK_GL_ERROR();
--    glVertexPointer( 3, GL_FLOAT, sizeof(Vertex), &Vertices[0] );
-+    glBufferData(GL_ARRAY_BUFFER, getVerticesSize(), Vertices.data(), GL_STATIC_DRAW);
-+
-+    glEnableVertexAttribArray(0);
-+    CHECK_GL_ERROR();
-+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), nullptr);
-+
-     CHECK_GL_ERROR();
-     glDrawArrays( GL_TRIANGLES, 0, getVerticesSize() );
-     CHECK_GL_ERROR();
--    glPopClientAttrib();
-+
-+    glDeleteBuffers(1, &nBuffer);
-+    CHECK_GL_ERROR();
-+
-+    glDeleteVertexArrays(1, &nVertexArrayObject);
- 
-     CHECK_GL_ERROR();
- }
--- 
-2.9.3
-
-From fdc33220c54238850958001b536c8a54bf40f9c1 Mon Sep 17 00:00:00 2001
+From 8bd9db90383ee008777903c35c7a5eb2c5352e71 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Caol=C3=A1n=20McNamara?= <caolanm@redhat.com>
 Date: Fri, 25 Nov 2016 14:11:13 +0000
-Subject: [PATCH] gtk3: implement opengl support for slideshow
+Subject: gtk3: implement opengl support for slideshow
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
 
 all of them work, except "Fall" doesn't look right, but it has
 the exact same problem under gtk2/gen to.
 
 Change-Id: I73cb9c0fb8211f727198be78d90d4f80a4f8c7c8
----
- include/vcl/opengl/OpenGLContext.hxx               |   2 +
- .../OGLTrans/generic/OGLTrans_TransitionImpl.cxx   |  73 ++++++------
- .../OGLTrans/generic/OGLTrans_TransitionImpl.hxx   |   9 +-
- .../OGLTrans/generic/OGLTrans_TransitionerImpl.cxx |   7 +-
- vcl/inc/unx/gtk/gtkinst.hxx                        |   1 +
- vcl/source/opengl/OpenGLContext.cxx                |   5 +
- vcl/unx/gtk3/gtk3gtkinst.cxx                       | 127 +++++++++++++++++++++
- 7 files changed, 181 insertions(+), 43 deletions(-)
+Reviewed-on: https://gerrit.libreoffice.org/31214
+Reviewed-by: Caolán McNamara <caolanm@redhat.com>
+Tested-by: Caolán McNamara <caolanm@redhat.com>
 
 diff --git a/include/vcl/opengl/OpenGLContext.hxx b/include/vcl/opengl/OpenGLContext.hxx
-index 7cd6954..2929006 100644
+index 37d354e..5fc88d6 100644
 --- a/include/vcl/opengl/OpenGLContext.hxx
 +++ b/include/vcl/opengl/OpenGLContext.hxx
 @@ -129,6 +129,8 @@ public:
@@ -103,10 +27,10 @@ index 7cd6954..2929006 100644
      virtual void swapBuffers();
      virtual void sync();
      void show();
-diff --git a/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionImpl.cxx b/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionImpl.cxx
-index 94b2217..f253a07 100644
---- a/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionImpl.cxx
-+++ b/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionImpl.cxx
+diff --git a/slideshow/source/engine/opengl/TransitionImpl.cxx b/slideshow/source/engine/opengl/TransitionImpl.cxx
+index 1c69121..e28b17f 100644
+--- a/slideshow/source/engine/opengl/TransitionImpl.cxx
++++ b/slideshow/source/engine/opengl/TransitionImpl.cxx
 @@ -29,6 +29,7 @@
  #include <glm/gtc/matrix_transform.hpp>
  #include <glm/gtc/type_ptr.hpp>
@@ -169,7 +93,7 @@ index 94b2217..f253a07 100644
      CHECK_GL_ERROR();
      displayScene( nTime, SlideWidth, SlideHeight, DispWidth, DispHeight );
      CHECK_GL_ERROR();
-@@ -536,9 +537,9 @@ public:
+@@ -534,9 +535,9 @@ public:
  
  private:
      virtual GLuint makeShader() const override;
@@ -181,7 +105,7 @@ index 94b2217..f253a07 100644
          glDisable(GL_CULL_FACE);
      }
  
-@@ -553,7 +554,7 @@ GLuint ReflectionTransition::makeShader() const
+@@ -551,7 +552,7 @@ GLuint ReflectionTransition::makeShader() const
  }
  
  void ReflectionTransition::displaySlides_( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex,
@@ -190,7 +114,7 @@ index 94b2217..f253a07 100644
  {
      CHECK_GL_ERROR();
      applyOverallOperations( nTime, SlideWidthScale, SlideHeightScale );
-@@ -601,7 +602,7 @@ public:
+@@ -598,7 +599,7 @@ public:
  private:
      virtual GLuint makeShader() const override;
  
@@ -199,7 +123,7 @@ index 94b2217..f253a07 100644
  };
  
  GLuint SimpleTransition::makeShader() const
-@@ -610,7 +611,7 @@ GLuint SimpleTransition::makeShader() const
+@@ -607,7 +608,7 @@ GLuint SimpleTransition::makeShader() const
  }
  
  void SimpleTransition::displaySlides_( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex,
@@ -208,7 +132,7 @@ index 94b2217..f253a07 100644
  {
      CHECK_GL_ERROR();
      applyOverallOperations( nTime, SlideWidthScale, SlideHeightScale );
-@@ -860,10 +861,10 @@ public:
+@@ -857,10 +858,10 @@ public:
      {}
  
  private:
@@ -221,15 +145,17 @@ index 94b2217..f253a07 100644
  {
      applyOverallOperations( nTime, SlideWidthScale, SlideHeightScale );
  
-@@ -1198,13 +1199,13 @@ public:
+@@ -1195,7 +1196,7 @@ public:
          {}
  
  private:
 -    virtual void displaySlides_( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, double SlideWidthScale, double SlideHeightScale ) override;
 +    virtual void displaySlides_( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, double SlideWidthScale, double SlideHeightScale, OpenGLContext *pContext ) override;
- 
-     Primitives_t makeLeavingSlide(double nTime) const;
  };
+ 
+ Primitives_t makeLeavingSlide(double nTime)
+@@ -1229,7 +1230,7 @@ Primitives_t makeLeavingSlide(double nTime)
+ }
  
  void DiamondTransition::displaySlides_( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex,
 -                                              double SlideWidthScale, double SlideHeightScale )
@@ -237,7 +163,7 @@ index 94b2217..f253a07 100644
  {
      CHECK_GL_ERROR();
      applyOverallOperations( nTime, SlideWidthScale, SlideHeightScale );
-@@ -1416,7 +1417,7 @@ protected:
+@@ -1411,7 +1412,7 @@ protected:
      {}
  
      virtual void finishTransition() override;
@@ -246,7 +172,7 @@ index 94b2217..f253a07 100644
  
  private:
      /** various data */
-@@ -1493,7 +1494,7 @@ void initPermTexture(GLuint *texID)
+@@ -1488,7 +1489,7 @@ void initPermTexture(GLuint *texID)
      CHECK_GL_ERROR();
  }
  
@@ -255,7 +181,7 @@ index 94b2217..f253a07 100644
  {
      CHECK_GL_ERROR();
      GLint location = glGetUniformLocation( m_nProgramObject, "permTexture" );
-@@ -1634,8 +1635,8 @@ public:
+@@ -1629,8 +1630,8 @@ public:
  private:
      virtual void finishTransition() override;
      virtual GLuint makeShader() const override;
@@ -266,7 +192,7 @@ index 94b2217..f253a07 100644
  
      GLint mnSlideLocation = -1;
      GLint mnTileInfoLocation = -1;
-@@ -1684,10 +1685,10 @@ glm::mat4 lookAt(const glm::vec3& eye, const glm::vec3& center, const glm::vec3&
+@@ -1679,10 +1680,10 @@ glm::mat4 lookAt(const glm::vec3& eye, const glm::vec3& center, const glm::vec3&
                       -glm::dot(s, eye), -glm::dot(u, eye), glm::dot(f, eye), 1);
  }
  
@@ -279,7 +205,7 @@ index 94b2217..f253a07 100644
      CHECK_GL_ERROR();
  
      mnSlideLocation = glGetUniformLocation(m_nProgramObject, "slide");
-@@ -1788,7 +1789,7 @@ void VortexTransition::prepareTransition( sal_Int32 glLeavingSlideTex, sal_Int32
+@@ -1783,7 +1784,7 @@ void VortexTransition::prepareTransition( sal_Int32 glLeavingSlideTex, sal_Int32
          }
      }
  
@@ -288,7 +214,7 @@ index 94b2217..f253a07 100644
      glBindTexture(GL_TEXTURE_2D, 0);
  
      glActiveTexture( GL_TEXTURE2 );
-@@ -1798,7 +1799,7 @@ void VortexTransition::prepareTransition( sal_Int32 glLeavingSlideTex, sal_Int32
+@@ -1793,7 +1794,7 @@ void VortexTransition::prepareTransition( sal_Int32 glLeavingSlideTex, sal_Int32
      glActiveTexture( GL_TEXTURE0 );
  }
  
@@ -297,7 +223,7 @@ index 94b2217..f253a07 100644
  {
      CHECK_GL_ERROR();
      applyOverallOperations( nTime, SlideWidthScale, SlideHeightScale );
-@@ -1820,7 +1821,7 @@ void VortexTransition::displaySlides_( double nTime, sal_Int32 glLeavingSlideTex
+@@ -1815,7 +1816,7 @@ void VortexTransition::displaySlides_( double nTime, sal_Int32 glLeavingSlideTex
      displaySlide( nTime, glEnteringSlideTex, getScene().getEnteringSlide(), SlideWidthScale, SlideHeightScale );
  
      glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
@@ -306,7 +232,7 @@ index 94b2217..f253a07 100644
      glUniform1f( mnShadowLocation, 0.0 );
      glUniform1f( mnSlideLocation, 0.0 );
      displaySlide( nTime, glLeavingSlideTex, getScene().getLeavingSlide(), SlideWidthScale, SlideHeightScale );
-@@ -1882,7 +1883,7 @@ public:
+@@ -1877,7 +1878,7 @@ public:
  
  private:
      virtual GLuint makeShader() const override;
@@ -315,7 +241,7 @@ index 94b2217..f253a07 100644
      virtual void prepare( double nTime, double SlideWidth, double SlideHeight, double DispWidth, double DispHeight ) override;
  
      glm::vec2 maCenter;
-@@ -1894,7 +1895,7 @@ GLuint RippleTransition::makeShader() const
+@@ -1889,7 +1890,7 @@ GLuint RippleTransition::makeShader() const
      return OpenGLHelper::LoadShaders( "basicVertexShader", "rippleFragmentShader" );
  }
  
@@ -324,7 +250,7 @@ index 94b2217..f253a07 100644
  {
      GLint nCenterLocation = glGetUniformLocation(m_nProgramObject, "center");
      CHECK_GL_ERROR();
-@@ -1979,7 +1980,7 @@ public:
+@@ -1974,7 +1975,7 @@ public:
  
  private:
      virtual GLuint makeShader() const override;
@@ -333,7 +259,7 @@ index 94b2217..f253a07 100644
      virtual void finish( double nTime, double SlideWidth, double SlideHeight, double DispWidth, double DispHeight ) override;
  
      GLuint maBuffer = 0;
-@@ -1995,10 +1996,10 @@ struct ThreeFloats
+@@ -1990,10 +1991,10 @@ struct ThreeFloats
      GLfloat x, y, z;
  };
  
@@ -346,7 +272,7 @@ index 94b2217..f253a07 100644
      CHECK_GL_ERROR();
  
      GLint nNumTilesLocation = glGetUniformLocation(m_nProgramObject, "numTiles");
-@@ -2083,8 +2084,8 @@ public:
+@@ -2077,8 +2078,8 @@ public:
  private:
      virtual void finishTransition() override;
      virtual GLuint makeShader() const override;
@@ -357,7 +283,7 @@ index 94b2217..f253a07 100644
  
      GLint maHexagonSizeLocation = -1;
      GLint maSelectedTextureLocation = -1;
-@@ -2117,10 +2118,10 @@ GLuint HoneycombTransition::makeShader() const
+@@ -2111,10 +2112,10 @@ GLuint HoneycombTransition::makeShader() const
      return OpenGLHelper::LoadShaders( "honeycombVertexShader", "honeycombFragmentShader", "honeycombGeometryShader" );
  }
  
@@ -370,7 +296,7 @@ index 94b2217..f253a07 100644
  
      CHECK_GL_ERROR();
      maHexagonSizeLocation = glGetUniformLocation(m_nProgramObject, "hexagonSize");
-@@ -2194,11 +2195,11 @@ void HoneycombTransition::prepareTransition( sal_Int32 glLeavingSlideTex, sal_In
+@@ -2188,11 +2189,11 @@ void HoneycombTransition::prepareTransition( sal_Int32 glLeavingSlideTex, sal_In
          return;
      }
  
@@ -384,7 +310,7 @@ index 94b2217..f253a07 100644
  {
      CHECK_GL_ERROR();
      applyOverallOperations(nTime, SlideWidthScale, SlideHeightScale);
-@@ -2222,7 +2223,7 @@ void HoneycombTransition::displaySlides_( double nTime, sal_Int32 glLeavingSlide
+@@ -2216,7 +2217,7 @@ void HoneycombTransition::displaySlides_( double nTime, sal_Int32 glLeavingSlide
  
      // The back (entering) slide needs to be drawn before the front (leaving) one in order for blending to work.
      glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
@@ -393,11 +319,11 @@ index 94b2217..f253a07 100644
      glUniform1f(mnShadowLocation, 0.0);
      glUniform1f(maSelectedTextureLocation, 0.0);
      glUniform1f(maHexagonSizeLocation, 1.0f - borderSize);
-diff --git a/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionImpl.hxx b/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionImpl.hxx
-index fe6a1c5..81288db 100644
---- a/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionImpl.hxx
-+++ b/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionImpl.hxx
-@@ -35,6 +35,7 @@
+diff --git a/slideshow/source/engine/opengl/TransitionImpl.hxx b/slideshow/source/engine/opengl/TransitionImpl.hxx
+index 6f2e164..a7b2b42 100644
+--- a/slideshow/source/engine/opengl/TransitionImpl.hxx
++++ b/slideshow/source/engine/opengl/TransitionImpl.hxx
+@@ -36,6 +36,7 @@
  #include <vector>
  
  class Primitive;
@@ -405,7 +331,7 @@ index fe6a1c5..81288db 100644
  class Operation;
  class SceneObject;
  class TransitionData;
-@@ -139,10 +140,10 @@ public:
+@@ -136,10 +137,10 @@ public:
  
      /** Prepare transition.
        */
@@ -418,7 +344,7 @@ index fe6a1c5..81288db 100644
      /** Clean up after transition.
        */
      void finish();
-@@ -185,7 +186,7 @@ private:
+@@ -182,7 +183,7 @@ private:
        *
        * Default implementation does nothing.
        */
@@ -427,7 +353,7 @@ index fe6a1c5..81288db 100644
  
      /** This function is called when the transition needs to clear after itself, like delete own textures etc.
        *
-@@ -198,7 +199,7 @@ private:
+@@ -195,7 +196,7 @@ private:
        * Default implementation applies overall operations and then
        * displays both slides.
        */
@@ -436,11 +362,11 @@ index fe6a1c5..81288db 100644
  
      /** This function is called in prepare method to create the GL program.
        *
-diff --git a/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionerImpl.cxx b/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionerImpl.cxx
-index 266228c..67de19b 100644
---- a/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionerImpl.cxx
-+++ b/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionerImpl.cxx
-@@ -408,7 +408,7 @@ void OGLTransitionerImpl::impl_prepareSlides()
+diff --git a/slideshow/source/engine/opengl/TransitionerImpl.cxx b/slideshow/source/engine/opengl/TransitionerImpl.cxx
+index 01cd3e5..f2f0b3f 100644
+--- a/slideshow/source/engine/opengl/TransitionerImpl.cxx
++++ b/slideshow/source/engine/opengl/TransitionerImpl.cxx
+@@ -407,7 +407,7 @@ void OGLTransitionerImpl::impl_prepareSlides()
  bool OGLTransitionerImpl::impl_prepareTransition()
  {
      if( mpTransition && mpTransition->getSettings().mnRequiredGLVersion <= mnGLVersion )
@@ -449,7 +375,7 @@ index 266228c..67de19b 100644
      return false;
  }
  
-@@ -1053,10 +1053,11 @@ void SAL_CALL OGLTransitionerImpl::update( double nTime ) throw (uno::RuntimeExc
+@@ -1046,10 +1046,11 @@ void SAL_CALL OGLTransitionerImpl::update( double nTime ) throw (uno::RuntimeExc
      CHECK_GL_ERROR();
  
      const GLWindow& rGLWindow(mpContext->getOpenGLWindow());
@@ -464,10 +390,10 @@ index 266228c..67de19b 100644
      mpContext->swapBuffers();
  
 diff --git a/vcl/inc/unx/gtk/gtkinst.hxx b/vcl/inc/unx/gtk/gtkinst.hxx
-index 941fa4a..6e114d1 100644
+index 514b13f..e20ca9d 100644
 --- a/vcl/inc/unx/gtk/gtkinst.hxx
 +++ b/vcl/inc/unx/gtk/gtkinst.hxx
-@@ -236,6 +236,7 @@ public:
+@@ -239,6 +239,7 @@ public:
      virtual css::uno::Reference< css::uno::XInterface > CreateClipboard( const css::uno::Sequence< css::uno::Any >& i_rArguments ) override;
      virtual css::uno::Reference< css::uno::XInterface > CreateDragSource() override;
      virtual css::uno::Reference< css::uno::XInterface > CreateDropTarget() override;
@@ -476,10 +402,10 @@ index 941fa4a..6e114d1 100644
  
      virtual const cairo_font_options_t* GetCairoFontOptions() override;
 diff --git a/vcl/source/opengl/OpenGLContext.cxx b/vcl/source/opengl/OpenGLContext.cxx
-index 2412191..0e2a48d 100644
+index c04a0cf..743107b 100644
 --- a/vcl/source/opengl/OpenGLContext.cxx
 +++ b/vcl/source/opengl/OpenGLContext.cxx
-@@ -313,6 +313,11 @@ void OpenGLContext::InitGLDebugging()
+@@ -330,6 +330,11 @@ void OpenGLContext::InitGLDebugging()
  #endif
  }
  
@@ -492,7 +418,7 @@ index 2412191..0e2a48d 100644
  {
      if(m_xWindow)
 diff --git a/vcl/unx/gtk3/gtk3gtkinst.cxx b/vcl/unx/gtk3/gtk3gtkinst.cxx
-index 7202b468..7bb8adb 100644
+index 7148882..947bcc9 100644
 --- a/vcl/unx/gtk3/gtk3gtkinst.cxx
 +++ b/vcl/unx/gtk3/gtk3gtkinst.cxx
 @@ -916,4 +916,131 @@ Reference< XInterface > GtkInstance::CreateDragSource()
@@ -628,5 +554,5 @@ index 7202b468..7bb8adb 100644
 +
  /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
 -- 
-2.9.3
+cgit v0.10.2
 
