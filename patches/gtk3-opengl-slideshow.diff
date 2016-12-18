@@ -1,0 +1,632 @@
+From 712af05b25bd4fd5343a5622b7a42eff177eeb83 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Caol=C3=A1n=20McNamara?= <caolanm@redhat.com>
+Date: Thu, 1 Dec 2016 12:32:09 +0000
+Subject: [PATCH] rework diamond transition to use only opengl core
+
+cause that's all we've got in gtk3
+
+Change-Id: I6a47e344ccd39ba63e7a51ae18f89bb05bb642c4
+---
+ .../OGLTrans/generic/OGLTrans_TransitionImpl.cxx   | 28 +++++++++++++++-------
+ 1 file changed, 20 insertions(+), 8 deletions(-)
+
+diff --git a/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionImpl.cxx b/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionImpl.cxx
+index 8b508c6..9eb1e51 100644
+--- a/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionImpl.cxx
++++ b/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionImpl.cxx
+@@ -317,8 +317,6 @@ OGLTransitionImpl::displayUnbufferedSlide(
+         double SlideWidthScale, double SlideHeightScale )
+ {
+     CHECK_GL_ERROR();
+-    glPushMatrix();
+-    CHECK_GL_ERROR();
+     glBindTexture(GL_TEXTURE_2D, glSlideTex);
+     CHECK_GL_ERROR();
+     glBindVertexArray(0);
+@@ -336,8 +334,6 @@ OGLTransitionImpl::displayUnbufferedSlide(
+     CHECK_GL_ERROR();
+     glBindBuffer(GL_ARRAY_BUFFER, m_nVertexBufferObject);
+     CHECK_GL_ERROR();
+-    glPopMatrix();
+-    CHECK_GL_ERROR();
+ }
+ 
+ void OGLTransitionImpl::displayScene( double nTime, double SlideWidth, double SlideHeight, double DispWidth, double DispHeight )
+@@ -360,15 +356,31 @@ void Primitive::display(GLint primitiveTransformLocation, double nTime, double W
+         CHECK_GL_ERROR();
+     }
+ 
+-    glPushClientAttrib(GL_CLIENT_VERTEX_ARRAY_BIT);
++    GLuint nVertexArrayObject;
++    glGenVertexArrays(1, &nVertexArrayObject);
++    CHECK_GL_ERROR();
++    glBindVertexArray(nVertexArrayObject);
++    CHECK_GL_ERROR();
++
++    GLuint nBuffer;
++    glGenBuffers(1, &nBuffer);
+     CHECK_GL_ERROR();
+-    glEnableClientState( GL_VERTEX_ARRAY );
++    glBindBuffer(GL_ARRAY_BUFFER, nBuffer);
+     CHECK_GL_ERROR();
+-    glVertexPointer( 3, GL_FLOAT, sizeof(Vertex), &Vertices[0] );
++    glBufferData(GL_ARRAY_BUFFER, getVerticesSize(), Vertices.data(), GL_STATIC_DRAW);
++
++    glEnableVertexAttribArray(0);
++    CHECK_GL_ERROR();
++    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), nullptr);
++
+     CHECK_GL_ERROR();
+     glDrawArrays( GL_TRIANGLES, 0, getVerticesSize() );
+     CHECK_GL_ERROR();
+-    glPopClientAttrib();
++
++    glDeleteBuffers(1, &nBuffer);
++    CHECK_GL_ERROR();
++
++    glDeleteVertexArrays(1, &nVertexArrayObject);
+ 
+     CHECK_GL_ERROR();
+ }
+-- 
+2.9.3
+
+From fdc33220c54238850958001b536c8a54bf40f9c1 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Caol=C3=A1n=20McNamara?= <caolanm@redhat.com>
+Date: Fri, 25 Nov 2016 14:11:13 +0000
+Subject: [PATCH] gtk3: implement opengl support for slideshow
+
+all of them work, except "Fall" doesn't look right, but it has
+the exact same problem under gtk2/gen to.
+
+Change-Id: I73cb9c0fb8211f727198be78d90d4f80a4f8c7c8
+---
+ include/vcl/opengl/OpenGLContext.hxx               |   2 +
+ .../OGLTrans/generic/OGLTrans_TransitionImpl.cxx   |  73 ++++++------
+ .../OGLTrans/generic/OGLTrans_TransitionImpl.hxx   |   9 +-
+ .../OGLTrans/generic/OGLTrans_TransitionerImpl.cxx |   7 +-
+ vcl/inc/unx/gtk/gtkinst.hxx                        |   1 +
+ vcl/source/opengl/OpenGLContext.cxx                |   5 +
+ vcl/unx/gtk3/gtk3gtkinst.cxx                       | 127 +++++++++++++++++++++
+ 7 files changed, 181 insertions(+), 43 deletions(-)
+
+diff --git a/include/vcl/opengl/OpenGLContext.hxx b/include/vcl/opengl/OpenGLContext.hxx
+index 7cd6954..2929006 100644
+--- a/include/vcl/opengl/OpenGLContext.hxx
++++ b/include/vcl/opengl/OpenGLContext.hxx
+@@ -129,6 +129,8 @@ public:
+     void registerAsCurrent();
+     /// reset the GL context so this context is not implicit in subsequent GL calls.
+     virtual void resetCurrent();
++    /// unbind the GL_FRAMEBUFFER to its default state, needed for gtk3
++    virtual void restoreDefaultFramebuffer();
+     virtual void swapBuffers();
+     virtual void sync();
+     void show();
+diff --git a/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionImpl.cxx b/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionImpl.cxx
+index 94b2217..f253a07 100644
+--- a/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionImpl.cxx
++++ b/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionImpl.cxx
+@@ -29,6 +29,7 @@
+ #include <glm/gtc/matrix_transform.hpp>
+ #include <glm/gtc/type_ptr.hpp>
+ #include <vcl/opengl/OpenGLHelper.hxx>
++#include <vcl/opengl/OpenGLContext.hxx>
+ 
+ #include <algorithm>
+ #include <array>
+@@ -132,7 +133,7 @@ static std::vector<int> uploadPrimitives(const Primitives_t& primitives)
+     return indices;
+ }
+ 
+-bool OGLTransitionImpl::prepare( sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex )
++bool OGLTransitionImpl::prepare( sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, OpenGLContext *pContext )
+ {
+     m_nProgramObject = makeShader();
+     if (!m_nProgramObject)
+@@ -200,7 +201,7 @@ bool OGLTransitionImpl::prepare( sal_Int32 glLeavingSlideTex, sal_Int32 glEnteri
+     glBindBuffer(GL_ARRAY_BUFFER, 0);
+     CHECK_GL_ERROR();
+ 
+-    prepareTransition( glLeavingSlideTex, glEnteringSlideTex );
++    prepareTransition( glLeavingSlideTex, glEnteringSlideTex, pContext );
+     return true;
+ }
+ 
+@@ -233,7 +234,7 @@ void OGLTransitionImpl::finish( double, double, double, double, double )
+ {
+ }
+ 
+-void OGLTransitionImpl::prepareTransition( sal_Int32, sal_Int32 )
++void OGLTransitionImpl::prepareTransition( sal_Int32, sal_Int32, OpenGLContext* )
+ {
+ }
+ 
+@@ -241,7 +242,7 @@ void OGLTransitionImpl::finishTransition()
+ {
+ }
+ 
+-void OGLTransitionImpl::displaySlides_( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, double SlideWidthScale, double SlideHeightScale )
++void OGLTransitionImpl::displaySlides_( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, double SlideWidthScale, double SlideHeightScale, OpenGLContext * )
+ {
+     CHECK_GL_ERROR();
+     applyOverallOperations( nTime, SlideWidthScale, SlideHeightScale );
+@@ -257,7 +258,7 @@ void OGLTransitionImpl::displaySlides_( double nTime, sal_Int32 glLeavingSlideTe
+ }
+ 
+ void OGLTransitionImpl::display( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex,
+-                                 double SlideWidth, double SlideHeight, double DispWidth, double DispHeight )
++                                 double SlideWidth, double SlideHeight, double DispWidth, double DispHeight, OpenGLContext *pContext )
+ {
+     const double SlideWidthScale = SlideWidth/DispWidth;
+     const double SlideHeightScale = SlideHeight/DispHeight;
+@@ -267,7 +268,7 @@ void OGLTransitionImpl::display( double nTime, sal_Int32 glLeavingSlideTex, sal_
+     prepare( nTime, SlideWidth, SlideHeight, DispWidth, DispHeight );
+ 
+     CHECK_GL_ERROR();
+-    displaySlides_( nTime, glLeavingSlideTex, glEnteringSlideTex, SlideWidthScale, SlideHeightScale );
++    displaySlides_( nTime, glLeavingSlideTex, glEnteringSlideTex, SlideWidthScale, SlideHeightScale, pContext );
+     CHECK_GL_ERROR();
+     displayScene( nTime, SlideWidth, SlideHeight, DispWidth, DispHeight );
+     CHECK_GL_ERROR();
+@@ -536,9 +537,9 @@ public:
+ 
+ private:
+     virtual GLuint makeShader() const override;
+-    virtual void displaySlides_( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, double SlideWidthScale, double SlideHeightScale ) override;
++    virtual void displaySlides_( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, double SlideWidthScale, double SlideHeightScale, OpenGLContext *pContext ) override;
+ 
+-    virtual void prepareTransition( sal_Int32, sal_Int32 ) override {
++    virtual void prepareTransition( sal_Int32, sal_Int32, OpenGLContext* ) override {
+         glDisable(GL_CULL_FACE);
+     }
+ 
+@@ -553,7 +554,7 @@ GLuint ReflectionTransition::makeShader() const
+ }
+ 
+ void ReflectionTransition::displaySlides_( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex,
+-                                              double SlideWidthScale, double SlideHeightScale )
++                                              double SlideWidthScale, double SlideHeightScale, OpenGLContext * )
+ {
+     CHECK_GL_ERROR();
+     applyOverallOperations( nTime, SlideWidthScale, SlideHeightScale );
+@@ -601,7 +602,7 @@ public:
+ private:
+     virtual GLuint makeShader() const override;
+ 
+-    virtual void displaySlides_( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, double SlideWidthScale, double SlideHeightScale ) override;
++    virtual void displaySlides_( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, double SlideWidthScale, double SlideHeightScale, OpenGLContext *pContext ) override;
+ };
+ 
+ GLuint SimpleTransition::makeShader() const
+@@ -610,7 +611,7 @@ GLuint SimpleTransition::makeShader() const
+ }
+ 
+ void SimpleTransition::displaySlides_( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex,
+-                                              double SlideWidthScale, double SlideHeightScale )
++                                       double SlideWidthScale, double SlideHeightScale, OpenGLContext * )
+ {
+     CHECK_GL_ERROR();
+     applyOverallOperations( nTime, SlideWidthScale, SlideHeightScale );
+@@ -860,10 +861,10 @@ public:
+     {}
+ 
+ private:
+-    virtual void displaySlides_(double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, double SlideWidthScale, double SlideHeightScale) override;
++    virtual void displaySlides_(double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, double SlideWidthScale, double SlideHeightScale, OpenGLContext *pContext) override;
+ };
+ 
+-void RochadeTransition::displaySlides_( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, double SlideWidthScale, double SlideHeightScale )
++void RochadeTransition::displaySlides_( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, double SlideWidthScale, double SlideHeightScale, OpenGLContext * )
+ {
+     applyOverallOperations( nTime, SlideWidthScale, SlideHeightScale );
+ 
+@@ -1198,13 +1199,13 @@ public:
+         {}
+ 
+ private:
+-    virtual void displaySlides_( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, double SlideWidthScale, double SlideHeightScale ) override;
++    virtual void displaySlides_( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, double SlideWidthScale, double SlideHeightScale, OpenGLContext *pContext ) override;
+ 
+     Primitives_t makeLeavingSlide(double nTime) const;
+ };
+ 
+ void DiamondTransition::displaySlides_( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex,
+-                                              double SlideWidthScale, double SlideHeightScale )
++                                        double SlideWidthScale, double SlideHeightScale, OpenGLContext * )
+ {
+     CHECK_GL_ERROR();
+     applyOverallOperations( nTime, SlideWidthScale, SlideHeightScale );
+@@ -1416,7 +1417,7 @@ protected:
+     {}
+ 
+     virtual void finishTransition() override;
+-    virtual void prepareTransition( sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex ) override;
++    virtual void prepareTransition( sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, OpenGLContext *pContext ) override;
+ 
+ private:
+     /** various data */
+@@ -1493,7 +1494,7 @@ void initPermTexture(GLuint *texID)
+     CHECK_GL_ERROR();
+ }
+ 
+-void PermTextureTransition::prepareTransition( sal_Int32, sal_Int32 )
++void PermTextureTransition::prepareTransition( sal_Int32, sal_Int32, OpenGLContext* )
+ {
+     CHECK_GL_ERROR();
+     GLint location = glGetUniformLocation( m_nProgramObject, "permTexture" );
+@@ -1634,8 +1635,8 @@ public:
+ private:
+     virtual void finishTransition() override;
+     virtual GLuint makeShader() const override;
+-    virtual void prepareTransition( sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex ) override;
+-    virtual void displaySlides_( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, double SlideWidthScale, double SlideHeightScale ) override;
++    virtual void prepareTransition( sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, OpenGLContext *pContext ) override;
++    virtual void displaySlides_( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, double SlideWidthScale, double SlideHeightScale, OpenGLContext *pContext ) override;
+ 
+     GLint mnSlideLocation = -1;
+     GLint mnTileInfoLocation = -1;
+@@ -1684,10 +1685,10 @@ glm::mat4 lookAt(const glm::vec3& eye, const glm::vec3& center, const glm::vec3&
+                      -glm::dot(s, eye), -glm::dot(u, eye), glm::dot(f, eye), 1);
+ }
+ 
+-void VortexTransition::prepareTransition( sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex )
++void VortexTransition::prepareTransition( sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, OpenGLContext *pContext )
+ {
+     CHECK_GL_ERROR();
+-    PermTextureTransition::prepareTransition( glLeavingSlideTex, glEnteringSlideTex );
++    PermTextureTransition::prepareTransition( glLeavingSlideTex, glEnteringSlideTex, pContext );
+     CHECK_GL_ERROR();
+ 
+     mnSlideLocation = glGetUniformLocation(m_nProgramObject, "slide");
+@@ -1788,7 +1789,7 @@ void VortexTransition::prepareTransition( sal_Int32 glLeavingSlideTex, sal_Int32
+         }
+     }
+ 
+-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
++    pContext->restoreDefaultFramebuffer();
+     glBindTexture(GL_TEXTURE_2D, 0);
+ 
+     glActiveTexture( GL_TEXTURE2 );
+@@ -1798,7 +1799,7 @@ void VortexTransition::prepareTransition( sal_Int32 glLeavingSlideTex, sal_Int32
+     glActiveTexture( GL_TEXTURE0 );
+ }
+ 
+-void VortexTransition::displaySlides_( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, double SlideWidthScale, double SlideHeightScale )
++void VortexTransition::displaySlides_( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, double SlideWidthScale, double SlideHeightScale, OpenGLContext * pContext )
+ {
+     CHECK_GL_ERROR();
+     applyOverallOperations( nTime, SlideWidthScale, SlideHeightScale );
+@@ -1820,7 +1821,7 @@ void VortexTransition::displaySlides_( double nTime, sal_Int32 glLeavingSlideTex
+     displaySlide( nTime, glEnteringSlideTex, getScene().getEnteringSlide(), SlideWidthScale, SlideHeightScale );
+ 
+     glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
++    pContext->restoreDefaultFramebuffer();
+     glUniform1f( mnShadowLocation, 0.0 );
+     glUniform1f( mnSlideLocation, 0.0 );
+     displaySlide( nTime, glLeavingSlideTex, getScene().getLeavingSlide(), SlideWidthScale, SlideHeightScale );
+@@ -1882,7 +1883,7 @@ public:
+ 
+ private:
+     virtual GLuint makeShader() const override;
+-    virtual void prepareTransition( sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex ) override;
++    virtual void prepareTransition( sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, OpenGLContext *pContext ) override;
+     virtual void prepare( double nTime, double SlideWidth, double SlideHeight, double DispWidth, double DispHeight ) override;
+ 
+     glm::vec2 maCenter;
+@@ -1894,7 +1895,7 @@ GLuint RippleTransition::makeShader() const
+     return OpenGLHelper::LoadShaders( "basicVertexShader", "rippleFragmentShader" );
+ }
+ 
+-void RippleTransition::prepareTransition( sal_Int32, sal_Int32 )
++void RippleTransition::prepareTransition( sal_Int32, sal_Int32, OpenGLContext* )
+ {
+     GLint nCenterLocation = glGetUniformLocation(m_nProgramObject, "center");
+     CHECK_GL_ERROR();
+@@ -1979,7 +1980,7 @@ public:
+ 
+ private:
+     virtual GLuint makeShader() const override;
+-    virtual void prepareTransition( sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex ) override;
++    virtual void prepareTransition( sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, OpenGLContext *pContext ) override;
+     virtual void finish( double nTime, double SlideWidth, double SlideHeight, double DispWidth, double DispHeight ) override;
+ 
+     GLuint maBuffer = 0;
+@@ -1995,10 +1996,10 @@ struct ThreeFloats
+     GLfloat x, y, z;
+ };
+ 
+-void GlitterTransition::prepareTransition( sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex )
++void GlitterTransition::prepareTransition( sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, OpenGLContext *pContext )
+ {
+     CHECK_GL_ERROR();
+-    PermTextureTransition::prepareTransition( glLeavingSlideTex, glEnteringSlideTex );
++    PermTextureTransition::prepareTransition( glLeavingSlideTex, glEnteringSlideTex, pContext );
+     CHECK_GL_ERROR();
+ 
+     GLint nNumTilesLocation = glGetUniformLocation(m_nProgramObject, "numTiles");
+@@ -2083,8 +2084,8 @@ public:
+ private:
+     virtual void finishTransition() override;
+     virtual GLuint makeShader() const override;
+-    virtual void prepareTransition( sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex ) override;
+-    virtual void displaySlides_( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, double SlideWidthScale, double SlideHeightScale ) override;
++    virtual void prepareTransition( sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, OpenGLContext *pContext ) override;
++    virtual void displaySlides_( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, double SlideWidthScale, double SlideHeightScale, OpenGLContext *pContext ) override;
+ 
+     GLint maHexagonSizeLocation = -1;
+     GLint maSelectedTextureLocation = -1;
+@@ -2117,10 +2118,10 @@ GLuint HoneycombTransition::makeShader() const
+     return OpenGLHelper::LoadShaders( "honeycombVertexShader", "honeycombFragmentShader", "honeycombGeometryShader" );
+ }
+ 
+-void HoneycombTransition::prepareTransition( sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex )
++void HoneycombTransition::prepareTransition( sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, OpenGLContext *pContext )
+ {
+     CHECK_GL_ERROR();
+-    PermTextureTransition::prepareTransition( glLeavingSlideTex, glEnteringSlideTex );
++    PermTextureTransition::prepareTransition( glLeavingSlideTex, glEnteringSlideTex, pContext );
+ 
+     CHECK_GL_ERROR();
+     maHexagonSizeLocation = glGetUniformLocation(m_nProgramObject, "hexagonSize");
+@@ -2194,11 +2195,11 @@ void HoneycombTransition::prepareTransition( sal_Int32 glLeavingSlideTex, sal_In
+         return;
+     }
+ 
+-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
++    pContext->restoreDefaultFramebuffer();
+ }
+ 
+ void HoneycombTransition::displaySlides_( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex,
+-                                              double SlideWidthScale, double SlideHeightScale )
++                                          double SlideWidthScale, double SlideHeightScale, OpenGLContext *pContext )
+ {
+     CHECK_GL_ERROR();
+     applyOverallOperations(nTime, SlideWidthScale, SlideHeightScale);
+@@ -2222,7 +2223,7 @@ void HoneycombTransition::displaySlides_( double nTime, sal_Int32 glLeavingSlide
+ 
+     // The back (entering) slide needs to be drawn before the front (leaving) one in order for blending to work.
+     glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
++    pContext->restoreDefaultFramebuffer();
+     glUniform1f(mnShadowLocation, 0.0);
+     glUniform1f(maSelectedTextureLocation, 0.0);
+     glUniform1f(maHexagonSizeLocation, 1.0f - borderSize);
+diff --git a/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionImpl.hxx b/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionImpl.hxx
+index fe6a1c5..81288db 100644
+--- a/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionImpl.hxx
++++ b/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionImpl.hxx
+@@ -35,6 +35,7 @@
+ #include <vector>
+ 
+ class Primitive;
++class OpenGLContext;
+ class Operation;
+ class SceneObject;
+ class TransitionData;
+@@ -139,10 +140,10 @@ public:
+ 
+     /** Prepare transition.
+       */
+-    bool prepare( sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex );
++    bool prepare( sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, OpenGLContext *pContext );
+     /** Display a step of the transition.
+       */
+-    void display( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, double SlideWidth, double SlideHeight, double DispWidth, double DispHeight );
++    void display( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, double SlideWidth, double SlideHeight, double DispWidth, double DispHeight, OpenGLContext *pContext );
+     /** Clean up after transition.
+       */
+     void finish();
+@@ -185,7 +186,7 @@ private:
+       *
+       * Default implementation does nothing.
+       */
+-    virtual void prepareTransition( sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex );
++    virtual void prepareTransition( sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, OpenGLContext *pContext );
+ 
+     /** This function is called when the transition needs to clear after itself, like delete own textures etc.
+       *
+@@ -198,7 +199,7 @@ private:
+       * Default implementation applies overall operations and then
+       * displays both slides.
+       */
+-    virtual void displaySlides_( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, double SlideWidthScale, double SlideHeightScale );
++    virtual void displaySlides_( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, double SlideWidthScale, double SlideHeightScale, OpenGLContext *pContext );
+ 
+     /** This function is called in prepare method to create the GL program.
+       *
+diff --git a/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionerImpl.cxx b/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionerImpl.cxx
+index 266228c..67de19b 100644
+--- a/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionerImpl.cxx
++++ b/slideshow/source/engine/OGLTrans/generic/OGLTrans_TransitionerImpl.cxx
+@@ -408,7 +408,7 @@ void OGLTransitionerImpl::impl_prepareSlides()
+ bool OGLTransitionerImpl::impl_prepareTransition()
+ {
+     if( mpTransition && mpTransition->getSettings().mnRequiredGLVersion <= mnGLVersion )
+-        return mpTransition->prepare( maLeavingSlideGL, maEnteringSlideGL );
++        return mpTransition->prepare( maLeavingSlideGL, maEnteringSlideGL, mpContext.get() );
+     return false;
+ }
+ 
+@@ -1053,10 +1053,11 @@ void SAL_CALL OGLTransitionerImpl::update( double nTime ) throw (uno::RuntimeExc
+     CHECK_GL_ERROR();
+ 
+     const GLWindow& rGLWindow(mpContext->getOpenGLWindow());
+-    mpTransition->display( nTime, maLeavingSlideGL, maEnteringSlideGL,
++    mpTransition->display(nTime, maLeavingSlideGL, maEnteringSlideGL,
+                           maSlideSize.Width, maSlideSize.Height,
+                           static_cast<double>(rGLWindow.Width),
+-                          static_cast<double>(rGLWindow.Height) );
++                          static_cast<double>(rGLWindow.Height),
++                          mpContext.get());
+ 
+     mpContext->swapBuffers();
+ 
+diff --git a/vcl/inc/unx/gtk/gtkinst.hxx b/vcl/inc/unx/gtk/gtkinst.hxx
+index 941fa4a..6e114d1 100644
+--- a/vcl/inc/unx/gtk/gtkinst.hxx
++++ b/vcl/inc/unx/gtk/gtkinst.hxx
+@@ -236,6 +236,7 @@ public:
+     virtual css::uno::Reference< css::uno::XInterface > CreateClipboard( const css::uno::Sequence< css::uno::Any >& i_rArguments ) override;
+     virtual css::uno::Reference< css::uno::XInterface > CreateDragSource() override;
+     virtual css::uno::Reference< css::uno::XInterface > CreateDropTarget() override;
++    virtual OpenGLContext* CreateOpenGLContext() override;
+ #endif
+ 
+     virtual const cairo_font_options_t* GetCairoFontOptions() override;
+diff --git a/vcl/source/opengl/OpenGLContext.cxx b/vcl/source/opengl/OpenGLContext.cxx
+index 2412191..0e2a48d 100644
+--- a/vcl/source/opengl/OpenGLContext.cxx
++++ b/vcl/source/opengl/OpenGLContext.cxx
+@@ -313,6 +313,11 @@ void OpenGLContext::InitGLDebugging()
+ #endif
+ }
+ 
++void OpenGLContext::restoreDefaultFramebuffer()
++{
++    glBindFramebuffer(GL_FRAMEBUFFER, 0);
++}
++
+ void OpenGLContext::setWinPosAndSize(const Point &rPos, const Size& rSize)
+ {
+     if(m_xWindow)
+diff --git a/vcl/unx/gtk3/gtk3gtkinst.cxx b/vcl/unx/gtk3/gtk3gtkinst.cxx
+index 7202b468..7bb8adb 100644
+--- a/vcl/unx/gtk3/gtk3gtkinst.cxx
++++ b/vcl/unx/gtk3/gtk3gtkinst.cxx
+@@ -916,4 +916,131 @@ Reference< XInterface > GtkInstance::CreateDragSource()
+     return Reference< XInterface >( static_cast<cppu::OWeakObject *>(new GtkDragSource()) );
+ }
+ 
++class GtkOpenGLContext : public OpenGLContext
++{
++    GLWindow m_aGLWin;
++    GtkWidget *m_pGLArea;
++
++public:
++    GtkOpenGLContext()
++        : OpenGLContext()
++        , m_pGLArea(nullptr)
++    {
++    }
++
++    virtual bool initWindow() override
++    {
++        if( !m_pChildWindow )
++        {
++            SystemWindowData winData = generateWinData(mpWindow, mbRequestLegacyContext);
++            m_pChildWindow = VclPtr<SystemChildWindow>::Create(mpWindow, 0, &winData, false);
++        }
++
++        if (m_pChildWindow)
++        {
++            InitChildWindow(m_pChildWindow.get());
++        }
++
++        return true;
++    }
++
++private:
++    virtual const GLWindow& getOpenGLWindow() const override { return m_aGLWin; }
++    virtual GLWindow& getModifiableOpenGLWindow() override { return m_aGLWin; }
++
++    static void signalDestroy(GtkWidget*, gpointer context)
++    {
++        GtkOpenGLContext* pThis = static_cast<GtkOpenGLContext*>(context);
++        pThis->m_pGLArea = nullptr;
++    }
++
++    virtual bool ImplInit() override
++    {
++#if GTK_CHECK_VERSION(3,16,0)
++        const SystemEnvData* pEnvData = m_pChildWindow->GetSystemData();
++        GtkWidget *pParent = static_cast<GtkWidget*>(pEnvData->pWidget);
++        m_pGLArea = gtk_gl_area_new();
++        g_signal_connect(G_OBJECT(m_pGLArea), "destroy", G_CALLBACK(signalDestroy), this);
++        gtk_gl_area_set_has_depth_buffer(GTK_GL_AREA(m_pGLArea), true);
++        gtk_gl_area_set_auto_render(GTK_GL_AREA(m_pGLArea), false);
++        gtk_widget_set_hexpand(m_pGLArea, true);
++        gtk_widget_set_vexpand(m_pGLArea, true);
++        gtk_container_add(GTK_CONTAINER(pParent), m_pGLArea);
++        gtk_widget_show_all(pParent);
++        gtk_gl_area_make_current(GTK_GL_AREA(m_pGLArea));
++        gtk_gl_area_attach_buffers(GTK_GL_AREA(m_pGLArea));
++#endif
++        bool bRet = InitGL();
++        InitGLDebugging();
++        return bRet;
++    }
++
++    virtual void restoreDefaultFramebuffer() override
++    {
++        OpenGLContext::restoreDefaultFramebuffer();
++#if GTK_CHECK_VERSION(3,16,0)
++        gtk_gl_area_attach_buffers(GTK_GL_AREA(m_pGLArea));
++#endif
++    }
++
++    virtual void makeCurrent() override
++    {
++        if (isCurrent())
++            return;
++
++        clearCurrent();
++
++#if GTK_CHECK_VERSION(3,16,0)
++        if (m_pGLArea)
++            gtk_gl_area_make_current(GTK_GL_AREA(m_pGLArea));
++#endif
++
++        registerAsCurrent();
++    }
++
++    virtual void destroyCurrentContext() override
++    {
++#if GTK_CHECK_VERSION(3,16,0)
++        gdk_gl_context_clear_current();
++#endif
++    }
++
++    virtual bool isCurrent() override
++    {
++#if GTK_CHECK_VERSION(3,16,0)
++        return m_pGLArea && gdk_gl_context_get_current() == gtk_gl_area_get_context(GTK_GL_AREA(m_pGLArea));
++#else
++        return false;
++#endif
++    }
++
++    virtual void sync() override
++    {
++#if GTK_CHECK_VERSION(3,16,0)
++        gtk_gl_area_queue_render(GTK_GL_AREA(m_pGLArea));
++#endif
++    }
++
++    virtual void resetCurrent() override
++    {
++        clearCurrent();
++#if GTK_CHECK_VERSION(3,16,0)
++        gdk_gl_context_clear_current();
++#endif
++    }
++
++    virtual void swapBuffers() override
++    {
++#if GTK_CHECK_VERSION(3,16,0)
++        gtk_gl_area_queue_render(GTK_GL_AREA(m_pGLArea));
++#endif
++        BuffersSwapped();
++    }
++};
++
++OpenGLContext* GtkInstance::CreateOpenGLContext()
++{
++    return new GtkOpenGLContext;
++}
++
+ /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+-- 
+2.9.3
+
