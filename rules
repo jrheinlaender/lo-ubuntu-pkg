@@ -712,6 +712,9 @@ CC_PREFIX:=$(shell gcc -dumpmachine)-
 #    endif
 #  endif
 #endif
+ifeq "$(DEB_HOST_ARCH)" "m68k"
+GCC_VERSION := 7
+endif
 ifneq "$(GCC_VERSION)" ""
   ifneq "$(SYSTEM_GCC_VERSION)" "$(GCC_VERSION)"
     BUILD_DEPS += , gcc-$(GCC_VERSION), g++-$(GCC_VERSION)
@@ -720,9 +723,8 @@ ifneq "$(GCC_VERSION)" ""
       CXX=$(CC_PREFIX)g++-$(GCC_VERSION)
   endif
 endif
-
-ifeq "$(GCC_VERSION)" "6.0"
-	BUILD_DEPS += , g++-6 (>= 6-20160205)
+ifneq "$(SYSTEM_GCC_VERSION)" "7"
+BUILD_DEPS += , gcc-7 (>= 7-20170106) [m68k], g++-7 (>= 7-20170106) [m68k]
 endif
 
 BUILDDEB_OPTIONS ?= -- -Zxz
@@ -1808,7 +1810,7 @@ debian/tests/control: debian/tests/control.in debian/control
 	# for now we filter out the arch-specific libc* and ia64, which is ugly,
 	# but better than manual bookkeeping. Also filter out the mips(el)-only
 	# binutils build-dep...
-	sed -e "s#%BUILD_DEPS_ARCH_ALL%#$(strip $(shell echo '$(BUILD_DEPS), $(BUILD_DEPS_INDEP)'|sed -e 's/,/,\n /g'|grep -v libc0.1| grep -v libc6| grep -v ia64|grep -v binutils|grep -v openjdk-6-jdk|sed -e 's/\[[^]]*\]//g'|sed -e s,\<.*\>,,g))#g" < debian/tests/control.in > debian/tests/control
+	sed -e "s#%BUILD_DEPS_ARCH_ALL%#$(strip $(shell echo '$(BUILD_DEPS), $(BUILD_DEPS_INDEP)'|sed -e 's/,/,\n /g'|grep -v libc0.1| grep -v libc6| grep -v ia64|grep -v binutils|grep -v openjdk-6-jdk| grep -v gcc-7 | grep -v g++-7 | sed -e 's/\[[^]]*\]//g'|sed -e s,\<.*\>,,g))#g" < debian/tests/control.in > debian/tests/control
 endif
 
 .DELETE_ON_ERROR: debian/control debian/tests/control
