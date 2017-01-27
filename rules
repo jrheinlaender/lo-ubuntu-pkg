@@ -705,26 +705,53 @@ CONFIGURE_FLAGS += $(foreach i, $(SYSTEM_STUFF),--with-system-$(i))
 
 CC_PREFIX:=$(shell gcc -dumpmachine)-
 
-#ifeq (,$(findstring i386,$(DEB_HOST_ARCH)))
-#  ifeq (,$(findstring amd64,$(DEB_HOST_ARCH)))
-#    ifneq "$(SYSTEM_GCC_VERSION)" "4.6"
+USE_CLANG=n
+ifeq "$(USE_CLANG)" "y"
+  CLANG_VERSION=default
+  ENABLE_COMPILER_PLUGINS=n
+endif
+
+ifneq "$(USE_CLANG)" "y"
+#  ifeq (,$(findstring i386,$(DEB_HOST_ARCH)))
+#    ifeq (,$(findstring amd64,$(DEB_HOST_ARCH)))
+#      ifneq "$(SYSTEM_GCC_VERSION)" "4.6"
 #	GCC_VERSION := 4.6
+#      endif
 #    endif
 #  endif
-#endif
-ifeq "$(DEB_HOST_ARCH)" "m68k"
-GCC_VERSION := 7
-endif
-ifneq "$(GCC_VERSION)" ""
+  ifeq "$(DEB_HOST_ARCH)" "m68k"
+  GCC_VERSION := 7
+  endif
+  ifneq "$(GCC_VERSION)" ""
   ifneq "$(SYSTEM_GCC_VERSION)" "$(GCC_VERSION)"
     BUILD_DEPS += , gcc-$(GCC_VERSION), g++-$(GCC_VERSION)
     CONFIGURE_FLAGS+= \
       CC=$(CC_PREFIX)gcc-$(GCC_VERSION) \
       CXX=$(CC_PREFIX)g++-$(GCC_VERSION)
+    endif
   endif
-endif
-ifneq "$(SYSTEM_GCC_VERSION)" "7"
-BUILD_DEPS += , gcc-7 (>= 7-20170106) [m68k], g++-7 (>= 7-20170106) [m68k]
+  ifneq "$(SYSTEM_GCC_VERSION)" "7"
+  BUILD_DEPS += , gcc-7 (>= 7-20170106) [m68k], g++-7 (>= 7-20170106) [m68k]
+  endif
+else
+  ifeq "$(CLANG_VERSION)" "default"
+	CLANG=clang
+	BUILD_DEPS += , clang
+	CONFIGURE_FLAGS+= CC=clang CXX=clang++
+  else
+	CLANG=clang-$(CLANG_VERSION)
+	BUILD_DEPS += , clang-$(CLANG_VERSION)
+	CONFIGURE_FLAGS+= CC=clang-$(CLANG_VERSION) CXX=clang++-$(CLANG_VERSION)
+  endif
+  # would need external/opencollada/patches/opencollada.clang.patch.0 applied
+  # See https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=793930 and the
+  # upstream issue (https://github.com/KhronosGroup/OpenCOLLADA/issues/293)
+  SYSTEM_STUFF := $(filter-out opencollada collada2gltf,$(SYSTEM_STUFF))
+  ifeq "$(ENABLE_COMPILER_PLUGINS)" "y"
+  	CONFIGURE_FLAGS += --enable-compiler-plugins
+  	CLANGDIR := /usr/lib/llvm-$(shell $(CLANG) --version | head -n 1 | awk '{ print $$3 }' | cut -d. -f1,2)
+  endif
+ 
 endif
 
 BUILDDEB_OPTIONS ?= -- -Zxz
@@ -839,7 +866,6 @@ endif
 ifeq (debug,$(findstring debug,$(DEB_BUILD_OPTIONS)))
 	CONFIGURE_FLAGS += --enable-debug
 endif
-
 
 PYMAJOR:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[0])")
 PYMINOR:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[1])")
@@ -1857,6 +1883,7 @@ $(STAMP_DIR)/prepare:
 config_host.mk:
 	rm -f config.status autogen.lastrun
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
+	CLANGDIR=$(CLANGDIR) \
 	MARIADBCONFIG=$(MARIADBCONFIG) \
 	FIREBIRD_CFLAGS=$(FIREBIRD_CFLAGS) FIREBIRD_LIBS=$(FIREBIRD_LIBS) \
 	OPENCOLLADA_CFLAGS=$(OPENCOLLADA_CFLAGS) OPENCOLLADA_LIBS=$(OPENCOLLADA_LIBS) \
@@ -1877,6 +1904,7 @@ $(STAMP_DIR)/build-arch:
 	# it exists but that causes the configure flags NOT to be hnoured
 	# somehow...
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
+	CLANGDIR=$(CLANGDIR) \
 	MARIADBCONFIG=$(MARIADBCONFIG) \
 	FIREBIRD_CFLAGS=$(FIREBIRD_CFLAGS) FIREBIRD_LIBS=$(FIREBIRD_LIBS) \
 	OPENCOLLADA_CFLAGS=$(OPENCOLLADA_CFLAGS) OPENCOLLADA_LIBS=$(OPENCOLLADA_LIBS) \
