@@ -697,6 +697,26 @@ ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "U
   BUGS=mailto:debian-openoffice@lists.debian.org
 endif
 
+ifeq "$(DEB_VENDOR)" "Debian"
+  # chromium only available here.
+  ifeq "$(DEB_HOST_ARCH)" "amd64"
+    ENABLE_GDRIVE=y
+  endif
+  ifeq "$(DEB_HOST_ARCH)" "i386"
+    ENABLE_GDRIVE=y
+  endif
+  OOO_GDRIVE_ARCHS += i386 amd64
+  ifneq "$(JESSIE_BACKPORT)" "y"
+    ifeq "$(DEB_HOST_ARCH)" "arm64"
+      ENABLE_GDRIVE=y
+    endif
+    ifeq "$(DEB_HOST_ARCH)" "armhf"
+      ENABLE_GDRIVE=y
+    endif
+      OOO_GDRIVE_ARCHS += armhf arm64
+  endif
+endif
+
 ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 UNO_LIBS_DBG=uno-libs3-dbgsym
 URE_DBG=ure-dbgsym
@@ -2279,18 +2299,18 @@ endif
  ifeq "$(PACKAGE_SDK_DOCS)" "y"
 	# move SDK documentation into own package
 	rm -rf $(PKGDIR)-dev-doc
-	mkdir -p $(PKGDIR)-dev-doc/usr/share/doc/libreoffice-dev
+	mkdir -p $(PKGDIR)-dev-doc/usr/share/doc/libreoffice
 	mv $(PKGDIR)-dev/usr/share/doc/libreoffice/sdk \
-		$(PKGDIR)-dev-doc/usr/share/doc/libreoffice-dev
+		$(PKGDIR)-dev-doc/usr/share/doc/libreoffice
 	mkdir -p $(PKGDIR)-dev-doc/$(OOSDKDIR)
-	ln -sf /usr/share/doc/libreoffice-dev/sdk/docs \
+	ln -sf /usr/share/doc/libreoffice/sdk/docs \
 		$(PKGDIR)-dev-doc/$(OOSDKDIR)/docs
 	mv $(PKGDIR)-dev/$(OOSDKDIR)/examples \
 		$(PKGDIR)-dev-doc/$(OOSDKDIR)
-	rm -f $(PKGDIR)-dev-doc/usr/share/doc/libreoffice-dev/sdk/readme/LICENSE*
+	rm -f $(PKGDIR)-dev-doc/usr/share/doc/libreoffice/sdk/readme/LICENSE*
 	# and fix the symlink now dangling due to the move above
 	cd $(PKGDIR)-dev-common/$(OOSDKDIR) && \
-		ln -sf /usr/share/doc/libreoffice-dev/sdk/index.html
+		ln -sf /usr/share/doc/libreoffice/sdk/index.html
   endif
 
 ifeq "$(PACKAGE_SDK)" "y"
@@ -3026,7 +3046,7 @@ ifeq "$(PACKAGE_SDK)" "y"
 	# add symlinks for docs and examples
 	cd $(PKGDIR)-dev-doc/$(OOSDKDIR) && \
 		rm -rf docs && \
-		ln -sf /usr/share/doc/libreoffice-dev/sdk/docs docs
+		ln -sf /usr/share/doc/libreoffice/sdk/docs docs
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
@@ -3157,8 +3177,9 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 	# Also not for extensions, as they have an own version
 	# python3-uno has additional examples...
 	dh_installdocs -a -A -Nure -Nuno-libs3 \
-		-Npython3-uno -Nlibreoffice-mysql-connector --link-doc=libreoffice-core
-	dh_installdocs -pure -puno-libs3 -ppython3-uno -plibreoffice-mysql-connector
+		-Npython3-uno -Nlibreoffice-mysql-connector -Nlibreoffice }
+		--link-doc=libreoffice-core
+	dh_installdocs -pure -puno-libs3 -ppython3-uno -plibreoffice-mysql-connector -plibreoffice
 	cp workdir/CustomTarget/readlicense_oo/readme/README_en-US \
 		$(PKGDIR)-core/usr/share/doc/libreoffice-core/README
 	dh_installdebconf -a
@@ -3397,15 +3418,15 @@ ifeq "$(PACKAGE_SDK)" "y"
 			| sed -e "s/@lo_sources_ver@/$(lo_sources_ver)/" \
 			> debian/libreoffice-dev-doc.doc-base.lo-$$i-ref; \
 	done
-	UDK_CPP_FILES=`find $(CURDIR)/debian/libreoffice-dev-doc/usr/share/doc/libreoffice-dev/sdk/docs/cpp/ref | sed -e 's,$(CURDIR)/debian/libreoffice-dev-doc,,g' | xargs`; \
+	UDK_CPP_FILES=`find $(CURDIR)/debian/libreoffice-dev-doc/usr/share/doc/libreoffice/sdk/docs/cpp/ref | sed -e 's,$(CURDIR)/debian/libreoffice-dev-doc,,g' | xargs`; \
 	echo "Files: $$UDK_CPP_FILES" >> debian/libreoffice-dev-doc.doc-base.lo-cpp-ref
   ifeq "$(ENABLE_JAVA)" "y"
-	UDK_JAVA_FILES=`find $(CURDIR)/debian/libreoffice-dev-doc/usr/share/doc/libreoffice-dev/sdk/docs/java/ref ! -name "javadoc_log.txt" | sed -e 's,$(CURDIR)/debian/libreoffice-dev-doc,,g' | xargs`; \
+	UDK_JAVA_FILES=`find $(CURDIR)/debian/libreoffice-dev-doc/usr/share/doc/libreoffice/sdk/docs/java/ref ! -name "javadoc_log.txt" | sed -e 's,$(CURDIR)/debian/libreoffice-dev-doc,,g' | xargs`; \
 	echo "Files: $$UDK_JAVA_FILES" >> debian/libreoffice-dev-doc.doc-base.lo-java-ref
 	rm -f $(CURDIR)/debian/libreoffice-dev-doc/usr/share/doc/libreoffice-dev/sdk/docs/java/ref/javadoc_log.txt
   endif
 	# xargs strips the many files here so we need to post-process it.
-	UDK_COMMON_FILES=`find $(CURDIR)/debian/libreoffice-dev-doc/usr/share/doc/libreoffice-dev/sdk/docs/common/ref | sed -e 's,$(CURDIR)/debian/libreoffice-dev-doc,,g' | xargs`; \
+	UDK_COMMON_FILES=`find $(CURDIR)/debian/libreoffice-dev-doc/usr/share/doc/libreoffice/sdk/docs/common/ref | sed -e 's,$(CURDIR)/debian/libreoffice-dev-doc,,g' | xargs`; \
 	TMP=`mktemp -q`; \
 	cp debian/libreoffice-dev-doc.doc-base.lo-idl-ref $$TMP; \
 	echo "Files: $$UDK_COMMON_FILES" >> $$TMP; \
