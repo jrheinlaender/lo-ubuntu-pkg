@@ -113,6 +113,7 @@ BUILD_DEPS=\
     zip,\
     zlib1g-dev\
 
+BUILD_DEPS_INDEP += rdfind, symlinks
 
 CHECKTARGET:=check
 # These are components which can be built from internal copies, or used from the
@@ -1591,7 +1592,6 @@ clean-debdir:
 	rm -f debian/*.bug-script
 	rm -f debian/scripts/aotcompile.py*
 
-	rm -f l10n.fdupes
 	rm -f debian/shlibs.local
 	rm -f debian/*.templates
 
@@ -2484,15 +2484,6 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/build-indep $(STAMP_DIR)/install-indep $(SO
 			$(PKGDIR)-$$pkg/$(OODIR)/share/wordbook/$$iso/technical.dic; \
 	done
 
-	# FIXME!
-#	# replace duplicate files in the langpacks with symlinks
-#	TMP=`mktemp -q`; \
-#		fdupes --quiet --recurse --sameline --size \
-#		debian/libreoffice-common/$(OODIR) \
-#		$(foreach d,$(shell echo $(filter-out en-US ca-valencia,$(LANGPACKISOS)) | tr A-Z a-z),debian/libreoffice-l10n-$(d)/$(OODIR)) \
-#		> $$TMP && \
-#	debian/scripts/cleandupes --base=libreoffice --prefix=debian < $$TMP && rm -f $$TMP
-
 ifeq "$(DEB_VENDOR)" "Debian"
 	# install Debian presentation template
 	otps=`cd debian/templates; echo *.otp`; \
@@ -3060,6 +3051,13 @@ endif
 	ln -s /$(shell echo $(OODIR) | sed -e s/usr/var/)/share/prereg/bundled \
 		$(PKGDIR)-common/$(OODIR)/share/prereg/bundled
 
+	# dedup
+	cd $(PKGDIR)-common/usr/share/icons && \
+ 		rdfind -outputname /dev/null -makesymlinks true hicolor gnome
+	# should happen on dh_link, apparently didn't fix the /home/... symlinks
+	# so do this...
+	symlinks -r -s -c $(PKGDIR)-common
+
 	for i in $(ARCH_INDEP_PACKAGES); do \
 		if [ -e debian/$$i.bug-script.in ]; then \
 			cat debian/$$i.bug-script.in \
@@ -3139,6 +3137,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 		< $(SOURCE_TREE)/unoil/pom.unoil.xml > debian/pom.unoil.xml
 	mh_installpoms -plibreoffice-java-common
 	mh_installjar -plibreoffice-java-common -l debian/pom.unoil.xml instdir/program/classes/unoil.jar
+	ln -sf $(PKGDIR)-java-common/usr/share/java/unoil.jar $(PKGDIR)-java-common/usr/share/libreoffice/program/classes/unoil.jar
 endif
 
 	touch $@
