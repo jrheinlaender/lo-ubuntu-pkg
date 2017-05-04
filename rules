@@ -428,7 +428,6 @@ SYSTEM_STUFF += odbc
 SYSTEM_STUFF += curl
 SYSTEM_STUFF += sane
 SYSTEM_STUFF += poppler
-ENABLE_PDFIUM=y
 SYSTEM_STUFF += libpng
 SYSTEM_STUFF += nss
 ENABLE_HELP=y
@@ -568,6 +567,15 @@ ifeq "$(ENABLE_GLTF)" "y"
   $(eval $(call gen_no_archs,OOO_COLLADA_ARCHS))
 endif
 
+# let's do this only on archs where we have chromium, which is supposedly even only the archs
+# where alsp pdfium is supported.
+OOO_PDFIUM_ARCHS := i386 amd64 armhf arm64
+ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_PDFIUM_ARCHS)))
+ENABLE_PDFIUM=y
+else
+ENABLE_PDFIUM=n
+endif
+
 IGNORE_MAKE_CHECK_FAILURES=-
 ifeq (i386,$(DEB_HOST_ARCH))
   IGNORE_MAKE_CHECK_FAILURES:=
@@ -688,16 +696,13 @@ ifeq "$(DEB_VENDOR)" "Debian"
   ifeq "$(DEB_HOST_ARCH)" "i386"
     ENABLE_GDRIVE=y
   endif
-  OOO_GDRIVE_ARCHS += i386 amd64
-  ifneq "$(JESSIE_BACKPORT)" "y"
-    ifeq "$(DEB_HOST_ARCH)" "arm64"
+  ifeq "$(DEB_HOST_ARCH)" "arm64"
       ENABLE_GDRIVE=y
-    endif
-    ifeq "$(DEB_HOST_ARCH)" "armhf"
-      ENABLE_GDRIVE=y
-    endif
-      OOO_GDRIVE_ARCHS += armhf arm64
   endif
+  ifeq "$(DEB_HOST_ARCH)" "armhf"
+      ENABLE_GDRIVE=y
+  endif
+  OOO_GDRIVE_ARCHS += i386 amd64 armhf arm64
 endif
 
 ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
