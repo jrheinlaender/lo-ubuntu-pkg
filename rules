@@ -203,10 +203,10 @@ endif
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
   BUILD_TEST_PACKAGE=y
 endif
-ifeq "$(shell echo $(BUILD_DBGSYM_PACKAGES) | grep -q y && echo true)" "true"
-  ENABLE_SYMBOLS=y
-  SMALL_SYMBOLS=y
-endif
+
+ENABLE_SYMBOLS=y
+SMALL_SYMBOLS=y
+
 ifeq "$(ENABLE_JAVA)" "y"
   SYSTEM_STUFF += beanshell
   SYSTEM_STUFF += hsqldb
@@ -839,7 +839,7 @@ ifneq (,$(filter jpeg, $(SYSTEM_STUFF)))
        BUILD_DEPS += , libjpeg-dev
 endif
 ifneq (,$(filter libxml, $(SYSTEM_STUFF)))
-       BUILD_DEPS += , libxml2-dev, libxml2-utils
+       BUILD_DEPS += , libxml2-dev (>= 2.8), libxml2-utils
        BUILD_DEPS += , libxslt1-dev
 else
        CONFIGURE_FLAGS += --without-system-libxml
@@ -880,8 +880,6 @@ ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 	PYTHON_SIX_RECOMMENDS = python3-six
 endif
 
-export DPKG_EXPORT_BUILDFLAGS=y 
-include /usr/share/dpkg/buildflags.mk
 ifeq "$(ENABLE_SYMBOLS)" "y"
   # Small symbols?
   ifeq "$(SMALL_SYMBOLS)" "y"
@@ -896,6 +894,8 @@ export DEB_CFLAGS_MAINT_PREPEND DEB_CXXFLAGS_MAINT_PREPEND
 	CONFIGURE_FLAGS += --enable-symbols
   endif
 endif
+export DPKG_EXPORT_BUILDFLAGS=y 
+include /usr/share/dpkg/buildflags.mk
 ifeq (debug,$(findstring debug,$(DEB_BUILD_OPTIONS)))
 	CONFIGURE_FLAGS += --enable-debug
 endif
@@ -929,13 +929,15 @@ endif
 	BUILD_DEPS += , fontconfig$(OOO_NO_CHECK_ARCHS) <!nocheck>
 	BUILD_DEPS += , fonts-liberation$(OOO_NO_CHECK_ARCHS) <!nocheck>
   	BUILD_DEPS += , fonts-crosextra-carlito$(OOO_NO_CHECK_ARCHS) <!nocheck>
+        # https://lists.freedesktop.org/archives/libreoffice/2017-May/077764.html
+        BUILD_DEPS += , fonts-dejavu$(OOO_NO_CHECK_ARCHS) <!nocheck>
   ifeq "$(ENABLE_JUNIT4)" "y"
 	BUILD_DEPS += , junit4 $(JUNIT_MIN_VER)$(OOO_NO_CHECK_ARCHS) <!nocheck>
   else
 	CONFIGURE_FLAGS += --without-junit
   endif
   ifeq "$(ENABLE_EXPORT_VALIDATION_TESTS)" "y"
-	BUILD_DEPS += , libofficeotron-java, libodfvalidator-java
+	BUILD_DEPS += , libofficeotron-java$(OOO_NO_CHECK_ARCHS) <!nocheck>, libodfvalidator-java$(OOO_NO_CHECK_ARCHS) <!nocheck>
   else
 	CONFIGURE_FLAGS += --without-export-validation
   endif
@@ -1523,8 +1525,6 @@ ifeq ($(USE_GOLD),y)
        DEB_LDFLAGS_MAINT_APPEND += -fuse-ld=gold
 export DEB_LDFLAGS_MAINT_APPEND
 endif
-
-DEJAVU_DEPENDS=fonts-dejavu
 
 # Use compiler cache?  Include ccache in DEB_BUILD_OPTIONS for much faster rebuild times
 # A complete build uses about 9G of compiler cache.
@@ -3348,7 +3348,6 @@ endif
 		-V'idlc-cpp-depends=$(IDLC_CPP_DEPENDS)' \
 		-V'pyuno-depends=$(PYUNO_DEPENDS)' \
 		-V'avmedia-be-depends=$(AVMEDIA_BE_DEPENDS)' \
-		-V'dejavu-depends=$(DEJAVU_DEPENDS)' \
 		-V'opencl-sug=$(OPENCL_SUGGESTS)' \
 		-V'gnome-gtk-recommends=$(GNOME_GTK_RECOMMENDS)' \
 		-V'python-six-recommends=$(PYTHON_SIX_RECOMMENDS)' \
