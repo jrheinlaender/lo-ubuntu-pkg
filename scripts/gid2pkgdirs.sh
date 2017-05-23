@@ -104,6 +104,9 @@ create_package_directory gid_Module_Optional_Gnome              pkg/libreoffice-
 create_package_directory gid_Module_Optional_Kde                pkg/libreoffice-kde
 create_package_directory gid_Module_Optional_OGLTrans		pkg/libreoffice-ogltrans
 create_package_directory gid_Module_Root_SDK                    pkg/libreoffice-dev
+# WTF? Why is this suddently not installed itself?
+mv usr/lib/libreoffice/sdk/lib \
+	pkg/libreoffice-dev/usr/lib/libreoffice/sdk
 create_package_directory gid_Module_Optional_Extensions_Script_Provider_For_BS	pkg/libreoffice-script-provider-bsh
 create_package_directory gid_Module_Optional_Extensions_Script_Provider_For_JS  pkg/libreoffice-script-provider-js
 create_package_directory gid_Module_Optional_Extensions_MEDIAWIKI	pkg/libreoffice-wiki-publisher
