@@ -260,6 +260,7 @@ PACKAGE_SDK_DOCS=y
 endif
 PACKAGE_LOKIT=y
 
+ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(JDK)" "default"
     ifeq "$(shell LANG=C /usr/lib/jvm/default-java/bin/java -version 2>&1 | tail -n 1 | awk '{ print $$1 }')" "OpenJDK"
@@ -312,6 +313,12 @@ ifeq "$(ENABLE_JAVA)" "y"
   ifneq (,$(findstring sparc64,$(DEB_HOST_ARCH)))
     export RUN_MAKE_CHECK=n
   endif
+else
+  RUN_MAKE_CHECK=n
+  ENABLE_JUNIT4=n
+  ENABLE_EXPORT_VALIDATION_TESTS=n
+  BUILD_TEST_PACKAGE=n
+endif
 else
   RUN_MAKE_CHECK=n
   ENABLE_JUNIT4=n
@@ -397,7 +404,7 @@ SYSTEM_STUFF += graphite
 SYSTEM_STUFF += harfbuzz
 ALLOC=system
 SYSTEM_STUFF += libexttextcat
-SYSTEM_STUFF += cppunit
+#SYSTEM_STUFF += cppunit
 CPPUNIT_MINVER=1.14
 DEFAULT_IMAGE=galaxy
 IMAGES:=$(DEFAULT_IMAGE) hicontrast oxygen tango sifr breeze breeze_dark
@@ -869,16 +876,14 @@ endif
 
 	OPENCL_SUGGESTS := ocl-icd-libopencl1
 
-ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
-  ifneq (,$(findstring i386,$(DEB_HOST_ARCH)))
+ifneq (,$(findstring i386,$(DEB_HOST_ARCH)))
 	SMALL_SYMBOLS = n
-  else
-    ifneq (,$(findstring amd64,$(DEB_HOST_ARCH)))
+else
+  ifneq (,$(findstring amd64,$(DEB_HOST_ARCH)))
 	SMALL_SYMBOLS = n
-    endif
   endif
-	PYTHON_SIX_RECOMMENDS = python3-six
 endif
+	PYTHON_SIX_RECOMMENDS = python3-six
 
 ifeq "$(ENABLE_SYMBOLS)" "y"
   # Small symbols?
@@ -922,15 +927,19 @@ endif
 ifeq "$(RUN_TESTTOOL)" "y"
 	CONFIGURE_FLAGS += --enable-hids
 endif
-ifneq (,$(filter cppunit, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libcppunit-dev (>= $(CPPUNIT_MINVER))
-endif
 	BUILD_DEPS += , gdb$(OOO_NO_CHECK_ARCHS) <!nocheck>
 	BUILD_DEPS += , fontconfig$(OOO_NO_CHECK_ARCHS) <!nocheck>
 	BUILD_DEPS += , fonts-liberation$(OOO_NO_CHECK_ARCHS) <!nocheck>
   	BUILD_DEPS += , fonts-crosextra-carlito$(OOO_NO_CHECK_ARCHS) <!nocheck>
         # https://lists.freedesktop.org/archives/libreoffice/2017-May/077764.html
         BUILD_DEPS += , fonts-dejavu$(OOO_NO_CHECK_ARCHS) <!nocheck>
+  ifeq "$(RUN_MAKE_CHECK)" "y"
+    ifneq (,$(filter cppunit, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libcppunit-dev (>= $(CPPUNIT_MINVER))$(OOO_NO_CHECK_ARCHS) <!nocheck>
+    endif
+  else
+	CONFIGURE_FLAGS += --without-cppunit
+  endif
   ifeq "$(ENABLE_JUNIT4)" "y"
 	BUILD_DEPS += , junit4 $(JUNIT_MIN_VER)$(OOO_NO_CHECK_ARCHS) <!nocheck>
   else
@@ -1942,7 +1951,7 @@ $(STAMP_DIR)/build-arch:
 	FIREBIRD_CFLAGS=$(FIREBIRD_CFLAGS) FIREBIRD_LIBS=$(FIREBIRD_LIBS) \
 	OPENCOLLADA_CFLAGS=$(OPENCOLLADA_CFLAGS) OPENCOLLADA_LIBS=$(OPENCOLLADA_LIBS) \
 	COLLADA2GLTF_CFLAGS=$(COLLADA2GLTF_CFLAGS) COLLADA2GLTF_LIBS=$(COLLADA2GLTF_LIBS) \
-	./autogen.sh $(CONFIGURE_FLAGS) \
+	./autogen.sh $(CONFIGURE_FLAGS) --without-junit --without-cppunit \
 		--without-doxygen --without-javadoc --disable-ext-wiki-publisher \
 		--disable-report-builder --disable-scripting-javascript \
 		--disable-scripting-beanshell \
@@ -2000,6 +2009,17 @@ ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
 		patch -p1 < $(CURDIR)/debian/patches/smoketest-disable-extension-tests.diff
 endif
 
+	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
+	CLANGDIR=$(CLANGDIR) \
+	MARIADBCONFIG=$(MARIADBCONFIG) \
+	FIREBIRD_CFLAGS=$(FIREBIRD_CFLAGS) FIREBIRD_LIBS=$(FIREBIRD_LIBS) \
+	OPENCOLLADA_CFLAGS=$(OPENCOLLADA_CFLAGS) OPENCOLLADA_LIBS=$(OPENCOLLADA_LIBS) \
+	COLLADA2GLTF_CFLAGS=$(COLLADA2GLTF_CFLAGS) COLLADA2GLTF_LIBS=$(COLLADA2GLTF_LIBS) \
+	./autogen.sh $(CONFIGURE_FLAGS) \
+		--without-doxygen --without-javadoc --disable-ext-wiki-publisher \
+		--disable-report-builder --disable-scripting-javascript \
+		--disable-scripting-beanshell \
+		--with-galleries=no
 	$(IGNORE_MAKE_CHECK_FAILURES)t=`mktemp -q -d`; \
 	cd $(SOURCE_TREE) && \
 		export PATH=$(BUILD_PATH); \
@@ -2144,6 +2164,9 @@ endif
 	for i in calc impress draw base writer; do \
 		echo "../usr/share/appdata/libreoffice-$$i.appdata.xml /usr/share/appdata/" >> $(PKGDIR)-$$i.install; \
 	done
+ifeq "$(BUILD_KDE)" "y"
+	echo "../usr/share/appdata/org.libreoffice.kde.metainfo.xml /usr/share/appdata/" >> $(PKGDIR)-kde.install
+endif
 
 ifeq "$(PACKAGE_LOKIT)" "y"
 	echo "../../../include/LibreOfficeKit usr/include" > debian/libreofficekit-dev.install
@@ -3142,7 +3165,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 		< $(SOURCE_TREE)/unoil/pom.unoil.xml > debian/pom.unoil.xml
 	mh_installpoms -plibreoffice-java-common
 	mh_installjar -plibreoffice-java-common -l debian/pom.unoil.xml instdir/program/classes/unoil.jar
-	ln -sf $(PKGDIR)-java-common/usr/share/java/unoil.jar $(PKGDIR)-java-common/usr/share/libreoffice/program/classes/unoil.jar
+	ln -sf /usr/share/java/unoil.jar $(PKGDIR)-java-common/usr/share/libreoffice/program/classes/unoil.jar
 endif
 
 	touch $@
@@ -3457,6 +3480,9 @@ endif
 	mkdir -p $(PKGDIR)-common/usr/share/applications
 	cd $(PKGDIR)-common/usr/share/applications && \
 		ln -sf /$(OODIR)/share/xdg/startcenter.desktop libreoffice-startcenter.desktop
+	# fix /usr/share/applications/libreoffice-xsltfilter.desktop -> ../../../../../../../../../../../../usr/lib/libreoffice/share/xdg/xsltfilter.desktop. No idea why it happens in the first place, but..
+	cd $(PKGDIR)-common/usr/share/applications && \
+		ln -sf /$(OODIR)/share/xdg/xsltfilter.desktop libreoffice-xsltfilter.desktop
 	dh_fixperms -i
 	dh_icons -i
 	dh_compress -i -X.py -X.mk -X.sxd -X.xcd.sample
