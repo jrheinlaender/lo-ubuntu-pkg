@@ -2208,11 +2208,15 @@ ifneq "$(RELEASE_BUILD)" "y"
 	done
 endif
 
-	# move desktop files to their correct packages
+	# move desktop files to their correct packages (and correct dir)
+	# looks like it's pretty nonstandard to have symlinks; this breaks
+	# e.g. the  generation from the appdata files. So get rid of those
+	# and move them to the libreoffice-* names after all.
 	for i in base calc draw impress math writer; do \
-		mkdir -p $(PKGDIR)-$$i/$(OODIR)/share/xdg; \
+		mkdir -p $(PKGDIR)-$$i/usr/share/applications; \
+		rm -f $(PKGDIR)-$$i/usr/share/applications/libreoffice-$$i.desktop; \
 		mv $(PKGDIR)-common/$(OODIR)/share/xdg/$$i.desktop \
-			$(PKGDIR)-$$i/$(OODIR)/share/xdg; \
+			$(PKGDIR)-$$i/usr/share/applications/libreoffice-$$i.desktop; \
 	done
 
 	# move help to /usr/share
@@ -2663,10 +2667,10 @@ endif
 	mkdir -p -m755 $(PKGDIR)-base/usr/share/applications \
 	               $(PKGDIR)-core/usr/share/applications
 
-	sed -i -e 's/Office;/Office;Graphics;/' $(PKGDIR)-draw/$(OODIR)/share/xdg/draw.desktop
+	sed -i -e 's/Office;/Office;Graphics;/' $(PKGDIR)-draw/usr/share/applications/libreoffice-draw.desktop
 	# invalid, according to lintian. make it shut up.
 	for i in writer calc impress draw math base; do \
-		perl -pi -e 's/Application;//; s/X-Red-Hat-Base;//; s/X-SuSE-Core-Office;//; s/X-MandrivaLinux-.*;//;' $(PKGDIR)-$$i/$(OODIR)/share/xdg/$$i.desktop; \
+		perl -pi -e 's/Application;//; s/X-Red-Hat-Base;//; s/X-SuSE-Core-Office;//; s/X-MandrivaLinux-.*;//;' $(PKGDIR)-$$i/usr/share/applications/libreoffice-$$i.desktop; \
 	done
   ifeq "$(ENABLE_SYSTRAY)" "y"
 	perl -pi -e 's/Application;//' $(PKGDIR)-systray/$(OODIR)/share/xdg/qstart.desktop
@@ -3086,6 +3090,16 @@ endif
 	# so do this...
 	symlinks -r -s -c $(PKGDIR)-common
 
+	# looks like it's pretty nonstandard to have symlinks; this breaks
+	# e.g. thegeneration from the appdata files. So get rid of those
+	# and move them to the libreoffice-* names after all.
+	mkdir -p $(PKGDIR)-common/usr/share/applications
+	for i in startcenter xsltfilter; do \
+		rm -f $(PKGDIR)-common/usr/share/applications/libreoffice-$$i.desktop; \
+	mv $(PKGDIR)-common/$(OODIR)/share/xdg/$$i.desktop \
+		$(PKGDIR)-common/usr/share/applications/libreoffice-$$i.desktop; \
+	done
+
 	for i in $(ARCH_INDEP_PACKAGES); do \
 		if [ -e debian/$$i.bug-script.in ]; then \
 			cat debian/$$i.bug-script.in \
@@ -3209,7 +3223,7 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 	dh_python3 -ppython3-uno --no-ext-rename --no-guessing-deps $(OODIR)/program
 	dh_lintian -a
 	dh_bugfiles -a -A
-	dh_link -a -X.desktop
+	dh_link -a
 ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 	rm -rf debian/$(URE_DBG_ROOT) debian/$(CORE_DBG_ROOT) debian/$(WRITER_DBG_ROOT)
 	dh_strip -a -Nure -Nuno-libs3 $(DH_STRIP_DBG_OPTION_LO)
@@ -3475,16 +3489,7 @@ endif
 	dh_installmime -i
 	dh_lintian -i
 	dh_bugfiles -i -A
-	dh_link -i -X.desktop
-	# dh_link -X does not work for .links stuff. And adding it there and
-	# fixing it up later because it's relative doesn't make that much sense.
-	# So do it here.
-	mkdir -p $(PKGDIR)-common/usr/share/applications
-	cd $(PKGDIR)-common/usr/share/applications && \
-		ln -sf /$(OODIR)/share/xdg/startcenter.desktop libreoffice-startcenter.desktop
-	# fix /usr/share/applications/libreoffice-xsltfilter.desktop -> ../../../../../../../../../../../../usr/lib/libreoffice/share/xdg/xsltfilter.desktop. No idea why it happens in the first place, but..
-	cd $(PKGDIR)-common/usr/share/applications && \
-		ln -sf /$(OODIR)/share/xdg/xsltfilter.desktop libreoffice-xsltfilter.desktop
+	dh_link -i
 	dh_fixperms -i
 	dh_icons -i
 	dh_compress -i -X.py -X.mk -X.sxd -X.xcd.sample
