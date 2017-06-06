@@ -1,0 +1,138 @@
+From 09f38f4df1177768fbeefc31e6e73137b2784c49 Mon Sep 17 00:00:00 2001
+From: Stephan Bergmann <sbergman@redhat.com>
+Date: Sat, 3 Jun 2017 21:38:24 +0200
+Subject: gb_SUPPRESS_TESTS to build tests but not run them
+
+Change-Id: I390b97bbacfc123b952be2b54cf1333b4d5c24a7
+
+diff --git a/solenv/gbuild/CppunitTest.mk b/solenv/gbuild/CppunitTest.mk
+index 6595726..4bccabf 100644
+--- a/solenv/gbuild/CppunitTest.mk
++++ b/solenv/gbuild/CppunitTest.mk
+@@ -106,6 +106,9 @@ $(call gb_CppunitTest_get_clean_target,%) :
+ 
+ .PHONY : $(call gb_CppunitTest_get_target,%)
+ $(call gb_CppunitTest_get_target,%) :| $(gb_CppunitTest_RUNTIMEDEPS)
++ifneq ($(gb_SUPPRESS_TESTS),)
++	@true
++else
+ 	$(call gb_Output_announce,$*,$(true),CUT,2)
+ 	$(call gb_Helper_abbreviate_dirs,\
+ 	        $(if $(gb_CppunitTest_vcl_hide_windows),export VCL_HIDE_WINDOWS=1 && ) \
+@@ -140,6 +143,7 @@ $(call gb_CppunitTest_get_target,%) :| $(gb_CppunitTest_RUNTIMEDEPS)
+ 					RET=$$?; \
+ 					$(call gb_CppunitTest_postprocess,$(gb_CppunitTest_CPPTESTCOMMAND),$@.core,$$RET) >> $@.log 2>&1;) \
+ 				cat $@.log; $(gb_CppunitTest_UNITTESTFAILED) Cppunit $*)))
++endif
+ 
+ define gb_CppunitTest_CppunitTest
+ $(call gb_CppunitTest__CppunitTest_impl,$(1),$(call gb_CppunitTest_get_linktarget,$(1)))
+diff --git a/solenv/gbuild/JunitTest.mk b/solenv/gbuild/JunitTest.mk
+index 30e226d..36f29b5 100644
+--- a/solenv/gbuild/JunitTest.mk
++++ b/solenv/gbuild/JunitTest.mk
+@@ -32,6 +32,9 @@ ifneq (,$(strip $(OOO_JUNIT_JAR)))
+ 
+ .PHONY : $(call gb_JunitTest_get_target,%)
+ $(call gb_JunitTest_get_target,%) :
++ifneq ($(gb_SUPPRESS_TESTS),)
++	@true
++else
+ 	$(call gb_Output_announce,$*,$(true),JUT,2)
+ 	$(call gb_Helper_abbreviate_dirs,\
+         rm -rf $(call gb_JunitTest_get_userdir,$*) && \
+@@ -53,6 +56,7 @@ $(call gb_JunitTest_get_target,%) :
+ 		&& echo \
+ 		&& false)))
+ 	$(CLEAN_CMD)
++endif
+ 
+ define gb_JunitTest_JunitTest
+ $(call gb_JunitTest_get_target,$(1)) : T_CP := $(call gb_JavaClassSet_get_classdir,$(call gb_JunitTest_get_classsetname,$(1)))$$(gb_CLASSPATHSEP)$(OOO_JUNIT_JAR)$(if $(HAMCREST_JAR),$$(gb_CLASSPATHSEP)$(HAMCREST_JAR))$$(gb_CLASSPATHSEP)$(INSTROOT)/$(LIBO_URE_LIB_FOLDER)
+@@ -152,7 +156,9 @@ else # OOO_JUNIT_JAR
+ 
+ .PHONY : $(call gb_JunitTest_get_target,$(1))
+ $(call gb_JunitTest_get_target,%) :
++ifeq ($(gb_SUPPRESS_TESTS),)
+ 	$(call gb_Output_announce,$* (skipped - no Junit),$(true),JUT,2)
++endif
+ 	@true
+ 
+ define gb_JunitTest_JunitTest
+diff --git a/solenv/gbuild/PythonTest.mk b/solenv/gbuild/PythonTest.mk
+index eeff6a0..8ac62c4 100644
+--- a/solenv/gbuild/PythonTest.mk
++++ b/solenv/gbuild/PythonTest.mk
+@@ -32,6 +32,9 @@ ifneq ($(DISABLE_PYTHON),TRUE)
+ 
+ .PHONY : $(call gb_PythonTest_get_target,%)
+ $(call gb_PythonTest_get_target,%) :| $(gb_PythonTest_DEPS)
++ifneq ($(gb_SUPPRESS_TESTS),)
++	@true
++else
+ 	$(call gb_Output_announce,$*,$(true),PYT,2)
+ 	$(call gb_Helper_abbreviate_dirs,\
+ 		rm -rf $(dir $(call gb_PythonTest_get_target,$*)) && \
+@@ -61,6 +64,7 @@ $(call gb_PythonTest_get_target,%) :| $(gb_PythonTest_DEPS)
+ 					RET=$$?; \
+ 					$(call gb_CppunitTest_postprocess,$(gb_PythonTest_EXECUTABLE_GDB),$@.core,$$RET) >> $@.log 2>&1;) \
+ 				cat $@.log; $(gb_PythonTest_UNITTESTFAILED) Python $*))))
++endif
+ 
+ # always use udkapi and URE services
+ define gb_PythonTest_PythonTest
+@@ -99,7 +103,9 @@ else # DISABLE_PYTHON
+ 
+ .PHONY : $(call gb_PythonTest_get_target,$(1))
+ $(call gb_PythonTest_get_target,%) :
++ifeq ($(gb_SUPPRESS_TESTS),)
+ 	$(call gb_Output_announce,$* (skipped - no PythonTest),$(true),PYT,2)
++endif
+ 	@true
+ 
+ define gb_PythonTest_PythonTest
+diff --git a/solenv/gbuild/UITest.mk b/solenv/gbuild/UITest.mk
+index 1edb3f7..21560c8 100644
+--- a/solenv/gbuild/UITest.mk
++++ b/solenv/gbuild/UITest.mk
+@@ -37,6 +37,9 @@ ifneq ($(DISABLE_PYTHON),TRUE)
+ 
+ .PHONY : $(call gb_UITest_get_target,%)
+ $(call gb_UITest_get_target,%) :| $(gb_UITest_DEPS)
++ifneq ($(gb_SUPPRESS_TESTS),)
++	@true
++else
+ 	$(call gb_Output_announce,$*,$(true),UIT,2)
+ 	$(call gb_Helper_abbreviate_dirs,\
+ 		rm -rf $(dir $(call gb_UITest_get_target,$*)) && \
+@@ -69,6 +72,7 @@ $(call gb_UITest_get_target,%) :| $(gb_UITest_DEPS)
+ 				    RET=$$?; \
+ 				    $(call gb_CppunitTest_postprocess,$(gb_UITest_EXECUTABLE_GDB),$@.core,$$RET) >> $@.log 2>&1;) \
+ 			    cat $@.log; $(gb_UITest_UNITTESTFAILED) UI $*))))
++endif
+ 
+ # always use udkapi and URE services
+ define gb_UITest_UITest
+@@ -111,7 +115,9 @@ else # DISABLE_PYTHON
+ 
+ .PHONY : $(call gb_UITest_get_target,$(1))
+ $(call gb_UITest_get_target,%) :
++ifeq ($(gb_SUPPRESS_TESTS),)
+ 	$(call gb_Output_announce,$* (skipped - no UITest),$(true),PYT,2)
++endif
+ 	@true
+ 
+ define gb_UITest_UITest
+diff --git a/solenv/gbuild/gbuild.help.txt b/solenv/gbuild/gbuild.help.txt
+index 05005be..0b11b36 100644
+--- a/solenv/gbuild/gbuild.help.txt
++++ b/solenv/gbuild/gbuild.help.txt
+@@ -145,3 +145,5 @@ INTERACTIVE VARIABLES:
+                        set the build environment.
+        gb_DBGARGS      Append these arguments to GDBs "set args" command for
+                        debugrun. Double quotes will be automatically escaped.
++       gb_SUPPRESS_TESTS Do not run tests (but still build them, when requested
++                       by the given targets).
+-- 
+cgit v0.10.2
+
