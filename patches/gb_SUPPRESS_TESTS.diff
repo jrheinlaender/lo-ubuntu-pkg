@@ -242,3 +242,67 @@ index efdc070..e781630 100644
 -- 
 cgit v0.10.2
 
+From 2dbd27012a23f113cf0daf5a0bb8368ebc3a9f89 Mon Sep 17 00:00:00 2001
+From: Stephan Bergmann <sbergman@redhat.com>
+Date: Fri, 16 Jun 2017 15:39:47 +0200
+Subject: Still more tests to suppress
+
+...that were missing from 3de594d3347ead24f3211714f0e0010c1434cdf2 "More tests
+to suppress (all .PHONY test targets should be covered now)" (and one wasn't
+even properly marked as .PHONY).  Thanks to Rene for spotting.
+
+Change-Id: Ieed81a3999921bdfe9bca96c6002d8906b2ddfad
+
+diff --git a/odk/CustomTarget_check.mk b/odk/CustomTarget_check.mk
+index dc983e2..f0b6348 100644
+--- a/odk/CustomTarget_check.mk
++++ b/odk/CustomTarget_check.mk
+@@ -24,6 +24,7 @@ odk_PLATFORM := $(if $(filter WNT,$(OS)),windows,\
+ 						$(if $(filter MACOSX,$(OS)),macosx,\
+ 							$(if $(filter AIX,$(OS)),aix))))))))
+ 
++.PHONY: $(call gb_CustomTarget_get_workdir,odk/check)/checkbin
+ $(call gb_CustomTarget_get_workdir,odk/check)/checkbin : \
+ 		$(SRCDIR)/odk/util/check.pl \
+ 		$(if $(DOXYGEN),$(call gb_GeneratedPackage_get_target,odk_doxygen)) \
+@@ -38,6 +39,9 @@ $(call gb_CustomTarget_get_workdir,odk/check)/checkbin : \
+ 		$(call gb_Package_get_target,odk_settings) \
+ 		$(call gb_Package_get_target,odk_settings_generated) \
+ 		$(if $(ENABLE_JAVA),$(call gb_Package_get_target,odk_unowinreg))
++ifneq ($(gb_SUPPRESS_TESTS),)
++	@true
++else
+ 	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),$(true),CHK,1)
+ 	$(call gb_Helper_print_on_error,\
+ 		$(PERL) $< \
+@@ -45,5 +49,6 @@ $(call gb_CustomTarget_get_workdir,odk/check)/checkbin : \
+ 			$(odk_PLATFORM) '$(gb_Executable_EXT)' \
+ 		,$@.log \
+ 	)
++endif
+ 
+ # vim: set noet sw=4 ts=4:
+diff --git a/unoidl/CustomTarget_unoidl-write_test.mk b/unoidl/CustomTarget_unoidl-write_test.mk
+index 22c25b0..a1c17c4 100644
+--- a/unoidl/CustomTarget_unoidl-write_test.mk
++++ b/unoidl/CustomTarget_unoidl-write_test.mk
+@@ -25,6 +25,9 @@ $(call gb_CustomTarget_get_target,unoidl/unoidl-write_test) : \
+         $(SRCDIR)/idlc/test/parser/struct.tests \
+         $(SRCDIR)/idlc/test/parser/typedef.tests \
+         | $(call gb_CustomTarget_get_workdir,unoidl/unoidl-write_test)/.dir
++ifneq ($(gb_SUPPRESS_TESTS),)
++	@true
++else
+ 	$(call gb_Helper_abbreviate_dirs,( \
+         $(PERL) $(SRCDIR)/solenv/bin/exectest.pl \
+             $(SRCDIR)/idlc/test/parser/attribute.tests \
+@@ -87,5 +90,6 @@ $(call gb_CustomTarget_get_target,unoidl/unoidl-write_test) : \
+             {} \
+             $(call gb_CustomTarget_get_workdir,unoidl/unoidl-write_test)/out.rdb) \
+         > $@.log 2>&1 || (cat $@.log && false))
++endif
+ 
+ # vim: set noet sw=4 ts=4:
+-- 
+cgit v0.10.2
+
