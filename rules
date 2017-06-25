@@ -195,7 +195,7 @@ KDELIBS_MINVER= (>= 4:4.3.4)
 ifneq (noddebs,$(findstring noddebs,$(DEB_BUILD_OPTIONS)))
 BUILD_DBGSYM_PACKAGES=y
 endif
-#SYSTEM_STUFF += xmlsec
+SYSTEM_STUFF += xmlsec
 
 # this changes the packages' built/contents of packages (-subsequentcheckbase)
 # This is not exactly allowed in policy but it doesn't have real practical difference,
@@ -1055,12 +1055,11 @@ ifeq "$(ENABLE_JAVA)" "y"
     endif
   endif
   ifneq (,$(filter $(DEB_HOST_ARCH), amd64 i386))
-	JAVA_RUNTIME_DEPENDS += | sun-java5-jre | sun-java6-jre
+	JAVA_RUNTIME_DEPENDS += | sun-java6-jre
   endif
-	JAVA_RUNTIME_DEPENDS += | java5-runtime
+	JAVA_RUNTIME_DEPENDS += | java6-runtime
 	# Suns Java "packages"
 	JAVA_RUNTIME_DEPENDS += | jre
-	MEDIAWIKI_JAVA_RUNTIME_DEPENDS = $(shell echo $(JAVA_RUNTIME_DEPENDS) | sed -e "s/sun-java5-jre//" | sed -e "s/java5-runtime/java6-runtime/")
 export JAVA_HOME
 	CONFIGURE_FLAGS += --with-jdk-home=$(JAVA_HOME)
 	JAVA_COMMON_DEPENDS= , libreoffice-java-common
@@ -2001,7 +2000,12 @@ ifeq "$(BUILD_TEST_PACKAGE)" "y"
   endif
 endif
 
+ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
+	$(CURDIR)/debian/rules check-indep
+endif
+
 	touch $@
+
 
 check: 
 ifeq "$(RUN_MAKE_CHECK)" "y"
@@ -2059,6 +2063,13 @@ endif
 
 ifeq "$(RUN_PYTESTS)" "y"
 	cd $(SOURCE_TREE)/pyuno && $(MAKE) PythonTest_pytests
+endif
+
+check-indep:
+ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
+	# since the gb_SUPPRESS_CHECK stuff in build this isn't checked.
+	# probably should, so do it here manually.
+	cd odk && $(MAKE) check
 endif
 
 install: $(STAMP_DIR)/install-common $(STAMP_DIR)/install-arch $(STAMP_DIR)/install-indep
@@ -2189,7 +2200,7 @@ ifeq "$(PACKAGE_LOKIT)" "y"
 	echo "../../../include/LibreOfficeKit usr/include" > debian/libreofficekit-dev.install
 endif
 ifeq "$(ENABLE_INTROSPECTION)" "y"
-	echo "../usr/share/gir-1.0/LOKDocView-0.1.gir /usr/share/gir-1.0/" > debian/gir1.2-lokdocview-0.1.install
+	echo "../usr/share/gir-1.0/LOKDocView-0.1.gir /usr/share/gir-1.0/" >> debian/libreofficekit-dev.install
 	echo "../usr/lib/girepository-1.0/LOKDocView-0.1.typelib /usr/lib/$(DEB_HOST_MULTIARCH)/girepository-1.0" >> debian/gir1.2-lokdocview-0.1.install
 endif
 
@@ -3216,7 +3227,7 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 	# Also not for extensions, as they have an own version
 	# python3-uno has additional examples...
 	dh_installdocs -a -A -Nure -Nuno-libs3 \
-		-Npython3-uno -Nlibreoffice-mysql-connector -Nlibreoffice \
+		-Npython3-uno -Nlibreoffice-mysql-connector -Nlibreoffice -Nlibreofficekit-dev \
 		--link-doc=libreoffice-core
 	dh_installdocs -pure -puno-libs3 -ppython3-uno -plibreoffice-mysql-connector -plibreoffice
 	cp workdir/CustomTarget/readlicense_oo/readme/README_en-US \
@@ -3537,7 +3548,7 @@ ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 endif
 ifeq "$(ENABLE_MEDIAWIKI)" "y"
 	dh_gencontrol -plibreoffice-wiki-publisher -- \
-		-V'java-runtime-depends=$(MEDIAWIKI_JAVA_RUNTIME_DEPENDS)' \
+		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-v$(shell grep "<version" $(SOURCE_TREE)/swext/mediawiki/src/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
 endif
 ifeq "$(ENABLE_NLPSOLVER)" "y"
