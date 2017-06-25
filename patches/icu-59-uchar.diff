@@ -1,0 +1,146 @@
+From c43a9c0f3e752e03b0d8dd135f67926918d0fb0f Mon Sep 17 00:00:00 2001
+From: Eike Rathke <erack@redhat.com>
+Date: Mon, 29 May 2017 16:25:37 +0200
+Subject: Re-enable building with ICU 59, tdf#108043 follow-up
+
+After having reverted to internal ICU 58, still be able to build with ICU 59.
+
+Change-Id: If2cf651aaacee5f64bee737f9da140b913ebd510
+Reviewed-on: https://gerrit.libreoffice.org/38154
+Reviewed-by: Eike Rathke <erack@redhat.com>
+Tested-by: Jenkins <ci@libreoffice.org>
+
+diff --git a/config_host.mk.in b/config_host.mk.in
+index e9d16f6..880895e 100644
+--- a/config_host.mk.in
++++ b/config_host.mk.in
+@@ -264,6 +264,7 @@ export ICU_MINOR=@ICU_MINOR@
+ export ICU_RECLASSIFIED_CONDITIONAL_JAPANESE_STARTER=@ICU_RECLASSIFIED_CONDITIONAL_JAPANESE_STARTER@
+ export ICU_RECLASSIFIED_HEBREW_LETTER=@ICU_RECLASSIFIED_HEBREW_LETTER@
+ export ICU_RECLASSIFIED_PREPEND_SET_EMPTY=@ICU_RECLASSIFIED_PREPEND_SET_EMPTY@
++export ICU_UCHAR_TYPE=@ICU_UCHAR_TYPE@
+ export INTROSPECTION_SCANNER=@INTROSPECTION_SCANNER@
+ export ILIB=@ILIB@
+ export INSTALLDIR=@INSTALLDIR@
+diff --git a/configure.ac b/configure.ac
+index 3b1e6a0..5859ace 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -9069,6 +9069,15 @@ else
+     ICU_CFLAGS="-I${WORKDIR}/UnpackedTarball/icu/source/i18n -I${WORKDIR}/UnpackedTarball/icu/source/common"
+     ICU_LIBS="-L${WORKDIR}/UnpackedTarball/icu/source/lib"
+ fi
++if test "$ICU_MAJOR" -ge "59"; then
++    # As of ICU 59 it defaults to typedef char16_t UChar; which is available
++    # with -std=c++11 but not all external libraries can be built with that,
++    # for those use a bit-compatible typedef uint16_t UChar; see
++    # icu/source/common/unicode/umachine.h
++    ICU_UCHAR_TYPE="-DUCHAR_TYPE=uint16_t"
++else
++    ICU_UCHAR_TYPE=""
++fi
+ AC_SUBST(SYSTEM_ICU)
+ AC_SUBST(SYSTEM_GENBRK)
+ AC_SUBST(SYSTEM_GENCCODE)
+@@ -9193,6 +9226,7 @@ AC_SUBST(ICU_RECLASSIFIED_CONDITIONAL_JAPANESE_STARTER)
+ AC_SUBST(ICU_RECLASSIFIED_HEBREW_LETTER)
+ AC_SUBST(ICU_CFLAGS)
+ AC_SUBST(ICU_LIBS)
++AC_SUBST(ICU_UCHAR_TYPE)
+ 
+ dnl ===================================================================
+ dnl Graphite
+diff --git a/external/firebird/ExternalProject_firebird.mk b/external/firebird/ExternalProject_firebird.mk
+index 361fffc..988a24b 100644
+--- a/external/firebird/ExternalProject_firebird.mk
++++ b/external/firebird/ExternalProject_firebird.mk
+@@ -66,6 +66,7 @@ $(call gb_ExternalProject_get_state_target,firebird,build):
+ 				-I$(call gb_UnpackedTarball_get_dir,icu)/source/i18n \
+ 				-I$(call gb_UnpackedTarball_get_dir,icu)/source/common \
+ 			) \
++			$(ICU_UCHAR_TYPE) \
+ 			$(if $(SYSTEM_LIBTOMMATH),$(LIBTOMMATH_CFLAGS), \
+ 				-L$(call gb_UnpackedTarball_get_dir,libtommath) \
+ 			) \
+diff --git a/external/harfbuzz/ExternalProject_harfbuzz.mk b/external/harfbuzz/ExternalProject_harfbuzz.mk
+index 53490ab..070c58e 100644
+--- a/external/harfbuzz/ExternalProject_harfbuzz.mk
++++ b/external/harfbuzz/ExternalProject_harfbuzz.mk
+@@ -47,7 +47,9 @@ $(call gb_ExternalProject_get_state_target,harfbuzz,build) :
+ 					$(gb_COMPILERNOOPTFLAGS) $(gb_DEBUG_CFLAGS) \
+ 						$(gb_DEBUG_CXXFLAGS), \
+ 					$(gb_COMPILEROPTFLAGS)) \
+-				$(CXXFLAGS) $(if $(filter LINUX,$(OS)),-fvisibility=hidden)' \
++				$(CXXFLAGS) \
++				$(ICU_UCHAR_TYPE) \
++				$(if $(filter LINUX,$(OS)),-fvisibility=hidden)' \
+ 		&& (cd $(EXTERNAL_WORKDIR)/src && $(MAKE) lib) \
+ 	)
+ 
+diff --git a/external/libcdr/ExternalProject_libcdr.mk b/external/libcdr/ExternalProject_libcdr.mk
+index 86f93da..2cd41db 100644
+--- a/external/libcdr/ExternalProject_libcdr.mk
++++ b/external/libcdr/ExternalProject_libcdr.mk
+@@ -36,7 +36,7 @@ $(call gb_ExternalProject_get_state_target,libcdr,build) :
+ 			--disable-werror \
+ 			--disable-weffc \
+ 			$(if $(verbose),--disable-silent-rules,--enable-silent-rules) \
+-			CXXFLAGS="$(CXXFLAGS) $(BOOST_CPPFLAGS) \
++			CXXFLAGS="$(CXXFLAGS) $(ICU_UCHAR_TYPE) $(BOOST_CPPFLAGS) \
+ 				-DBOOST_ERROR_CODE_HEADER_ONLY -DBOOST_SYSTEM_NO_DEPRECATED" \
+ 			$(if $(CROSS_COMPILING),--build=$(BUILD_PLATFORM) --host=$(HOST_PLATFORM)) \
+ 		&& $(MAKE) \
+diff --git a/external/libebook/ExternalProject_libebook.mk b/external/libebook/ExternalProject_libebook.mk
+index 45b15f2..1706582 100644
+--- a/external/libebook/ExternalProject_libebook.mk
++++ b/external/libebook/ExternalProject_libebook.mk
+@@ -38,7 +38,7 @@ $(call gb_ExternalProject_get_state_target,libebook,build) :
+ 			$(if $(verbose),--disable-silent-rules,--enable-silent-rules) \
+ 			--disable-werror \
+ 			--disable-weffc \
+-			CXXFLAGS="$(CXXFLAGS) $(BOOST_CPPFLAGS) \
++			CXXFLAGS="$(CXXFLAGS) $(ICU_UCHAR_TYPE) $(BOOST_CPPFLAGS) \
+ 				-DBOOST_ERROR_CODE_HEADER_ONLY -DBOOST_SYSTEM_NO_DEPRECATED" \
+ 			XML_CFLAGS="$(LIBXML_CFLAGS)" \
+ 			XML_LIBS="$(LIBXML_LIBS)" \
+diff --git a/external/libfreehand/ExternalProject_libfreehand.mk b/external/libfreehand/ExternalProject_libfreehand.mk
+index 15a17072..f1bbacb 100644
+--- a/external/libfreehand/ExternalProject_libfreehand.mk
++++ b/external/libfreehand/ExternalProject_libfreehand.mk
+@@ -25,6 +25,7 @@ $(eval $(call gb_ExternalProject_use_externals,libfreehand,\
+ $(call gb_ExternalProject_get_state_target,libfreehand,build) :
+ 	$(call gb_ExternalProject_run,build,\
+ 		export PKG_CONFIG="" \
++		&& export CXXFLAGS="$(CXXFLAGS) $(ICU_UCHAR_TYPE)" \
+ 		&& MAKE=$(MAKE) ./configure \
+ 			--with-pic \
+ 			--enable-static \
+diff --git a/external/libmspub/ExternalProject_libmspub.mk b/external/libmspub/ExternalProject_libmspub.mk
+index a168a62..808d74b 100644
+--- a/external/libmspub/ExternalProject_libmspub.mk
++++ b/external/libmspub/ExternalProject_libmspub.mk
+@@ -35,7 +35,7 @@ $(call gb_ExternalProject_get_state_target,libmspub,build) :
+ 			--disable-werror \
+ 			--disable-weffc \
+ 			$(if $(verbose),--disable-silent-rules,--enable-silent-rules) \
+-			CXXFLAGS="$(CXXFLAGS) $(BOOST_CPPFLAGS) \
++			CXXFLAGS="$(CXXFLAGS) $(ICU_UCHAR_TYPE) $(BOOST_CPPFLAGS) \
+ 				-DBOOST_ERROR_CODE_HEADER_ONLY -DBOOST_SYSTEM_NO_DEPRECATED" \
+ 			$(if $(CROSS_COMPILING),--build=$(BUILD_PLATFORM) --host=$(HOST_PLATFORM)) \
+ 		&& $(MAKE) \
+diff --git a/external/libvisio/ExternalProject_libvisio.mk b/external/libvisio/ExternalProject_libvisio.mk
+index 884fde8..2f212ce 100644
+--- a/external/libvisio/ExternalProject_libvisio.mk
++++ b/external/libvisio/ExternalProject_libvisio.mk
+@@ -35,7 +35,7 @@ $(call gb_ExternalProject_get_state_target,libvisio,build) :
+ 			$(if $(ENABLE_DEBUG),--enable-debug,--disable-debug) \
+ 			--disable-werror \
+ 			$(if $(verbose),--disable-silent-rules,--enable-silent-rules) \
+-			CXXFLAGS="$(CXXFLAGS) $(BOOST_CPPFLAGS)" \
++			CXXFLAGS="$(CXXFLAGS) $(ICU_UCHAR_TYPE) $(BOOST_CPPFLAGS)" \
+ 			$(if $(CROSS_COMPILING),--build=$(BUILD_PLATFORM) --host=$(HOST_PLATFORM)) \
+ 		&& $(MAKE) \
+ 	)
+-- 
+cgit v0.10.2
+
