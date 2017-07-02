@@ -309,15 +309,19 @@ ifeq "$(ENABLE_JAVA)" "y"
 #  endif
   ifneq (,$(findstring kfreebsd-amd64,$(DEB_HOST_ARCH)))
     export RUN_MAKE_CHECK=n
+    export RUN_PYTESTS=n
   endif
   ifneq (,$(findstring kfreebsd-i386,$(DEB_HOST_ARCH)))
     export RUN_MAKE_CHECK=n
+    export RUN_PYTESTS=n
   endif
   ifneq (,$(findstring sparc64,$(DEB_HOST_ARCH)))
     export RUN_MAKE_CHECK=n
+    export RUN_PYTESTS=n
   endif
 else
   RUN_MAKE_CHECK=n
+  RUN_PYTESTS=n
   ENABLE_JUNIT4=n
   ENABLE_CHART_TESTS=n
   ENABLE_EXPORT_VALIDATION_TESTS=n
@@ -325,6 +329,7 @@ else
 endif
 else
   RUN_MAKE_CHECK=n
+  RUN_PYTESTS=n
   ENABLE_JUNIT4=n
   ENABLE_CHART_TESTS=n
   ENABLE_EXPORT_VALIDATION_TESTS=n
@@ -1646,11 +1651,7 @@ endif
 
 # Generate control file, because we have so many different languages
 # Based on script by Martin Quinson <Martin.Quinson@tuxfamily.org>
-ifeq "$(BUILD_TEST_PACKAGE)" "y"
-control: debian/control debian/tests/control
-else
 control: debian/control
-endif
 debian/control: $(wildcard debian/control*in) $(SOURCE_TREE)/bin/lo-xlate-lang  debian/rules
 	chmod 755 $(SOURCE_TREE)/bin/lo-xlate-lang
 	sed -e "s#%$(DEB_VENDOR)=\([^%]*\)%#, \1#g#" \
@@ -1874,17 +1875,7 @@ ifneq "$(DICT_DIR)" "/usr/share/hunspell"
 	perl -pi -e 's/^Breaks:.*myspell.*\n//' debian/control
 endif
 
-ifeq "$(BUILD_TEST_PACKAGE)" "y"
-debian/tests/control: debian/tests/control.in debian/control
-	# we want the build deps as dep on subsequentcheckbase, but strip the arch
-	# specifics as we are arch-all
-	# for now we filter out the arch-specific libc* and ia64, which is ugly,
-	# but better than manual bookkeeping. Also filter out the mips(el)-only
-	# binutils build-dep...
-	sed -e "s#%BUILD_DEPS_ARCH_ALL%#$(strip $(shell echo '$(BUILD_DEPS), $(BUILD_DEPS_INDEP)'|sed -e 's/,/,\n /g'|grep -v libc0.1| grep -v libc6| grep -v ia64|grep -v binutils|grep -v openjdk-6-jdk| grep -v gcc-7 | grep -v g++-7 | sed -e 's/\[[^]]*\]//g'|sed -e s,\<.*\>,,g))#g" < debian/tests/control.in > debian/tests/control
-endif
-
-.DELETE_ON_ERROR: debian/control debian/tests/control
+.DELETE_ON_ERROR: debian/control
 
 # All 'important' targets have 2 lines.  The one that is run by
 # dpkg-buildpackage or the user, and the one that does the actual work.  This
@@ -2062,14 +2053,16 @@ endif
 endif
 
 ifeq "$(RUN_PYTESTS)" "y"
-	cd $(SOURCE_TREE)/pyuno && $(MAKE) PythonTest_pytests
+	cd $(SOURCE_TREE)/pyuno && \
+		$(IGNORE_MAKE_CHECK_FAILURES)$(MAKE) PythonTest_pytests
 endif
 
 check-indep:
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 	# since the gb_SUPPRESS_CHECK stuff in build this isn't checked.
 	# probably should, so do it here manually.
-	cd odk && $(MAKE) check
+	cd odk && \
+		$(IGNORE_MAKE_CHECK_FAILURES)$(MAKE) check
 endif
 
 install: $(STAMP_DIR)/install-common $(STAMP_DIR)/install-arch $(STAMP_DIR)/install-indep
@@ -2207,7 +2200,7 @@ endif
 	dh_installdirs -A
 	if [ -x /usr/bin/dh_missing ]; then \
 		dh_install -A --sourcedir=debian/tmp/pkg; \
-		dh_missing --fail-missing; \
+		dh_missing -A --sourcedir=debian/tmp/pkg --fail-missing; \
 	else \
 		dh_install -A --sourcedir=debian/tmp/pkg --fail-missing; \
 	fi
@@ -3229,7 +3222,7 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 	dh_installdocs -a -A -Nure -Nuno-libs3 \
 		-Npython3-uno -Nlibreoffice-mysql-connector -Nlibreoffice -Nlibreofficekit-dev \
 		--link-doc=libreoffice-core
-	dh_installdocs -pure -puno-libs3 -ppython3-uno -plibreoffice-mysql-connector -plibreoffice
+	dh_installdocs -pure -puno-libs3 -ppython3-uno -plibreoffice-mysql-connector -plibreoffice -plibreofficekit-dev
 	cp workdir/CustomTarget/readlicense_oo/readme/README_en-US \
 		$(PKGDIR)-core/usr/share/doc/libreoffice-core/README
 	dh_installdebconf -a
@@ -3490,9 +3483,9 @@ endif
 	# libreoffice-dev-doc installs directly into /usr/share/doc/libreoffice-dev...
 	dh_installdocs -i -A -Nlibreoffice-librelogo -Nfonts-opensymbol \
 		-Nlibreoffice-wiki-publisher -Nlibreoffice-nlpsolver \
-		-Nlibreofficekit-dev -Nlibreoffice-dev-doc --link-doc=libreoffice-common
+		-Nlibreoffice-dev-doc --link-doc=libreoffice-common
 	dh_installdocs -plibreoffice-librelogo -pfonts-opensymbol -plibreoffice-wiki-publisher -plibreoffice-nlpsolver \
-		-plibreofficekit-dev -plibreoffice-dev-doc
+		-plibreoffice-dev-doc
 	cp workdir/CustomTarget/readlicense_oo/readme/README_en-US \
 		$(PKGDIR)-common/usr/share/doc/libreoffice-common/README
 	dh_installman -i
