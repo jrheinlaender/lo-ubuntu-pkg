@@ -1,14 +1,22 @@
-#!/bin/sh
+#!/bin/bash
 # autopkgtest check: Run the odk/build-examples check against an installed
 # version of the LibreOffice SDK
 # (c) 2017 Software in the Public Interest, Inc.
 # Authors: Rene Engelhard <rene@debian.org>
 
 set -e
+set -E
 
 SRCDIR=`pwd`
 CHECK_PARALLELISM=1
 
+function unapply() {
+	cd $SRCDIR
+	echo "====== Unapplying the patch ======"
+	patch -p1 -R < ./debian/tests/patches/odk-build-examples-standalone.diff
+}
+
+trap "unapply" ERR
 
 echo "====== Patching the tree to build the odk build-examples test against an existing installation ======"
 patch -p1 < ./debian/tests/patches/odk-build-examples-standalone.diff
@@ -25,3 +33,6 @@ cd $SRCDIR/odk
 export PARALLELISM=$CHECK_PARALLELISM
 make -rk \
 	make CustomTarget_odk/build-examples verbose=t 2>&1
+
+unapply
+
