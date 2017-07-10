@@ -1,0 +1,60 @@
+#!/bin/bash
+# autopkgtest check: Run uicheck against an installed version of LibreOffice
+# (c) 2017 Software in the Public Interest, Inc.
+# Authors: Rene Engelhard <rene@debian.org>
+
+set -e
+set -E
+
+SRCDIR=`pwd`
+WORKDIR=`mktemp -d`
+CHECK_PARALLELISM=1
+
+function unapply() {
+	echo "====== Unapplying the patch ======"
+	patch -p1 -R < ./debian/tests/patches/uicheck-standalone.diff
+}
+
+trap "unapply" ERR
+
+echo "====== Patching the tree to build uicheck against an existing installation ======"
+patch -p1 < ./debian/tests/patches/uicheck-standalone.diff
+
+OOO_TEST_SOFFICE="${1:-path:/usr/lib/libreoffice/program/soffice}"
+
+# this normally shouldn't be needed but otherwise it wants a automatic
+# re-autogen.
+echo
+echo "====== Generating configuration ======="
+rm -f config_host.mk
+./debian/rules config_host.mk 2>&1
+
+#echo
+#echo "====== Build "test" library required ======"
+#gb_SUPPRESS_TESTS=true make test.all verbose=t
+
+echo
+echo "====== Enabling core dumps ======"
+# yes, we want core dumps and stack traces
+ulimit -c unlimited
+
+echo
+echo "====== Generating en_US.UTF-8 locale ======"
+cd $WORKDIR
+$SRCDIR/debian/scripts/locale-gen
+
+
+echo
+echo "====== Starting uicheck with ${CHECK_PARALLELISM} job against ${OOO_TEST_SOFFICE} ======"
+
+cd $SRCDIR
+export PARALLELISM=$CHECK_PARALLELISM
+export LOCPATH=$WORKDIR/debian/locales
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
+make -rk \
+    OOO_TEST_SOFFICE=${OOO_TEST_SOFFICE} \
+    uicheck verbose=t 2>&1
+
+unapply
+

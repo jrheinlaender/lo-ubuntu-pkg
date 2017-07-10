@@ -1,0 +1,34 @@
+# fails with internal cppunit:
+#
+# [build LNK] CppunitTest/libtest_sc_subsequent_filters_test.so
+# S=/data/rene/git/LibreOffice/master && I=$S/instdir && W=$S/workdir &&  /usr/bin/ccache x86_64-linux-gnu-g++ -shared -Wl,-z,noexecstack   -Wl,-z,origin '-Wl,-rpath,$ORIGIN/../Library' -Wl,-rpath-link,$I/program -Wl,-z,defs -Wl,-rpath-link,/lib:/usr/lib -Wl,-z,combreloc  -Wl,--hash-style=gnu  -Wl,--dynamic-list-cpp-new -Wl,--dynamic-list-cpp-typeinfo -Wl,-Bsymbolic-functions  -L$W/LinkTarget/StaticLibrary -L$I/sdk/lib  -L$I/program  -L$I/program  -L$W/LinkTarget/Library -Wl,-z,relro   -L/usr/lib/x86_64-linux-gnu  -L/usr/lib/x86_64-linux-gnu  -L/usr/lib/x86_64-linux-gnu   $W/CxxObject/sc/qa/unit/subsequent_filters-test.o      -Wl,--start-group    -L$W/UnpackedTarball/cppunit/src/cppunit/.libs -lcppunit  -lxml2 -lorcus-0.12 -lorcus-parser-0.12 -lboost_filesystem  -lboost_iostreams -lz -Wl,--end-group -Wl,--no-as-needed -lmergedlo -luno_cppu -luno_cppuhelpergcc3 -lforlo -lforuilo -li18nlangtag -looxlo -luno_sal -luno_salhelpergcc3 -lsclo -lscqahelper -lsubsequenttest -ltest -lunotest -lvbahelperlo  -o $W/LinkTarget/CppunitTest/libtest_sc_subsequent_filters_test.so 
+# /data/rene/git/LibreOffice/master/workdir/CxxObject/sc/qa/unit/subsequent_filters-test.o:(.data.rel.ro._ZTIN7CppUnit17AdditionalMessageE[_ZTIN7CppUnit17AdditionalMessageE]+0x10): undefined reference to `typeinfo for CppUnit::Message'
+# collect2: error: ld returned 1 exit status
+# /data/rene/git/LibreOffice/master/solenv/gbuild/LinkTarget.mk:598: recipe for target '/data/rene/git/LibreOffice/master/workdir/LinkTarget/CppunitTest/libtest_sc_subsequent_filters_test.so' failed
+# make[4]: *** [/data/rene/git/LibreOffice/master/workdir/LinkTarget/CppunitTest/libtest_sc_subsequent_filters_test.so] Error 1
+#
+# interestingly, this works with system-cppunit...
+
+diff --git a/sc/Module_sc.mk b/sc/Module_sc.mk
+index ef82147d781b..f737236d40c3 100644
+--- a/sc/Module_sc.mk
++++ b/sc/Module_sc.mk
+@@ -53,12 +53,17 @@ endif
+ $(eval $(call gb_Module_add_slowcheck_targets,sc, \
+ 	CppunitTest_sc_condformats \
+ 	CppunitTest_sc_new_cond_format_api \
+-	CppunitTest_sc_subsequent_filters_test \
+ 	CppunitTest_sc_subsequent_export_test \
+ 	CppunitTest_sc_html_export_test \
+ 	CppunitTest_sc_copypaste \
+ ))
+ 
++ifeq ($(SYSTEM_CPPUNIT),TRUE)
++$(eval $(call gb_Module_add_slowcheck_targets,sc, \
++	CppunitTest_sc_subsequent_filters_test \
++))
++endif
++
+ # Various function tests fail in 32-bit linux_x86 build due to dreaded floating
+ # point weirdness (x87, registers, compiler optimization, ... whatever),
+ # disable them until someone finds a real cure.

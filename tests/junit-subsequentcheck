@@ -1,15 +1,23 @@
-#!/bin/sh
+#!/bin/bash
 # autopkgtest check: Run junit base tests against an installed version of LibreOffice
 # (C) 2013 Canonical Ltd.
-# (c) 2015 Software in the Public Interest, Inc.
+# (c) 2015-2017 Software in the Public Interest, Inc.
 # Authors: Bjoern Michaelsen <bjoern.michaelsen@canonical.com>
 #          Rene Engelhard <rene@debian.org>
 
 set -e
+set -E
 
 SRCDIR=`pwd`
 WORKDIR=`mktemp -d`
+CHECK_PARALLELISM=1
 
+function unapply() {
+	echo "====== Unapplying the patch ======"
+	patch -p1 -R < ./debian/tests/patches/java-subsequentcheck-standalone.diff
+}
+
+trap "unapply" ERR
 
 echo "====== Patching the tree to only build Java-based unittests against an existing installation ======"
 patch -p1 < ./debian/tests/patches/java-subsequentcheck-standalone.diff
@@ -34,8 +42,12 @@ ulimit -c unlimited
 echo
 echo "====== Starting subsequentcheck with ${CHECK_PARALLELISM} job against ${OOO_TEST_SOFFICE} ======"
 
+export PARALLELISM=$CHECK_PARALLELISM
 make -rk \
     OOO_TEST_SOFFICE=${OOO_TEST_SOFFICE} \
     bridges_SELECTED_BRIDGE=foo \
     SAL_DISABLE_CUPS=true \
     subsequentcheck verbose=t 2>&1
+
+unapply
+

@@ -1,3 +1,164 @@
+libreoffice (1:5.4.0~rc2-1) UNRELEASED; urgency=medium
+
+  * New upstream release candidate
+
+  * debian/tests/control, debian/uitest: improve, we can only run the test
+    now; remove build-needed
+  * debian/tests/control, debian/tests/sdk-examples: move ...
+  * debian/tests/control, debian/tests/odk-build-examples: ... here and use
+    upstreams odk/build-examples check directly.
+    (Needs zip, python3-uno and libreoffice-officbean as new test Depends:)
+  * debian/tests/odk-build-examples: actually set -e...
+  * debian/rules, debian/tests/control: remove extra hackery to add our
+    Build-Depends-(Indep-): to debian/tests/control.in; misses some packages
+    (e.g. ant) and it should work at least since autopktest 3.16 from Jul 2015;
+    use @builddeps@ instead
+  * debian/tests/control, debian/tests/*uno-import.diff: split; make
+    pyuno-import test import pyuno while uno-import does import uno
+    (the uichecks do the former). add python3 Depends: for safety
+  * debian/test/control: sort by importance
+  * debian/tests/: unapply patch after the make (or on error) so that the
+    next test can patch it...
+
+  * debian/rules:
+    - be consequent and set RUN_PYTESTS=n (and RUN_MAKE_UICHECK=n) where we set
+      RUN_MAKE_CHECK=n
+    - be consequent and add $(IGNORE_MAKE_CHECK_FAILURES) also to the "extra"
+      test runs
+
+ -- Rene Engelhard <rene@debian.org>  Fri, 07 Jul 2017 07:11:40 +0200
+
+libreoffice (1:5.4.0~rc1-1) experimental; urgency=medium
+
+  * New upstream release candidate
+
+  * debian/tests/control.in, debian/tests/uicheck,
+    debian/tests/patches/uicheck-standalone.diff: add initial version
+    of autopgktest running uitest 
+
+  * debian/rules, debian/patches/system-xmlsec.diff: backport patch from
+    master and add conditional for system-xmlsec. use it.
+
+  * debian/rules, debian/control.lokit.in:
+    - move /usr/share/gir-1.0/LOKDocView-0.1.gir to libreofficekit-dev and
+      make libreofficekit-dev depend on gir1.2-lokdocview-0.1 as per gir
+      policy
+  * debian/rules:
+    - clean up JRE Depends; we consider java6_architectures as Java arch, so
+      let's remove the Java5 alternatives
+  * debian/copyright, debian/source/include-binaries: remove xmlsec
+  * debian/rules:
+    - fix dh_missing call
+  * debian/tests/sdk-examples: DevelopersGuide/OfficeDev/DesktopEnvironment
+    needs -ljawt. Build this to check this and the JAVA_PROC_TYPE setting also.
+
+ -- Rene Engelhard <rene@debian.org>  Mon, 26 Jun 2017 19:25:59 +0200
+
+libreoffice (1:5.4.0~beta2-4) experimental; urgency=medium
+
+  * debian/patches/gb_SUPPRESS_TESTS.diff: add more tests to suppress
+    (from master)
+  * debian/patches/odk-settings-JAVA_PROC_TYPE.diff: set correct
+    JAVA_PROC_TYPE for arm{el,hf}, mips* and ppc64el
+  * debian/patches/gerrit_38597.diff: add from gerrit for master, fixes
+    i386 tests
+
+  * debian/rules, debian/scripts/locale-gen: upstream insists on using
+    en_US.UTF-8 for the tests. "Steal" the locale-gen stuff from gcc
+  * debian/control.in: make -core depend on ure (>= 5.4.0~beta2~)
+    (closes: #864690)
+  * debian/control.in:
+    - make -gstreamer recommend gstreamer1.0-plugins-bad as we apparently
+      want/need gtksink
+
+  * merge from Ubuntu:
+    - debian/tests/patches/java-subsequentcheck-standalone.diff: refreshed
+
+ -- Rene Engelhard <rene@debian.org>  Mon, 12 Jun 2017 23:44:55 +0200
+
+libreoffice (1:5.4.0~beta2-3) experimental; urgency=medium
+
+  *  debian/patches/series, also-suppress-odk-build-examples.diff: sigh.
+     don't do that yet, not yet ready....
+
+ -- Rene Engelhard <rene@debian.org>  Fri, 09 Jun 2017 05:18:08 +0200
+
+libreoffice (1:5.4.0~beta2-2) experimental; urgency=medium
+
+  * debian/patches/disable-db-tests.diff: update
+
+  * debian/rules:
+    - try harder and also export LC_ALL=C.UTF-8 for uitest as the
+      buildd/sbuild sets LC_ALL=POSIX already
+    - fix icon installation in install-indep
+
+ -- Rene Engelhard <rene@debian.org>  Thu, 08 Jun 2017 15:55:59 +0200
+
+libreoffice (1:5.4.0~beta2-1) experimental; urgency=medium
+
+  * New upstream beta release
+    - is now able to do "insert->image, choose pdf". Not insert->docunent
+      but close enough, so this closes: #814598
+      (unfortunately only using internal pdfium. sigh.)
+
+  * debian/scripts/gid2pkgdirs.sh, debian/control{,.transitionals}.in:
+    remove extra libreoffice-pdfimport, merge (even though the poppler
+    dependency...) back to -common/-core since it has the above new feature and
+    otherwise it may get confusing what is what.
+
+  * debian/rules, debian/patches/cppunit-optional.diff: as name says;
+    make cppunit build-dep optional and add <!nocheck> to the build-dep
+  * debian/patches/disable-unneeded-test-programs.diff : micro-optimisation;
+    as name says.
+  * debian/gb_SUPPRESS_TESTS.diff: backport from master, allow checks build
+    but not run them
+
+  * tarballs/pdfium-3064.tar.bz2, debian/copyright,
+    debian/source/include-binaries, debian/libreoffice-core.lintian-overrides:
+    include pdfium; override embedded-library for lcms2
+
+  * debian/rules:
+    - adapt for (upcoming) usage of dh_missing
+    - run build-nocheck with --without-junit --without-cppunit to configure
+      and run check with them; build the checks with gb_SUPPRESS_TESTS first
+      before running them 
+    - replace symlinks /usr/share/applications/*.desktop. move
+      /usr/lib/libreoffice/share/xdg/*.desktop (except qstart.desktop) to
+      them instead. Fixes e.g. appstream-generator for our appstream data
+      (which cannot handle the symlinks...)
+    - enable running make uicheck
+
+ -- Rene Engelhard <rene@debian.org>  Wed, 07 Jun 2017 19:42:57 +0000
+
+libreoffice (1:5.3.3-2) experimental; urgency=medium
+
+  * debian/patches/sensible-lomua.diff: sync upstreams
+    "add xdg-email as the default email route" into here
+
+  * debian/rules:
+    - fix logic error; make -g1 etc work also with noddebs. Build with those
+      flags also if building no -dbgsym
+    - move DPKG_EXPORT_BUILDFLAGS and buildflags.mk include later to make it
+      effective (worked before, but...)
+    - fix /usr/share/libreoffice/program/classes/unoil.jar symlink
+  * debian/control.in:
+    - remove obsolete Pre-Depends
+  * debian/rules, debian/control.in: remove now unneeded dejavu-depends
+    substvar, simply use fonts-dejavu. Move from Depends: to Recommends: like
+    the other fonts
+  * debian/copyright: fix (add missing .'s)
+
+ -- Rene Engelhard <rene@debian.org>  Sat, 27 May 2017 10:52:43 +0200
+
+libreoffice (1:5.3.3-1) experimental; urgency=medium
+
+  * New upstream release
+
+  * debian/control.in:
+    - recommend new fonts-open-sans
+
+ -- Rene Engelhard <rene@debian.org>  Thu, 04 May 2017 20:33:52 +0200
+
 libreoffice (1:5.3.3-0ubuntu1) artful; urgency=medium
 
   [ Olivier Tilloy ]
@@ -16,6 +177,59 @@ libreoffice (1:5.3.3-0ubuntu1) artful; urgency=medium
     - recommend new fonts-open-sans
 
  -- Olivier Tilloy <olivier.tilloy@canonical.com>  Tue, 06 Jun 2017 20:58:57 +0200
+
+libreoffice (1:5.3.2-1) experimental; urgency=medium
+
+  * New upstream release
+
+  * debian/patches/help-msg-add-package-info.diff,
+    debian/patches/mention-java-common-package.diff,
+    debian/patches/mediawiki-oor-replace.diff:
+    debian/patches/series: actually update the patches and re-enable...
+
+  * debian/rules:
+    - move /usr/include/libreoffice/sal/typesizes.h symlink to -dev
+      instead of -dev-common (closes: #858199)
+  * debian/control.in:
+    - add missing -java-common Depends: to -script-provider-{bsh,js}
+  * debian/control.mediawiki.in:
+    - add missing JRE depends
+  (thanks to Daniel Richard G. for those two, see #858655)
+  * debian/control.in:
+   - make libreoffice meta-package only recommend libreoffice-java-common
+     (closes: #858655)
+
+ -- Rene Engelhard <rene@debian.org>  Wed, 29 Mar 2017 12:48:44 +0200
+
+libreoffice (1:5.3.1-1) experimental; urgency=medium
+
+  * New upstream release
+
+  * debian/rules, debian/libreoffice-dev-doc.links, debian/lo*.in:
+    install SDK documentation into /usr/share/doc/libreoffice/sdk (and adapt
+    dev-docs symlinks/doc-base stuff). Remove extra license file (thanks
+    lintian) which otherwise would still install over the symlink.
+  * debian/control.sdk.in: update -devs libreoffice-dev-doc Conflicts to
+    (<< 1:5.2.5-2~) and add Conflicts: libreoffice (<< 1:5.2.5-2~) to both
+    -dev*- for safety
+  * debian/rules:
+    - enable mergelibs only on 64bit archs (and i386), ld goes to OOM on
+      mips(el) for example...
+    - allow build with gold (maybe for LTO?)
+    - ignore "libreoffice" for --link-doc
+    - fix dh_installdocs calls to install copyright for "libreoffice"
+    - symlink /usr/share/libreoffice/program/classes/unoil.jar to
+      /usr/share/java/unoil.jar to "dedup" it
+    - run rdfind to get duplicated /usr/share/icons/gnome symlinked to
+      hicolor if identical (closes: #835515); add rdlink/symlinks B-D-I
+    - fix generating lo-idl-ref doc-base file
+  * debian/control.in, debian/rules, debian/scripts/cleandupes: remove unused
+    fdupes B-D-I and commented-out usage
+  * debian/rules, debian/control.in: recommend -sdbc-firebird only where it's
+    built (LE) to prepare for it being a dependency when firebird will be the
+    default embedded engine
+
+ -- Rene Engelhard <rene@debian.org>  Wed, 08 Mar 2017 02:02:25 +0100
 
 libreoffice (1:5.3.1-0ubuntu3) UNRELEASED; urgency=medium
 
@@ -47,6 +261,20 @@ libreoffice (1:5.3.1-0ubuntu1) zesty; urgency=medium
   * version lock -l10ns to -common to prevent premature promotion
 
  -- Bjoern Michaelsen <bjoern.michaelsen@canonical.com>  Thu, 16 Mar 2017 11:32:20 +0100
+
+libreoffice (1:5.3.0-1) experimental; urgency=medium
+
+  * New upstream release
+
+  * debian/rules:
+    - add support for building with clang
+    - move from hardcoded C(XX)FLAGS for -g -> -g1 to recommended
+      DEB_C(XX)FLAGS_MAINT_*
+  * debian/missing-sources:
+    - add source of jquery 3.1.1 (from libjs-jquery package) for
+      helpcontent2/source/jquery-3.1.1.min.js
+ 
+ -- Rene Engelhard <rene@debian.org>  Wed, 01 Feb 2017 01:25:24 +0100
 
 libreoffice (1:5.3.0~rc3-0ubuntu2) zesty; urgency=medium
 

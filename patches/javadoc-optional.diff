@@ -1,24 +1,34 @@
-From: Debian LibreOffice Maintainers <debian-openoffice@lists.debian.org>
-Date: Mon, 8 Aug 2016 16:42:21 +0200
-Subject: [PATCH] javadoc-optional.diff
-
 Gemeinsame Unterverzeichnisse: odk-old/config und odk/config.
 Gemeinsame Unterverzeichnisse: odk-old/docs und odk/docs.
 Gemeinsame Unterverzeichnisse: odk-old/examples und odk/examples.
-
----
- configure.ac                | 62 ++++++++++++++++++++++++++++++---------------
- odk/CustomTarget_check.mk   |  2 +-
- odk/Module_odk.mk           |  6 +++--
- odk/util/check.pl           |  2 +-
- scp2/InstallModule_sdkoo.mk |  6 +++++
- scp2/source/sdkoo/sdkoo.scp |  2 ++
- 6 files changed, 56 insertions(+), 24 deletions(-)
-
-diff --git a/configure.ac b/configure.ac
---- a/configure.ac
-+++ b/configure.ac
-@@ -2063,6 +2063,18 @@ AC_ARG_WITH(doxygen,
+diff --git a/odk/Module_odk.mk b/odk/Module_odk.mk
+index 32bdfc1..a174932 100644
+--- a/odk/Module_odk.mk
++++ b/odk/Module_odk.mk
+@@ -43,11 +43,13 @@ ifneq ($(ENABLE_JAVA),)
+ $(eval $(call gb_Module_add_targets,odk,\
+ 	$(if $(and $(BUILD_UNOWINREG),$(filter GCC,$(COM))),CustomTarget_unowinreg)\
+ 	CustomTarget_classes \
+-	CustomTarget_javadoc \
+-	GeneratedPackage_odk_javadoc \
+ 	GeneratedPackage_uno_loader_classes \
+ 	$(if $(filter WNT,$(OS)),Library_unowinreg) \
+ 	Package_unowinreg \
++	$(if $(JAVADOC),\
++		CustomTarget_javadoc \
++		GeneratedPackage_odk_javadoc \
++	) \
+ ))
+ endif
+ 
+Gemeinsame Unterverzeichnisse: odk-old/pack und odk/pack.
+Gemeinsame Unterverzeichnisse: odk-old/qa und odk/qa.
+Gemeinsame Unterverzeichnisse: odk-old/settings und odk/settings.
+Gemeinsame Unterverzeichnisse: odk-old/source und odk/source.
+Gemeinsame Unterverzeichnisse: odk-old/util und odk/util.
+--- a/configure.ac-old	2013-05-27 18:32:42.187305241 +0200
++++ b/configure.ac	2013-05-27 18:44:29.131286710 +0200
+@@ -2057,6 +2057,18 @@ AC_ARG_WITH(doxygen,
           documentation. Not relevant in the --disable-odk case.]),
  ,with_doxygen=yes)
  
@@ -35,9 +45,9 @@ diff --git a/configure.ac b/configure.ac
 +    [with_javadoc=yes])
 +
  AC_ARG_WITH(visual-studio,
-     AS_HELP_STRING([--with-visual-studio=<2013/2015>],
+     AS_HELP_STRING([--with-visual-studio=<2015/2017>],
          [Specify which Visual Studio version to use in case several are
-@@ -7024,34 +7036,44 @@ AC_SUBST(JAVACISGCJ)
+@@ -6290,34 +6302,44 @@
  dnl ===================================================================
  dnl Checks for javadoc
  dnl ===================================================================
@@ -103,6 +113,7 @@ diff --git a/configure.ac b/configure.ac
      # check if JAVA_HOME was (maybe incorrectly?) set automatically to /usr
      if test "$JAVA_HOME" = "/usr" -a "x$with_jdk_home" = "x"; then
 diff --git a/odk/CustomTarget_check.mk b/odk/CustomTarget_check.mk
+index a9b542d..707829a 100644
 --- a/odk/CustomTarget_check.mk
 +++ b/odk/CustomTarget_check.mk
 @@ -35,7 +35,7 @@ $(call gb_CustomTarget_get_workdir,odk/check)/checkbin : \
@@ -111,32 +122,14 @@ diff --git a/odk/CustomTarget_check.mk b/odk/CustomTarget_check.mk
  		$(call gb_Package_get_target,odk_html) \
 -		$(if $(ENABLE_JAVA),$(call gb_GeneratedPackage_get_target,odk_javadoc)) \
 +		$(if $(JAVADOC),$(call gb_GeneratedPackage_get_target,odk_javadoc)) \
- 		$(call gb_Package_get_target,odk_lib) \
  		$(call gb_Package_get_target,odk_settings) \
  		$(call gb_Package_get_target,odk_settings_generated) \
-diff --git a/odk/Module_odk.mk b/odk/Module_odk.mk
---- a/odk/Module_odk.mk
-+++ b/odk/Module_odk.mk
-@@ -43,11 +43,13 @@ ifneq ($(ENABLE_JAVA),)
- $(eval $(call gb_Module_add_targets,odk,\
- 	$(if $(and $(BUILD_UNOWINREG),$(filter GCC,$(COM))),CustomTarget_unowinreg)\
- 	CustomTarget_classes \
--	CustomTarget_javadoc \
--	GeneratedPackage_odk_javadoc \
- 	GeneratedPackage_uno_loader_classes \
- 	$(if $(filter WNT,$(OS)),Library_unowinreg) \
- 	Package_unowinreg \
-+	$(if $(JAVADOC),\
-+		CustomTarget_javadoc \
-+		GeneratedPackage_odk_javadoc \
-+	) \
- ))
- endif
- 
+ 		$(if $(ENABLE_JAVA),$(call gb_Package_get_target,odk_unowinreg))
 diff --git a/odk/util/check.pl b/odk/util/check.pl
+index 899b42c..2c7a780 100644
 --- a/odk/util/check.pl
 +++ b/odk/util/check.pl
-@@ -184,7 +184,7 @@ if (-d "$SdkDir") {
+@@ -188,7 +188,7 @@ if (-d "$SdkDir") {
      # improvement required
      my $solar_java = $ENV{"ENABLE_JAVA"};
      my $JDK = $ENV{"JDK"};
@@ -145,41 +138,16 @@ diff --git a/odk/util/check.pl b/odk/util/check.pl
      print "check java docu: ";
      if (check_dir("docs/java/ref")) {
          if (!check_file("docs/java/ref/index.html")) {
-diff --git a/scp2/InstallModule_sdkoo.mk b/scp2/InstallModule_sdkoo.mk
---- a/scp2/InstallModule_sdkoo.mk
-+++ b/scp2/InstallModule_sdkoo.mk
-@@ -17,6 +17,12 @@ $(eval $(call gb_InstallModule_add_defs,scp2/sdkoo,\
- ))
- endif
- 
-+ifneq ($(JAVADOC),)
-+$(eval $(call gb_InstallModule_add_defs,scp2/sdkoo,\
-+	-DJAVADOC \
-+))
-+endif
-+
- $(eval $(call gb_InstallModule_add_scpfiles,scp2/sdkoo,\
-     scp2/source/sdkoo/sdkoo \
- ))
-diff --git a/scp2/source/sdkoo/sdkoo.scp b/scp2/source/sdkoo/sdkoo.scp
---- a/scp2/source/sdkoo/sdkoo.scp
-+++ b/scp2/source/sdkoo/sdkoo.scp
-@@ -126,6 +126,7 @@ File gid_File_Package_odk_html
- End
- 
- #if defined(ENABLE_JAVA)
-+#if defined(JAVADOC)
- File gid_File_Package_odk_javadoc
-     TXT_FILE_BODY;
-     Dir = FILELIST_SDK_DIR;
-@@ -133,6 +134,7 @@ File gid_File_Package_odk_javadoc
-     Styles = (FILELIST,USE_INTERNAL_RIGHTS);
- End
- #endif
-+#endif
- 
- File gid_File_Package_odk_lib
-     TXT_FILE_BODY;
--- 
-2.7.4
-
+diff --git a/Repository.mk b/Repository.mk
+index 5f2654b..471210f 100644
+--- a/Repository.mk
++++ b/Repository.mk
+@@ -834,7 +841,7 @@ $(eval $(call gb_Helper_register_packages_for_install,sdk,\
+ 	offapi_idl \
+ 	udkapi_idl \
+ 	$(if $(ENABLE_JAVA), \
+-		odk_javadoc \
++		$(if $(JAVADOC),odk_javadoc) \
+ 		odk_uno_loader_classes \
+ 		odk_unowinreg \
+ 	) \
