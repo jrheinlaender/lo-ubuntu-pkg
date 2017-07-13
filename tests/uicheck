@@ -1,14 +1,21 @@
-#!/bin/sh
+#!/bin/bash
 # autopkgtest check: Run uicheck against an installed version of LibreOffice
 # (c) 2017 Software in the Public Interest, Inc.
 # Authors: Rene Engelhard <rene@debian.org>
 
 set -e
+set -E
 
 SRCDIR=`pwd`
 WORKDIR=`mktemp -d`
 CHECK_PARALLELISM=1
 
+function unapply() {
+	echo "====== Unapplying the patch ======"
+	patch -p1 -R < ./debian/tests/patches/uicheck-standalone.diff
+}
+
+trap "unapply" ERR
 
 echo "====== Patching the tree to build uicheck against an existing installation ======"
 patch -p1 < ./debian/tests/patches/uicheck-standalone.diff
@@ -20,7 +27,7 @@ OOO_TEST_SOFFICE="${1:-path:/usr/lib/libreoffice/program/soffice}"
 echo
 echo "====== Generating configuration ======="
 rm -f config_host.mk
-./debian/rules config_host.mk 2>&1
+./debian/rules config_host.mk
 
 #echo
 #echo "====== Build "test" library required ======"
@@ -48,4 +55,7 @@ export LC_ALL=en_US.UTF-8
 make -rk \
     OOO_TEST_SOFFICE=${OOO_TEST_SOFFICE} \
     bridges_SELECTED_BRIDGE=foo \
-    uicheck verbose=t 2>&1
+    uicheck verbose=t
+
+unapply
+
