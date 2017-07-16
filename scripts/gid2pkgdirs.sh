@@ -102,16 +102,18 @@ create_package_directory gid_Module_Optional_Pyuno_LibreLogo	pkg/libreoffice-lib
 create_package_directory gid_Module_Script_Provider_For_Python		pkg/libreoffice-script-provider-python
 create_package_directory gid_Module_Optional_Gnome              pkg/libreoffice-gnome
 create_package_directory gid_Module_Optional_Kde                pkg/libreoffice-kde
-create_package_directory gid_Module_Root_Files
 create_package_directory gid_Module_Optional_OGLTrans		pkg/libreoffice-ogltrans
 create_package_directory gid_Module_Root_SDK                    pkg/libreoffice-dev
+# WTF? Why is this suddently not installed itself?
+mv usr/lib/libreoffice/sdk/lib \
+	pkg/libreoffice-dev/usr/lib/libreoffice/sdk
 create_package_directory gid_Module_Optional_Extensions_Script_Provider_For_BS	pkg/libreoffice-script-provider-bsh
 create_package_directory gid_Module_Optional_Extensions_Script_Provider_For_JS  pkg/libreoffice-script-provider-js
 create_package_directory gid_Module_Optional_Extensions_MEDIAWIKI	pkg/libreoffice-wiki-publisher
 create_package_directory gid_Module_Optional_Extensions_MINIMIZER	pkg/libreoffice-presentation-minimizer
 create_package_directory gid_Module_Optional_Extensions_MySQLConnector  pkg/libreoffice-mysql-connector
 create_package_directory gid_Module_Optional_Extensions_NLPSolver	pkg/libreoffice-nlpsolver
-create_package_directory gid_Module_Pdfimport     pkg/libreoffice-pdfimport
+create_package_directory gid_Module_Pdfimport     pkg/libreoffice-common
 create_package_directory gid_Module_Optional_Extensions_PRESENTER_SCREEN	pkg/libreoffice-presenter-console
 create_package_directory gid_Module_Reportbuilder	pkg/libreoffice-report-builder
 create_package_directory gid_Module_Optional_PostgresqlSdbc     pkg/libreoffice-sdbc-postgresql
