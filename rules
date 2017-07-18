@@ -71,7 +71,7 @@ lo_sources_ver=$(shell grep AC_INIT $(SOURCE_TREE)/configure.ac | grep documentf
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
 GIT_TAG=libreoffice-$(lo_sources_ver)
-GIT_BRANCH=libreoffice-5-3-3
+GIT_BRANCH=libreoffice-5-3-4
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
 lo_sources_ver=$(shell cat $(CURDIR)/sources.ver | cut -d= -f2)
@@ -573,9 +573,9 @@ ifeq "$(ENABLE_GLTF)" "y"
 endif
 
 IGNORE_MAKE_CHECK_FAILURES=-
-ifeq (i386,$(DEB_HOST_ARCH))
-  IGNORE_MAKE_CHECK_FAILURES:=
-endif
+#ifeq (i386,$(DEB_HOST_ARCH))
+#  IGNORE_MAKE_CHECK_FAILURES:=
+#endif
 ifeq (amd64,$(DEB_HOST_ARCH))
   IGNORE_MAKE_CHECK_FAILURES:=
 endif
@@ -1033,12 +1033,11 @@ ifeq "$(ENABLE_JAVA)" "y"
     endif
   endif
   ifneq (,$(filter $(DEB_HOST_ARCH), amd64 i386))
-	JAVA_RUNTIME_DEPENDS += | sun-java5-jre | sun-java6-jre
+	JAVA_RUNTIME_DEPENDS += | sun-java6-jre
   endif
-	JAVA_RUNTIME_DEPENDS += | java5-runtime
+	JAVA_RUNTIME_DEPENDS += | java6-runtime
 	# Suns Java "packages"
 	JAVA_RUNTIME_DEPENDS += | jre
-	MEDIAWIKI_JAVA_RUNTIME_DEPENDS = $(shell echo $(JAVA_RUNTIME_DEPENDS) | sed -e "s/sun-java5-jre//" | sed -e "s/java5-runtime/java6-runtime/")
 export JAVA_HOME
 	CONFIGURE_FLAGS += --with-jdk-home=$(JAVA_HOME)
 	JAVA_COMMON_DEPENDS= , libreoffice-java-common
@@ -1634,11 +1633,7 @@ endif
 
 # Generate control file, because we have so many different languages
 # Based on script by Martin Quinson <Martin.Quinson@tuxfamily.org>
-ifeq "$(BUILD_TEST_PACKAGE)" "y"
-control: debian/control debian/tests/control
-else
 control: debian/control
-endif
 debian/control: $(wildcard debian/control*in) $(SOURCE_TREE)/bin/lo-xlate-lang  debian/rules
 	chmod 755 $(SOURCE_TREE)/bin/lo-xlate-lang
 	sed -e "s#%$(DEB_VENDOR)=\([^%]*\)%#, \1#g#" \
@@ -1860,17 +1855,7 @@ ifneq "$(DICT_DIR)" "/usr/share/hunspell"
 	perl -pi -e 's/^Breaks:.*myspell.*\n//' debian/control
 endif
 
-ifeq "$(BUILD_TEST_PACKAGE)" "y"
-debian/tests/control: debian/tests/control.in debian/control
-	# we want the build deps as dep on subsequentcheckbase, but strip the arch
-	# specifics as we are arch-all
-	# for now we filter out the arch-specific libc* and ia64, which is ugly,
-	# but better than manual bookkeeping. Also filter out the mips(el)-only
-	# binutils build-dep...
-	sed -e "s#%BUILD_DEPS_ARCH_ALL%#$(strip $(shell echo '$(BUILD_DEPS), $(BUILD_DEPS_INDEP)'|sed -e 's/,/,\n /g'|grep -v libc0.1| grep -v libc6| grep -v ia64|grep -v binutils|grep -v openjdk-6-jdk| grep -v gcc-7 | grep -v g++-7 | sed -e 's/\[[^]]*\]//g'|sed -e s,\<.*\>,,g))#g" < debian/tests/control.in > debian/tests/control
-endif
-
-.DELETE_ON_ERROR: debian/control debian/tests/control
+.DELETE_ON_ERROR: debian/control
 
 # All 'important' targets have 2 lines.  The one that is run by
 # dpkg-buildpackage or the user, and the one that does the actual work.  This
@@ -3141,7 +3126,9 @@ ifeq "$(ENABLE_JAVA)" "y"
 		< $(SOURCE_TREE)/unoil/pom.unoil.xml > debian/pom.unoil.xml
 	mh_installpoms -plibreoffice-java-common
 	mh_installjar -plibreoffice-java-common -l debian/pom.unoil.xml instdir/program/classes/unoil.jar
-	ln -sf $(PKGDIR)-java-common/usr/share/java/unoil.jar $(PKGDIR)-java-common/usr/share/libreoffice/program/classes/unoil.jar
+	# dedup. But why is this NOT a symlink from the start whereas the ure
+	# stuff is?
+	ln -sf /usr/share/java/unoil.jar $(PKGDIR)-java-common/usr/share/libreoffice/program/classes/unoil.jar
 endif
 
 	touch $@
@@ -3456,6 +3443,9 @@ endif
 	mkdir -p $(PKGDIR)-common/usr/share/applications
 	cd $(PKGDIR)-common/usr/share/applications && \
 		ln -sf /$(OODIR)/share/xdg/startcenter.desktop libreoffice-startcenter.desktop
+	# fix /usr/share/applications/libreoffice-xsltfilter.desktop -> ../../../../../../../../../../../../usr/lib/libreoffice/share/xdg/xsltfilter.desktop. No idea why it happens in the first place, but..
+	cd $(PKGDIR)-common/usr/share/applications && \
+		ln -sf /$(OODIR)/share/xdg/xsltfilter.desktop libreoffice-xsltfilter.desktop
 	dh_fixperms -i
 	dh_icons -i
 	dh_compress -i -X.py -X.mk -X.sxd -X.xcd.sample
@@ -3491,7 +3481,7 @@ ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 endif
 ifeq "$(ENABLE_MEDIAWIKI)" "y"
 	dh_gencontrol -plibreoffice-wiki-publisher -- \
-		-V'java-runtime-depends=$(MEDIAWIKI_JAVA_RUNTIME_DEPENDS)' \
+		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-v$(shell grep "<version" $(SOURCE_TREE)/swext/mediawiki/src/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
 endif
 ifeq "$(ENABLE_NLPSOLVER)" "y"
