@@ -657,9 +657,6 @@ ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
 	CONFIGURE_FLAGS += --disable-database-connectivity
   endif
 endif
-ifneq ($(ENABLE_FIREBIRD),y)
-  DEBHELPER_OPTIONS += -Nlibreoffice-sdbc-firebird
-endif
 
 ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_BE_ARCHS)))
 	ENABLE_FIREBIRD=n
@@ -808,12 +805,6 @@ DH_STRIP_DBG_OPTION_UNO_LIBS3 += --no-automatic-dbgsym
 endif
 
 CONFIGURE_FLAGS += $(foreach i, $(SYSTEM_STUFF),--with-system-$(i))
-ifneq ($(ENABLE_FIREBIRD),y)
-  CONFIGURE_FLAGS += --disable-firebird-sdbc
-  DB_FIREBIRD_DEPS :=
-else
-  DB_FIREBIRD_DEPS := , libreoffice-sdbc-firebird [$(OOO_FIREBIRD_ARCHS)]
-endif
 
 CC_PREFIX:=$(shell gcc -dumpmachine)-
 
@@ -1390,6 +1381,7 @@ ifeq "$(ENABLE_MYSQLNATIVE)" "y"
 endif
 
 ifeq "$(ENABLE_FIREBIRD)" "y"
+	BASE_FIREBIRD_RECOMMENDS = libreoffice-sdbc-firebird [$(OOO_FIREBIRD_ARCHS)]
   ifneq (,$(filter libatomic-ops, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libatomic-ops-dev (>= 7.3~alpha1+git20110913-1)$(OOO_NO_BE_ARCHS)
   endif
@@ -1404,6 +1396,7 @@ ifeq "$(ENABLE_FIREBIRD)" "y"
   endif
 else
 	CONFIGURE_FLAGS += --disable-firebird-sdbc
+	DEBHELPER_OPTIONS += -Nlibreoffice-sdbc-firebird
 endif
 
 ifeq "$(BUILD_GTK)" "n"
@@ -1738,7 +1731,6 @@ debian/control: $(wildcard debian/control*in) $(SOURCE_TREE)/bin/lo-xlate-lang  
 	    -e "s#%[A-Za-z]*=[^%]*%##g#" \
 	    -e "s#%BUILD_DEPS_INDEP%#$(strip $(BUILD_DEPS_INDEP))#g" \
 	    -e "s#@BUGS@#$(BUGS)#g" \
-	    -e "s#@DB_FIREBIRD_DEPS@#$(strip $(DB_FIREBIRD_DEPS))#g" \
 	    < debian/control.in > debian/control
 
 	cat debian/control.ure.in >> debian/control
@@ -3288,6 +3280,7 @@ endif
 		-V'next-oover=$(NEXT_OOVER)' \
 		-V'help-l10n-virtual-version=$(HELP_L10N_VIRTUAL_VERSION)' \
 		-V'base-hsqldb-depends=$(BASE_HSQLDB_DEPENDS)' \
+		-V'base-firebird-recommends=$(BASE_FIREBIRD_RECOMMENDS)' \
 		-V'java-common-depends=$(JAVA_COMMON_DEPENDS) $(JAVA_COMMON_DEPENDS_VERSION)' \
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-V'Binary-Version=$(BINARY_VERSION)' \
