@@ -17,7 +17,8 @@ for l in $libs; do
 	l1=`readlink $p/$l`
 	l2_tmp=`echo $l | perl -pe 's/(.*)\.\d+$/$1/'`
 	l2=`readlink $p/$l2_tmp`
-	if [ "$l1" = "$l2" ]; then
+	l3=`readlink $p/$l2`
+	if [ "$l1" = "$l2" -o "$l1" = "$l3" ]; then
 		dep=`dpkg -S $p/$l | cut -d: -f1`
 	fi
 done
