@@ -70,7 +70,7 @@ GIT_BASEURL:=git://anongit.freedesktop.org/libreoffice
 lo_sources_ver=$(shell grep AC_INIT $(SOURCE_TREE)/configure.ac | grep documentfoundation | cut -d, -f2 | sed -e 's,\[,,' -e 's,\],,')
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
-GIT_TAG=libreoffice-$(lo_sources_ver)
+GIT_TAG=libreoffice-$(lo_sources_ver)-hotfix1
 GIT_BRANCH=libreoffice-5-4-0
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
@@ -421,7 +421,6 @@ ifeq "$(BUILD_GTK3)" "y"
 ENABLE_INTROSPECTION=y
 endif
 ENABLE_EVO2=y
-ENABLE_GCONF=y
 ENABLE_GIO=y
 ENABLE_DCONF=y
 ENABLE_RANDR=y
@@ -958,6 +957,11 @@ endif
     ifneq (,$(filter cppunit, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libcppunit-dev (>= $(CPPUNIT_MINVER))$(OOO_NO_CHECK_ARCHS) <!nocheck>
     endif
+	# 17:35 <@sberg_> vmiklos, oh, what kind of poor test is that? "warn:sal.osl:3785:2:sal/osl/unx/process.cxx:344: ChildStatusProc : starting 'pstoedit' failed" etc. is what I see in workdir/CppunitTest/filter_eps_test.test.log...
+
+	BUILD_DEPS += , pstoedit$(OOO_NO_CHECK_ARCHS) <!nocheck>
+	BUILD_DEPS += , imagemagick$(OOO_NO_CHECK_ARCHS) <!nocheck>
+	BUILD_DEPS += , ghostscript$(OOO_NO_CHECK_ARCHS) <!nocheck>
   else
 	CONFIGURE_FLAGS += --without-cppunit
   endif
@@ -1099,7 +1103,6 @@ export JAVA_HOME
     ifneq (,$(filter jfreereport, $(SYSTEM_STUFF)))
 	REPORT_BUILDER_BUILD_DEPS += , libbase-java$(OOO_NO_REPORTDESIGN_ARCHS), libsac-java$(OOO_NO_REPORTDESIGN_ARCHS), libxml-java (>= 1.1.6)$(OOO_NO_REPORTDESIGN_ARCHS), libflute-java (>= 1.1.6)$(OOO_NO_REPORTDESIGN_ARCHS), libpentaho-reporting-flow-engine-java (>= 0.9.4)$(OOO_NO_REPORTDESIGN_ARCHS), liblayout-java (>= 0.2.10)$(OOO_NO_REPORTDESIGN_ARCHS), libloader-java (>= 1.1.6)$(OOO_NO_REPORTDESIGN_ARCHS), libformula-java (>= 1.1.7)$(OOO_NO_REPORTDESIGN_ARCHS), librepository-java (>= 1.1.6)$(OOO_NO_REPORTDESIGN_ARCHS), libfonts-java (>= 1.1.6)$(OOO_NO_REPORTDESIGN_ARCHS), libserializer-java (>= 1.1.6)$(OOO_NO_REPORTDESIGN_ARCHS)
 	REPORT_BUILDER_JAR_DEPENDS := , libbase-java, libsac-java, libxml-java (>= 1.1.6), libflute-java (>= 1.1.6), libpentaho-reporting-flow-engine-java (>= 0.9.4), liblayout-java (>= 0.2.10), libloader-java (>= 1.1.6), libformula-java (>= 1.1.7), librepository-java (>= 1.1.6), libfonts-java (>= 1.1.6), libserializer-java (>= 1.1.6)
-	BUILD_DEPS_INDEP += $(REPORT_BUILDER_BUILD_DEPS)
 	CONFIGURE_FLAGS += --with-libbase-jar=/usr/share/java/libbase.jar --with-libxml-jar=/usr/share/java/libxml.jar --with-flute-jar=/usr/share/java/flute.jar --with-jfreereport-jar=/usr/share/java/flow-engine.jar --with-liblayout-jar=/usr/share/java/liblayout.jar --with-libloader-jar=/usr/share/java/libloader.jar --with-libformula-jar=/usr/share/java/libformula.jar --with-librepository-jar=/usr/share/java/librepository.jar --with-libfonts-jar=/usr/share/java/libfonts.jar --with-libserializer-jar=/usr/share/java/libserializer.jar
     endif
     ifneq (,$(filter apache-commons, $(SYSTEM_STUFF)))
@@ -1107,6 +1110,7 @@ export JAVA_HOME
 	REPORT_BUILDER_JAR_DEPENDS += , libcommons-logging-java
 	CONFIGURE_FLAGS_INDEP += --with-commons-logging-jar=/usr/share/java/commons-logging.jar
     endif
+	BUILD_DEPS_INDEP += $(REPORT_BUILDER_BUILD_DEPS)
   else
 	CONFIGURE_FLAGS += --disable-report-builder
   endif
@@ -1320,6 +1324,7 @@ ifeq "$(ENABLE_MYSQLNATIVE)" "y"
 endif
 
 ifeq "$(ENABLE_FIREBIRD)" "y"
+	BASE_FIREBIRD_RECOMMENDS = libreoffice-sdbc-firebird [$(OOO_FIREBIRD_ARCHS)]
   ifneq (,$(filter libatomic-ops, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libatomic-ops-dev (>= 7.3~alpha1+git20110913-1)$(OOO_NO_BE_ARCHS)
   endif
@@ -1334,6 +1339,7 @@ ifeq "$(ENABLE_FIREBIRD)" "y"
   endif
 else
 	CONFIGURE_FLAGS += --disable-firebird-sdbc
+	DEBHELPER_OPTIONS += -Nlibreoffice-sdbc-firebird
 endif
 
 ifeq "$(BUILD_GTK)" "n"
@@ -1372,6 +1378,7 @@ ifeq "$(ENABLE_EVO2)" "n"
 else
 	CONFIGURE_FLAGS += --enable-evolution2
 	BUILD_DEPS += , libebook1.2-dev
+	LIBEBOOK_DEP = $(shell debian/scripts/get_libebook_dep.sh)
 endif
 
 ifeq "$(ENABLE_SDBC_POSTGRESQL)" "y"
@@ -1472,7 +1479,8 @@ endif
 
 ifeq "$(USE_VLC)" "y"
 	CONFIGURE_FLAGS += --enable-vlc
-	BUILD_DEPS += , $(shell debian/scripts/get_libvlc_dep.sh)
+	LIBVLC_DEP = $(shell debian/scripts/get_libvlc_dep.sh) (>= 2.0.8)
+	BUILD_DEPS += , $(LIBVLC_DEP)
   ifeq "$(AVMEDIA_BE_DEPENDS)" ""
 	AVMEDIA_BE_DEPENDS += , libreoffice-avmedia-backend-vlc
   else
@@ -1853,7 +1861,6 @@ ifeq (pt-BR,$(findstring pt-BR,$(LANGPACKISOS)))
 	perl -pi -e 's/libreoffice2-l10n-pt-br$$/libreoffice2-l10n-pt-br, broffice/' debian/control
 	perl -pi -e 's/libreoffice2-l10n-pt-br$$/libreoffice2-l10n-pt-br, broffice/' debian/control
 endif
-	perl -pi -e 's/Package: libreoffice-help-en-us/Package: libreoffice-help-en-us\nReplaces: libreoffice-common (<< 1:3.0.0~dev300m28)/' debian/control
 
 ifeq "$(MYSQL_FLAVOUR)" "mysql"
 	perl -pi -e "s/(Build-Conflicts: .*)/\1,libmariadbclient-dev,/" debian/control
@@ -1873,13 +1880,9 @@ endif
 	# similar for tr (libreoffice-zemberek)
 	perl -pi -e 's/myspell-dictionary-tr/myspell-dictionary-tr | libreoffice-spellcheck-tr/' debian/control
 
-ifeq "$(BUILD_KDE)" "y"
-	perl -pi -e 's/GConf backend$$/GConf backend\n  * libreoffice-kde: KDE UI Plugin and KDE File Picker support/' debian/control
-endif
-
 ifeq "$(USE_DBUS)" "y"
   ifeq "$(ENABLE_BLUETOOTH)" "y"
-	perl -pi -e 's/paperconf$$/paperconf\n  * bluez: Bluetooth support for Impress (slideshow remote control/' debian/control
+	perl -pi -e 's/paperconf$$/paperconf\n  * bluez: Bluetooth support for Impress (slideshow remote control)/' debian/control
   endif
 	perl -pi -e 's/Description: office productivity suite -- presentation/Suggests: bluez\nDescription: office productivity suite -- presentation/' debian/control
 endif
@@ -2669,7 +2672,7 @@ ifeq "$(BUILD_GTK)" "y"
 		$(PKGDIR)-gnome/$(OODIR)/program/
   endif
   ifeq "$(ENABLE_PACKAGEKIT)" "y"
-	mv $(PKGDIR)-gtk/$(OODIR)/program/liblosessioninstalllo.so \
+	mv $(PKGDIR)-gtk2/$(OODIR)/program/liblosessioninstalllo.so \
 		$(PKGDIR)-gnome/$(OODIR)/program/
   endif
 endif
@@ -2799,13 +2802,6 @@ ifeq "$(PACKAGE_SDK)" "y"
 		$(PKGDIR)-dev/$(OODIR)/program
 else
 	rm -f $(PKGDIR)-core/$(OODIR)/program/ui-previewer
-endif
-
-# see https://bugs.freedesktop.org/show_bug.cgi?id=67349
-# writer doesn't start without it.
-ifeq (,$(filter lpsolve, $(SYSTEM_STUFF)))
-	mv $(PKGDIR)-calc/$(OODIR)/program/liblpsolve55.so \
-		$(PKGDIR)-core/$(OODIR)/program
 endif
 
 ifeq "$(USE_GSTREAMER)" "y"
@@ -3417,6 +3413,7 @@ endif
 		-V'next-oover=$(NEXT_OOVER)' \
 		-V'help-l10n-virtual-version=$(HELP_L10N_VIRTUAL_VERSION)' \
 		-V'base-hsqldb-depends=$(BASE_HSQLDB_DEPENDS)' \
+		-V'base-firebird-recommends=$(BASE_FIREBIRD_RECOMMENDS)' \
 		-V'java-common-depends=$(JAVA_COMMON_DEPENDS) $(JAVA_COMMON_DEPENDS_VERSION)' \
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-V'Binary-Version=$(BINARY_VERSION)' \
@@ -3424,13 +3421,14 @@ endif
 		-V'kde-iconset-dep=$(KDE_ICONSET_DEP)' \
 		-V'lpsolve-dep=$(LPSOLVE_DEP)' \
 		-V'gstreamer-plugins-suggests=$(GSTREAMER_PLUGINS_SUGGESTS)' \
-		-V'libebook-dep=$(shell debian/scripts/get_libebook_dep.sh)' \
-		-V'libvlc-dep=$(shell debian/scripts/get_libvlc_dep.sh)' \
+		-V'libebook-dep=$(LIBEBOOK_DEP)' \
+		-V'libvlc-dep=$(LIBVLC_DEP)' \
 		-V'idlc-cpp-depends=$(IDLC_CPP_DEPENDS)' \
 		-V'pyuno-depends=$(PYUNO_DEPENDS)' \
 		-V'avmedia-be-depends=$(AVMEDIA_BE_DEPENDS)' \
 		-V'gnome-gtk-recommends=$(GNOME_GTK_RECOMMENDS)' \
 		-V'firebird-engine-depends=$(FIREBIRD_ENGINE_DEPENDS)' \
+		-V'libsane-suggests=$(shell dpkg -S /usr/lib/$(DEB_HOST_MULTIARCH)/libsane.so.1 | cut -d: -f1)' \
 		-v$(BINARY_VERSION)
 ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
 ifeq "$(PACKAGE_BASE)" "y"
