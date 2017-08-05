@@ -549,6 +549,7 @@ SYSTEM_STUFF += glm
 BUILD_PPC64EL=y
 BUILD_ARM64=y
 SYSTEM_STUFF += gpgmepp
+INSTALL_APPARMOR_PROFILES=y
 
 # Default flags to pass to configure
 CONFIGURE_FLAGS= \
@@ -1254,6 +1255,10 @@ ifeq "$(ENABLE_GDRIVE)" "y"
   BUILD_DEPS += , chromium (>= 39.0.2171.71-1) [$(OOO_GDRIVE_ARCHS)]
   include /etc/chromium.d/apikeys
   CONFIGURE_FLAGS += --with-gdrive-client-id=$(GOOGLE_DEFAULT_CLIENT_ID) --with-gdrive-client-secret=$(GOOGLE_DEFAULT_CLIENT_SECRET)
+endif
+
+ifeq "$(INSTALL_APPARMOR_PROFILES)" "y"
+  BUILD_DEPS += , dh-apparmor
 endif
 
 ifeq "$(ENABLE_EOT)" "y"
@@ -3220,6 +3225,12 @@ ifeq "$(ENABLE_JAVA)" "y"
 	ln -sf /usr/share/java/unoil.jar $(PKGDIR)-java-common/usr/share/libreoffice/program/classes/unoil.jar
 endif
 
+ifeq "$(INSTALL_APPARMOR_PROFILES)" "y"
+	mkdir -p $(PKGDIR)-common/etc/apparmor.d
+	./sysui/desktop/share/apparmor.sh /$(OODIR) sysui/desktop/apparmor/ \
+			$(PKGDIR)-common/etc/apparmor.d/ false
+endif
+
 	touch $@
 
 binary-arch: $(STAMP_DIR)/binary-arch
@@ -3532,6 +3543,12 @@ endif
 	dh_link -i
 	dh_fixperms -i
 	dh_icons -i
+ifeq "$(INSTALL_APPARMOR_PROFILES)" "y"
+	dh_apparmor -plibreoffice-common --profile-name=usr.lib.libreoffice.program.oosplash
+	dh_apparmor -plibreoffice-common --profile-name=usr.lib.libreoffice.program.senddoc
+	dh_apparmor -plibreoffice-common --profile-name=usr.lib.libreoffice.program.soffice.bin
+	dh_apparmor -plibreoffice-common --profile-name=usr.lib.libreoffice.program.xpdfimport
+endif
 	dh_compress -i -X.py -X.mk -X.sxd -X.xcd.sample
 	dh_installdeb -i
 ifeq "$(ENABLE_JAVA)" "y"
