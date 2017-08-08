@@ -38,6 +38,9 @@ export gb_SHELL:=$(SHELL)
 #SYSTEM_GCC_VERSION = $(shell gcc --version | sed -n '/^gcc/s/.*\(.\..\)\..$$/\1/p')
 #FIXME
 SYSTEM_GCC_VERSION = $(shell gcc --version | sed -n '/^gcc/s/.*\(.\..\)\../\1/p' | cut -d" " -f1)
+ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) ge 5 && echo true)" "true"
+	GCC_VERSION_5_OR_GREATER=y
+endif
 
 PKGDIR:=debian/libreoffice
 OODIRNAME=libreoffice
@@ -159,7 +162,7 @@ LIBHYPHEN_MINVER= (>= 2.4)
 SYSTEM_STUFF += boost
 BOOST_VERSION=default
 ifeq "$(BOOST_VERSION)" "default"
-  ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) ge 5 && echo true)" "true"
+  ifeq "$(GCC_VERSION_5_OR_GREATER)" "y"
     BOOST_MINVER= (>= 1.58)
   else
     BOOST_MINVER= (>= 1.55)
@@ -199,9 +202,9 @@ BUILD_DBGSYM_PACKAGES=y
 endif
 SYSTEM_STUFF += xmlsec
 
-# this changes the packages' built/contents of packages (-subsequentcheckbase)
-# This is not exactly allowed in policy but it doesn't have real practical difference,
-# does it?
+# this changes the packages built/contents of packages (-subsequentcheckbase)
+# This is not exactly allowed in https://wiki.debian.org/BuildProfileSpec#Registered_profile_names
+# but it doesn't have real practical difference, does it?
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
   BUILD_TEST_PACKAGE=y
 endif
@@ -221,7 +224,7 @@ USE_SHARED_LPSOLVE=y
 LPSOLVE_MIN_VERSION= (>= 5.5.0.13-5+b1)
 ENABLE_COINMP=y
 SYSTEM_STUFF += coinmp
-ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) ge 5 && echo true)" "true"
+ifeq "$(GCC_VERSION_5_OR_GREATER)" "y"
 COINMP_MINVER=(>= 1.7.6+dfsg1-2)
 COINUTILS_MINVER=(>= 2.9.15-3.1)
 else
@@ -306,7 +309,9 @@ ifeq "$(ENABLE_JAVA)" "y"
       BUILD_TEST_PACKAGE=n
     endif
   endif
+ifeq "$(ENABLE_PYTHON)" "y"
   RUN_PYTESTS=y
+endif
 #  ifneq (,$(findstring arm,$(DEB_HOST_ARCH)))
 #    export DISABLE_CVE_TESTS=TRUE
 #  endif
@@ -366,37 +371,6 @@ SYSTEM_STUFF += epoxy
 ENABLE_GLTF=y
 SYSTEM_STUFF += libgltf
 LIBGLTF_MINVER=0.1.0
-# I think we should only enable it when we have BOTH system-opencollasa
-# and system-collada2gltf working
-ifeq "$(ENABLE_GLTF)" "y"
-  ENABLE_COLLADA=n
-  # enable COLLADA (if any) only on i386/amd64 for now, rapidjson does seem
-  # to have alignment problems on other archs (e.g. arm*)
-  ifeq "$(DEB_HOST_ARCH)" "amd64"
-    ENABLE_COLLADA=y
-  endif
-  ifeq "$(DEB_HOST_ARCH)" "i386"
-    ENABLE_COLLADA=y
-  endif
-  ifeq "$(ENABLE_COLLADA)" "y"
-    SYSTEM_STUFF += opencollada
-    OPENCOLLADA_CFLAGS="-I/usr/include/opencollada/COLLADABaseUtils -I/usr/include/opencollada/COLLADAFramework -I/usr/include/opencollada/COLLADASaxFrameworkLoader -I/usr/include/opencollada/GeneratedSaxParser -I/usr/include/opencollada"
-    OPENCOLLADA_LIBS="-L/usr/lib/opencollada -lUTF -lOpenCOLLADABaseUtils -lOpenCOLLADAFramework -lOpenCOLLADASaxFrameworkLoader -lGeneratedSaxParser -lMathMLSolver -lpcre"
-    SYSTEM_STUFF += collada2gltf
-    COLLADA2GLTF_CFLAGS="-I/usr/include/collada2gltf -I/usr/include/collada2gltf/JSON -I/usr/include/collada2gltf/GLTF -I/usr/include/collada2gltf/helpers -I/usr/include/collada2gltf/assetModifiers -I/usr/include/rapidjson" 
-    COLLADA2GLTF_LIBS="-lcollada2gltfConvert -lo3dgc_common_lib -lo3dgc_dec_lib -lo3dgc_enc_lib"
-  endif
-  ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) ge 5 && echo true)" "true"
-    OPENCOLLADA_MINVER=(>= 0.1.0~20140703.ddf8f47+dfsg1-2)
-  else
-   OPENCOLLADA_MINVER=
-  endif
-  ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) ge 5 && echo true)" "true"
-    COLLADA2GLTF_MINVER=(>= 20140924-2)
-  else
-    COLLADA2GLTF_MINVER=
-  endif
-endif
 ifeq "$(ENABLE_JAVA)" "y"
   ENABLE_REPORTDESIGN=y
   SYSTEM_STUFF += jfreereport
@@ -440,7 +414,7 @@ MYSQL_FLAVOUR=default
 # set this also to y for system-mysql..
 SYSTEM_STUFF += mariadb
 SYSTEM_STUFF += mysql-cppconn
-ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) ge 5 && echo true)" "true"
+ifeq "$(GCC_VERSION_5_OR_GREATER)" "y"
 MYSQLCPPCONN_MINVER= (>= 1.1.7-4)
 else
 MYSQLCPPCONN_MINVER= (>= 1.1.0~r791)
@@ -450,7 +424,7 @@ DICT_DIR=/usr/share/hunspell
 HYPH_DIR=/usr/share/hyphen
 THES_DIR=/usr/share/mythes
 SYSTEM_STUFF += libcmis
-ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) ge 5 && echo true)" "true"
+ifeq "$(GCC_VERSION_5_OR_GREATER)" "y"
 LIBCMIS_MINVER=0.5.0-3ubuntu1
 else
 LIBCMIS_MINVER=0.5.0
@@ -467,7 +441,7 @@ SYSTEM_STUFF += nss
 ENABLE_HELP=y
 ifeq "$(ENABLE_HELP)" "y"
   SYSTEM_STUFF += clucene
-  ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) ge 5 && echo true)" "true"
+  ifeq "$(GCC_VERSION_5_OR_GREATER)" "y"
   CLUCENE_MINVER=2.3.3.4-4.1
   else
   CLUCENE_MINVER=2.3.3.4-2
@@ -548,6 +522,7 @@ SYSTEM_STUFF += glm
 BUILD_PPC64EL=y
 BUILD_ARM64=y
 SYSTEM_STUFF += gpgmepp
+INSTALL_APPARMOR_PROFILES=y
 
 # Default flags to pass to configure
 CONFIGURE_FLAGS= \
@@ -593,10 +568,6 @@ endef
 
 PLATFORMID := $(shell grep PLATFORMID debian/vars.$(DEB_HOST_ARCH) | cut -d"=" -f2)
 
-ifeq "$(ENABLE_GLTF)" "y"
-  OOO_COLLADA_ARCHS=amd64 i386
-  $(eval $(call gen_no_archs,OOO_COLLADA_ARCHS))
-endif
 
 # let's do this only on archs where we have chromium, which is supposedly even only the archs
 # where alsp pdfium is supported.
@@ -638,6 +609,12 @@ OOO_REPORTDESIGN_ARCHS := $(OOO_BASE_ARCHS)
 $(eval $(call gen_no_archs,OOO_REPORTDESIGN_ARCHS))
 OOO_FIREBIRD_ARCHS := $(OOO_LE_ARCHS)
 $(eval $(call gen_no_archs,OOO_FIREBIRD_ARCHS))
+# enable COLLADA (if any) only on i386/amd64 for now, rapidjson does seem
+# to have alignment problems on other archs (e.g. arm*)
+OOO_COLLADA_ARCHS=amd64 i386
+$(eval $(call gen_no_archs,OOO_COLLADA_ARCHS))
+# chromium only available here.
+OOO_GDRIVE_ARCHS=amd64 arm64 armhf i386
 
 OOO_CHECK_ARCHS := $(filter-out kfreebsd-i386 kfreebsd-amd64 $(OOO_BE_ARCHS),$(OOO_ARCHS))
 $(eval $(call gen_no_archs,OOO_CHECK_ARCHS))
@@ -713,6 +690,9 @@ endif
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "stretch-backports"
   BUGS=mailto:debian-backports@lists.debian.org
   SYSTEM_STUFF := $(filter-out libzmf libstaroffice orcus libgltf cppunit xmlsec,$(SYSTEM_STUFF))
+  ifeq "$(RUN_MAKE_CHECK)" "y"
+    SYSTEM_STUFF := $(filter-out libwps libmwaw,$(SYSTEM_STUFF))
+  endif
   STRETCH_BACKPORT=y
 endif
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "UNRELEASED"
@@ -720,20 +700,9 @@ ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "U
 endif
 
 ifeq "$(DEB_VENDOR)" "Debian"
-  # chromium only available here.
-  ifeq "$(DEB_HOST_ARCH)" "amd64"
+  ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_GDRIVE_ARCHS)))
     ENABLE_GDRIVE=y
   endif
-  ifeq "$(DEB_HOST_ARCH)" "i386"
-    ENABLE_GDRIVE=y
-  endif
-  ifeq "$(DEB_HOST_ARCH)" "arm64"
-      ENABLE_GDRIVE=y
-  endif
-  ifeq "$(DEB_HOST_ARCH)" "armhf"
-      ENABLE_GDRIVE=y
-  endif
-  OOO_GDRIVE_ARCHS += i386 amd64 armhf arm64
 endif
 
 ifeq "$(DEB_VENDOR)" "Ubuntu"
@@ -785,6 +754,7 @@ URE_DBG=ure-dbgsym
 CORE_DBG=libreoffice-core-dbgsym
 WRITER_DBG=libreoffice-writer-dbgsym
 URE_DBG_ROOT=.debhelper/ure/dbgsym-root
+UNO_LIBS_DBG_ROOT=.debhelper/uno-libs3/dbgsym-root
 CORE_DBG_ROOT=.debhelper/libreoffice-core/dbgsym-root
 WRITER_DBG_ROOT=.debhelper/libreoffice-writer/dbgsym-root
 else
@@ -804,16 +774,6 @@ ifeq "$(USE_CLANG)" "y"
 endif
 
 ifneq "$(USE_CLANG)" "y"
-#  ifeq (,$(findstring i386,$(DEB_HOST_ARCH)))
-#    ifeq (,$(findstring amd64,$(DEB_HOST_ARCH)))
-#      ifneq "$(SYSTEM_GCC_VERSION)" "4.6"
-#	GCC_VERSION := 4.6
-#      endif
-#    endif
-#  endif
-  ifeq "$(DEB_HOST_ARCH)" "m68k"
-  GCC_VERSION := 7
-  endif
   ifneq "$(GCC_VERSION)" ""
   ifneq "$(SYSTEM_GCC_VERSION)" "$(GCC_VERSION)"
     BUILD_DEPS += , gcc-$(GCC_VERSION), g++-$(GCC_VERSION)
@@ -822,9 +782,7 @@ ifneq "$(USE_CLANG)" "y"
       CXX=$(CC_PREFIX)g++-$(GCC_VERSION)
     endif
   endif
-  ifneq "$(SYSTEM_GCC_VERSION)" "7"
-  BUILD_DEPS += , gcc-7 (>= 7-20170106) [m68k], g++-7 (>= 7-20170106) [m68k]
-  endif
+	BUILD_DEPS += , gcc (>= 4:7) [m68k], g++ (>= 4:7) [m68k]
 else
   ifeq "$(CLANG_VERSION)" "default"
 	CLANG=clang
@@ -851,13 +809,30 @@ else
 endif
 USE_GOLD=n
 
-BUILDDEB_OPTIONS ?= -- -Zxz
-
 ifneq "$(ENABLE_GLTF)" "y"
 	CONFIGURE_FLAGS += --disable-gltf
 else
   ifneq (,$(findstring libgltf,$(SYSTEM_STUFF)))
 	BUILD_DEPS += , libgltf-dev (>= $(LIBGLTF_MINVER))
+  endif
+  ENABLE_COLLADA=n
+  ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_COLLADA_ARCHS)))
+    ENABLE_COLLADA=y
+  endif
+  ifeq "$(ENABLE_COLLADA)" "y"
+    SYSTEM_STUFF += opencollada
+    OPENCOLLADA_CFLAGS="-I/usr/include/opencollada/COLLADABaseUtils -I/usr/include/opencollada/COLLADAFramework -I/usr/include/opencollada/COLLADASaxFrameworkLoader -I/usr/include/opencollada/GeneratedSaxParser -I/usr/include/opencollada"
+    OPENCOLLADA_LIBS="-L/usr/lib/opencollada -lUTF -lOpenCOLLADABaseUtils -lOpenCOLLADAFramework -lOpenCOLLADASaxFrameworkLoader -lGeneratedSaxParser -lMathMLSolver -lpcre"
+    SYSTEM_STUFF += collada2gltf
+    COLLADA2GLTF_CFLAGS="-I/usr/include/collada2gltf -I/usr/include/collada2gltf/JSON -I/usr/include/collada2gltf/GLTF -I/usr/include/collada2gltf/helpers -I/usr/include/collada2gltf/assetModifiers -I/usr/include/rapidjson" 
+    COLLADA2GLTF_LIBS="-lcollada2gltfConvert -lo3dgc_common_lib -lo3dgc_dec_lib -lo3dgc_enc_lib"
+  endif
+  ifeq "$(GCC_VERSION_5_OR_GREATER)" "y"
+    OPENCOLLADA_MINVER=(>= 0.1.0~20140703.ddf8f47+dfsg1-2)
+    COLLADA2GLTF_MINVER=(>= 20140924-2)
+  else
+    OPENCOLLADA_MINVER=
+    COLLADA2GLTF_MINVER=
   endif
   ifneq "$(ENABLE_COLLADA)" "y"
 	CONFIGURE_FLAGS += --disable-collada
@@ -1249,6 +1224,7 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
   endif
   ifneq (,$(filter libwps, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libwps-dev (>= 0.4)
+	BUILD_DEPS += , libwps-dev (>= 0.4.6) <!nocheck>
   endif
   ifneq (,$(filter libwpg, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libwpg-dev (>= 0.3)
@@ -1264,12 +1240,14 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
   endif
   ifneq (,$(filter libmwaw, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libmwaw-dev (>= 0.3.1)
+	BUILD_DEPS += , libmwaw-dev (>= 0.3.11) <!nocheck>
   endif
   ifneq (,$(filter libodfgen, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libodfgen-dev (>= 0.1)
   endif
   ifneq (,$(filter libetonyek, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libetonyek-dev
+	BUILD_DEPS += , libetonyek-dev (>= 0.1.5) <!nocheck>
   endif
   ifneq (,$(filter libfreehand, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libfreehand-dev (>= 0.1)
@@ -1285,9 +1263,11 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
   endif
   ifneq (,$(filter libstaroffice, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libstaroffice-dev
+	BUILD_DEPS += , libstaroffice-dev (>= 0.0.3) <!nocheck>
   endif
   ifneq (,$(filter libebook, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libe-book-dev
+	BUILD_DEPS += , libe-book-dev (>= 0.1.2) <!nocheck>
   endif
   ifneq (,$(filter libcmis, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libcmis-dev (>= $(LIBCMIS_MINVER))
@@ -1300,6 +1280,10 @@ ifeq "$(ENABLE_GDRIVE)" "y"
   BUILD_DEPS += , chromium (>= 39.0.2171.71-1) [$(OOO_GDRIVE_ARCHS)]
   include /etc/chromium.d/apikeys
   CONFIGURE_FLAGS += --with-gdrive-client-id=$(GOOGLE_DEFAULT_CLIENT_ID) --with-gdrive-client-secret=$(GOOGLE_DEFAULT_CLIENT_SECRET)
+endif
+
+ifeq "$(INSTALL_APPARMOR_PROFILES)" "y"
+  BUILD_DEPS += , dh-apparmor
 endif
 
 ifeq "$(ENABLE_EOT)" "y"
@@ -1390,11 +1374,10 @@ ifeq "$(BUILD_GTK)" "n"
 	CONFIGURE_FLAGS+= --disable-gtk
 	DEBHELPER_OPTIONS+= -Nlibreoffice-gtk2 -Nlibreoffice-gnome
 else
-	BUILD_DEPS += , libgtk2.0-dev (>= 2.10)
+	BUILD_DEPS += , libgtk2.0-dev (>= 2.18.0)
 endif
 ifeq "$(BUILD_GTK3)" "y"
-	GTK3_MINVER=3.8~
-       BUILD_DEPS += , libgtk-3-dev (>= $(GTK3_MINVER))
+	BUILD_DEPS += , libgtk-3-dev (>= 3.8.0), libglib2.0-dev (>= 2.38.0)
   ifneq (cairo,$(findstring cairo,$(SYSTEM_STUFF)))
   $(error GTK3 build fails without system-cairo!!)
   endif
@@ -1443,11 +1426,7 @@ endif
 
 ifneq "$(ENABLE_PYTHON)" "y"
 	DEBHELPER_OPTIONS+= -Npython3-uno -Nlibreoffice-script-provider-python
-  ifeq "$(BUILD_ISOS)" "en-US"
 	CONFIGURE_FLAGS += --disable-python
-  else
-	$(error you can not disable python when building with translations)
-  endif
 else
 	PYUNO_DEPENDS = python3-uno (>= 4.4.0~beta2)
   CONFIGURE_FLAGS += --enable-python=system
@@ -1576,7 +1555,9 @@ ifneq (,$(filter gpgmepp, $(SYSTEM_STUFF)))
 endif
 
 ifeq "$(ENABLE_GIO)" "y"
-	BUILD_DEPS += , libglib2.0-dev (>= 2.15.0)
+  ifneq "$(BUILD_GTK3)" "y"
+	BUILD_DEPS += , libglib2.0-dev (>= 2.26.0)
+  endif
 else
 	CONFIGURE_FLAGS += --disable-gio
 endif
@@ -1584,7 +1565,7 @@ endif
 	BUILD_DEPS += , gettext
 
 ifeq "$(ENABLE_DCONF)" "y"
-	BUILD_DEPS += , libdconf-dev
+	BUILD_DEPS += , libdconf-dev (>= 0.15.2)
 else
 	CONFIGURE_FLAGS += --disable-dconf
 endif
@@ -1614,8 +1595,6 @@ endif
 NUM_CPUS=$(shell echo "$(DEB_BUILD_OPTIONS) " | sed -n 's/^\(.* \)\?parallel=\([0-9]\+\).*$$/\2/p')
 AVAIL_CPUS := $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
 ifeq "$(PARALLEL_BUILD)" "y"
-	# http://bugs.debian.org/622644
-	BUILD_DEPS += , make (>= 3.81-8.2)
   # we need to specify it only if it differs, otherwise configure autodetects
   # it.
   ifneq "$(NUM_CPUS)" "$(AVAIL_CPUS)"
@@ -1811,10 +1790,6 @@ ifeq "$(MYSQL_FLAVOUR)" "mysql"
 	perl -pi -e "s/(Build-Conflicts: .*)/\1,libmariadbclient-dev,/" debian/control
 endif
 
-ifeq (4.4,$(SYSTEM_GCC_VERSION))
-	perl -pi -e 's/flex \|/flex (>= 2.5.25-7) |/' debian/control
-endif
-
 	python3 debian/scripts/joinctrl.py < debian/control > debian/control.tmp
 	mv debian/control.tmp debian/control
 
@@ -1900,7 +1875,7 @@ $(STAMP_DIR)/build-arch:
 #build-arch: ENABLE_HELP = n PACKAGE_SDK_DOCS = n ENABLE_MEDIAWIKI = n ENABLE_REPORTDESIGN = n ENABLE_SCRIPT_PROVIDER_BSH = n ENABLE_SCRIPT_PROVIDER_JS = n
 	dh_testdir
 
-	# FIXME: Theoretically this should call ./configure instead of
+	# Theoretically this should call ./configure instead of
 	# it exists but that causes the configure flags NOT to be hnoured
 	# somehow...
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
@@ -2036,10 +2011,12 @@ endif
 
 check-indep:
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
+  ifeq "$(ENABLE_JAVA)" "y"
 	# since the gb_SUPPRESS_CHECK stuff in build this isn't checked.
 	# probably should, so do it here manually.
 	$(IGNORE_MAKE_CHECK_FAILURES)cd odk && \
 		$(MAKE) check
+  endif
 endif
 
 install: $(STAMP_DIR)/install-common $(STAMP_DIR)/install-arch $(STAMP_DIR)/install-indep
@@ -2071,6 +2048,9 @@ $(STAMP_DIR)/install-common:
 	$(CURDIR)/debian/scripts/gid2pkgdirs.sh
 ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 	make cmd cmd="export DESTDIR=$(CURDIR)/debian/tmp; $(CURDIR)/solenv/bin/install-gdb-printers -a /usr/share/gdb/auto-load/$(OODIR) -c -i /$(OODIR) -p /usr/share/libreoffice/gdb"
+	# fix permissions
+	find $(CURDIR)/debian/tmp -perm 0775 -exec chmod 755 {} \;
+	find $(CURDIR)/debian/tmp -perm 0664 -exec chmod 644 {} \;
 endif
 
 	# FIXME
@@ -2097,10 +2077,10 @@ ifneq "$(PACKAGE_LIBRELOGO)" "y"
 endif
 
 	for i in calc impress draw base writer; do \
-		echo "../usr/share/appdata/libreoffice-$$i.appdata.xml /usr/share/appdata/" >> $(PKGDIR)-$$i.install; \
+		echo "../usr/share/appdata/libreoffice-$$i.appdata.xml /usr/share/metainfo/" >> $(PKGDIR)-$$i.install; \
 	done
 ifeq "$(BUILD_KDE)" "y"
-	echo "../usr/share/appdata/org.libreoffice.kde.metainfo.xml /usr/share/appdata/" >> $(PKGDIR)-kde.install
+	echo "../usr/share/appdata/org.libreoffice.kde.metainfo.xml /usr/share/metainfo/" >> $(PKGDIR)-kde.install
 endif
 
 ifeq "$(PACKAGE_LOKIT)" "y"
@@ -2226,9 +2206,11 @@ ifeq "$(PACKAGE_SDK)" "y"
 		$(PKGDIR)-dev-common/$(OOSDKDIR)
 	mv $(PKGDIR)-dev/$(OOSDKDIR)/index.html* \
 		$(PKGDIR)-dev-common/$(OOSDKDIR)
+  ifeq "$(ENABLE_JAVA)" "y"
 	mkdir -p $(PKGDIR)-dev-common/usr/share/libreoffice/sdk
 	mv $(PKGDIR)-dev/usr/share/libreoffice/sdk/classes \
 		$(PKGDIR)-dev-common/usr/share/libreoffice/sdk
+  endif
 ifeq "$(PACKAGE_SDK)" "y"
 	mkdir -p $(PKGDIR)-dev-common/$(OODIR)/share/glade
 	mv $(PKGDIR)-common/$(OODIR)/share/glade/libreoffice-catalog.xml \
@@ -2331,7 +2313,7 @@ else
 	# move rpt stuff into -report-builder-bin
 	rm -rf $(PKGDIR)-report-builder-bin
 	mkdir -p $(PKGDIR)-report-builder-bin/$(OODIR)/program
-	# FIXME: it seems that --enable/--disable-reportbuiler affects the install
+	# it seems that --enable/--disable-reportbuiler affects the install
 	# location. sigh.
 	if [ -e $(PKGDIR)-core/$(OODIR)/program/librptlo.so ]; then \
 		i=core; else i=report-builder; fi; \
@@ -2350,7 +2332,7 @@ endif
 	perl -pi -e \
 	      's,\$$UNO_SHARED_PACKAGES/cache,file:///var/spool/$(OODIRNAME)/uno_packages/cache,g' \
 		$(PKGDIR)-common/$(OODIR)/program/unorc
-	# FIXME: What is this? unorc per default only mentiones
+	# What is this? unorc per default only mentiones
 	# share/uno_packages/cache...
 	rm -rf $(PKGDIR)-common/$(OODIR)/presets/uno_packages
 
@@ -2486,7 +2468,6 @@ ifeq "$(ENABLE_EVO2)" "y"
 	mv $(PKGDIR)-gtk2/$(OODIR)/program/libevoab*.so $(PKGDIR)-evolution/$(OODIR)/program
 	mv $(PKGDIR)-gnome/$(OODIR)/share/registry/evoab.xcd \
 		$(PKGDIR)-evolution/$(OODIR)/share/registry
-	# FIXME: When the rdb is correctly generated, move here, too.
 endif
 
 ifeq "$(PACKAGE_BASE)" "y"
@@ -2783,7 +2764,7 @@ endif
 	done
 	chmod 644 $(PKGDIR)-common/$(OODIR)/LICENSE.fodt
 	chmod 644 $(PKGDIR)-common/$(OODIR)/CREDITS.fodt
-	# FIXME. Do we really need this (ALV2 mandating it) or can this go?
+	# Do we really need this (ALV2 mandating it) or can this go?
 	chmod 644 $(PKGDIR)-common/$(OODIR)/NOTICE
 	rm -rf $(PKGDIR)-common/$(OODIR)/LICENSE
 
@@ -3026,6 +3007,12 @@ ifeq "$(ENABLE_JAVA)" "y"
 	ln -sf /usr/share/java/unoil.jar $(PKGDIR)-java-common/usr/share/libreoffice/program/classes/unoil.jar
 endif
 
+ifeq "$(INSTALL_APPARMOR_PROFILES)" "y"
+	mkdir -p $(PKGDIR)-common/etc/apparmor.d
+	./sysui/desktop/share/apparmor.sh /$(OODIR) sysui/desktop/apparmor/ \
+			$(PKGDIR)-common/etc/apparmor.d/ false
+endif
+
 	touch $@
 
 binary-arch: $(STAMP_DIR)/binary-arch
@@ -3250,10 +3237,14 @@ ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 #		perl -pi -e 's/^(Depends:.*)/\1\nRecommends: gdb, python3-six/' \
 #		debian/.debhelper/$$i/dbgsym-root/DEBIAN/control; \
 #	done
+#	perl -pi -e 's/Recommends: /Recommends: uno-libs3-dbgsym, /' \
+#		debian/$(CORE_DBG_ROOT)/DEBIAN/control
+#	perl -pi -e 's/Recommends: /Recommends: libreoffice-core-dbgsym, /' \
+#		debian/$(WRITER_DBG_ROOT)/DEBIAN/control
 endif
 
 	dh_md5sums -a
-	dh_builddeb -a $(DEBHELPER_OPTIONS) $(BUILDDEB_OPTIONS)
+	dh_builddeb -a $(DEBHELPER_OPTIONS)
 
 	touch $@
 
@@ -3334,6 +3325,12 @@ endif
 	dh_link -i
 	dh_fixperms -i
 	dh_icons -i
+ifeq "$(INSTALL_APPARMOR_PROFILES)" "y"
+	dh_apparmor -plibreoffice-common --profile-name=usr.lib.libreoffice.program.oosplash
+	dh_apparmor -plibreoffice-common --profile-name=usr.lib.libreoffice.program.senddoc
+	dh_apparmor -plibreoffice-common --profile-name=usr.lib.libreoffice.program.soffice.bin
+	dh_apparmor -plibreoffice-common --profile-name=usr.lib.libreoffice.program.xpdfimport
+endif
 	dh_compress -i -X.py -X.mk -X.sxd -X.xcd.sample
 	dh_installdeb -i
 ifeq "$(ENABLE_JAVA)" "y"
@@ -3385,7 +3382,7 @@ ifeq "$(ENABLE_REPORTDESIGN)" "y"
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)'
 endif
 	dh_md5sums -i
-	dh_builddeb -i $(DEBHELPER_OPTIONS) $(BUILDDEB_OPTIONS)
+	dh_builddeb -i $(DEBHELPER_OPTIONS)
 
 	touch $@
 
