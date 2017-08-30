@@ -226,7 +226,13 @@ ENABLE_COINMP=y
 SYSTEM_STUFF += coinmp
 ifeq "$(GCC_VERSION_5_OR_GREATER)" "y"
 COINMP_MINVER=(>= 1.7.6+dfsg1-2)
-COINUTILS_MINVER=(>= 2.9.15-3.1)
+  ifeq "$(STRETCH_BACKPORT)" "y"
+	COINUTILS_MINVER=(>= 2.9.15-3.1)
+  else
+	COINUTILS_MINVER=(>= 2.10.14+repack1-1)
+	# go sure given #873362
+	COINMP_MINVER=(>= 1.8.3-2)
+  endif
 else
 COINMP_MINVER=
 COINUTILS_MINVER=
@@ -862,7 +868,13 @@ endif
 ifneq ($(ENABLE_COINMP),y)
 	CONFIGURE_FLAGS += --disable-coinmp
 else
-	BUILD_DEPS += , coinor-libcoinmp-dev $(COINMP_MINVER), coinor-libcoinutils-dev $(COINUTILS_MINVER), libbz2-dev
+  ifneq (,$(filter coinmp, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , coinor-libcoinmp-dev $(COINMP_MINVER), coinor-libcoinutils-dev $(COINUTILS_MINVER)
+    # https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=838620
+    ifeq "$(STRETCH_BACKPORT)" "y"
+	BUILD_DEPS += , libbz2-dev
+    endif
+  endif
 endif
 
 ifneq (,$(findstring i386,$(DEB_HOST_ARCH)))
@@ -2239,6 +2251,12 @@ endif
 			$(PKGDIR)-$$i/usr/share/applications/libreoffice-$$i.desktop; \
 	done
 
+	# move pagein files
+	for i in calc draw impress writer; do \
+		mv $(PKGDIR)-core/$(OODIR)/program/pagein-$$i \
+			$(PKGDIR)-$$i/$(OODIR)/program; \
+	done
+
 	# move help to /usr/share
 	for iso in $(HELPISOS); do \
 		pkgiso=`echo $$iso | tr A-Z a-z`; \
@@ -2322,6 +2340,10 @@ ifeq "$(PACKAGE_SDK)" "y"
 		$(PKGDIR)-dev-common/$(OOSDKDIR)
 	mv $(PKGDIR)-dev/$(OOSDKDIR)/set* \
 		$(PKGDIR)-dev-common/$(OOSDKDIR)
+	# settings/dk.mk is not arch-indep
+	mkdir -p $(PKGDIR)-dev/$(OOSDKDIR)/settings
+	mv $(PKGDIR)-dev-common/$(OOSDKDIR)/settings/dk.mk \
+		$(PKGDIR)-dev/$(OOSDKDIR)/settings
 	mv $(PKGDIR)-dev/$(OOSDKDIR)/config* \
 		$(PKGDIR)-dev-common/$(OOSDKDIR)
 	mv $(PKGDIR)-dev/$(OOSDKDIR)/index.html* \
@@ -3366,6 +3388,12 @@ endif
 	perl -pi -e 's/, ure$$//' debian/uno-libs3.substvars
 	# 2) and prevent ure to depend on itself..
 	perl -pi -e 's/, ure \(.*\)$$//' debian/ure.substvars
+  ifneq (,$(filter coinmp, $(SYSTEM_STUFF)))
+	perl -pi -e "s/coinor-libcoinutils3v5/coinor-libcoinutils3v5 $(COINUTILS_MINVER)/" \
+		debian/libreoffice-calc.substvars
+	perl -pi -e "s/coinor-libcoinmp1v5/coinor-libcoinmp1v5 $(COINMP_MINVER)/" \
+		debian/libreoffice-calc.substvars
+  endif
 ifeq "$(ENABLE_JAVA)" "y"
 	for p in $(ARCH_DEP_PACKAGES); do \
 		if [ "$$p" = "libreoffice-presentation-console" ]; then continue; fi; \

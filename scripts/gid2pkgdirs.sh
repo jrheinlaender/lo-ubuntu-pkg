@@ -151,9 +151,19 @@ mkdir -p $OODESTDIR/pkg/libreoffice-core/$OOINSTBASE/program; \
 fi &&
 ( cd pkg/libreoffice-common/$OOINSTBASE/program
   find -maxdepth 1 \
-     -regex '\./\(.*\.so.*\|.*\.bin\|pagein\|kdefilepicker\|msfontextract\|.*\.rdb\|javaldx\|oosplash\|uri-encode\|xpdfimport\|ui-previewer\)' \
+     -regex '\./\(.*\.so.*\|.*\.bin\|pagein.*\|kdefilepicker\|msfontextract\|.*\.rdb\|javaldx\|oosplash\|uri-encode\|xpdfimport\|ui-previewer\)' \
      -exec mv {} $OODESTDIR/pkg/libreoffice-core/$OOINSTBASE/program \;
 );
+for i in types services; do \
+	if [ ! -d $OODESTDIR/pkg/libreoffice-core/$OOINSTBASE/program/$i ]; then \
+	mkdir -p $OODESTDIR/pkg/libreoffice-core/$OOINSTBASE/program/$i; \
+	fi &&
+	( cd pkg/libreoffice-common/$OOINSTBASE/program/$i
+  	  find -maxdepth 1 \
+	  -regex '\./\(.*\.rdb\)' \
+          -exec mv {} $OODESTDIR/pkg/libreoffice-core/$OOINSTBASE/program/$i \;
+	); \
+done
 
 mkdir -p pkg/libreoffice-common/usr/share/bash-completion/completions
 mv usr/share/bash-completion/completions/libreoffice$BINSUFFIX.sh \
