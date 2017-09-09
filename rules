@@ -224,19 +224,6 @@ USE_SHARED_LPSOLVE=y
 LPSOLVE_MIN_VERSION= (>= 5.5.0.13-5+b1)
 ENABLE_COINMP=y
 SYSTEM_STUFF += coinmp
-ifeq "$(GCC_VERSION_5_OR_GREATER)" "y"
-COINMP_MINVER=(>= 1.7.6+dfsg1-2)
-  ifeq "$(STRETCH_BACKPORT)" "y"
-	COINUTILS_MINVER=(>= 2.9.15-3.1)
-  else
-	COINUTILS_MINVER=(>= 2.10.14+repack1-1)
-	# go sure given #873362
-	COINMP_MINVER=(>= 1.8.3-2)
-  endif
-else
-COINMP_MINVER=
-COINUTILS_MINVER=
-endif
 USE_DBUS=y
 ifeq "$(USE_DBUS)" "y"
   ifeq (,$(findstring linux,$(DEB_HOST_ARCH_OS)))
@@ -687,10 +674,10 @@ endif
 # Debian Stretch
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "stretch-backports"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out libzmf libstaroffice orcus libgltf cppunit mdds xmlsec libqxp,$(SYSTEM_STUFF))
-  ifeq "$(RUN_MAKE_CHECK)" "y"
-    SYSTEM_STUFF := $(filter-out libwps libmwaw,$(SYSTEM_STUFF))
-  endif
+  SYSTEM_STUFF := $(filter-out libzmf libstaroffice orcus libgltf cppunit xmlsec libqxp,$(SYSTEM_STUFF))
+  # needs newer stuff for tests, we can't make it conditional on RUN_MAKE_CHECK since
+  # BE archs don't run them anyway and this wouldn't be in effect...
+  SYSTEM_STUFF := $(filter-out libwps libmwaw,$(SYSTEM_STUFF))
   STRETCH_BACKPORT=y
 endif
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "UNRELEASED"
@@ -865,6 +852,19 @@ ifneq (,$(filter curl, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libcurl4-$(CURL_SECTYPE)-dev
 endif
 
+ifeq "$(GCC_VERSION_5_OR_GREATER)" "y"
+COINMP_MINVER=(>= 1.7.6+dfsg1-2)
+  ifeq "$(STRETCH_BACKPORT)" "y"
+	COINUTILS_MINVER=(>= 2.9.15-3.1)
+  else
+	COINUTILS_MINVER=(>= 2.10.14+repack1-1)
+	# go sure given #873362
+	COINMP_MINVER=(>= 1.8.3-2)
+  endif
+else
+COINMP_MINVER=
+COINUTILS_MINVER=
+endif
 ifneq ($(ENABLE_COINMP),y)
 	CONFIGURE_FLAGS += --disable-coinmp
 else
@@ -920,6 +920,11 @@ ifeq "$(ENABLE_PYTHON)" "y"
 endif
 
 	BUILD_DEPS += , debhelper (>= 10)
+	# sigh. this is hilarious. lintian only complains about
+	# dh-strip-nondeterminism. and all debhelper versions depend
+	# on those anyway. But let's please lintian
+	BUILD_DEPS += , dh-autoreconf
+	BUILD_DEPS += , dh-strip-nondeterminism
 ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 	# from debhelper changelog
 	BUILD_DEPS += , dpkg-dev (>= 1.18.2~)
@@ -3040,29 +3045,10 @@ endif
 	install -m 644 debian/soffice.sh \
 	  $(PKGDIR)-common/etc/$(OODIRNAME)/soffice.sh
 
-ifeq "$(ENABLE_HELP)" "n"
-	# the helpimgs are not included when we don't build with help here.
-	# Add them now because libreoffice-help-* packaged in contrib or so
-	# will need them
 	set -e; \
-	for i in $(IMAGES); do \
-		s=_$$i.zip; \
-		case "$$i" in default) s=.zip; esac; \
-		z=images$$s; \
-		echo "adding helpimgs to $$z..."; \
-		rm -rf $$z; mkdir $$z; \
-		cd $$z; \
-		unzip -q $(CURDIR)/$(PKGDIR)-common/$(OODIR)/share/config/$$z && \
-		cp -r $(CURDIR)/$(SOURCE_TREE)/default_images/res/helpimg res && \
-		chmod +w $(CURDIR)/$(PKGDIR)-common/$(OODIR)/share/config/$$z && \
-		zip -q -r $(CURDIR)/$(PKGDIR)-common/$(OODIR)/share/config/$$z *; \
-		cd ..; \
-		rm -rf $$z; \
-	done
-endif
-	set -e; \
-	for i in $(IMAGES); do \
+	for i in $(IMAGES) helpimg; do \
 		z=images_$$i.zip; p=$$i; \
+		if [ "$$i" = "helpimg" ]; then p=common; fi; \
 		if [ "$$i" = "breeze_dark" ]; then p=breeze; fi; \
 		if [ "$$i" = "sifr_dark" ]; then p=sifr; fi; \
 		mkdir -p $(PKGDIR)-style-$$p/$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config; \
