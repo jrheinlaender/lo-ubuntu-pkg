@@ -2038,12 +2038,6 @@ endif
 	export gb_SUPPRESS_TESTS=true; \
 		$(MAKE) check
 
-	# install font config.
-	# some tests (e.g. ww8exports testTableKeep) somewhow need this...
-	# Shouldn't this be done by by fonts-liberation* itself?
-	cp external/more_fonts/fonts/fc_local.conf \
-		instdir/share/fonts/truetype
-
         # and now run them
 	$(IGNORE_MAKE_CHECK_FAILURES)t=`mktemp -q -d`; \
 	cd $(SOURCE_TREE) && \
@@ -2125,9 +2119,6 @@ $(STAMP_DIR)/install-common:
 	$(CURDIR)/debian/scripts/gid2pkgdirs.sh
 ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 	make cmd cmd="export DESTDIR=$(CURDIR)/debian/tmp; $(CURDIR)/solenv/bin/install-gdb-printers -a /usr/share/gdb/auto-load/$(OODIR) -c -i /$(OODIR) -p /usr/share/libreoffice/gdb"
-	# fix permissions
-	find $(CURDIR)/debian/tmp -perm 0775 -exec chmod 755 {} \;
-	find $(CURDIR)/debian/tmp -perm 0664 -exec chmod 644 {} \;
 endif
 
 	# FIXME
@@ -3314,6 +3305,16 @@ else
 	dh_strip -a
 endif
 	dh_fixperms -a
+ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
+	# dh_fixperms is not run on -dbgsym. And we get 0775 directories. Fix it
+	# manually
+	#16:29 < nthykier> _rene_: I would recommend a "find debian/$(CORE_DBG_ROOT) 
+	#	debian/$(UNO_LIBS_DBG_ROOT) debian/$(WRITER_DBG_ROOT) -exec 
+	#	chmod go=rX,u+rw,a-s {} +"
+	#16:29 < nthykier> Should be faster and is the same expression as used by 
+	#	dh_fixperms
+	find debian/$(CORE_DBG_ROOT) debian/$(UNO_LIBS_DBG_ROOT) debian/$(WRITER_DBG_ROOT) ! -type l -exec chmod go=rX,u+rw,a-s {} +
+endif
 	dh_icons -a
 	dh_compress -a -X.py -X.mk -X.sxd
 ifeq "$(ENABLE_INTROSPECTION)" "y"
@@ -3517,7 +3518,7 @@ ifeq "$(PACKAGE_SDK)" "y"
 	# no idea why this happens; afais this can't come from above
 	# since it doesn't affect the files at the end of the lines...
 	# But fix it..
-	perl -pi -e 's,html/,html /,g' debian/libreoffice-dev-doc.doc-base.lo-idl-ref
+	perl -pi -e 's,([a-z])\/usr/,$$1 \/usr/,g' debian/libreoffice-dev-doc.doc-base.lo-idl-ref
 endif
 	# not for fonts-opensymbol and extensions, as they have an own version.
 	# And librelogo gets an own changelog
