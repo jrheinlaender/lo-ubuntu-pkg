@@ -2119,9 +2119,6 @@ $(STAMP_DIR)/install-common:
 	$(CURDIR)/debian/scripts/gid2pkgdirs.sh
 ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 	make cmd cmd="export DESTDIR=$(CURDIR)/debian/tmp; $(CURDIR)/solenv/bin/install-gdb-printers -a /usr/share/gdb/auto-load/$(OODIR) -c -i /$(OODIR) -p /usr/share/libreoffice/gdb"
-	# fix permissions
-	find $(CURDIR)/debian/tmp -perm 0775 -exec chmod 755 {} \;
-	find $(CURDIR)/debian/tmp -perm 0664 -exec chmod 644 {} \;
 endif
 
 	# FIXME
@@ -3308,6 +3305,16 @@ else
 	dh_strip -a
 endif
 	dh_fixperms -a
+ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
+	# dh_fixperms is not run on -dbgsym. And we get 0775 directories. Fix it
+	# manually
+	#16:29 < nthykier> _rene_: I would recommend a "find debian/$(CORE_DBG_ROOT) 
+	#	debian/$(UNO_LIBS_DBG_ROOT) debian/$(WRITER_DBG_ROOT) -exec 
+	#	chmod go=rX,u+rw,a-s {} +"
+	#16:29 < nthykier> Should be faster and is the same expression as used by 
+	#	dh_fixperms
+	find debian/$(CORE_DBG_ROOT) debian/$(UNO_LIBS_DBG_ROOT) debian/$(WRITER_DBG_ROOT) chmod go=rX,u+rw,a-s {} +
+endif
 	dh_icons -a
 	dh_compress -a -X.py -X.mk -X.sxd
 ifeq "$(ENABLE_INTROSPECTION)" "y"
