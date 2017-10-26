@@ -199,6 +199,14 @@ QT_MINVER= (>= 4:4.8)
 KDELIBS_MINVER= (>= 4:4.3.4)
 ifneq (noddebs,$(findstring noddebs,$(DEB_BUILD_OPTIONS)))
 BUILD_DBGSYM_PACKAGES=y
+ifeq "$(DEB_HOST_ARCH)" "amd64"
+USE_DWZ=y
+DWZ_ARGS:=-L 100000000
+USE_DWZ_MULTIFILE=n
+ifeq "$(USE_DWZ_MULTIFILE)" "y"
+DWZ_ARGS += -m $(DEB_SOURCE)-$(DEB_VERSION).$(DEB_HOST_ARCH)
+endif
+endif
 endif
 SYSTEM_STUFF += xmlsec
 
@@ -678,6 +686,7 @@ ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "s
   # BE archs don't run them anyway and this wouldn't be in effect...
   SYSTEM_STUFF := $(filter-out libwps libmwaw,$(SYSTEM_STUFF))
   STRETCH_BACKPORT=y
+  USE_DWZ:=n
 endif
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "UNRELEASED"
   BUGS=mailto:debian-openoffice@lists.debian.org
@@ -749,6 +758,11 @@ else
   endif 
 endif
 USE_GOLD=n
+
+ifeq "$(USE_DWZ)" "y"
+	BUILD_DEPS += , debhelper (>= 10.10.4)
+	BUILD_DEPS += , dwz
+endif
 
 ifneq "$(ENABLE_GLTF)" "y"
 	CONFIGURE_FLAGS += --disable-gltf
@@ -1625,6 +1639,9 @@ clean-debdir:
 	rm -f debian/*.install debian/*.dirs debian/*.changelog
 	rm -f debian/*.postinst debian/*.postrm debian/*.preinst debian/*.prerm debian/*.triggers
 	rm -f debian/pom*.xml
+ifeq "$(USE_DWZ_MULTIFILE)" "y"
+	rm -f $(DEB_SOURCE)-$(DEB_VERSION).$(DEB_HOST_ARCH)
+endif
 
 	rm -rf $(CURDIR)/debian/locales
 
@@ -3239,6 +3256,9 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 	dh_link -a
 ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 	rm -rf debian/$(URE_DBG_ROOT) debian/$(CORE_DBG_ROOT) debian/$(WRITER_DBG_ROOT)
+  ifeq "$(USE_DWZ)" "y"
+	dh_dwz -a -- $(DWZ_ARGS)
+  endif
 	dh_strip -a -Nure -Nuno-libs3 $(DH_STRIP_DBG_OPTION_LO)
 	dh_strip -pure $(DH_STRIP_DBG_OPTION_URE)
 	dh_strip -puno-libs3 $(DH_STRIP_DBG_OPTION_UNO_LIBS)
@@ -3276,6 +3296,11 @@ ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 		debian/$(UNO_LIBS_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice
 	mv debian/$(CORE_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice/sal.py \
 		debian/$(UNO_LIBS_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice
+  ifeq "$(USE_DWZ_MULTIFILE)" "y"
+	mkdir -p debian/$(UNO_LIBS_DBG_ROOT)/usr/lib/debug/.dwz/
+	cp $(DEB_SOURCE)-$(DEB_VERSION).$(DEB_HOST_ARCH) \
+		debian/$(UNO_LIBS_DBG_ROOT)/usr/lib/debug/.dwz
+  endif
 else
 	dh_strip -a
 endif
@@ -3438,8 +3463,10 @@ ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 		perl -pi -e 's/^(Depends:.*)/\1\nRecommends: gdb, python3-six/' \
 		debian/.debhelper/$$i/dbgsym-root/DEBIAN/control; \
 	done
-	perl -pi -e 's/Recommends: /Recommends: uno-libs3-dbgsym, /' \
-		debian/$(CORE_DBG_ROOT)/DEBIAN/control
+	for i in $(filter-out uno-libs3,$(ARCH_DEP_PACKAGES)); do \
+		perl -pi -e 's/^(Depends:.*)/\1, uno-libs3-dbgsym/' \
+		debian/.debhelper/$$i/dbgsym-root/DEBIAN/control; \
+	done
 	perl -pi -e 's/Recommends: /Recommends: libreoffice-core-dbgsym, /' \
 		debian/$(WRITER_DBG_ROOT)/DEBIAN/control
 endif
