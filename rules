@@ -353,9 +353,6 @@ PARALLEL_BUILD=y
 ENABLE_LDAP=y
 USE_OPENLDAP=y
 SYSTEM_STUFF += epoxy
-ENABLE_GLTF=y
-SYSTEM_STUFF += libgltf
-LIBGLTF_MINVER=0.1.0
 ifeq "$(ENABLE_JAVA)" "y"
   ENABLE_REPORTDESIGN=y
   SYSTEM_STUFF += jfreereport
@@ -599,10 +596,6 @@ OOO_REPORTDESIGN_ARCHS := $(OOO_BASE_ARCHS)
 $(eval $(call gen_no_archs,OOO_REPORTDESIGN_ARCHS))
 OOO_FIREBIRD_ARCHS := $(OOO_LE_ARCHS)
 $(eval $(call gen_no_archs,OOO_FIREBIRD_ARCHS))
-# enable COLLADA (if any) only on i386/amd64 for now, rapidjson does seem
-# to have alignment problems on other archs (e.g. arm*)
-OOO_COLLADA_ARCHS=amd64 i386
-$(eval $(call gen_no_archs,OOO_COLLADA_ARCHS))
 # chromium only available here.
 OOO_GDRIVE_ARCHS=amd64 arm64 armhf i386
 
@@ -681,7 +674,7 @@ endif
 # Debian Stretch
 ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "stretch-backports"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out libzmf libstaroffice orcus libgltf cppunit xmlsec libqxp,$(SYSTEM_STUFF))
+  SYSTEM_STUFF := $(filter-out libzmf libstaroffice orcus cppunit xmlsec libqxp,$(SYSTEM_STUFF))
   # needs newer stuff for tests, we can't make it conditional on RUN_MAKE_CHECK since
   # BE archs don't run them anyway and this wouldn't be in effect...
   SYSTEM_STUFF := $(filter-out libwps libmwaw,$(SYSTEM_STUFF))
@@ -743,10 +736,6 @@ else
 	BUILD_DEPS += , clang-$(CLANG_VERSION)
 	CONFIGURE_FLAGS+= CC=clang-$(CLANG_VERSION) CXX=clang++-$(CLANG_VERSION)
   endif
-  # would need external/opencollada/patches/opencollada.clang.patch.0 applied
-  # See https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=793930 and the
-  # upstream issue (https://github.com/KhronosGroup/OpenCOLLADA/issues/293)
-  SYSTEM_STUFF := $(filter-out opencollada collada2gltf,$(SYSTEM_STUFF))
   ifeq "$(ENABLE_COMPILER_PLUGINS)" "y"
   	CONFIGURE_FLAGS += --enable-compiler-plugins
   	CLANGDIR := /usr/lib/llvm-$(shell $(CLANG) --version | head -n 1 | awk '{ print $$3 }' | cut -d. -f1,2)
@@ -762,46 +751,6 @@ USE_GOLD=n
 ifeq "$(USE_DWZ)" "y"
 	BUILD_DEPS += , debhelper (>= 10.10.4)
 	BUILD_DEPS += , dwz
-endif
-
-ifneq "$(ENABLE_GLTF)" "y"
-	CONFIGURE_FLAGS += --disable-gltf
-else
-  ifneq (,$(findstring libgltf,$(SYSTEM_STUFF)))
-	BUILD_DEPS += , libgltf-dev (>= $(LIBGLTF_MINVER))
-  endif
-  ENABLE_COLLADA=n
-  ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_COLLADA_ARCHS)))
-    ENABLE_COLLADA=y
-  endif
-  ifeq "$(ENABLE_COLLADA)" "y"
-    SYSTEM_STUFF += opencollada
-    OPENCOLLADA_CFLAGS="-I/usr/include/opencollada/COLLADABaseUtils -I/usr/include/opencollada/COLLADAFramework -I/usr/include/opencollada/COLLADASaxFrameworkLoader -I/usr/include/opencollada/GeneratedSaxParser -I/usr/include/opencollada"
-    OPENCOLLADA_LIBS="-L/usr/lib/opencollada -lUTF -lOpenCOLLADABaseUtils -lOpenCOLLADAFramework -lOpenCOLLADASaxFrameworkLoader -lGeneratedSaxParser -lMathMLSolver -lpcre"
-    SYSTEM_STUFF += collada2gltf
-    COLLADA2GLTF_CFLAGS="-I/usr/include/collada2gltf -I/usr/include/collada2gltf/JSON -I/usr/include/collada2gltf/GLTF -I/usr/include/collada2gltf/helpers -I/usr/include/collada2gltf/assetModifiers -I/usr/include/rapidjson" 
-    COLLADA2GLTF_LIBS="-lcollada2gltfConvert -lo3dgc_common_lib -lo3dgc_dec_lib -lo3dgc_enc_lib"
-  endif
-  ifeq "$(GCC_VERSION_5_OR_GREATER)" "y"
-    OPENCOLLADA_MINVER=(>= 0.1.0~20140703.ddf8f47+dfsg1-2)
-    COLLADA2GLTF_MINVER=(>= 20140924-2)
-  else
-    OPENCOLLADA_MINVER=
-    COLLADA2GLTF_MINVER=
-  endif
-  ifneq "$(ENABLE_COLLADA)" "y"
-	CONFIGURE_FLAGS += --disable-collada
-  else
-    ifneq (,$(findstring opencollada,$(SYSTEM_STUFF)))
-       BUILD_DEPS += , opencollada-dev $(OPENCOLLADA_MINVER) [$(OOO_COLLADA_ARCHS)]
-       BUILD_DEPS += , libpcre3-dev [$(OOO_COLLADA_ARCHS)]
-    endif
-    ifneq (,$(findstring collada2gltf,$(SYSTEM_STUFF)))
-       BUILD_DEPS += , libcollada2gltfconvert-dev $(COLLADA2GLTF_MINVER)[$(OOO_COLLADA_ARCHS)]
-       BUILD_DEPS += , rapidjson-dev [$(OOO_COLLADA_ARCHS)]
-       BUILD_DEPS += , libo3dgc-dev (>= 0~20131011-2) [$(OOO_COLLADA_ARCHS)]
-    endif
-  endif
 endif
 
 ifneq "$(PACKAGE_SDK)" "y"
@@ -1946,8 +1895,6 @@ config_host.mk:
 	CLANGDIR=$(CLANGDIR) \
 	MARIADBCONFIG=$(MARIADBCONFIG) \
 	FIREBIRD_CFLAGS=$(FIREBIRD_CFLAGS) FIREBIRD_LIBS=$(FIREBIRD_LIBS) \
-	OPENCOLLADA_CFLAGS=$(OPENCOLLADA_CFLAGS) OPENCOLLADA_LIBS=$(OPENCOLLADA_LIBS) \
-	COLLADA2GLTF_CFLAGS=$(COLLADA2GLTF_CFLAGS) COLLADA2GLTF_LIBS=$(COLLADA2GLTF_LIBS) \
 	./autogen.sh $(CONFIGURE_FLAGS)
 
 build:
@@ -1967,8 +1914,6 @@ $(STAMP_DIR)/build-arch:
 	CLANGDIR=$(CLANGDIR) \
 	MARIADBCONFIG=$(MARIADBCONFIG) \
 	FIREBIRD_CFLAGS=$(FIREBIRD_CFLAGS) FIREBIRD_LIBS=$(FIREBIRD_LIBS) \
-	OPENCOLLADA_CFLAGS=$(OPENCOLLADA_CFLAGS) OPENCOLLADA_LIBS=$(OPENCOLLADA_LIBS) \
-	COLLADA2GLTF_CFLAGS=$(COLLADA2GLTF_CFLAGS) COLLADA2GLTF_LIBS=$(COLLADA2GLTF_LIBS) \
 	./autogen.sh $(CONFIGURE_FLAGS) --without-junit --without-cppunit \
 		--without-doxygen --without-javadoc --disable-ext-wiki-publisher \
 		--disable-report-builder --disable-scripting-javascript \
@@ -2006,8 +1951,6 @@ endif
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
 	MARIADBCONFIG=$(MARIADBCONFIG) \
 	FIREBIRD_CFLAGS=$(FIREBIRD_CFLAGS) FIREBIRD_LIBS=$(FIREBIRD_LIBS) \
-	OPENCOLLADA_CFLAGS=$(OPENCOLLADA_CFLAGS) OPENCOLLADA_LIBS=$(OPENCOLLADA_LIBS) \
-	COLLADA2GLTF_CFLAGS=$(COLLADA2GLTF_CFLAGS) COLLADA2GLTF_LIBS=$(COLLADA2GLTF_LIBS) \
 	./autogen.sh $(CONFIGURE_FLAGS) $(CONFIGURE_FLAGS_INDEP)
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build-nocheck
@@ -2038,8 +1981,6 @@ endif
 	CLANGDIR=$(CLANGDIR) \
 	MARIADBCONFIG=$(MARIADBCONFIG) \
 	FIREBIRD_CFLAGS=$(FIREBIRD_CFLAGS) FIREBIRD_LIBS=$(FIREBIRD_LIBS) \
-	OPENCOLLADA_CFLAGS=$(OPENCOLLADA_CFLAGS) OPENCOLLADA_LIBS=$(OPENCOLLADA_LIBS) \
-	COLLADA2GLTF_CFLAGS=$(COLLADA2GLTF_CFLAGS) COLLADA2GLTF_LIBS=$(COLLADA2GLTF_LIBS) \
 	./autogen.sh $(CONFIGURE_FLAGS) \
 		--without-doxygen --without-javadoc --disable-ext-wiki-publisher \
 		--disable-report-builder --disable-scripting-javascript \
