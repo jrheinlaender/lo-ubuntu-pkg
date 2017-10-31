@@ -202,10 +202,7 @@ BUILD_DBGSYM_PACKAGES=y
 ifeq "$(DEB_HOST_ARCH)" "amd64"
 USE_DWZ=y
 DWZ_ARGS:=-L 100000000
-USE_DWZ_MULTIFILE=n
-ifeq "$(USE_DWZ_MULTIFILE)" "y"
-DWZ_ARGS += -m $(DEB_SOURCE)-$(DEB_VERSION).$(DEB_HOST_ARCH)
-endif
+USE_DWZ_MULTIFILE=y
 endif
 endif
 SYSTEM_STUFF += xmlsec
@@ -717,6 +714,11 @@ else
 DH_STRIP_DBG_OPTION_LO += --no-automatic-dbgsym
 DH_STRIP_DBG_OPTION_URE += --no-automatic-dbgsym
 DH_STRIP_DBG_OPTION_UNO_LIBS3 += --no-automatic-dbgsym
+endif
+
+ifeq "$(USE_DWZ_MULTIFILE)" "y"
+DWZ_ARGS += -m debian/$(UNO_LIBS_DBG_ROOT)/usr/lib/debug/.dwz/$(DEB_SOURCE)-$(DEB_VERSION).$(DEB_HOST_ARCH) \
+	-M /usr/lib/debug/.dwz/$(DEB_SOURCE)-$(DEB_VERSION).$(DEB_HOST_ARCH)
 endif
 
 CONFIGURE_FLAGS += $(foreach i, $(SYSTEM_STUFF),--with-system-$(i))
@@ -1601,9 +1603,6 @@ clean-debdir:
 	rm -f debian/*.install debian/*.dirs debian/*.changelog
 	rm -f debian/*.postinst debian/*.postrm debian/*.preinst debian/*.prerm debian/*.triggers
 	rm -f debian/pom*.xml
-ifeq "$(USE_DWZ_MULTIFILE)" "y"
-	rm -f $(DEB_SOURCE)-$(DEB_VERSION).$(DEB_HOST_ARCH)
-endif
 
 	rm -rf $(CURDIR)/debian/locales
 
@@ -3209,8 +3208,10 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 	dh_bugfiles -a -A
 	dh_link -a
 ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
-	rm -rf debian/$(URE_DBG_ROOT) debian/$(CORE_DBG_ROOT) debian/$(WRITER_DBG_ROOT)
+	rm -rf debian/$(UNO_LIBS_DBG_ROOT) debian/$(URE_DBG_ROOT) debian/$(CORE_DBG_ROOT) \
+		debian/$(WRITER_DBG_ROOT)
   ifeq "$(USE_DWZ)" "y"
+	mkdir -p debian/$(UNO_LIBS_DBG_ROOT)/usr/lib/debug/.dwz
 	dh_dwz -a -- $(DWZ_ARGS)
   endif
 	dh_strip -a -Nure -Nuno-libs3 $(DH_STRIP_DBG_OPTION_LO)
