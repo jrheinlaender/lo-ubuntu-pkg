@@ -194,9 +194,20 @@ BUILD_CAIROCANVAS=y
 SYSTEM_STUFF += cairo
 CAIRO_FONTS_PATCH=y
 BUILD_KDE=n
+BUILD_KDE4=n
 # < 4.8 fails with gcc 4.7, see #667911
-QT_MINVER= (>= 4:4.8)
+QT4_MINVER= (>= 4:4.8)
 KDELIBS_MINVER= (>= 4:4.3.4)
+#BUILD_KDE5=n
+ENABLE_QT5=n
+KDE_MAJOR=5
+ifeq "$(BUILD_KDE)" "y"
+ifeq "$(BUILD_KDE4)" "y"
+ifeq "$(BUILD_KDE5)" "y"
+        $(error only either KDE4 or KDE5 supported)
+endif
+endif
+endif
 ifneq (noddebs,$(findstring noddebs,$(DEB_BUILD_OPTIONS)))
 BUILD_DBGSYM_PACKAGES=y
 ifeq "$(DEB_HOST_ARCH)" "amd64"
@@ -1267,13 +1278,32 @@ else
 	CONFIGURE_FLAGS+= --disable-cairo
 endif
 
-ifeq "$(BUILD_KDE)" "n"
+ifeq "$(BUILD_KDE4)" "n"
 	CONFIGURE_FLAGS += --disable-kde4
 else
 	CONFIGURE_FLAGS += --enable-kde4
 	KDE_ICONSET_DEP=libreoffice-style-breeze
 	BUILD_DEPS += , kdelibs5-dev $(KDELIBS_MINVER)
-	BUILD_DEPS += , libqt4-dev $(QT_MINVER)
+	BUILD_DEPS += , libqt4-dev $(QT4_MINVER)
+endif
+
+#ifeq "$(BUILD_KDE5)" "n"
+#	CONFIGURE_FLAGS += --disable-kde5
+#else
+#	ENABLE_QT5=y
+#	CONFIGURE_FLAGS += --enable-kde5
+#	KDE_ICONSET_DEP=libreoffice-style-breeze
+#	BUILD_DEPS += , libkf5coreaddons-dev, libkf5kdelibs4support5-bin
+#	BUILD_DEPS += , libxcb1-dev
+#endif
+
+ifeq "$(ENABLE_QT5)" "y"
+	CONFIGURE_FLAGS += --enable-qt5
+	BUILD_DEPS += , qtbase5-dev, qt5-qmake, qtbase5-dev-tools
+	BUILD_DEÜS += , libglib2.0-dev (>= 2.4)
+        # for correct qmake/moc
+	BUILD_DEPS += , qtchooser
+	export QT_SELECT=5
 endif
 
 ifeq "$(ENABLE_MYSQLNATIVE)" "y"
@@ -1782,7 +1812,15 @@ ifeq "$(BUILD_GTK3)" "y"
 	cat debian/control.gtk3.in >> debian/control
 endif
 ifeq "$(BUILD_KDE)" "y"
-	cat debian/control.kde.in >> debian/control
+  ifeq "$(BUILD_KDE4)" "y"
+	cat debian/control.kde4.in >> debian/control
+  endif
+  ifeq "$(BUILD_KDE5)" "y"
+	cat debian/control.kde5.in >> debian/control
+  endif
+endif
+ifeq "$(ENABLE_QT5)" "y"
+	cat debian/control.qt5.in >> debian/control
 endif
 	cat debian/control.postgresql.in >> debian/control
 	cat debian/control.mysql.in >> debian/control
@@ -2069,6 +2107,18 @@ endif
 	# FIXME
 	cd $(CURDIR)/debian/tmp/pkg && rm -rf \*
 	
+ifeq "$(ENABLE_QT5)" "y"
+	# we need to do it here. If -kde isn't built
+	# there's no -kde.install generated, so dh_missing complains later
+	mkdir -p debian/tmp/pkg/libreoffice-qt5/$(OODIR)/program
+	mv debian/tmp/pkg/libreoffice-kde/$(OODIR)/program/libvclplug_qt5lo.so\
+		debian/tmp/pkg/libreoffice-qt5/$(OODIR)/program
+endif
+ifeq "$(BUILD_KDE)" "y"
+	mv debian/tmp/pkg/libreoffice-kde \
+		debian/tmp/pkg/libreoffice-kde$(KDE_MAJOR)
+endif
+
 	# prepare install/dir files for dh
 	for i in `cd $(CURDIR)/debian/tmp/pkg; ls -1 | xargs`; do \
 		echo "$${i}/usr/* usr" > debian/$$i.install; \
@@ -2575,6 +2625,11 @@ endif
 			debian/uno-libs3/$(OODIR)/program; \
 	done
 
+ifeq "$(ENABLE_QT5)" "y"
+	mkdir -p $(PKGDIR)-qt5/$(OODIR)/program
+	mv $(PKGDIR)-kde/$(OODIR)/program/libvclplug_qt5lo.so \
+		$(PKGDIR)-qt5/$(OODIR)/program
+endif
 
 ifeq "$(BUILD_KDE)" "y"
 	# install files for KDEs "create new" ...
