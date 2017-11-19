@@ -73,7 +73,7 @@ GIT_BASEURL:=git://anongit.freedesktop.org/libreoffice
 lo_sources_ver=$(shell grep AC_INIT $(SOURCE_TREE)/configure.ac | grep documentfoundation | cut -d, -f2 | sed -e 's,\[,,' -e 's,\],,')
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
-GIT_TAG=libreoffice-$(lo_sources_ver)
+GIT_TAG=libreoffice-$(lo_sources_ver)-hotfix1
 GIT_BRANCH=libreoffice-5-4-3
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
@@ -144,10 +144,15 @@ PACKAGE_TTF_OPENSYMBOL=y
 BUILD_ONLY_EN_US=n
 ENABLE_JAVA=y
 ifeq "$(ENABLE_JAVA)" "y"
+  ifeq "$(DEB_HOST_ARCH)" "i386"
+  JDK=openjdk
+  JAVA_MAINVER=9
+  else
   JDK=default
   include /usr/share/java/java_defaults.mk
   ifneq "$(JDK)" "default"
     JAVA_MAINVER=7
+  endif
   endif
 endif
 JAVAHELPER_MIN_VERSION= (>= 0.37~)
@@ -266,10 +271,16 @@ ifeq "$(ENABLE_JAVA)" "y"
         RUN_MAKE_CHECK=y
       endif
         RUN_MAKE_UICHECK=y
-        ifeq "$(DEB_HOST_ARCH)" "i386"
+#        ifeq "$(DEB_HOST_ARCH)" "i386"
+#	  ENABLE_JUNIT4=y
+#        endif
+        ifeq "$(DEB_HOST_ARCH)" "amd64"
 	  ENABLE_JUNIT4=y
         endif
-        ifeq "$(DEB_HOST_ARCH)" "amd64"
+#        ifeq "$(DEB_HOST_ARCH)" "armhf"
+#	  ENABLE_JUNIT4=y
+#        endif
+        ifeq "$(DEB_HOST_ARCH)" "arm64"
 	  ENABLE_JUNIT4=y
         endif
         ENABLE_CHART_TESTS=n
@@ -283,10 +294,16 @@ ifeq "$(ENABLE_JAVA)" "y"
         RUN_MAKE_CHECK=y
       endif
         RUN_MAKE_UICHECK=y
-        ifeq "$(DEB_HOST_ARCH)" "i386"
+#        ifeq "$(DEB_HOST_ARCH)" "i386"
+#	  ENABLE_JUNIT4=y
+#        endif
+        ifeq "$(DEB_HOST_ARCH)" "amd64"
 	  ENABLE_JUNIT4=y
         endif
-        ifeq "$(DEB_HOST_ARCH)" "amd64"
+#        ifeq "$(DEB_HOST_ARCH)" "armhf"
+#	  ENABLE_JUNIT4=y
+#        endif
+        ifeq "$(DEB_HOST_ARCH)" "arm64"
 	  ENABLE_JUNIT4=y
         endif
         ENABLE_CHART_TESTS=n
@@ -624,11 +641,11 @@ ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
 	ENABLE_EVO2=n
 	ENABLE_REPORTDESIGN=n
 	DEBHELPER_OPTIONS += -Nlibreoffice-base libreoffice-base-core -Nlibreoffice-base-drivers
-	DEBHELPER_OPTIONS += -Nlibreoffice-evolution -Nlibreoffice-kab
+	DEBHELPER_OPTIONS += -Nlibreoffice-evolution
 	DEBHELPER_OPTIONS += -Nlibreoffice-sdbc-postgresql -Nlibreoffice-mysql-connector
 	DEBHELPER_OPTIONS += -Nlibreoffice-sdbc-hsqldb -Nlibreoffice-sdbc-firebird 
 	DEBHELPER_OPTIONS += -Nlibreoffice-report-builder-bin -Nlibreoffice-report-builder
-	CONFIGURE_FLAGS += --disable-database-connectivity
+#	CONFIGURE_FLAGS += --disable-database-connectivity
   endif
 endif
 
@@ -672,10 +689,8 @@ ifeq (ia64,$(findstring ia64,$(OOO_OPENJDK_ARCHS)))
   endif
 endif
 
-ifneq (,$(findstring libreoffice-subsequentcheckbase,$(ARCH_INDEP_PACKAGES)))
 ifeq "$(BUILD_TEST_PACKAGE)" "n"
 	DEBHELPER_OPTIONS += -Nlibreoffice-subsequentcheckbase
-endif
 endif
 
 ifneq (,$(findstring mips, $(OOO_ARCHS)))
@@ -1031,7 +1046,12 @@ ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(JDK)" "default"
 	BUILD_DEPS += , java-common (>= 0.49)
 	JAVA_HOME=/usr/lib/jvm/default-java
-	BUILD_DEPS += , default-jdk (>= 1:1.6) $(filter-out !ia64,$(OOO_NO_JAVA_ARCHS))
+	BUILD_DEPS += , default-jdk (>= 1:1.6) $(shell echo "$(filter-out !ia64,$(OOO_NO_JAVA_ARCHS))" | sed -e "s/\]/ !i386]/")
+    ifeq (i386,$(findstring i386,$(OOO_JAVA_ARCHS)))
+#	BUILD_DEPS += , default-jdk (>= 1:1.9) [i386]
+	# hack.
+	BUILD_DEPS += , openjdk-9-jdk (>= 9.0.1+11-1~) [i386]
+    endif
     ifneq (,$(findstring ia64,$(OOO_JAVA_ARCHS)))
 	BUILD_DEPS += , default-jdk (>= 1:1.7-48) [ia64]
     endif
@@ -1063,6 +1083,10 @@ ifeq "$(ENABLE_JAVA)" "y"
   else
 	BUILD_DEPS += , ant (>= 1.6.5)$(OOO_NO_JAVA_ARCHS)
   endif
+  # force Java 9 with #876069 fixed on i386
+  ifeq "$(DEB_HOST_ARCH)" "i386"
+	JAVA_RUNTIME_DEPENDS := openjdk-9-jre (>= 9.0.1+11-1)
+  else
 	JAVA_RUNTIME_DEPENDS = default-jre
   ifneq (,$(filter $(DEB_HOST_ARCH), $(OOO_OPENJDK_ARCHS)))
     ifneq "$(DEB_HOST_ARCH)" "ia64"
@@ -1077,6 +1101,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 	JAVA_RUNTIME_DEPENDS += | java6-runtime
 	# Suns Java "packages"
 	JAVA_RUNTIME_DEPENDS += | jre
+  endif
 export JAVA_HOME
 	CONFIGURE_FLAGS += --with-jdk-home=$(JAVA_HOME)
 	JAVA_COMMON_DEPENDS= , libreoffice-java-common
@@ -1392,6 +1417,7 @@ ifeq "$(ENABLE_SDBC_POSTGRESQL)" "y"
   endif
 else
 	CONFIGURE_FLAGS += --disable-postgresql-sdbc
+	DEBHELPER_OPTIONS += -Nlibreoffice-sdbc-postgresql
 endif
 
 ifeq "$(ENABLE_RANDR)" "y"
@@ -1422,11 +1448,13 @@ ifeq "$(ENABLE_JAVA)" "y"
     endif
 	CONFIGURE_FLAGS += --enable-scripting-beanshell
   else
+	CONFIGURE_FLAGS += --disble-scripting-beanshell
  	DEBHELPER_OPTIONS += -Nlibreoffice-script-provider-bsh
   endif
   ifeq "$(ENABLE_SCRIPT_PROVIDER_JS)" "y"
 	CONFIGURE_FLAGS += --enable-scripting-javascript	
   else
+	CONFIGURE_FLAGS += --disable-scripting-javascript	
 	DEBHELPER_OPTIONS += -Nlibreoffice-script-provider-js
   endif
 endif
@@ -1812,26 +1840,16 @@ endif
 ifeq "$(BUILD_KDE)" "y"
 	cat debian/control.kde.in >> debian/control
 endif
-ifeq "$(ENABLE_SDBC_POSTGRESQL)" "y"
 	cat debian/control.postgresql.in >> debian/control
-endif
-ifeq "$(ENABLE_MYSQLNATIVE)" "y"
 	cat debian/control.mysql.in >> debian/control
-endif
 ifeq "$(ENABLE_EVO2)" "y"
 	cat debian/control.evolution.in >> debian/control
 endif
-ifeq "$(BUILD_TEST_PACKAGE)" "y"
-  ifneq "$(OOO_JAVA_ARCHS)" ""
 	cat debian/control.subsequentcheckbase.in >> debian/control
-  endif
-endif
 ifeq "$(PACKAGE_LIBRELOGO)" "y"
 	cat debian/control.librelogo.in >> debian/control
 endif
-ifeq "$(ENABLE_FIREBIRD)" "y"
 	cat debian/control.firebird.in >> debian/control
-endif
 
 	cat debian/control.transitionals.in >> debian/control
 
@@ -3224,7 +3242,7 @@ endif
 
 ifeq "$(INSTALL_APPARMOR_PROFILES)" "y"
 	mkdir -p $(PKGDIR)-common/etc/apparmor.d
-	./sysui/desktop/share/apparmor.sh /$(OODIR) sysui/desktop/apparmor/ \
+	./sysui/desktop/share/apparmor.sh /$(OODIR)/ sysui/desktop/apparmor/ \
 			$(PKGDIR)-common/etc/apparmor.d/ false
 endif
 
