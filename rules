@@ -536,7 +536,7 @@ INSTALL_APPARMOR_PROFILES=y
 # Default flags to pass to configure
 CONFIGURE_FLAGS= \
 		--with-vendor='$(OOO_VENDOR)' \
-		--with-build-version='$(shell dpkg-parsechangelog |grep "^Version:" |cut -f2 -d\ )' \
+		--with-build-version='$(DEB_VERSION)' \
                 --prefix=/usr --mandir=/usr/share/man \
                 --docdir=/usr/share/doc/libreoffice \
 		--libdir=/usr/lib \
@@ -556,8 +556,11 @@ CONFIGURE_FLAGS += --enable-release-build
 RELEASE_BUILD := y
 endif
 
-ifeq "$(shell dpkg-parsechangelog | grep urgency | grep -q UNRELEASED && echo true)" "true"
+ifneq "$(DEB_DISTRIBUTION)" "UNRELEASED"
 CONFIGURE_FLAGS += --disable-dependency-tracking
+endif
+ifeq "$(DEB_DISTRIBUTION)" "UNRELEASED"
+BUGS=mailto:debian-openoffice@lists.debian.org
 endif
 
 export verbose=t
@@ -701,16 +704,13 @@ endif
 # Distro-specific overrides
 
 # Debian Stretch
-ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "stretch-backports"
+ifeq "$(DEB_DISTRIBUTION)" "stretch-backports"
   BUGS=mailto:debian-backports@lists.debian.org
   SYSTEM_STUFF := $(filter-out libzmf libstaroffice orcus libgltf cppunit xmlsec,$(SYSTEM_STUFF))
   # needs newer stuff for tests, we can't make it conditional on RUN_MAKE_CHECK since
   # BE archs don't run them anyway and this wouldn't be in effect...
   SYSTEM_STUFF := $(filter-out libwps libmwaw,$(SYSTEM_STUFF))
   STRETCH_BACKPORT=y
-endif
-ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "UNRELEASED"
-  BUGS=mailto:debian-openoffice@lists.debian.org
 endif
 
 ifeq "$(DEB_VENDOR)" "Debian"
@@ -1650,10 +1650,8 @@ clean-debdir:
 		! -name "liblibreofficekitgtk.links" -exec rm {} \;
 	if [ -d "$(STAMP_DIR)" ]; then rm -rf "$(STAMP_DIR)"; fi
 	rm -f debian/*.bug-script
-	rm -f debian/scripts/aotcompile.py*
 
 	rm -f debian/shlibs.local
-	rm -f debian/*.templates
 
 	rm -f debian/libreoffice-dev-doc.doc-base.*
 	rm -f debian/*.install debian/*.dirs debian/*.changelog
