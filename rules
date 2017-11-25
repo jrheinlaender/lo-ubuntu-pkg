@@ -532,6 +532,7 @@ BUILD_PPC64EL=y
 BUILD_ARM64=y
 SYSTEM_STUFF += gpgmepp
 INSTALL_APPARMOR_PROFILES=y
+ENABLE_APPARMOR_PROFILES=n
 
 # Default flags to pass to configure
 CONFIGURE_FLAGS= \
@@ -3256,6 +3257,15 @@ ifeq "$(INSTALL_APPARMOR_PROFILES)" "y"
 	mkdir -p $(PKGDIR)-common/etc/apparmor.d
 	./sysui/desktop/share/apparmor.sh /$(OODIR)/ sysui/desktop/apparmor/ \
 			$(PKGDIR)-common/etc/apparmor.d/ false
+  ifneq "$(ENABLE_APPARMOR_PROFILES)" "y"
+	# disable the apparmor files per default
+	mkdir -p $(PKGDIR)-common/etc/apparmor.d/disable
+	cd $(PKGDIR)-common/etc/apparmor.d/disable
+	for i in oosplash senddoc soffice.bin xpdfimport; do \
+		ln -sf /etc/apparmor.d/usr.lib.libreoffice.program.$$i \
+			usr.lib.libreoffice.program.$$i; \
+	done
+  endif
 endif
 
 	touch $@
@@ -3588,10 +3598,9 @@ endif
 	dh_fixperms -i
 	dh_icons -i
 ifeq "$(INSTALL_APPARMOR_PROFILES)" "y"
-	dh_apparmor -plibreoffice-common --profile-name=usr.lib.libreoffice.program.oosplash
-	dh_apparmor -plibreoffice-common --profile-name=usr.lib.libreoffice.program.senddoc
-	dh_apparmor -plibreoffice-common --profile-name=usr.lib.libreoffice.program.soffice.bin
-	dh_apparmor -plibreoffice-common --profile-name=usr.lib.libreoffice.program.xpdfimport
+	for i in oosplash senddoc soffice.bin xpdfimport; do \
+		dh_apparmor -plibreoffice-common --profile-name=usr.lib.libreoffice.program.$$i; \
+	done
 endif
 	dh_compress -i -X.py -X.mk -X.sxd -X.xcd.sample
 	dh_strip_nondeterminism -i
