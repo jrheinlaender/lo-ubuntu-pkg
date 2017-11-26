@@ -72,11 +72,11 @@ ifeq "$(USE_GIT_TARBALLS)" "y"
 GIT_BASEURL:=git://anongit.freedesktop.org/libreoffice
 # bootstraping this from the source tree is breaking get-orig-source
 #lo_sources_ver=$(shell grep AC_INIT $(SOURCE_TREE)/configure.ac | grep documentfoundation | cut -d, -f2 | sed -e 's,\[,,' -e 's,\],,')
-lo_sources_ver=6.0.0.0.alpha1-buildfix1
+lo_sources_ver=6.0.0.0.beta1
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
 GIT_TAG=libreoffice-$(lo_sources_ver)
-GIT_BRANCH=master
+GIT_BRANCH=libreoffice-6-0
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
 lo_sources_ver=$(shell cat $(CURDIR)/sources.ver | cut -d= -f2)
@@ -146,10 +146,15 @@ PACKAGE_TTF_OPENSYMBOL=y
 BUILD_ONLY_EN_US=n
 ENABLE_JAVA=y
 ifeq "$(ENABLE_JAVA)" "y"
+  ifeq "$(DEB_HOST_ARCH)" "i386"
+  JDK=openjdk
+  JAVA_MAINVER=9
+  else
   JDK=default
   include /usr/share/java/java_defaults.mk
   ifneq "$(JDK)" "default"
     JAVA_MAINVER=7
+  endif
   endif
 endif
 JAVAHELPER_MIN_VERSION= (>= 0.37~)
@@ -196,11 +201,27 @@ BUILD_CAIROCANVAS=y
 SYSTEM_STUFF += cairo
 CAIRO_FONTS_PATCH=y
 BUILD_KDE=y
+BUILD_KDE4=y
 # < 4.8 fails with gcc 4.7, see #667911
-QT_MINVER= (>= 4:4.8)
+QT4_MINVER= (>= 4:4.8)
 KDELIBS_MINVER= (>= 4:4.3.4)
+#BUILD_KDE5=n
+ENABLE_QT5=n
+KDE_MAJOR=5
+ifeq "$(BUILD_KDE)" "y"
+ifeq "$(BUILD_KDE4)" "y"
+ifeq "$(BUILD_KDE5)" "y"
+        $(error only either KDE4 or KDE5 supported)
+endif
+endif
+endif
 ifneq (noddebs,$(findstring noddebs,$(DEB_BUILD_OPTIONS)))
 BUILD_DBGSYM_PACKAGES=y
+ifeq "$(DEB_HOST_ARCH)" "amd64"
+USE_DWZ=y
+DWZ_ARGS:=-L 100000000
+USE_DWZ_MULTIFILE=n
+endif
 endif
 SYSTEM_STUFF += xmlsec
 
@@ -268,10 +289,16 @@ ifeq "$(ENABLE_JAVA)" "y"
       else
         RUN_MAKE_CHECK=y
       endif
-        ifeq "$(DEB_HOST_ARCH)" "i386"
+#        ifeq "$(DEB_HOST_ARCH)" "i386"
+#	  ENABLE_JUNIT4=y
+#        endif
+        ifeq "$(DEB_HOST_ARCH)" "amd64"
 	  ENABLE_JUNIT4=y
         endif
-        ifeq "$(DEB_HOST_ARCH)" "amd64"
+#        ifeq "$(DEB_HOST_ARCH)" "armhf"
+#	  ENABLE_JUNIT4=y
+#        endif
+        ifeq "$(DEB_HOST_ARCH)" "arm64"
 	  ENABLE_JUNIT4=y
         endif
         ENABLE_CHART_TESTS=n
@@ -284,10 +311,16 @@ ifeq "$(ENABLE_JAVA)" "y"
       else
         RUN_MAKE_CHECK=y
       endif
-        ifeq "$(DEB_HOST_ARCH)" "i386"
+#        ifeq "$(DEB_HOST_ARCH)" "i386"
+#	  ENABLE_JUNIT4=y
+#        endif
+        ifeq "$(DEB_HOST_ARCH)" "amd64"
 	  ENABLE_JUNIT4=y
         endif
-        ifeq "$(DEB_HOST_ARCH)" "amd64"
+#        ifeq "$(DEB_HOST_ARCH)" "armhf"
+#	  ENABLE_JUNIT4=y
+#        endif
+        ifeq "$(DEB_HOST_ARCH)" "arm64"
 	  ENABLE_JUNIT4=y
         endif
         ENABLE_CHART_TESTS=n
@@ -346,9 +379,6 @@ PARALLEL_BUILD=y
 ENABLE_LDAP=y
 USE_OPENLDAP=y
 SYSTEM_STUFF += epoxy
-ENABLE_GLTF=y
-SYSTEM_STUFF += libgltf
-LIBGLTF_MINVER=0.1.0
 ifeq "$(ENABLE_JAVA)" "y"
   ENABLE_REPORTDESIGN=y
   SYSTEM_STUFF += jfreereport
@@ -434,7 +464,7 @@ endif
 FAKEROOT_LIBDIR=/usr/lib/$(DEB_HOST_MULTIARCH)/libfakeroot
 SYSTEM_STUFF += liblangtag
 SYSTEM_STUFF += orcus
-LIBORCUS_MINVER=0.12
+LIBORCUS_MINVER=0.13
 USE_UCPP=y
 ifeq "$(USE_UCPP)" "y"
   SYSTEM_STUFF += ucpp
@@ -501,11 +531,12 @@ BUILD_PPC64EL=y
 BUILD_ARM64=y
 SYSTEM_STUFF += gpgmepp
 INSTALL_APPARMOR_PROFILES=y
+ENABLE_APPARMOR_PROFILES=n
 
 # Default flags to pass to configure
 CONFIGURE_FLAGS= \
 		--with-vendor='$(OOO_VENDOR)' \
-		--with-build-version='$(shell dpkg-parsechangelog |grep "^Version:" |cut -f2 -d\ )' \
+		--with-build-version='$(DEB_VERSION)' \
                 --prefix=/usr --mandir=/usr/share/man \
                 --docdir=/usr/share/doc/libreoffice \
 		--libdir=/usr/lib \
@@ -526,8 +557,11 @@ CONFIGURE_FLAGS += --enable-release-build
 RELEASE_BUILD := y
 endif
 
-ifeq "$(shell dpkg-parsechangelog | grep urgency | grep -q UNRELEASED && echo true)" "true"
+ifneq "$(DEB_DISTRIBUTION)" "UNRELEASED"
 CONFIGURE_FLAGS += --disable-dependency-tracking
+endif
+ifeq "$(DEB_DISTRIBUTION)" "UNRELEASED"
+BUGS=mailto:debian-openoffice@lists.debian.org
 endif
 
 export verbose=t
@@ -594,10 +628,6 @@ OOO_REPORTDESIGN_ARCHS := $(OOO_BASE_ARCHS)
 $(eval $(call gen_no_archs,OOO_REPORTDESIGN_ARCHS))
 OOO_FIREBIRD_ARCHS := $(OOO_LE_ARCHS)
 $(eval $(call gen_no_archs,OOO_FIREBIRD_ARCHS))
-# enable COLLADA (if any) only on i386/amd64 for now, rapidjson does seem
-# to have alignment problems on other archs (e.g. arm*)
-OOO_COLLADA_ARCHS=amd64 i386
-$(eval $(call gen_no_archs,OOO_COLLADA_ARCHS))
 # chromium only available here.
 OOO_GDRIVE_ARCHS=amd64 arm64 armhf i386
 
@@ -612,11 +642,11 @@ ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
 	ENABLE_EVO2=n
 	ENABLE_REPORTDESIGN=n
 	DEBHELPER_OPTIONS += -Nlibreoffice-base libreoffice-base-core -Nlibreoffice-base-drivers
-	DEBHELPER_OPTIONS += -Nlibreoffice-evolution -Nlibreoffice-kab
+	DEBHELPER_OPTIONS += -Nlibreoffice-evolution
 	DEBHELPER_OPTIONS += -Nlibreoffice-sdbc-postgresql -Nlibreoffice-mysql-connector
 	DEBHELPER_OPTIONS += -Nlibreoffice-sdbc-hsqldb -Nlibreoffice-sdbc-firebird 
 	DEBHELPER_OPTIONS += -Nlibreoffice-report-builder-bin -Nlibreoffice-report-builder
-	CONFIGURE_FLAGS += --disable-database-connectivity
+#	CONFIGURE_FLAGS += --disable-database-connectivity
   endif
 endif
 
@@ -660,10 +690,8 @@ ifeq (ia64,$(findstring ia64,$(OOO_OPENJDK_ARCHS)))
   endif
 endif
 
-ifneq (,$(findstring libreoffice-subsequentcheckbase,$(ARCH_INDEP_PACKAGES)))
 ifeq "$(BUILD_TEST_PACKAGE)" "n"
 	DEBHELPER_OPTIONS += -Nlibreoffice-subsequentcheckbase
-endif
 endif
 
 ifneq (,$(findstring mips, $(OOO_ARCHS)))
@@ -674,16 +702,13 @@ endif
 # Distro-specific overrides
 
 # Debian Stretch
-ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "stretch-backports"
+ifeq "$(DEB_DISTRIBUTION)" "stretch-backports"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out libzmf libstaroffice orcus libgltf cppunit xmlsec libqxp,$(SYSTEM_STUFF))
+  SYSTEM_STUFF := $(filter-out libzmf libstaroffice orcus cppunit xmlsec libqxp,$(SYSTEM_STUFF))
   # needs newer stuff for tests, we can't make it conditional on RUN_MAKE_CHECK since
   # BE archs don't run them anyway and this wouldn't be in effect...
   SYSTEM_STUFF := $(filter-out libwps libmwaw,$(SYSTEM_STUFF))
   STRETCH_BACKPORT=y
-endif
-ifeq "$(shell dpkg-parsechangelog | grep Distribution | awk '{ print $$2 }')" "UNRELEASED"
-  BUGS=mailto:debian-openoffice@lists.debian.org
 endif
 
 ifeq "$(DEB_VENDOR)" "Debian"
@@ -716,6 +741,7 @@ ifeq "$(DEB_VENDOR)" "Ubuntu"
     BUGS=mailto:libreoffice@lists.launchpad.net
   endif
 
+  USE_DWZ=n
   USE_VLC:=n
 
   ENABLE_COLLADA := n
@@ -736,6 +762,11 @@ else
 DH_STRIP_DBG_OPTION_LO += --no-automatic-dbgsym
 DH_STRIP_DBG_OPTION_URE += --no-automatic-dbgsym
 DH_STRIP_DBG_OPTION_UNO_LIBS3 += --no-automatic-dbgsym
+endif
+
+ifeq "$(USE_DWZ_MULTIFILE)" "y"
+DWZ_ARGS += -m debian/$(UNO_LIBS_DBG_ROOT)/usr/lib/debug/.dwz/$(DEB_SOURCE)-$(DEB_VERSION).$(DEB_HOST_ARCH) \
+	-M /usr/lib/debug/.dwz/$(DEB_SOURCE)-$(DEB_VERSION).$(DEB_HOST_ARCH)
 endif
 
 CONFIGURE_FLAGS += $(foreach i, $(SYSTEM_STUFF),--with-system-$(i))
@@ -768,10 +799,6 @@ else
 	BUILD_DEPS += , clang-$(CLANG_VERSION)
 	CONFIGURE_FLAGS+= CC=clang-$(CLANG_VERSION) CXX=clang++-$(CLANG_VERSION)
   endif
-  # would need external/opencollada/patches/opencollada.clang.patch.0 applied
-  # See https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=793930 and the
-  # upstream issue (https://github.com/KhronosGroup/OpenCOLLADA/issues/293)
-  SYSTEM_STUFF := $(filter-out opencollada collada2gltf,$(SYSTEM_STUFF))
   ifeq "$(ENABLE_COMPILER_PLUGINS)" "y"
   	CONFIGURE_FLAGS += --enable-compiler-plugins
   	CLANGDIR := /usr/lib/llvm-$(shell $(CLANG) --version | head -n 1 | awk '{ print $$3 }' | cut -d. -f1,2)
@@ -784,44 +811,9 @@ else
 endif
 USE_GOLD=n
 
-ifneq "$(ENABLE_GLTF)" "y"
-	CONFIGURE_FLAGS += --disable-gltf
-else
-  ifneq (,$(findstring libgltf,$(SYSTEM_STUFF)))
-	BUILD_DEPS += , libgltf-dev (>= $(LIBGLTF_MINVER))
-  endif
-  ENABLE_COLLADA=n
-  ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_COLLADA_ARCHS)))
-    ENABLE_COLLADA=y
-  endif
-  ifeq "$(ENABLE_COLLADA)" "y"
-    SYSTEM_STUFF += opencollada
-    OPENCOLLADA_CFLAGS="-I/usr/include/opencollada/COLLADABaseUtils -I/usr/include/opencollada/COLLADAFramework -I/usr/include/opencollada/COLLADASaxFrameworkLoader -I/usr/include/opencollada/GeneratedSaxParser -I/usr/include/opencollada"
-    OPENCOLLADA_LIBS="-L/usr/lib/opencollada -lUTF -lOpenCOLLADABaseUtils -lOpenCOLLADAFramework -lOpenCOLLADASaxFrameworkLoader -lGeneratedSaxParser -lMathMLSolver -lpcre"
-    SYSTEM_STUFF += collada2gltf
-    COLLADA2GLTF_CFLAGS="-I/usr/include/collada2gltf -I/usr/include/collada2gltf/JSON -I/usr/include/collada2gltf/GLTF -I/usr/include/collada2gltf/helpers -I/usr/include/collada2gltf/assetModifiers -I/usr/include/rapidjson" 
-    COLLADA2GLTF_LIBS="-lcollada2gltfConvert -lo3dgc_common_lib -lo3dgc_dec_lib -lo3dgc_enc_lib"
-  endif
-  ifeq "$(GCC_VERSION_5_OR_GREATER)" "y"
-    OPENCOLLADA_MINVER=(>= 0.1.0~20140703.ddf8f47+dfsg1-2)
-    COLLADA2GLTF_MINVER=(>= 20140924-2)
-  else
-    OPENCOLLADA_MINVER=
-    COLLADA2GLTF_MINVER=
-  endif
-  ifneq "$(ENABLE_COLLADA)" "y"
-	CONFIGURE_FLAGS += --disable-collada
-  else
-    ifneq (,$(findstring opencollada,$(SYSTEM_STUFF)))
-       BUILD_DEPS += , opencollada-dev $(OPENCOLLADA_MINVER) [$(OOO_COLLADA_ARCHS)]
-       BUILD_DEPS += , libpcre3-dev [$(OOO_COLLADA_ARCHS)]
-    endif
-    ifneq (,$(findstring collada2gltf,$(SYSTEM_STUFF)))
-       BUILD_DEPS += , libcollada2gltfconvert-dev $(COLLADA2GLTF_MINVER)[$(OOO_COLLADA_ARCHS)]
-       BUILD_DEPS += , rapidjson-dev [$(OOO_COLLADA_ARCHS)]
-       BUILD_DEPS += , libo3dgc-dev (>= 0~20131011-2) [$(OOO_COLLADA_ARCHS)]
-    endif
-  endif
+ifeq "$(USE_DWZ)" "y"
+	BUILD_DEPS += , debhelper (>= 10.10.4)
+	BUILD_DEPS += , dwz
 endif
 
 ifneq "$(PACKAGE_SDK)" "y"
@@ -1015,7 +1007,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	ISOS:=en-US af am ar as ast be bg bn br bs ca ca-valencia cs cy da de dz el \
 	  en-GB en-ZA eo es et eu fa fi fr ga gd gl gu gug he hi hr hu id is it ja \
 	  ka kk km kmr-Latn kn ko lt lv mk mn ml mr nb ne nl nn nr nso oc om or \
-	  pa-IN pl pt pt-BR ro ru rw si sk sl sr ss st sv \
+	  pa-IN pl pt pt-BR ro ru rw si sk sl sr sr-Latn ss st sv \
 	  ta te tg th tn tr ts ug uk uz ve vi xh zh-CN zh-TW zu
     ifeq "$(ENABLE_HELP)" "n"
 	HELPISOS:=
@@ -1028,7 +1020,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	LANGPACKISOS:=en-US af am ar as ast be bg bn br bs ca ca-valencia cs cy da de dz el \
 	  en-GB en-ZA eo es et eu fa fi fr ga gd gl gu gug he hi hr hu id is it ja \
 	  ka kk km kmr-Latn kn ko lt lv mk mn ml mr nb ne nl nn nr nso oc om or \
-	  pa-IN pl pt pt-BR ro ru rw si sk sl sr ss st sv \
+	  pa-IN pl pt pt-BR ro ru rw si sk sl sr sr-Latn ss st sv \
 	  ta te tg th tn tr ts ug uk uz ve vi xh zh-CN zh-TW zu
   endif
 else
@@ -1054,7 +1046,12 @@ ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(JDK)" "default"
 	BUILD_DEPS += , java-common (>= 0.49)
 	JAVA_HOME=/usr/lib/jvm/default-java
-	BUILD_DEPS += , default-jdk (>= 1:1.6) $(filter-out !ia64,$(OOO_NO_JAVA_ARCHS))
+	BUILD_DEPS += , default-jdk (>= 1:1.6) $(shell echo "$(filter-out !ia64,$(OOO_NO_JAVA_ARCHS))" | sed -e "s/\]/ !i386]/")
+    ifeq (i386,$(findstring i386,$(OOO_JAVA_ARCHS)))
+#	BUILD_DEPS += , default-jdk (>= 2:1.9) [i386]
+	# hack.
+	BUILD_DEPS += , openjdk-9-jdk (>= 9.0.1+11-1~) [i386]
+    endif
     ifneq (,$(findstring ia64,$(OOO_JAVA_ARCHS)))
 	BUILD_DEPS += , default-jdk (>= 1:1.7-48) [ia64]
     endif
@@ -1086,6 +1083,10 @@ ifeq "$(ENABLE_JAVA)" "y"
   else
 	BUILD_DEPS += , ant (>= 1.6.5)$(OOO_NO_JAVA_ARCHS)
   endif
+  # force Java 9 with #876069 fixed on i386
+  ifeq "$(DEB_HOST_ARCH)" "i386"
+	JAVA_RUNTIME_DEPENDS := openjdk-9-jre (>= 9.0.1+11-1)
+  else
 	JAVA_RUNTIME_DEPENDS = default-jre
   ifneq (,$(filter $(DEB_HOST_ARCH), $(OOO_OPENJDK_ARCHS)))
     ifneq "$(DEB_HOST_ARCH)" "ia64"
@@ -1100,6 +1101,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 	JAVA_RUNTIME_DEPENDS += | java6-runtime
 	# Suns Java "packages"
 	JAVA_RUNTIME_DEPENDS += | jre
+  endif
 export JAVA_HOME
 	CONFIGURE_FLAGS += --with-jdk-home=$(JAVA_HOME)
 	JAVA_COMMON_DEPENDS= , libreoffice-java-common
@@ -1323,13 +1325,32 @@ else
 	CONFIGURE_FLAGS+= --disable-cairo
 endif
 
-ifeq "$(BUILD_KDE)" "n"
+ifeq "$(BUILD_KDE4)" "n"
 	CONFIGURE_FLAGS += --disable-kde4
 else
 	CONFIGURE_FLAGS += --enable-kde4
 	KDE_ICONSET_DEP=libreoffice-style-breeze
 	BUILD_DEPS += , kdelibs5-dev $(KDELIBS_MINVER)
-	BUILD_DEPS += , libqt4-dev $(QT_MINVER)
+	BUILD_DEPS += , libqt4-dev $(QT4_MINVER)
+endif
+
+#ifeq "$(BUILD_KDE5)" "n"
+#	CONFIGURE_FLAGS += --disable-kde5
+#else
+#	ENABLE_QT5=y
+#	CONFIGURE_FLAGS += --enable-kde5
+#	KDE_ICONSET_DEP=libreoffice-style-breeze
+#	BUILD_DEPS += , libkf5coreaddons-dev, libkf5kdelibs4support5-bin
+#	BUILD_DEPS += , libxcb1-dev
+#endif
+
+ifeq "$(ENABLE_QT5)" "y"
+	CONFIGURE_FLAGS += --enable-qt5
+	BUILD_DEPS += , qtbase5-dev, qt5-qmake, qtbase5-dev-tools
+	BUILD_DEÜS += , libglib2.0-dev (>= 2.4)
+        # for correct qmake/moc
+	BUILD_DEPS += , qtchooser
+	export QT_SELECT=5
 endif
 
 ifeq "$(ENABLE_MYSQLNATIVE)" "y"
@@ -1452,11 +1473,13 @@ ifeq "$(ENABLE_JAVA)" "y"
     endif
 	CONFIGURE_FLAGS += --enable-scripting-beanshell
   else
+	CONFIGURE_FLAGS += --disble-scripting-beanshell
  	DEBHELPER_OPTIONS += -Nlibreoffice-script-provider-bsh
   endif
   ifeq "$(ENABLE_SCRIPT_PROVIDER_JS)" "y"
 	CONFIGURE_FLAGS += --enable-scripting-javascript	
   else
+	CONFIGURE_FLAGS += --disable-scripting-javascript	
 	DEBHELPER_OPTIONS += -Nlibreoffice-script-provider-js
   endif
 endif
@@ -1647,10 +1670,8 @@ clean-debdir:
 		! -name "liblibreofficekitgtk.links" -exec rm {} \;
 	if [ -d "$(STAMP_DIR)" ]; then rm -rf "$(STAMP_DIR)"; fi
 	rm -f debian/*.bug-script
-	rm -f debian/scripts/aotcompile.py*
 
 	rm -f debian/shlibs.local
-	rm -f debian/*.templates
 
 	rm -f debian/libreoffice-dev-doc.doc-base.*
 	rm -f debian/*.install debian/*.dirs debian/*.changelog
@@ -1739,18 +1760,17 @@ ifeq "$(BUILD_GTK3)" "y"
 	cat debian/control.gtk3.in >> debian/control
 endif
 ifeq "$(BUILD_KDE)" "y"
-	cat debian/control.kde.in >> debian/control
+	cat debian/control.kde$(KDE_MAJOR).in >> debian/control
+endif
+ifeq "$(ENABLE_QT5)" "y"
+	cat debian/control.qt5.in >> debian/control
 endif
 	cat debian/control.postgresql.in >> debian/control
 	cat debian/control.mysql.in >> debian/control
 ifeq "$(ENABLE_EVO2)" "y"
 	cat debian/control.evolution.in >> debian/control
 endif
-ifeq "$(BUILD_TEST_PACKAGE)" "y"
-  ifneq "$(OOO_JAVA_ARCHS)" ""
 	cat debian/control.subsequentcheckbase.in >> debian/control
-  endif
-endif
 ifeq "$(PACKAGE_LIBRELOGO)" "y"
 	cat debian/control.librelogo.in >> debian/control
 endif
@@ -1772,7 +1792,7 @@ endif
 	perl -pi -e "s#%BUILD_DEPS%#$(strip $(BUILD_DEPS))#g" debian/control
 	perl -pi -e "s#%JUNIT_MIN_VER%#$(JUNIT_MIN_VER)#g" debian/control
 ifeq "$(BUILD_KDE)" "y"
-	perl -pi -e 's/%LO-DESKTOP-INTEGRATION%/libreoffice-gnome | libreoffice-kde/' debian/control
+	perl -pi -e 's/%LO-DESKTOP-INTEGRATION%/libreoffice-gnome | libreoffice-kde$(KDE_MAJOR)/' debian/control
 else
 	perl -pi -e 's/%LO-DESKTOP-INTEGRATION%/libreoffice-gnome/' debian/control
 endif
@@ -1860,8 +1880,6 @@ config_host.mk:
 	CLANGDIR=$(CLANGDIR) \
 	MARIADBCONFIG=$(MARIADBCONFIG) \
 	FIREBIRD_CFLAGS=$(FIREBIRD_CFLAGS) FIREBIRD_LIBS=$(FIREBIRD_LIBS) \
-	OPENCOLLADA_CFLAGS=$(OPENCOLLADA_CFLAGS) OPENCOLLADA_LIBS=$(OPENCOLLADA_LIBS) \
-	COLLADA2GLTF_CFLAGS=$(COLLADA2GLTF_CFLAGS) COLLADA2GLTF_LIBS=$(COLLADA2GLTF_LIBS) \
 	./autogen.sh $(CONFIGURE_FLAGS)
 	echo "export gb_TRANS_LANGS_INTEGRAL=$(filter-out en-US,$(BUILD_ISOS))" >> config_host.mk
 
@@ -1882,8 +1900,6 @@ $(STAMP_DIR)/build-arch:
 	CLANGDIR=$(CLANGDIR) \
 	MARIADBCONFIG=$(MARIADBCONFIG) \
 	FIREBIRD_CFLAGS=$(FIREBIRD_CFLAGS) FIREBIRD_LIBS=$(FIREBIRD_LIBS) \
-	OPENCOLLADA_CFLAGS=$(OPENCOLLADA_CFLAGS) OPENCOLLADA_LIBS=$(OPENCOLLADA_LIBS) \
-	COLLADA2GLTF_CFLAGS=$(COLLADA2GLTF_CFLAGS) COLLADA2GLTF_LIBS=$(COLLADA2GLTF_LIBS) \
 	./autogen.sh $(CONFIGURE_FLAGS) --without-junit --without-cppunit \
 		--without-doxygen --without-javadoc --disable-ext-wiki-publisher \
 		--disable-report-builder --disable-scripting-javascript \
@@ -1922,8 +1938,6 @@ endif
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
 	MARIADBCONFIG=$(MARIADBCONFIG) \
 	FIREBIRD_CFLAGS=$(FIREBIRD_CFLAGS) FIREBIRD_LIBS=$(FIREBIRD_LIBS) \
-	OPENCOLLADA_CFLAGS=$(OPENCOLLADA_CFLAGS) OPENCOLLADA_LIBS=$(OPENCOLLADA_LIBS) \
-	COLLADA2GLTF_CFLAGS=$(COLLADA2GLTF_CFLAGS) COLLADA2GLTF_LIBS=$(COLLADA2GLTF_LIBS) \
 	./autogen.sh $(CONFIGURE_FLAGS) $(CONFIGURE_FLAGS_INDEP)
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build-nocheck
@@ -1954,8 +1968,6 @@ endif
 	CLANGDIR=$(CLANGDIR) \
 	MARIADBCONFIG=$(MARIADBCONFIG) \
 	FIREBIRD_CFLAGS=$(FIREBIRD_CFLAGS) FIREBIRD_LIBS=$(FIREBIRD_LIBS) \
-	OPENCOLLADA_CFLAGS=$(OPENCOLLADA_CFLAGS) OPENCOLLADA_LIBS=$(OPENCOLLADA_LIBS) \
-	COLLADA2GLTF_CFLAGS=$(COLLADA2GLTF_CFLAGS) COLLADA2GLTF_LIBS=$(COLLADA2GLTF_LIBS) \
 	./autogen.sh $(CONFIGURE_FLAGS) \
 		--without-doxygen --without-javadoc --disable-ext-wiki-publisher \
 		--disable-report-builder --disable-scripting-javascript \
@@ -2038,6 +2050,18 @@ endif
 	# FIXME
 	cd $(CURDIR)/debian/tmp/pkg && rm -rf \*
 	
+ifeq "$(ENABLE_QT5)" "y"
+	# we need to do it here. If -kde isn't built
+	# there's no -kde.install generated, so dh_missing complains later
+	mkdir -p debian/tmp/pkg/libreoffice-qt5/$(OODIR)/program
+	mv debian/tmp/pkg/libreoffice-kde/$(OODIR)/program/libvclplug_qt5lo.so\
+		debian/tmp/pkg/libreoffice-qt5/$(OODIR)/program
+endif
+ifeq "$(BUILD_KDE)" "y"
+	mv debian/tmp/pkg/libreoffice-kde \
+		debian/tmp/pkg/libreoffice-kde$(KDE_MAJOR)
+endif
+
 	# prepare install/dir files for dh
 	for i in `cd $(CURDIR)/debian/tmp/pkg; ls -1 | xargs`; do \
 		echo "$${i}/usr/* usr" > debian/$$i.install; \
@@ -2061,8 +2085,9 @@ endif
 	for i in calc impress draw base writer; do \
 		echo "../usr/share/appdata/libreoffice-$$i.appdata.xml /usr/share/metainfo/" >> $(PKGDIR)-$$i.install; \
 	done
+
 ifeq "$(BUILD_KDE)" "y"
-	echo "../usr/share/appdata/org.libreoffice.kde.metainfo.xml /usr/share/metainfo/" >> $(PKGDIR)-kde.install
+	echo "../usr/share/appdata/org.libreoffice.kde.metainfo.xml /usr/share/metainfo/" >> $(PKGDIR)-kde$(KDE_MAJOR).install
 endif
 
 ifeq "$(PACKAGE_LOKIT)" "y"
@@ -2412,30 +2437,30 @@ endif
 
 ifeq "$(BUILD_KDE)" "y"
 	# install files for KDEs "create new" ...
-	mkdir -p $(PKGDIR)-kde/usr/share/templates/.source
+	mkdir -p $(PKGDIR)-kde$(KDE_MAJOR)/usr/share/templates/.source
 	for i in $(SOURCE_TREE)/extras/source/shellnew/*; do \
-		cp $$i $(PKGDIR)-kde/usr/share/templates/.source/`basename $$i`; \
+		cp $$i $(PKGDIR)-kde$(KDE_MAJOR)/usr/share/templates/.source/`basename $$i`; \
 	done
 	cat debian/templates/soffice-template.desktop.in \
 		| sed -e "s/@APP@/Writer/" \
 		| sed -e "s/@EXT@/odt/" \
 		| sed -e "s/@TYPE@/text/" \
-		> $(PKGDIR)-kde/usr/share/templates/soffice.odt.desktop
+		> $(PKGDIR)-kde$(KDE_MAJOR)/usr/share/templates/soffice.odt.desktop
 	cat debian/templates/soffice-template.desktop.in \
 		| sed -e "s/@APP@/Calc/" \
 		| sed -e "s/@EXT@/ods/" \
 		| sed -e "s/@TYPE@/spreadsheet/" \
-		> $(PKGDIR)-kde/usr/share/templates/soffice.ods.desktop
+		> $(PKGDIR)-kde$(KDE_MAJOR)/usr/share/templates/soffice.ods.desktop
 	cat debian/templates/soffice-template.desktop.in \
 		| sed -e "s/@APP@/Impress/" \
 		| sed -e "s/@EXT@/odp/" \
 		| sed -e "s/@TYPE@/presentation/" \
-		> $(PKGDIR)-kde/usr/share/templates/soffice.odp.desktop
+		> $(PKGDIR)-kde$(KDE_MAJOR)/usr/share/templates/soffice.odp.desktop
 	cat debian/templates/soffice-template.desktop.in \
 		| sed -e "s/@APP@/Draw/" \
 		| sed -e "s/@EXT@/odg/" \
 		| sed -e "s/@TYPE@/drawing/" \
-		> $(PKGDIR)-kde/usr/share/templates/soffice.odg.desktop
+		> $(PKGDIR)-kde$(KDE_MAJOR)/usr/share/templates/soffice.odg.desktop
 endif
 
 	# split out gtk stuff
@@ -2989,8 +3014,17 @@ endif
 
 ifeq "$(INSTALL_APPARMOR_PROFILES)" "y"
 	mkdir -p $(PKGDIR)-common/etc/apparmor.d
-	./sysui/desktop/share/apparmor.sh /$(OODIR) sysui/desktop/apparmor/ \
+	./sysui/desktop/share/apparmor.sh /$(OODIR)/ sysui/desktop/apparmor/ \
 			$(PKGDIR)-common/etc/apparmor.d/ false
+  ifneq "$(ENABLE_APPARMOR_PROFILES)" "y"
+	# disable the apparmor files per default
+	mkdir -p $(PKGDIR)-common/etc/apparmor.d/disable
+	cd $(PKGDIR)-common/etc/apparmor.d/disable
+	for i in oosplash senddoc soffice.bin xpdfimport; do \
+		ln -sf /etc/apparmor.d/usr.lib.libreoffice.program.$$i \
+			usr.lib.libreoffice.program.$$i; \
+	done
+  endif
 endif
 
 	touch $@
@@ -3034,7 +3068,18 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 	dh_bugfiles -a -A
 	dh_link -a
 ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
-#	rm -rf debian/$(URE_DBG_ROOT) debian/$(CORE_DBG_ROOT) debian/$(WRITER_DBG_ROOT)
+#	rm -rf debian/$(UNO_LIBS_DBG_ROOT) debian/$(URE_DBG_ROOT) debian/$(CORE_DBG_ROOT) \
+#		debian/$(WRITER_DBG_ROOT)
+  ifeq "$(USE_DWZ)" "y"
+    ifeq "$(USE_DWZ_MULTIFILE)" "y"
+	mkdir -p debian/$(UNO_LIBS_DBG_ROOT)/usr/lib/debug/.dwz
+	# dh_dwz goes over each package. and -m overwrites the file. so we only
+	# get the base-core one... Run dwz manually on what dh_dwz would do.
+	dwz $(DWZ_ARGS) `dh_dwz -a -v --no-act | sed -e "s,^.*dwz -q -- ,," | xargs`
+    else
+	dh_dwz -a -- $(DWZ_ARGS)
+    endif
+  endif
 	dh_strip -a -Nure -Nuno-libs3 $(DH_STRIP_DBG_OPTION_LO)
 	dh_strip -pure $(DH_STRIP_DBG_OPTION_URE)
 	dh_strip -puno-libs3 $(DH_STRIP_DBG_OPTION_UNO_LIBS)
@@ -3237,8 +3282,10 @@ ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 #		perl -pi -e 's/^(Depends:.*)/\1\nRecommends: gdb, python3-six/' \
 #		debian/.debhelper/$$i/dbgsym-root/DEBIAN/control; \
 #	done
-#	perl -pi -e 's/Recommends: /Recommends: uno-libs3-dbgsym, /' \
-#		debian/$(CORE_DBG_ROOT)/DEBIAN/control
+#	for i in $(filter-out uno-libs3,$(ARCH_DEP_PACKAGES)); do \
+#		perl -pi -e 's/^(Depends:.*)/\1, uno-libs3-dbgsym/' \
+#		debian/.debhelper/$$i/dbgsym-root/DEBIAN/control; \
+#	done
 #	perl -pi -e 's/Recommends: /Recommends: libreoffice-core-dbgsym, /' \
 #		debian/$(WRITER_DBG_ROOT)/DEBIAN/control
 endif
@@ -3326,10 +3373,9 @@ endif
 	dh_fixperms -i
 	dh_icons -i
 ifeq "$(INSTALL_APPARMOR_PROFILES)" "y"
-	dh_apparmor -plibreoffice-common --profile-name=usr.lib.libreoffice.program.oosplash
-	dh_apparmor -plibreoffice-common --profile-name=usr.lib.libreoffice.program.senddoc
-	dh_apparmor -plibreoffice-common --profile-name=usr.lib.libreoffice.program.soffice.bin
-	dh_apparmor -plibreoffice-common --profile-name=usr.lib.libreoffice.program.xpdfimport
+	for i in oosplash senddoc soffice.bin xpdfimport; do \
+		dh_apparmor -plibreoffice-common --profile-name=usr.lib.libreoffice.program.$$i; \
+	done
 endif
 	dh_compress -i -X.py -X.mk -X.sxd -X.xcd.sample
 	dh_strip_nondeterminism -i
@@ -3489,12 +3535,12 @@ update-l10n:
 	    < debian/debian-l10n/control.in > debian/debian-l10n/control
 	sed -e 's,^libreoffice,libreoffice-l10n,' \
 	    < debian/changelog > debian/debian-l10n/changelog
-	$(foreach LANGPACKISO,$(filter-out en-US ca-valencia,$(LANGPACKISOS)),\
+	$(foreach LANGPACKISO,$(filter-out en-US ca-valencia kmr-Latn sr-Latn,$(LANGPACKISOS)),\
 		./debian/scripts/create-l10n-control \
 			$(LANGPACKISO) \
 			< debian/debian-l10n/control.lang.in \
 			>> debian/debian-l10n/control;)
-	$(foreach HELPISO,$(filter-out ca-valencia,$(HELPISOS)),\
+	$(foreach HELPISO,$(filter-out ca-valencia kmr-Latn sr-Latn,$(HELPISOS)),\
 		./debian/scripts/create-l10n-control \
 			$(HELPISO) \
 			< debian/debian-l10n/control.help.in \
