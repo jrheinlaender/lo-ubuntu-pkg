@@ -530,7 +530,7 @@ BUILD_PPC64EL=y
 BUILD_ARM64=y
 SYSTEM_STUFF += gpgmepp
 INSTALL_APPARMOR_PROFILES=y
-ENABLE_APPARMOR_PROFILES=n
+ENABLE_APPARMOR_PROFILES=y
 
 # Default flags to pass to configure
 CONFIGURE_FLAGS= \
@@ -3204,6 +3204,23 @@ endif
 			$(PKGDIR)-common/usr/share/doc/libreoffice-common/examples; \
 		ln -s /usr/share/doc/libreoffice-common/examples/$$i $(PKGDIR)-common/$(OODIR)/share/registry/$$i; \
 	done
+
+ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
+	# generate fontconfig file. Upstream creates a fc_local.conf in
+	# postprocess but it might also contain other font stuff, so do it
+	# manually
+	mkdir -p debian/fonts-opensymbol/usr/share/fontconfig/conf.avail
+	mkdir -p debian/fonts-opensymbol/etc/fonts.d/
+	( \
+	  echo "<?xml version="1.0"?>"; \
+	  echo "<!DOCTYPE fontconfig SYSTEM "fonts.dtd">"; \
+	  echo "<fontconfig>"; \
+	) > debian/fonts-opensymbol/usr/share/fontconfig/conf.avail/30_opensymbol.conf
+	cat $(SOURCE_TREE)/extras/source/truetype/symbol/fc_local.snippet >> debian/fonts-opensymbol/usr/share/fontconfig/conf.avail/30_opensymbol.conf
+	echo "</fontconfig>" >> debian/fonts-opensymbol/usr/share/fontconfig/conf.avail/30_opensymbol.conf
+	cd debian/fonts-opensymbol/etc/fonts.d/ && \
+		ln -s /usr/share/fontconfig/conf.avail/30_opensymbol.conf
+endif
 
 	# register technical.dic
 	perl -pi -e 's/standard.dic;/standard.dic;technical.dic;/' $(PKGDIR)-common/$(OODIR)/share/registry/main.xcd
