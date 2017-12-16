@@ -1808,7 +1808,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 	cat debian/control.mediawiki.in >> debian/control
   endif
   ifeq "$(ENABLE_REPORTBUILDER)" "y"
-	cat debian/control.reportdesign.in >> debian/control
+	cat debian/control.reportbuilder.in >> debian/control
   endif
   ifeq "$(ENABLE_NLPSOLVER)" "y"
 	cat debian/control.nlpsolver.in >> debian/control
@@ -3030,13 +3030,26 @@ endif
 	perl -pi -e 's,unset XENVIRONMENT,unset XENVIRONMENT\n\nexport PYTHONPATH=\"/$(OODIR)/program\"\n\n,' \
 		$(PKGDIR)-common/$(OODIR)/program/unopkg
 
+	# this only works with --without-fonts. Otherwise we get all stuff here,
+	# not only the Symbol->OpenSymbol part... But we don't support --with-fonts
+	# build here right now anyway.
 ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 	mkdir -p debian/fonts-opensymbol/usr/share/fonts/truetype/openoffice
 	mv $(PKGDIR)-common/$(OODIR)/share/fonts/truetype/opens___.ttf \
 		debian/fonts-opensymbol/usr/share/fonts/truetype/openoffice
 	rm -rf $(PKGDIR)-common/$(OODIR)/share/fonts/truetype
+	mkdir -p debian/fonts-opensymbol/etc/fonts/conf.d
+	mkdir -p debian/fonts-opensymbol/usr/share/fontconfig/conf.avail
+	# this only works with --without-fonts. Otherwise we get all stuff here,
+	# not only the Symbol->OpenSymbol part... But we don't support --with-fonts
+	# build here right now anyway.
+	mv $(PKGDIR)-common/$(OODIR)/share/truetype/fc_local.conf \
+		debian/fonts-opensymbol/usr/share/fontconfig/conf.avail/30_opensymbol.conf
+        cd debian/fonts-opensymbol/etc/fonts.d/ && \
+                ln -s /usr/share/fontconfig/conf.avail/30_opensymbol.conf
 else
 	rm -f $(PKGDIR)-common/$(OODIR)/share/fonts/truetype/opens___.ttf
+	rm -f $(PKGDIR)-common/$(OODIR)/share/truetype/fc_local.conf
 endif
 
 	# remove extra license files
@@ -3222,20 +3235,6 @@ endif
 			$(PKGDIR)-common/usr/share/doc/libreoffice-common/examples; \
 		ln -s /usr/share/doc/libreoffice-common/examples/$$i $(PKGDIR)-common/$(OODIR)/share/registry/$$i; \
 	done
-
-	# this only works with --without-fonts. Otherwise we get all stuff here,
-	# not only the Symbol->OpenSymbol part... But we don't support --with-fonts
-	# build here right now anyway.
-ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
-	mkdir -p debian/fonts-opensymbol/usr/share/fontconfig/conf.avail
-	mkdir -p debian/fonts-opensymbol/usr/share/fontconfig/conf.avail
-	mv $(PKGDIR)-common/$(OODIR)/share/truetype/fc_local.conf \
-		debian/fonts-opensymbol/usr/share/fontconfig/conf.avail/30_opensymbol.conf
-	cd debian/fonts-opensymbol/etc/fonts.d/ && \
-		ln -s /usr/share/fontconfig/conf.avail/30_opensymbol.conf
-else
-	rm -f $(PKGDIR)-common/$(OODIR)/share/truetype/fc_local.conf
-endif
 
 	# register technical.dic
 	perl -pi -e 's/standard.dic;/standard.dic;technical.dic;/' $(PKGDIR)-common/$(OODIR)/share/registry/main.xcd
