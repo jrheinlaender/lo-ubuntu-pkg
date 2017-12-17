@@ -227,7 +227,7 @@ SYSTEM_STUFF += xmlsec
 # This is not exactly allowed in https://wiki.debian.org/BuildProfileSpec#Registered_profile_names
 # but it doesn't have real practical difference, does it?
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
-  BUILD_TEST_PACKAGE=y
+  BUILD_TEST_PACKAGES=y
 endif
 
 ENABLE_SYMBOLS=y
@@ -329,7 +329,7 @@ ifeq "$(ENABLE_JAVA)" "y"
       ENABLE_JUNIT4=n
       ENABLE_CHART_TESTS=n
       ENABLE_EXPORT_VALIDATION_TESTS=n
-      BUILD_TEST_PACKAGE=n
+      BUILD_TEST_PACKAGES=n
     endif
   endif
 #  ifneq (,$(findstring arm,$(DEB_HOST_ARCH)))
@@ -358,14 +358,14 @@ else
   ENABLE_JUNIT4=n
   ENABLE_CHART_TESTS=n
   ENABLE_EXPORT_VALIDATION_TESTS=n
-  BUILD_TEST_PACKAGE=n
+  BUILD_TEST_PACKAGES=n
 endif
 else
   RUN_MAKE_CHECK=n
   ENABLE_JUNIT4=n
   ENABLE_CHART_TESTS=n
   ENABLE_EXPORT_VALIDATION_TESTS=n
-  BUILD_TEST_PACKAGE=n
+  BUILD_TEST_PACKAGES=n
 endif
 ifeq "$(ENABLE_JUNIT4)" "y"
   JUNIT_MIN_VER= (>= 4.8.2-2)
@@ -687,7 +687,7 @@ ifeq (ia64,$(findstring ia64,$(OOO_OPENJDK_ARCHS)))
   endif
 endif
 
-ifeq "$(BUILD_TEST_PACKAGE)" "n"
+ifeq "$(BUILD_TEST_PACKAGES)" "n"
 	DEBHELPER_OPTIONS += -Nlibreoffice-subsequentcheckbase
 endif
 
@@ -1845,7 +1845,7 @@ endif
 ifeq "$(ENABLE_EVO2)" "y"
 	cat debian/control.evolution.in >> debian/control
 endif
-	cat debian/control.subsequentcheckbase.in >> debian/control
+	cat debian/control.test-packages.in >> debian/control
 ifeq "$(PACKAGE_LIBRELOGO)" "y"
 	cat debian/control.librelogo.in >> debian/control
 endif
@@ -2012,7 +2012,7 @@ endif
 	./autogen.sh $(CONFIGURE_FLAGS) $(CONFIGURE_FLAGS_INDEP)
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build-nocheck
-ifeq "$(BUILD_TEST_PACKAGE)" "y"
+ifeq "$(BUILD_TEST_PACKAGES)" "y"
   ifeq "$(ENABLE_JUNIT4)" "y"
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) Jar_{OOoRunner,test,ConnectivityTools}
   endif
@@ -2996,7 +2996,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 			*) ln -s `echo $$i | sed -e 's,$(CURDIR)/$(PKGDIR)-java-common,,'` `basename $$i` ;; esac; \
 	done
 
-ifeq "$(BUILD_TEST_PACKAGE)" "y"
+ifeq "$(BUILD_TEST_PACKAGES)" "y"
   ifeq "$(ENABLE_JUNIT4)" "y"
 	rm -rf $(PKGDIR)-subsequentcheckbase
 	mkdir -p $(PKGDIR)-subsequentcheckbase/$(OODIR)/program/classes/
@@ -3004,6 +3004,14 @@ ifeq "$(BUILD_TEST_PACKAGE)" "y"
 		cp workdir/Jar/$$jar.jar $(PKGDIR)-subsequentcheckbase/$(OODIR)/program/classes/; \
 	done
   endif
+
+	rm -rf $(PKGDIR)-smoketest-data
+	mkdir -p $(PKGDIR)-smoketest-data/usr/share/libreoffice
+	cp workdir/Extension/TestExtension.oxt \
+		$(PKGDIR)-smoketest-data/usr/share/libreoffice
+#	# FIXME: Install when we get this working..
+#	cp workdir/Zip/smoketestdoc.sxw \
+#		$(PKGDIR)-smoketest-data/usr/share/libreoffice
 endif
 endif
 
@@ -3634,7 +3642,7 @@ endif
 	# and it adds a librhino-java Depends where we still use internal rhino
 	perl -pi -e "s/librhino-java//" \
 		debian/libreoffice-script-provider-js.substvars
-ifeq "$(BUILD_TEST_PACKAGE)" "y"
+ifeq "$(BUILD_TEST_PACKAGES)" "y"
 	perl -pi -e 's/junit4/junit4 $(JUNIT_MIN_VER)/' \
 		debian/libreoffice-subsequentcheckbase.substvars
 endif
