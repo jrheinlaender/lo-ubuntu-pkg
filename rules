@@ -160,7 +160,6 @@ SYSTEM_STUFF += hunspell
 HUNSPELL_MIN_VER= (>= 1.1.5-2)
 SYSTEM_STUFF += altlinuxhyph
 USE_LIBHYPHEN=y
-LIBALTLINUXHYPH_MINVER= (>= 0.1.1-11)
 LIBHYPHEN_MINVER= (>= 2.4)
 SYSTEM_STUFF += boost
 BOOST_VERSION=default
@@ -379,7 +378,7 @@ ENABLE_LDAP=y
 USE_OPENLDAP=y
 SYSTEM_STUFF += epoxy
 ifeq "$(ENABLE_JAVA)" "y"
-  ENABLE_REPORTDESIGN=y
+  ENABLE_REPORTBUILDER=y
   SYSTEM_STUFF += jfreereport
   ENABLE_MEDIAWIKI=y
   SYSTEM_STUFF += apache-commons
@@ -387,7 +386,7 @@ ifeq "$(ENABLE_JAVA)" "y"
   ENABLE_SCRIPT_PROVIDER_JS=y
   ENABLE_NLPSOLVER=y
 else
-  ENABLE_REPORTDESIGN=n
+  ENABLE_REPORTBUILDER=n
   ENABLE_MEDIAWIKI=n
   ENABLE_SCRIPT_PROVIDER_BSH=n
   ENABLE_SCRIPT_PROVIDER_JS=n
@@ -621,8 +620,8 @@ OOO_EXTENSIONS_ARCHS := $(OOO_ARCH_DEP_EXTENSIONS_ARCHS)
 
 OOO_BASE_ARCHS := $(OOO_JAVA_ARCHS)
 $(eval $(call gen_no_archs,OOO_BASE_ARCHS))
-OOO_REPORTDESIGN_ARCHS := $(OOO_BASE_ARCHS)
-$(eval $(call gen_no_archs,OOO_REPORTDESIGN_ARCHS))
+OOO_REPORTBUILDER_ARCHS := $(OOO_BASE_ARCHS)
+$(eval $(call gen_no_archs,OOO_REPORTBUILDER_ARCHS))
 OOO_FIREBIRD_ARCHS := $(OOO_LE_ARCHS)
 $(eval $(call gen_no_archs,OOO_FIREBIRD_ARCHS))
 # chromium only available here.
@@ -637,7 +636,7 @@ ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
 	ENABLE_SDBC_POSTGRESQL=n
 	ENABLE_MYSQLNATIVE=n
 	ENABLE_EVO2=n
-	ENABLE_REPORTDESIGN=n
+	ENABLE_REPORTBUILDER=n
 	DEBHELPER_OPTIONS += -Nlibreoffice-base libreoffice-base-core -Nlibreoffice-base-drivers
 	DEBHELPER_OPTIONS += -Nlibreoffice-evolution
 	DEBHELPER_OPTIONS += -Nlibreoffice-sdbc-postgresql -Nlibreoffice-mysql-connector
@@ -658,7 +657,7 @@ ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
 endif
 ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
 	ENABLE_MEDIAWIKI=n
-	ENABLE_REPORTDESIGN=n
+	ENABLE_REPORTBUILDER=n
 	ENABLE_NLPSOLVER=n
 	DEBHELPER_OPTIONS += -Nlibreoffice-wiki-publisher -Nlibreoffice-script-provider-python -Nlibreoffice-nlpsolver
 	CONFIGURE_FLAGS += --disable-extension-integration --disable-extensions
@@ -668,7 +667,7 @@ endif
 
 ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_JAVA_ARCHS)))
 	ENABLE_JAVA=n
-	ENABLE_REPORTDESIGN=n
+	ENABLE_REPORTBUILDER=n
 	ENABLE_MEDIAWIKI=n
 	ENABLE_NLPSOLVER=n
 	DEBHELPER_OPTIONS += -Nlibreoffice-wiki-publisher
@@ -680,9 +679,9 @@ endif
 # fails to build. ("The system is out of resources."). FIXME.
 ifeq (ia64,$(findstring ia64,$(OOO_OPENJDK_ARCHS)))
   ifeq (,$(findstring jfreereport,$(SYSTEM_STUFF))) 
-    OOO_REPORTDESIGN_ARCHS := $(filter-out ia64,$(OOO_REPORTDESIGN_ARCHS))
+    OOO_REPORTBUILDER_ARCHS := $(filter-out ia64,$(OOO_REPORTBUILDER_ARCHS))
     ifeq "$(DEB_HOST_ARCH)" "ia64"
-	ENABLE_REPORTDESIGN=n
+	ENABLE_REPORTBUILDER=n
     endif
   endif
 endif
@@ -701,7 +700,7 @@ endif
 # Debian Stretch
 ifeq "$(DEB_DISTRIBUTION)" "stretch-backports"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out libzmf libstaroffice orcus cppunit xmlsec libqxp,$(SYSTEM_STUFF))
+  SYSTEM_STUFF := $(filter-out libzmf libstaroffice orcus cppunit xmlsec libqxp libepubgen,$(SYSTEM_STUFF))
   # needs newer stuff for tests, we can't make it conditional on RUN_MAKE_CHECK since
   # BE archs don't run them anyway and this wouldn't be in effect...
   SYSTEM_STUFF := $(filter-out libwps libmwaw,$(SYSTEM_STUFF))
@@ -927,7 +926,7 @@ endif
 	BUILD_DEPS += , locales$(OOO_NO_CHECK_ARCHS) <!nocheck>
 	BUILD_DEPS += , gdb$(OOO_NO_CHECK_ARCHS) <!nocheck>
 	BUILD_DEPS += , fontconfig$(OOO_NO_CHECK_ARCHS) <!nocheck>
-	BUILD_DEPS += , fonts-liberation$(OOO_NO_CHECK_ARCHS) <!nocheck>
+	BUILD_DEPS += , fonts-liberation2$(OOO_NO_CHECK_ARCHS) <!nocheck>
   	BUILD_DEPS += , fonts-crosextra-carlito$(OOO_NO_CHECK_ARCHS) <!nocheck>
         # https://lists.freedesktop.org/archives/libreoffice/2017-May/077764.html
         BUILD_DEPS += , fonts-dejavu$(OOO_NO_CHECK_ARCHS) <!nocheck>
@@ -1088,19 +1087,19 @@ export JAVA_HOME
   ifeq "$(ENABLE_MEDIAWIKI)" "y"
 	CONFIGURE_FLAGS_INDEP += --enable-ext-wiki-publisher
   endif
-  ifeq "$(ENABLE_REPORTDESIGN)" "y"
+  ifeq "$(ENABLE_REPORTBUILDER)" "y"
 	# report-builder
     ifneq (,$(filter jfreereport, $(SYSTEM_STUFF)))
-	REPORT_BUILDER_BUILD_DEPS += , libbase-java$(OOO_NO_REPORTDESIGN_ARCHS), libsac-java$(OOO_NO_REPORTDESIGN_ARCHS), libxml-java (>= 1.1.6)$(OOO_NO_REPORTDESIGN_ARCHS), libflute-java (>= 1.1.6)$(OOO_NO_REPORTDESIGN_ARCHS), libpentaho-reporting-flow-engine-java (>= 0.9.4)$(OOO_NO_REPORTDESIGN_ARCHS), liblayout-java (>= 0.2.10)$(OOO_NO_REPORTDESIGN_ARCHS), libloader-java (>= 1.1.6)$(OOO_NO_REPORTDESIGN_ARCHS), libformula-java (>= 1.1.7)$(OOO_NO_REPORTDESIGN_ARCHS), librepository-java (>= 1.1.6)$(OOO_NO_REPORTDESIGN_ARCHS), libfonts-java (>= 1.1.6)$(OOO_NO_REPORTDESIGN_ARCHS), libserializer-java (>= 1.1.6)$(OOO_NO_REPORTDESIGN_ARCHS)
+	REPORT_BUILDER_BUILD_DEPS += , libbase-java$(OOO_NO_REPORTBUILDER_ARCHS), libsac-java$(OOO_NO_REPORTBUILDER_ARCHS), libxml-java (>= 1.1.6)$(OOO_NO_REPORTBUILDER_ARCHS), libflute-java (>= 1.1.6)$(OOO_NO_REPORTBUILDER_ARCHS), libpentaho-reporting-flow-engine-java (>= 0.9.4)$(OOO_NO_REPORTBUILDER_ARCHS), liblayout-java (>= 0.2.10)$(OOO_NO_REPORTBUILDER_ARCHS), libloader-java (>= 1.1.6)$(OOO_NO_REPORTBUILDER_ARCHS), libformula-java (>= 1.1.7)$(OOO_NO_REPORTBUILDER_ARCHS), librepository-java (>= 1.1.6)$(OOO_NO_REPORTBUILDER_ARCHS), libfonts-java (>= 1.1.6)$(OOO_NO_REPORTBUILDER_ARCHS), libserializer-java (>= 1.1.6)$(OOO_NO_REPORTBUILDER_ARCHS)
 	REPORT_BUILDER_JAR_DEPENDS := , libbase-java, libsac-java, libxml-java (>= 1.1.6), libflute-java (>= 1.1.6), libpentaho-reporting-flow-engine-java (>= 0.9.4), liblayout-java (>= 0.2.10), libloader-java (>= 1.1.6), libformula-java (>= 1.1.7), librepository-java (>= 1.1.6), libfonts-java (>= 1.1.6), libserializer-java (>= 1.1.6)
 	CONFIGURE_FLAGS += --with-libbase-jar=/usr/share/java/libbase.jar --with-libxml-jar=/usr/share/java/libxml.jar --with-flute-jar=/usr/share/java/flute.jar --with-jfreereport-jar=/usr/share/java/flow-engine.jar --with-liblayout-jar=/usr/share/java/liblayout.jar --with-libloader-jar=/usr/share/java/libloader.jar --with-libformula-jar=/usr/share/java/libformula.jar --with-librepository-jar=/usr/share/java/librepository.jar --with-libfonts-jar=/usr/share/java/libfonts.jar --with-libserializer-jar=/usr/share/java/libserializer.jar
     endif
     ifneq (,$(filter apache-commons, $(SYSTEM_STUFF)))
 	REPORT_BUILDER_BUILD_DEPS += , libcommons-logging-java$(OOO_NO_JAVA_ARCHS)
 	REPORT_BUILDER_JAR_DEPENDS += , libcommons-logging-java
-	CONFIGURE_FLAGS_INDEP += --with-commons-logging-jar=/usr/share/java/commons-logging.jar
+	CONFIGURE_FLAGS += --with-commons-logging-jar=/usr/share/java/commons-logging.jar
     endif
-	BUILD_DEPS_INDEP += $(REPORT_BUILDER_BUILD_DEPS)
+	BUILD_DEPS += $(REPORT_BUILDER_BUILD_DEPS)
   else
 	CONFIGURE_FLAGS += --disable-report-builder
   endif
@@ -1138,11 +1137,7 @@ endif
 	CONFIGURE_FLAGS += --with-external-dict-dir=$(DICT_DIR)
 
 ifneq (,$(filter altlinuxhyph, $(SYSTEM_STUFF)))
-  ifeq "$(USE_LIBHYPHEN)" "y"
 	BUILD_DEPS += , libhyphen-dev $(LIBHYPHEN_MINVER)
-  else
-	BUILD_DEPS += , libaltlinuxhyph-dev $(LIBALTLINUXHYPH_MINVER)
-  endif
 endif
 	CONFIGURE_FLAGS += --with-external-hyph-dir=$(HYPH_DIR)
 
@@ -1217,7 +1212,7 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
 	BUILD_DEPS += , libodfgen-dev (>= 0.1)
   endif
   ifneq (,$(filter libepubgen, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libepubgen-dev
+	BUILD_DEPS += , libepubgen-dev (>= 0.1.0)
   endif
   ifneq (,$(filter libetonyek, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libetonyek-dev
@@ -1715,49 +1710,49 @@ debian/control: $(wildcard debian/control*in) $(SOURCE_TREE)/bin/lo-xlate-lang  
 	    CCODE=`echo $$LCODE | sed 's/-.*//'`; \
 	    case "$$LCODE" in \
 		bn) \
-			FONT_SUGGESTS=", fonts-beng"; \
+			FONT_RECOMMENDS=", fonts-beng"; \
 			;; \
 		gu) \
-			FONT_SUGGESTS=", fonts-gujr"; \
+			FONT_RECOMMENDS=", fonts-gujr"; \
 			;; \
 		pa-in) \
-			FONT_SUGGESTS=", fonts-guru"; \
+			FONT_RECOMMENDS=", fonts-guru"; \
 			;; \
 		ml) \
-			FONT_SUGGESTS=", fonts-mlym"; \
+			FONT_RECOMMENDS=", fonts-mlym"; \
 			;; \
 		or) \
-			FONT_SUGGESTS=", fonts-orya"; \
+			FONT_RECOMMENDS=", fonts-orya"; \
 			;; \
 		te) \
-			FONT_SUGGESTS=", fonts-telu"; \
+			FONT_RECOMMENDS=", fonts-telu"; \
 			;; \
 		ta) \
-			FONT_SUGGESTS=", fonts-taml"; \
+			FONT_RECOMMENDS=", fonts-taml"; \
 			;; \
 		hi-in|ne|mr) \
-			FONT_SUGGESTS=", fonts-deva"; \
+			FONT_RECOMMENDS=", fonts-deva"; \
 			;; \
 		he) \
-			FONT_SUGGESTS=", culmus"; \
+			FONT_RECOMMENDS=", culmus"; \
 			;; \
 		km) \
-			FONT_SUGGESTS=", fonts-khmeros"; \
+			FONT_RECOMMENDS=", fonts-khmeros"; \
 			;; \
 		ar) \
-			FONT_SUGGESTS=", fonts-arabeyes"; \
+			FONT_RECOMMENDS=", fonts-kacst, fonts-hosny-amiri, fonts-sil-scheherazade, fonts-hosny-thabit"; \
 			;; \
 		fa) \
-			FONT_SUGGESTS=", fonts-farsiweb"; \
+			FONT_RECOMMENDS=", fonts-farsiweb"; \
 			;; \
 		dz) \
-			FONT_SUGGESTS=", fonts-dzongkha"; \
+			FONT_RECOMMENDS=", fonts-dzongkha"; \
 			;; \
 		th) \
-			FONT_SUGGESTS=", fonts-thai-tlwg"; \
+			FONT_RECOMMENDS=", fonts-thai-tlwg"; \
 			;; \
 		*) \
-			FONT_SUGGESTS= ;; \
+			FONT_RECOMMENDS= ;; \
 	    esac; \
 	    case "$$LCODE" in \
 		rw) \
@@ -1781,7 +1776,7 @@ debian/control: $(wildcard debian/control*in) $(SOURCE_TREE)/bin/lo-xlate-lang  
 	    esac; \
 	    sed -e "s|@LNAME@|$$LNAME|g" -e "s|@LCODE@|$$LCODE|g" \
 		-e "s|@CCODE@|$$CCODE|g" \
-	        -e "s|@FONT_SUGGESTS@|$$FONT_SUGGESTS|g" \
+	        -e "s|@FONT_RECOMMENDS@|$$FONT_RECOMMENDS|g" \
 	        -e "s:@LOCALES_DEPENDS@:$$LOCALES_DEPENDS:g" \
 		-e "s|@LDAP_LIB@|$(LDAP_LIB)|g" \
 	        >> debian/control < debian/control.lang.in; \
@@ -1809,8 +1804,8 @@ ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(ENABLE_MEDIAWIKI)" "y"
 	cat debian/control.mediawiki.in >> debian/control
   endif
-  ifeq "$(ENABLE_REPORTDESIGN)" "y"
-	cat debian/control.reportdesign.in >> debian/control
+  ifeq "$(ENABLE_REPORTBUILDER)" "y"
+	cat debian/control.reportbuilder.in >> debian/control
   endif
   ifeq "$(ENABLE_NLPSOLVER)" "y"
 	cat debian/control.nlpsolver.in >> debian/control
@@ -1860,8 +1855,8 @@ endif
 	perl -pi -e "s,%OOO_NO_BASE_ARCHS%,$(OOO_NO_BASE_ARCHS),"g debian/control
 	perl -pi -e "s,%OOO_JAVA_ARCHS%,$(OOO_JAVA_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_ARCH_DEP_EXTENSIONS_ARCHS%,$(OOO_ARCH_DEP_EXTENSIONS_ARCHS),g" debian/control
-	perl -pi -e "s,%OOO_REPORTDESIGN_ARCHS%,$(OOO_REPORTDESIGN_ARCHS),g" debian/control
-	perl -pi -e "s,%OOO_NO_REPORTDESIGN_ARCHS%,$(OOO_NO_REPORTDESIGN_ARCHS),g" debian/control
+	perl -pi -e "s,%OOO_REPORTBUILDER_ARCHS%,$(OOO_REPORTBUILDER_ARCHS),g" debian/control
+	perl -pi -e "s,%OOO_NO_REPORTBUILDER_ARCHS%,$(OOO_NO_REPORTBUILDER_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_FIREBIRD_ARCHS%,$(OOO_FIREBIRD_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_NO_FIREBIRD_ARCHS%,$(OOO_NO_FIREBIRD_ARCHS),g" debian/control
 	perl -pi -e "s#%BUILD_DEPS%#$(strip $(BUILD_DEPS))#g" debian/control
@@ -1962,7 +1957,7 @@ build:
 
 build-arch: $(STAMP_DIR)/prepare $(STAMP_DIR)/build-arch
 $(STAMP_DIR)/build-arch:
-#build-arch: ENABLE_HELP = n PACKAGE_SDK_DOCS = n ENABLE_MEDIAWIKI = n ENABLE_REPORTDESIGN = n ENABLE_SCRIPT_PROVIDER_BSH = n ENABLE_SCRIPT_PROVIDER_JS = n
+#build-arch: ENABLE_HELP = n PACKAGE_SDK_DOCS = n ENABLE_MEDIAWIKI = n ENABLE_SCRIPT_PROVIDER_BSH = n ENABLE_SCRIPT_PROVIDER_JS = n
 	dh_testdir
 
 	# Theoretically this should call ./configure instead of
@@ -1973,9 +1968,9 @@ $(STAMP_DIR)/build-arch:
 	MARIADBCONFIG=$(MARIADBCONFIG) \
 	FIREBIRD_CFLAGS=$(FIREBIRD_CFLAGS) FIREBIRD_LIBS=$(FIREBIRD_LIBS) \
 	./autogen.sh $(CONFIGURE_FLAGS) --without-junit --without-cppunit \
-		--without-doxygen --without-javadoc --disable-ext-wiki-publisher \
-		--disable-report-builder --disable-scripting-javascript \
-		--disable-scripting-beanshell \
+		--disable-ext-wiki-publisher \
+		--disable-scripting-javascript --disable-scripting-beanshell \
+		--without-doxygen --without-javadoc \
 		--with-galleries=no --with-theme="$(DEFAULT_IMAGE)"
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build-non-l10n-only
@@ -2040,9 +2035,9 @@ endif
 	MARIADBCONFIG=$(MARIADBCONFIG) \
 	FIREBIRD_CFLAGS=$(FIREBIRD_CFLAGS) FIREBIRD_LIBS=$(FIREBIRD_LIBS) \
 	./autogen.sh $(CONFIGURE_FLAGS) \
-		--without-doxygen --without-javadoc --disable-ext-wiki-publisher \
-		--disable-report-builder --disable-scripting-javascript \
-		--disable-scripting-beanshell \
+		--disable-ext-wiki-publisher \
+		--disable-scripting-javascript --disable-scripting-beanshell \
+		--without-doxygen --without-javadoc \
 		--with-galleries=no --with-theme="$(DEFAULT_IMAGE)"
 
 	# generate the needed en_US.UTF-8. Upstream doesn't want to support
@@ -2478,7 +2473,7 @@ else
 	rm -f $(PKGDIR)-common/$(OODIR)/program/gengal
 endif
 
-ifneq "$(ENABLE_REPORTDESIGN)" "y"
+ifneq "$(ENABLE_REPORTBUILDER)" "y"
 	# unneeded. a no-Java arch, so the report-builder can't work anyway.
 	# (and we need to remove it here anyway as it otherwise would end up
 	# in -base/-core)
@@ -3029,13 +3024,25 @@ endif
 	perl -pi -e 's,unset XENVIRONMENT,unset XENVIRONMENT\n\nexport PYTHONPATH=\"/$(OODIR)/program\"\n\n,' \
 		$(PKGDIR)-common/$(OODIR)/program/unopkg
 
+	# this only works with --without-fonts. Otherwise we get all stuff here,
+	# not only the Symbol->OpenSymbol part... But we don't support --with-fonts
+	# build here right now anyway.
 ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
 	mkdir -p debian/fonts-opensymbol/usr/share/fonts/truetype/openoffice
 	mv $(PKGDIR)-common/$(OODIR)/share/fonts/truetype/opens___.ttf \
 		debian/fonts-opensymbol/usr/share/fonts/truetype/openoffice
-	rm -rf $(PKGDIR)-common/$(OODIR)/share/fonts/truetype
+	mkdir -p debian/fonts-opensymbol/etc/fonts/conf.d
+	mkdir -p debian/fonts-opensymbol/usr/share/fontconfig/conf.avail
+	# this only works with --without-fonts. Otherwise we get all stuff here,
+	# not only the Symbol->OpenSymbol part... But we don't support --with-fonts
+	# build here right now anyway.
+	mv $(PKGDIR)-common/$(OODIR)/share/fonts/truetype/fc_local.conf \
+		debian/fonts-opensymbol/usr/share/fontconfig/conf.avail/30_opensymbol.conf
+	cd debian/fonts-opensymbol/etc/fonts/conf.d/ && \
+		ln -s /usr/share/fontconfig/conf.avail/30_opensymbol.conf
 else
 	rm -f $(PKGDIR)-common/$(OODIR)/share/fonts/truetype/opens___.ttf
+	rm -f $(PKGDIR)-common/$(OODIR)/share/truetype/fc_local.conf
 endif
 
 	# remove extra license files
@@ -3221,23 +3228,6 @@ endif
 			$(PKGDIR)-common/usr/share/doc/libreoffice-common/examples; \
 		ln -s /usr/share/doc/libreoffice-common/examples/$$i $(PKGDIR)-common/$(OODIR)/share/registry/$$i; \
 	done
-
-ifeq "$(PACKAGE_TTF_OPENSYMBOL)" "y"
-	# generate fontconfig file. Upstream creates a fc_local.conf in
-	# postprocess but it might also contain other font stuff, so do it
-	# manually
-	mkdir -p debian/fonts-opensymbol/usr/share/fontconfig/conf.avail
-	mkdir -p debian/fonts-opensymbol/etc/fonts.d/
-	( \
-	  echo "<?xml version="1.0"?>"; \
-	  echo "<!DOCTYPE fontconfig SYSTEM "fonts.dtd">"; \
-	  echo "<fontconfig>"; \
-	) > debian/fonts-opensymbol/usr/share/fontconfig/conf.avail/30_opensymbol.conf
-	cat $(SOURCE_TREE)/extras/source/truetype/symbol/fc_local.snippet >> debian/fonts-opensymbol/usr/share/fontconfig/conf.avail/30_opensymbol.conf
-	echo "</fontconfig>" >> debian/fonts-opensymbol/usr/share/fontconfig/conf.avail/30_opensymbol.conf
-	cd debian/fonts-opensymbol/etc/fonts.d/ && \
-		ln -s /usr/share/fontconfig/conf.avail/30_opensymbol.conf
-endif
 
 	# register technical.dic
 	perl -pi -e 's/standard.dic;/standard.dic;technical.dic;/' $(PKGDIR)-common/$(OODIR)/share/registry/main.xcd
@@ -3674,7 +3664,7 @@ ifeq "$(ENABLE_NLPSOLVER)" "y"
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-v$(shell grep "<version" $(SOURCE_TREE)/nlpsolver/src/com/sun/star/comp/Calc/NLPSolver/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
 endif
-ifeq "$(ENABLE_REPORTDESIGN)" "y"
+ifeq "$(ENABLE_REPORTBUILDER)" "y"
 	dh_gencontrol -plibreoffice-report-builder -- \
 		-V'base-version=$(BASE_VERSION)' \
 		-V'report-builder-jar-depends=$(REPORT_BUILDER_JAR_DEPENDS)' \
