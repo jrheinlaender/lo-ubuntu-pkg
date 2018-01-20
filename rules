@@ -195,14 +195,18 @@ SYSTEM_STUFF += libqxp
 BUILD_CAIROCANVAS=y
 SYSTEM_STUFF += cairo
 CAIRO_FONTS_PATCH=y
-BUILD_KDE=n
+BUILD_KDE=y
 BUILD_KDE4=n
 # < 4.8 fails with gcc 4.7, see #667911
 QT4_MINVER= (>= 4:4.8)
 KDELIBS_MINVER= (>= 4:4.3.4)
-#BUILD_KDE5=n
 ENABLE_QT5=n
-KDE_MAJOR=5
+BUILD_KDE5=y
+ifeq "$(BUILD_KDE5)" "y"
+  ENABLE_GTK3_KDE5=y
+  ENABLE_KDE5=y
+  KDE_MAJOR=5
+endif
 ifeq "$(BUILD_KDE)" "y"
 ifeq "$(BUILD_KDE4)" "y"
 ifeq "$(BUILD_KDE5)" "y"
@@ -1297,15 +1301,25 @@ else
 	BUILD_DEPS += , libqt4-dev $(QT4_MINVER)
 endif
 
-#ifeq "$(BUILD_KDE5)" "n"
-#	CONFIGURE_FLAGS += --disable-kde5
-#else
-#	ENABLE_QT5=y
-#	CONFIGURE_FLAGS += --enable-kde5
-#	KDE_ICONSET_DEP=libreoffice-style-breeze
-#	BUILD_DEPS += , libkf5coreaddons-dev, libkf5kdelibs4support5-bin
-#	BUILD_DEPS += , libxcb1-dev
-#endif
+ifeq "$(BUILD_KDE5)" "y"
+	KDE_ICONSET_DEP=libreoffice-style-breeze
+  ifeq "$(ENABLE_GTK3_KDE5)" "y"
+	CONFIGURE_FLAGS += --enable-gtk3-kde5
+  endif
+  ifeq "$(ENABLE_KDE5)" "y"
+	CONFIGURE_FLAGS += --enable-kde5
+  endif
+	BUILD_DEPS += , libkf5coreaddons-dev, libkf5i18n-dev, libkf5config-dev, libkf5windowsystem-dev, libkf5kio-dev
+	BUILD_DEPS += , qtbase5-dev, libqt5x11extras5-dev
+	BUILD_DEPS += , qt5-qmake, qtbase5-dev-tools
+	BUILD_DEPS += , libglib2.0-dev (>= 2.4)
+	BUILD_DEPS += , libxcb1-dev
+        # for correct qmake/moc
+	BUILD_DEPS += , qtchooser
+	export QT_SELECT=5
+	# needs Boost.Process...
+	BOOST_MINVER= (>= 1.64)
+endif
 
 ifeq "$(ENABLE_QT5)" "y"
 	CONFIGURE_FLAGS += --enable-qt5
@@ -2111,7 +2125,7 @@ endif
 
 	# FIXME
 	cd $(CURDIR)/debian/tmp/pkg && rm -rf \*
-	
+
 ifeq "$(ENABLE_QT5)" "y"
 	# we need to do it here. If -kde isn't built
 	# there's no -kde.install generated, so dh_missing complains later
@@ -2120,8 +2134,19 @@ ifeq "$(ENABLE_QT5)" "y"
 		debian/tmp/pkg/libreoffice-qt5/$(OODIR)/program
 endif
 ifeq "$(BUILD_KDE)" "y"
+  ifeq "$(ENABLE_KDE5)" "y"
 	mv debian/tmp/pkg/libreoffice-kde \
 		debian/tmp/pkg/libreoffice-kde$(KDE_MAJOR)
+  else
+    ifeq "$(ENABLE_GTK3_KDE5)" "y"
+	# not installed...
+	mkdir -p debian/tmp/pkg/libreoffice-kde$(KDE_MAJOR)/$(OODIR)/program
+	for i in libvclplug_gtk3_kde5lo.so lo_kde5filepicker; do \
+		cp instdir/program/$$i \
+			debian/tmp/pkg/libreoffice-kde$(KDE_MAJOR)/$(OODIR)/program; \
+	done
+    endif
+  endif
 endif
 
 	# prepare install/dir files for dh

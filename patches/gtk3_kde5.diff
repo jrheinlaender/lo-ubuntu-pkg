@@ -1,0 +1,4202 @@
+diff --git a/Repository.mk b/Repository.mk
+index dcb201a904b9..d7e59b87931e 100644
+--- a/Repository.mk
++++ b/Repository.mk
+@@ -297,11 +297,18 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,gnome, \
+ 
+ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,kde, \
+ 	$(if $(ENABLE_KDE4),kde4be1) \
++	$(if $(ENABLE_KDE5),kde5be1) \
+ 	$(if $(USING_X11), \
+ 		$(if $(ENABLE_KDE4),vclplug_kde4) \
+-        $(if $(ENABLE_QT5),vclplug_qt5) \
++		$(if $(ENABLE_QT5),vclplug_qt5) \
++		$(if $(ENABLE_GTK3_KDE5),vclplug_gtk3_kde5) \
+ 	) \
+ ))
++ifneq ($(ENABLE_GTK3_KDE5),)
++$(eval $(call gb_Helper_register_executables_for_install,OOO,kde, \
++	lo_kde5filepicker \
++))
++endif
+ 
+ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,math, \
+ 	sm \
+diff --git a/RepositoryExternal.mk b/RepositoryExternal.mk
+index 30709792c010..d37095ebbab6 100644
+--- a/RepositoryExternal.mk
++++ b/RepositoryExternal.mk
+@@ -3066,6 +3066,41 @@ endef
+ 
+ endif # ENABLE_KDE4
+ 
++
++ifeq ($(ENABLE_KDE5),TRUE)
++
++define gb_LinkTarget__use_kde5
++$(call gb_LinkTarget_set_include,$(1),\
++	$(subst -isystem/,-isystem /,$(filter -I% -isystem%,$(subst -isystem /,-isystem/,$(KF5_CFLAGS)))) \
++	$$(INCLUDE) \
++)
++
++$(call gb_LinkTarget_add_defs,$(1),\
++	$(filter-out -I% -isystem%,$(subst -isystem /,-isystem/,$(KF5_CFLAGS))) \
++)
++
++$(call gb_LinkTarget_add_libs,$(1),\
++	$(KF5_LIBS) \
++)
++
++ifeq ($(COM),GCC)
++$(call gb_LinkTarget_add_cxxflags,$(1),\
++	-Wno-shadow \
++)
++endif
++
++endef
++
++else # !ENABLE_KDE5
++
++define gb_LinkTarget__use_kde5
++
++endef
++
++endif # ENABLE_KDE5
++
++
++
+ ifeq ($(ENABLE_QT5),TRUE)
+ 
+ define gb_LinkTarget__use_qt5
+diff --git a/config_host.mk.in b/config_host.mk.in
+index 0cc343cd351d..27b59f2da12e 100644
+--- a/config_host.mk.in
++++ b/config_host.mk.in
+@@ -156,6 +156,8 @@ export ENABLE_PCH=@ENABLE_PCH@
+ export ENABLE_PDFIMPORT=@ENABLE_PDFIMPORT@
+ export ENABLE_PDFIUM=@ENABLE_PDFIUM@
+ export ENABLE_QT5=@ENABLE_QT5@
++export ENABLE_KDE5=@ENABLE_KDE5@
++export ENABLE_GTK3_KDE5=@ENABLE_GTK3_KDE5@
+ export ENABLE_RANDR=@ENABLE_RANDR@
+ export ENABLE_RELEASE_BUILD=@ENABLE_RELEASE_BUILD@
+ export ENABLE_REPORTBUILDER=@ENABLE_REPORTBUILDER@
+@@ -298,6 +300,9 @@ export KDE4_GLIB_LIBS=$(gb_SPACE)@KDE4_GLIB_LIBS@
+ export KDE4_HAVE_GLIB=@KDE4_HAVE_GLIB@
+ export KF5_CFLAGS=$(gb_SPACE)@KF5_CFLAGS@
+ export KF5_LIBS=$(gb_SPACE)@KF5_LIBS@
++export KF5_GLIB_CFLAGS=$(gb_SPACE)@KF5_GLIB_CFLAGS@
++export KF5_GLIB_LIBS=$(gb_SPACE)@KF5_GLIB_LIBS@
++export KF5_HAVE_GLIB=@KF5_HAVE_GLIB@
+ export KRB5_LIBS=@KRB5_LIBS@
+ export LCMS2_CFLAGS=$(gb_SPACE)@LCMS2_CFLAGS@
+ export LCMS2_LIBS=$(gb_SPACE)@LCMS2_LIBS@
+diff --git a/config_host/config_gtk3_kde5.h.in b/config_host/config_gtk3_kde5.h.in
+new file mode 100644
+index 000000000000..06c672d4bb69
+--- /dev/null
++++ b/config_host/config_gtk3_kde5.h.in
+@@ -0,0 +1,10 @@
++/*
++Settings for GTK3/KDE5 integration.
++*/
++
++#ifndef CONFIG_GTK3_KDE5_H
++#define CONFIG_GTK3_KDE5_H
++
++#define ENABLE_GTK3_KDE5 0
++
++#endif
+diff --git a/config_host/config_kde5.h.in b/config_host/config_kde5.h.in
+new file mode 100644
+index 000000000000..af42a5edcf6a
+--- /dev/null
++++ b/config_host/config_kde5.h.in
+@@ -0,0 +1,10 @@
++/*
++Settings for KDE5 integration.
++*/
++
++#ifndef CONFIG_KDE5_H
++#define CONFIG_KDE5_H
++
++#define KDE5_HAVE_GLIB 0
++
++#endif
+diff --git a/config_host/config_vclplug.h.in b/config_host/config_vclplug.h.in
+index 510d0d25229c..be9c136245ee 100644
+--- a/config_host/config_vclplug.h.in
++++ b/config_host/config_vclplug.h.in
+@@ -9,5 +9,7 @@ Settings about which X11 desktops have support enabled.
+ 
+ #define ENABLE_GTK 0
+ #define ENABLE_KDE4 0
++#define ENABLE_KDE5 0
++#define ENABLE_GTK3_KDE5 0
+ 
+ #endif
+diff --git a/configure.ac b/configure.ac
+index 7ef4a6c6a334..8393a4335e44 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -578,7 +578,9 @@ linux-gnu*|k*bsd*-gnu*)
+     build_gstreamer_1_0=yes
+     build_gstreamer_0_10=yes
+     test_kde4=yes
++    test_kde5=yes
+     test_qt5=yes
++    test_gtk3_kde5=yes
+     if test "$enable_fuzzers" != yes; then
+         test_freetype=yes
+         test_fontconfig=yes
+@@ -673,7 +675,9 @@ freebsd*)
+     build_gstreamer_1_0=yes
+     build_gstreamer_0_10=yes
+     test_kde4=yes
++    test_kde5=yes
+     test_qt5=yes
++    test_gtk3_kde5=yes
+     test_freetype=yes
+     AC_MSG_CHECKING([the FreeBSD operating system release])
+     if test -n "$with_os_version"; then
+@@ -702,7 +706,9 @@ freebsd*)
+     build_gstreamer_1_0=yes
+     build_gstreamer_0_10=yes
+     test_kde4=yes
++    test_kde5=yes
+     test_qt5=yes
++    test_gtk3_kde5=yes
+     test_freetype=yes
+     PTHREAD_LIBS="-pthread -lpthread"
+     _os=NetBSD
+@@ -728,7 +734,9 @@ dragonfly*)
+     build_gstreamer_1_0=yes
+     build_gstreamer_0_10=yes
+     test_kde4=yes
++    test_kde5=yes
+     test_qt5=yes
++    test_gtk3_kde5=yes
+     test_freetype=yes
+     PTHREAD_LIBS="-pthread"
+     _os=DragonFly
+@@ -752,7 +760,9 @@ linux-android*)
+     test_freetype=no
+     test_gtk=no
+     test_kde4=no
++    test_kde5=no
+     test_qt5=no
++    test_gtk3_kde5=no
+     test_randr=no
+     test_xrender=no
+     _os=Android
+@@ -1201,6 +1211,18 @@ AC_ARG_ENABLE(qt5,
+          available.]),
+ ,)
+ 
++AC_ARG_ENABLE(kde5,
++    AS_HELP_STRING([--enable-kde5],
++        [Determines whether to use Qt5/KF5 vclplug on platforms where Qt5 and
++         KF5 are available.]),
++,)
++
++AC_ARG_ENABLE(gtk3_kde5,
++    AS_HELP_STRING([--enable-gtk3-kde5],
++        [Determines whether to use Gtk3 vclplug with KDE file dialogs on
++         platforms where Gtk3, Qt5 and Plasma is available.]),
++,)
++
+ libo_FUZZ_ARG_ENABLE(gui,
+     AS_HELP_STRING([--disable-gui],
+         [Disable use of X11 or Wayland to reduce dependencies. Not related to the --headless
+@@ -4514,7 +4536,9 @@ if test "$USING_X11" != TRUE; then
+     build_gstreamer_1_0=no
+     build_gstreamer_0_10=no
+     test_kde4=no
++    test_kde5=no
+     test_qt5=no
++    test_gtk3_kde5=no
+     enable_cairo_canvas=no
+ fi
+ 
+@@ -8662,6 +8686,10 @@ if test "$with_system_boost" = "yes"; then
+        [AC_MSG_ERROR(boost/shared_ptr.hpp not found. install boost)], [])
+     AC_CHECK_HEADER(boost/spirit/include/classic_core.hpp, [],
+        [AC_MSG_ERROR(boost/spirit/include/classic_core.hpp not found. install boost >= 1.36)], [])
++if test "x$enable_gtk3_kde5" = "xyes"; then
++    AC_CHECK_HEADER(boost/process/child.hpp, [],
++       [AC_MSG_ERROR(boost/process/child.hpp not found. install boost >= 1.64)], [])
++fi
+     CXXFLAGS=$save_CXXFLAGS
+     AC_LANG_POP([C++])
+     # this is in m4/ax_boost_base.m4
+@@ -9757,6 +9785,22 @@ if test "x$enable_qt5" = "xyes"; then
+ fi
+ AC_SUBST(ENABLE_QT5)
+ 
++ENABLE_KDE5=""
++if test "x$enable_kde5" = "xyes"; then
++    ENABLE_KDE5="TRUE"
++    AC_DEFINE(ENABLE_KDE5)
++    R="$R kde5"
++fi
++AC_SUBST(ENABLE_KDE5)
++
++ENABLE_GTK3_KDE5=""
++if test "x$enable_gtk3_kde5" = "xyes"; then
++    ENABLE_GTK3_KDE5="TRUE"
++    AC_DEFINE(ENABLE_GTK3_KDE5)
++    R="$R gtk3_kde5"
++fi
++AC_SUBST(ENABLE_GTK3_KDE5)
++
+ build_vcl_plugins="$R"
+ if test -z "$build_vcl_plugins"; then
+     build_vcl_plugins="none"
+@@ -10764,7 +10808,8 @@ QT5_GLIB_CFLAGS=""
+ QT5_GLIB_LIBS=""
+ QT5_HAVE_GLIB=""
+ if test \( "$test_kde5" = "yes" -a "$ENABLE_KDE5" = "TRUE" \) -o \
+-        \( "$test_qt5" = "yes" -a "$ENABLE_QT5" = "TRUE" \)
++        \( "$test_qt5" = "yes" -a "$ENABLE_QT5" = "TRUE" \) -o \
++        \( "$test_gtk3_kde5" = "yes" -a "$ENABLE_GTK3_KDE5" = "TRUE" \)
+ then
+     qt5_incdirs="$QT5INC /usr/include/qt5 /usr/include $x_includes"
+     qt5_libdirs="$QT5LIB /usr/lib/qt5 /usr/lib $x_libraries"
+@@ -10852,15 +10897,16 @@ KF5_CFLAGS=""
+ KF5_LIBS=""
+ KF5_CONFIG="kf5-config"
+ if test \( "$test_kde5" = "yes" -a "$ENABLE_KDE5" = "TRUE" \) -o \
+-        \( "$test_kf5" = "yes" -a "$ENABLE_KF5" = "TRUE" \)
++        \( "$test_kf5" = "yes" -a "$ENABLE_KF5" = "TRUE" \) -o \
++        \( "$test_gtk3_kde5" = "yes" -a "$ENABLE_GTK3_KDE5" = "TRUE" \)
+ then
+-    kf5_incdirs="$KF5INC /usr/include /usr/include/KF5 $x_includes"
++    kf5_incdirs="$KF5INC /usr/include/ $x_includes"
+     kf5_libdirs="$KF5LIB /usr/lib /usr/lib/kf5 /usr/lib/kf5/devel $x_libraries"
+     if test -n "$supports_multilib"; then
+         kf5_libdirs="$kf5_libdirs /usr/lib64 /usr/lib64/kf5 /usr/lib64/kf5/devel"
+     fi
+ 
+-    kf5_test_include="kcoreaddons_version.h"
++    kf5_test_include="KF5/kcoreaddons_version.h"
+     kf5_test_library="libKF5CoreAddons.so"
+     kf5_libdirs="$qt5_libdir $kf5_libdirs"
+ 
+@@ -10876,7 +10922,7 @@ then
+     kf5_incdir="no"
+     for kf5_check in $kf5_incdirs; do
+         if test -r "$kf5_check/$kf5_test_include"; then
+-            kf5_incdir="$kf5_check"
++            kf5_incdir="$kf5_check/KF5"
+             break
+         fi
+     done
+@@ -10902,8 +10948,8 @@ then
+ 
+     PKG_CHECK_MODULES(KF5_XCB,[xcb],,[AC_MSG_ERROR([XCB not installed])])
+ 
+-    KF5_CFLAGS="-I$kf5_incdir -I$kf5_incdir/KCoreAddons -I$kf5_incdir/KI18n -I$kf5_incdir/KConfigCore -I$kf5_incdir/KWindowSystem -I$kf5_incdir/KIOCore -I$qt5_incdir -I$qt5_incdir/QtCore -I$qt5_incdir/QtGui -I$qt5_incdir/QtWidgets -I$qt5_incdir/QtNetwork -DQT_CLEAN_NAMESPACE -DQT_THREAD_SUPPORT $KF5_XCB_CFLAGS"
+-    KF5_LIBS="-L$kf5_libdir -lKF5CoreAddons -lKF5I18n -lKF5ConfigCore -lKF5WindowSystem -lKF5KIOCore -L$qt5_libdir -lQt5Core -lQt5Gui -lQt5Widgets -lQt5Network -lQt5X11Extras $KF5_XCB_LIBS"
++    KF5_CFLAGS="-I$kf5_incdir -I$kf5_incdir/KCoreAddons -I$kf5_incdir/KI18n -I$kf5_incdir/KConfigCore -I$kf5_incdir/KWindowSystem -I$kf5_incdir/KIOCore -I$kf5_incdir/KIOWidgets -I$kf5_incdir/KIOFileWidgets -I$qt5_incdir -I$qt5_incdir/QtCore -I$qt5_incdir/QtGui -I$qt5_incdir/QtWidgets -I$qt5_incdir/QtNetwork -DQT_CLEAN_NAMESPACE -DQT_THREAD_SUPPORT $KF5_XCB_CFLAGS"
++    KF5_LIBS="-L$kf5_libdir -lKF5CoreAddons -lKF5I18n -lKF5ConfigCore -lKF5WindowSystem -lKF5KIOCore -lKF5KIOWidgets -lKF5KIOFileWidgets -L$qt5_libdir -lQt5Core -lQt5Gui -lQt5Widgets -lQt5Network -lQt5X11Extras $KF5_XCB_LIBS"
+     KF5_CFLAGS=$(printf '%s' "$KF5_CFLAGS" | sed -e "s/-I/${ISYSTEM?}/g")
+ 
+     AC_LANG_PUSH([C++])
+@@ -12472,6 +12518,8 @@ AC_CONFIG_HEADERS([config_host/config_locales.h])
+ AC_CONFIG_HEADERS([config_host/config_mpl.h])
+ AC_CONFIG_HEADERS([config_host/config_kde4.h])
+ AC_CONFIG_HEADERS([config_host/config_qt5.h])
++AC_CONFIG_HEADERS([config_host/config_kde5.h])
++AC_CONFIG_HEADERS([config_host/config_gtk3_kde5.h])
+ AC_CONFIG_HEADERS([config_host/config_oox.h])
+ AC_CONFIG_HEADERS([config_host/config_options.h])
+ AC_CONFIG_HEADERS([config_host/config_options_calc.h])
+diff --git a/postprocess/Rdb_services.mk b/postprocess/Rdb_services.mk
+index d83b30819ccd..a0308656e695 100644
+--- a/postprocess/Rdb_services.mk
++++ b/postprocess/Rdb_services.mk
+@@ -213,6 +213,9 @@ $(eval $(call gb_Rdb_add_components,services,\
+ 	$(if $(ENABLE_KDE4), \
+ 		shell/source/backends/kde4be/kde4be1 \
+ 	) \
++	$(if $(ENABLE_KDE5), \
++		shell/source/backends/kde5be/kde5be1 \
++	) \
+ 	$(if $(ENABLE_ONLINE_UPDATE), \
+ 		extensions/source/update/check/updchk.uno \
+ 		extensions/source/update/ui/updchk \
+diff --git a/scp2/InstallScript_setup_osl.mk b/scp2/InstallScript_setup_osl.mk
+index f362fe5cc102..8ce3e2ecef79 100644
+--- a/scp2/InstallScript_setup_osl.mk
++++ b/scp2/InstallScript_setup_osl.mk
+@@ -35,7 +35,7 @@ $(eval $(call gb_InstallScript_use_modules,setup_osl,\
+ 	$(if $(filter TRUE,$(ENABLE_EVOAB2) $(ENABLE_GIO) $(ENABLE_GTK) $(ENABLE_GTK3)),\
+ 		scp2/gnome \
+ 	) \
+-	$(if $(filter TRUE,$(ENABLE_KDE4) $(ENABLE_QT5)),\
++	$(if $(filter TRUE,$(ENABLE_KDE4) $(ENABLE_QT5) $(ENABLE_KDE5)),\
+ 		scp2/kde \
+ 	) \
+ 	$(if $(filter TRUE,$(ENABLE_ONLINE_UPDATE)),\
+diff --git a/scp2/Module_scp2.mk b/scp2/Module_scp2.mk
+index 847e35a6c269..1c3ed8df600f 100644
+--- a/scp2/Module_scp2.mk
++++ b/scp2/Module_scp2.mk
+@@ -39,7 +39,7 @@ $(eval $(call gb_Module_add_targets,scp2,\
+ 	$(if $(filter TRUE,$(ENABLE_EVOAB2) $(ENABLE_GIO) $(ENABLE_GTK) $(ENABLE_GTK3)),\
+ 		InstallModule_gnome \
+ 	) \
+-	$(if $(filter TRUE,$(ENABLE_KDE4) $(ENABLE_QT5)),\
++	$(if $(filter TRUE,$(ENABLE_KDE4) $(ENABLE_QT5) $(ENABLE_KDE5)),\
+ 		InstallModule_kde \
+ 	) \
+ ))
+diff --git a/shell/Library_kde5be.mk b/shell/Library_kde5be.mk
+new file mode 100644
+index 000000000000..b9c7c903a745
+--- /dev/null
++++ b/shell/Library_kde5be.mk
+@@ -0,0 +1,32 @@
++# -*- Mode: makefile-gmake; tab-width: 4; indent-tabs-mode: t -*-
++#
++# This file is part of the LibreOffice project.
++#
++# This Source Code Form is subject to the terms of the Mozilla Public
++# License, v. 2.0. If a copy of the MPL was not distributed with this
++# file, You can obtain one at http://mozilla.org/MPL/2.0/.
++#
++
++$(eval $(call gb_Library_Library,kde5be1))
++
++$(eval $(call gb_Library_use_sdk_api,kde5be1))
++
++$(eval $(call gb_Library_use_externals,kde5be1,\
++	boost_headers \
++	kde5 \
++))
++
++$(eval $(call gb_Library_use_libraries,kde5be1,\
++	cppu \
++	cppuhelper \
++	sal \
++))
++
++$(eval $(call gb_Library_set_componentfile,kde5be1,shell/source/backends/kde5be/kde5be1))
++
++$(eval $(call gb_Library_add_exception_objects,kde5be1,\
++    shell/source/backends/kde5be/kde5access \
++    shell/source/backends/kde5be/kde5backend \
++))
++
++# vim: set shiftwidth=4 tabstop=4 noexpandtab:
+diff --git a/shell/Module_shell.mk b/shell/Module_shell.mk
+index d1a54b9cf9ea..5da2416b6662 100644
+--- a/shell/Module_shell.mk
++++ b/shell/Module_shell.mk
+@@ -36,6 +36,12 @@ $(eval $(call gb_Module_add_targets,shell,\
+ ))
+ endif
+ 
++ifeq ($(ENABLE_KDE5),TRUE)
++$(eval $(call gb_Module_add_targets,shell,\
++	Library_kde5be \
++))
++endif
++
+ ifeq ($(OS),WNT)
+ 
+ $(eval $(call gb_Module_add_targets,shell,\
+diff --git a/shell/source/backends/desktopbe/desktopbackend.cxx b/shell/source/backends/desktopbe/desktopbackend.cxx
+index 1ce27ebbc8fb..529742ad862a 100644
+--- a/shell/source/backends/desktopbe/desktopbackend.cxx
++++ b/shell/source/backends/desktopbe/desktopbackend.cxx
+@@ -307,6 +307,10 @@ css::uno::Reference< css::uno::XInterface > createInstance(
+         backend = createBackend(
+             context,
+             "com.sun.star.configuration.backend.KDE4Backend");
++    } else if ( desktop == "KDE5" ) {
++        backend = createBackend(
++            context,
++            "com.sun.star.configuration.backend.KDE5Backend");
+     }
+     return backend.is()
+         ? backend : static_cast< cppu::OWeakObject * >(new Default);
+diff --git a/shell/source/backends/kde5be/kde5access.cxx b/shell/source/backends/kde5be/kde5access.cxx
+new file mode 100644
+index 000000000000..fd933b0246ba
+--- /dev/null
++++ b/shell/source/backends/kde5be/kde5access.cxx
+@@ -0,0 +1,320 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#include "sal/config.h"
++
++#include "kde5access.hxx"
++
++#include <QtGui/QFont>
++#include <QtCore/QString>
++#include <QtGui/QFontDatabase>
++#include <QtCore/QStandardPaths>
++#include <QtCore/QDir>
++#include <QtCore/QUrl>
++
++#include <kprotocolmanager.h>
++
++#include <kemailsettings.h>
++// #include <kglobalsettings.h>
++
++#include "com/sun/star/uno/Any.hxx"
++#include "cppu/unotype.hxx"
++#include "osl/diagnose.h"
++#include "osl/file.h"
++#include "rtl/string.h"
++#include "rtl/ustring.hxx"
++
++#define SPACE ' '
++#define COMMA ','
++#define SEMI_COLON ';'
++
++namespace kde5access
++{
++namespace
++{
++namespace uno = css::uno;
++}
++
++css::beans::Optional<css::uno::Any> getValue(OUString const& id)
++{
++    if (id == "ExternalMailer")
++    {
++        KEMailSettings aEmailSettings;
++        QString aClientProgram;
++        OUString sClientProgram;
++
++        aClientProgram = aEmailSettings.getSetting(KEMailSettings::ClientProgram);
++        if (aClientProgram.isEmpty())
++            aClientProgram = QStringLiteral("kmail");
++        else
++            aClientProgram = aClientProgram.section(SPACE, 0, 0);
++        sClientProgram = reinterpret_cast<const sal_Unicode*>(aClientProgram.utf16());
++        return css::beans::Optional<css::uno::Any>(true, uno::makeAny(sClientProgram));
++    }
++    else if (id == "SourceViewFontHeight")
++    {
++        const QFont aFixedFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
++        const short nFontHeight = aFixedFont.pointSize();
++        return css::beans::Optional<css::uno::Any>(true, uno::makeAny(nFontHeight));
++    }
++    else if (id == "SourceViewFontName")
++    {
++        const QFont aFixedFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
++        const QString aFontName = aFixedFont.family();
++        const OUString sFontName = reinterpret_cast<const sal_Unicode*>(aFontName.utf16());
++        return css::beans::Optional<css::uno::Any>(true, uno::makeAny(sFontName));
++    }
++    else if (id == "EnableATToolSupport")
++    {
++        /* does not make much sense without an accessibility bridge */
++        bool ATToolSupport = false;
++        return css::beans::Optional<css::uno::Any>(true,
++                                                   uno::makeAny(OUString::boolean(ATToolSupport)));
++    }
++    else if (id == "WorkPathVariable")
++    {
++        QString aDocumentsDir(QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation));
++        if (aDocumentsDir.isEmpty())
++            aDocumentsDir = QDir::homePath();
++        OUString sDocumentsDir;
++        OUString sDocumentsURL;
++        if (aDocumentsDir.endsWith(QLatin1Char('/')))
++            aDocumentsDir.truncate(aDocumentsDir.length() - 1);
++        sDocumentsDir = reinterpret_cast<const sal_Unicode*>(aDocumentsDir.utf16());
++        osl_getFileURLFromSystemPath(sDocumentsDir.pData, &sDocumentsURL.pData);
++        return css::beans::Optional<css::uno::Any>(true, uno::makeAny(sDocumentsURL));
++    }
++    else if (id == "ooInetFTPProxyName")
++    {
++        QString aFTPProxy;
++        switch (KProtocolManager::proxyType())
++        {
++            case KProtocolManager::ManualProxy: // Proxies are manually configured
++                aFTPProxy = KProtocolManager::proxyFor(QStringLiteral("FTP"));
++                break;
++            case KProtocolManager::PACProxy: // A proxy configuration URL has been given
++            case KProtocolManager::WPADProxy: // A proxy should be automatically discovered
++            case KProtocolManager::
++                EnvVarProxy: // Use the proxy values set through environment variables
++                // In such cases, the proxy address is not stored in KDE, but determined dynamically.
++                // The proxy address may depend on the requested address, on the time of the day, on the speed of the wind...
++                // The best we can do here is to ask the current value for a given address.
++                aFTPProxy = KProtocolManager::proxyForUrl(
++                    QUrl(QStringLiteral("ftp://ftp.libreoffice.org")));
++                break;
++            default: // No proxy is used
++                break;
++        }
++        if (!aFTPProxy.isEmpty())
++        {
++            QUrl aProxy(aFTPProxy);
++            OUString sProxy = reinterpret_cast<const sal_Unicode*>(aProxy.host().utf16());
++            return css::beans::Optional<css::uno::Any>(true, uno::makeAny(sProxy));
++        }
++    }
++    else if (id == "ooInetFTPProxyPort")
++    {
++        QString aFTPProxy;
++        switch (KProtocolManager::proxyType())
++        {
++            case KProtocolManager::ManualProxy: // Proxies are manually configured
++                aFTPProxy = KProtocolManager::proxyFor(QStringLiteral("FTP"));
++                break;
++            case KProtocolManager::PACProxy: // A proxy configuration URL has been given
++            case KProtocolManager::WPADProxy: // A proxy should be automatically discovered
++            case KProtocolManager::
++                EnvVarProxy: // Use the proxy values set through environment variables
++                // In such cases, the proxy address is not stored in KDE, but determined dynamically.
++                // The proxy address may depend on the requested address, on the time of the day, on the speed of the wind...
++                // The best we can do here is to ask the current value for a given address.
++                aFTPProxy = KProtocolManager::proxyForUrl(
++                    QUrl(QStringLiteral("ftp://ftp.libreoffice.org")));
++                break;
++            default: // No proxy is used
++                break;
++        }
++        if (!aFTPProxy.isEmpty())
++        {
++            QUrl aProxy(aFTPProxy);
++            sal_Int32 nPort = aProxy.port();
++            return css::beans::Optional<css::uno::Any>(true, uno::makeAny(nPort));
++        }
++    }
++    else if (id == "ooInetHTTPProxyName")
++    {
++        QString aHTTPProxy;
++        switch (KProtocolManager::proxyType())
++        {
++            case KProtocolManager::ManualProxy: // Proxies are manually configured
++                aHTTPProxy = KProtocolManager::proxyFor(QStringLiteral("HTTP"));
++                break;
++            case KProtocolManager::PACProxy: // A proxy configuration URL has been given
++            case KProtocolManager::WPADProxy: // A proxy should be automatically discovered
++            case KProtocolManager::
++                EnvVarProxy: // Use the proxy values set through environment variables
++                // In such cases, the proxy address is not stored in KDE, but determined dynamically.
++                // The proxy address may depend on the requested address, on the time of the day, on the speed of the wind...
++                // The best we can do here is to ask the current value for a given address.
++                aHTTPProxy = KProtocolManager::proxyForUrl(
++                    QUrl(QStringLiteral("ftp://ftp.libreoffice.org")));
++                break;
++            default: // No proxy is used
++                break;
++        }
++        if (!aHTTPProxy.isEmpty())
++        {
++            QUrl aProxy(aHTTPProxy);
++            OUString sProxy = reinterpret_cast<const sal_Unicode*>(aProxy.host().utf16());
++            return css::beans::Optional<css::uno::Any>(true, uno::makeAny(sProxy));
++        }
++    }
++    else if (id == "ooInetHTTPProxyPort")
++    {
++        QString aHTTPProxy;
++        switch (KProtocolManager::proxyType())
++        {
++            case KProtocolManager::ManualProxy: // Proxies are manually configured
++                aHTTPProxy = KProtocolManager::proxyFor(QStringLiteral("HTTP"));
++                break;
++            case KProtocolManager::PACProxy: // A proxy configuration URL has been given
++            case KProtocolManager::WPADProxy: // A proxy should be automatically discovered
++            case KProtocolManager::
++                EnvVarProxy: // Use the proxy values set through environment variables
++                // In such cases, the proxy address is not stored in KDE, but determined dynamically.
++                // The proxy address may depend on the requested address, on the time of the day, on the speed of the wind...
++                // The best we can do here is to ask the current value for a given address.
++                aHTTPProxy = KProtocolManager::proxyForUrl(
++                    QUrl(QStringLiteral("ftp://ftp.libreoffice.org")));
++                break;
++            default: // No proxy is used
++                break;
++        }
++        if (!aHTTPProxy.isEmpty())
++        {
++            QUrl aProxy(aHTTPProxy);
++            sal_Int32 nPort = aProxy.port();
++            return css::beans::Optional<css::uno::Any>(true, uno::makeAny(nPort));
++        }
++    }
++    else if (id == "ooInetHTTPSProxyName")
++    {
++        QString aHTTPSProxy;
++        switch (KProtocolManager::proxyType())
++        {
++            case KProtocolManager::ManualProxy: // Proxies are manually configured
++                aHTTPSProxy = KProtocolManager::proxyFor(QStringLiteral("HTTPS"));
++                break;
++            case KProtocolManager::PACProxy: // A proxy configuration URL has been given
++            case KProtocolManager::WPADProxy: // A proxy should be automatically discovered
++            case KProtocolManager::
++                EnvVarProxy: // Use the proxy values set through environment variables
++                // In such cases, the proxy address is not stored in KDE, but determined dynamically.
++                // The proxy address may depend on the requested address, on the time of the day, on the speed of the wind...
++                // The best we can do here is to ask the current value for a given address.
++                aHTTPSProxy = KProtocolManager::proxyForUrl(
++                    QUrl(QStringLiteral("ftp://ftp.libreoffice.org")));
++                break;
++            default: // No proxy is used
++                break;
++        }
++        if (!aHTTPSProxy.isEmpty())
++        {
++            QUrl aProxy(aHTTPSProxy);
++            OUString sProxy = reinterpret_cast<const sal_Unicode*>(aProxy.host().utf16());
++            return css::beans::Optional<css::uno::Any>(true, uno::makeAny(sProxy));
++        }
++    }
++    else if (id == "ooInetHTTPSProxyPort")
++    {
++        QString aHTTPSProxy;
++        switch (KProtocolManager::proxyType())
++        {
++            case KProtocolManager::ManualProxy: // Proxies are manually configured
++                aHTTPSProxy = KProtocolManager::proxyFor(QStringLiteral("HTTPS"));
++                break;
++            case KProtocolManager::PACProxy: // A proxy configuration URL has been given
++            case KProtocolManager::WPADProxy: // A proxy should be automatically discovered
++            case KProtocolManager::
++                EnvVarProxy: // Use the proxy values set through environment variables
++                // In such cases, the proxy address is not stored in KDE, but determined dynamically.
++                // The proxy address may depend on the requested address, on the time of the day, on the speed of the wind...
++                // The best we can do here is to ask the current value for a given address.
++                aHTTPSProxy = KProtocolManager::proxyForUrl(
++                    QUrl(QStringLiteral("ftp://ftp.libreoffice.org")));
++                break;
++            default: // No proxy is used
++                break;
++        }
++        if (!aHTTPSProxy.isEmpty())
++        {
++            QUrl aProxy(aHTTPSProxy);
++            sal_Int32 nPort = aProxy.port();
++            return css::beans::Optional<css::uno::Any>(true, uno::makeAny(nPort));
++        }
++    }
++    else if (id == "ooInetNoProxy")
++    {
++        QString aNoProxyFor;
++        switch (KProtocolManager::proxyType())
++        {
++            case KProtocolManager::ManualProxy: // Proxies are manually configured
++            case KProtocolManager::PACProxy: // A proxy configuration URL has been given
++            case KProtocolManager::WPADProxy: // A proxy should be automatically discovered
++            case KProtocolManager::
++                EnvVarProxy: // Use the proxy values set through environment variables
++                aNoProxyFor = KProtocolManager::noProxyFor();
++                break;
++            default: // No proxy is used
++                break;
++        }
++        if (!aNoProxyFor.isEmpty())
++        {
++            OUString sNoProxyFor;
++
++            aNoProxyFor = aNoProxyFor.replace(COMMA, SEMI_COLON);
++            sNoProxyFor = reinterpret_cast<const sal_Unicode*>(aNoProxyFor.utf16());
++            return css::beans::Optional<css::uno::Any>(true, uno::makeAny(sNoProxyFor));
++        }
++    }
++    else if (id == "ooInetProxyType")
++    {
++        int nProxyType;
++        switch (KProtocolManager::proxyType())
++        {
++            case KProtocolManager::ManualProxy: // Proxies are manually configured
++            case KProtocolManager::PACProxy: // A proxy configuration URL has been given
++            case KProtocolManager::WPADProxy: // A proxy should be automatically discovered
++            case KProtocolManager::
++                EnvVarProxy: // Use the proxy values set through environment variables
++                nProxyType = 1;
++                break;
++            default: // No proxy is used
++                nProxyType = 0;
++        }
++        return css::beans::Optional<css::uno::Any>(true, uno::makeAny((sal_Int32)nProxyType));
++    }
++    else
++    {
++        OSL_ASSERT(false); // this cannot happen
++    }
++    return css::beans::Optional<css::uno::Any>();
++}
++}
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/shell/source/backends/kde5be/kde5access.hxx b/shell/source/backends/kde5be/kde5access.hxx
+new file mode 100644
+index 000000000000..902226bddd58
+--- /dev/null
++++ b/shell/source/backends/kde5be/kde5access.hxx
+@@ -0,0 +1,48 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#ifndef INCLUDED_SHELL_SOURCE_BACKENDS_KDE5BE_KDE5ACCESS_HXX
++#define INCLUDED_SHELL_SOURCE_BACKENDS_KDE5BE_KDE5ACCESS_HXX
++
++#include "sal/config.h"
++
++#include "com/sun/star/beans/Optional.hpp"
++
++namespace com
++{
++namespace sun
++{
++namespace star
++{
++namespace uno
++{
++class Any;
++}
++}
++}
++}
++
++namespace kde5access
++{
++css::beans::Optional<css::uno::Any> getValue(OUString const& id);
++}
++
++#endif
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/shell/source/backends/kde5be/kde5backend.cxx b/shell/source/backends/kde5be/kde5backend.cxx
+new file mode 100644
+index 000000000000..a14d68a42571
+--- /dev/null
++++ b/shell/source/backends/kde5be/kde5backend.cxx
+@@ -0,0 +1,255 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#include "sal/config.h"
++
++#include <QtWidgets/QApplication>
++
++#include "boost/noncopyable.hpp"
++#include "com/sun/star/beans/Optional.hpp"
++#include "com/sun/star/beans/PropertyVetoException.hpp"
++#include "com/sun/star/beans/UnknownPropertyException.hpp"
++#include "com/sun/star/beans/XPropertyChangeListener.hpp"
++#include "com/sun/star/beans/XPropertySet.hpp"
++#include "com/sun/star/beans/XPropertySetInfo.hpp"
++#include "com/sun/star/beans/XVetoableChangeListener.hpp"
++#include "com/sun/star/lang/IllegalArgumentException.hpp"
++#include "com/sun/star/lang/WrappedTargetException.hpp"
++#include "com/sun/star/lang/XMultiComponentFactory.hpp"
++#include "com/sun/star/lang/XServiceInfo.hpp"
++#include "com/sun/star/uno/Any.hxx"
++#include "com/sun/star/uno/Reference.hxx"
++#include "com/sun/star/uno/RuntimeException.hpp"
++#include "com/sun/star/uno/Sequence.hxx"
++#include "com/sun/star/uno/XComponentContext.hpp"
++#include "com/sun/star/uno/XCurrentContext.hpp"
++#include "cppuhelper/factory.hxx"
++#include <cppuhelper/implbase.hxx>
++#include "cppuhelper/implementationentry.hxx"
++#include "cppuhelper/weak.hxx"
++#include "rtl/string.h"
++#include "rtl/ustring.h"
++#include "rtl/ustring.hxx"
++#include "sal/types.h"
++#include "uno/current_context.hxx"
++
++#include <osl/process.h>
++#include <osl/thread.h>
++
++#include "kde5access.hxx"
++
++namespace
++{
++OUString SAL_CALL getServiceImplementationName()
++{
++    return OUString("com.sun.star.comp.configuration.backend.KDE5Backend");
++}
++
++css::uno::Sequence<OUString> SAL_CALL getServiceSupportedServiceNames()
++{
++    OUString name("com.sun.star.configuration.backend.KDE5Backend");
++    return css::uno::Sequence<OUString>(&name, 1);
++}
++
++class Service : public cppu::WeakImplHelper<css::lang::XServiceInfo, css::beans::XPropertySet>,
++                private boost::noncopyable
++{
++public:
++    Service();
++
++private:
++    virtual ~Service() {}
++
++    virtual OUString SAL_CALL getImplementationName() override
++    {
++        return getServiceImplementationName();
++    }
++
++    virtual sal_Bool SAL_CALL supportsService(OUString const& ServiceName) override
++    {
++        return ServiceName == getSupportedServiceNames()[0];
++    }
++
++    virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override
++    {
++        return getServiceSupportedServiceNames();
++    }
++
++    virtual css::uno::Reference<css::beans::XPropertySetInfo> SAL_CALL getPropertySetInfo() override
++    {
++        return css::uno::Reference<css::beans::XPropertySetInfo>();
++    }
++
++    virtual void SAL_CALL setPropertyValue(OUString const&, css::uno::Any const&) override;
++
++    virtual css::uno::Any SAL_CALL getPropertyValue(OUString const& PropertyName) override;
++
++    virtual void SAL_CALL addPropertyChangeListener(
++        OUString const&, css::uno::Reference<css::beans::XPropertyChangeListener> const&) override
++    {
++    }
++
++    virtual void SAL_CALL removePropertyChangeListener(
++        OUString const&, css::uno::Reference<css::beans::XPropertyChangeListener> const&) override
++    {
++    }
++
++    virtual void SAL_CALL addVetoableChangeListener(
++        OUString const&, css::uno::Reference<css::beans::XVetoableChangeListener> const&) override
++    {
++    }
++
++    virtual void SAL_CALL removeVetoableChangeListener(
++        OUString const&, css::uno::Reference<css::beans::XVetoableChangeListener> const&) override
++    {
++    }
++
++    bool enabled_;
++};
++
++// init the QApplication when we load the kde5backend into a non-Qt vclplug (e.g. Gtk3KDE5)
++// TODO: use a helper process to read these values without linking to Qt directly?
++// TODO: share this code somehow with Qt5Instance.cxx?
++void initQApp()
++{
++    char** pFakeArgvFreeable = nullptr;
++
++    int nFakeArgc = 2;
++    const sal_uInt32 nParams = osl_getCommandArgCount();
++    OString aDisplay;
++    OUString aParam, aBin;
++
++    for (sal_uInt32 nIdx = 0; nIdx < nParams; ++nIdx)
++    {
++        osl_getCommandArg(nIdx, &aParam.pData);
++        if (aParam != "-display")
++            continue;
++        if (!pFakeArgvFreeable)
++        {
++            pFakeArgvFreeable = new char*[nFakeArgc + 2];
++            pFakeArgvFreeable[nFakeArgc++] = strdup("-display");
++        }
++        else
++            free(pFakeArgvFreeable[nFakeArgc]);
++
++        ++nIdx;
++        osl_getCommandArg(nIdx, &aParam.pData);
++        aDisplay = OUStringToOString(aParam, osl_getThreadTextEncoding());
++        pFakeArgvFreeable[nFakeArgc] = strdup(aDisplay.getStr());
++    }
++    if (!pFakeArgvFreeable)
++        pFakeArgvFreeable = new char*[nFakeArgc];
++    else
++        nFakeArgc++;
++
++    osl_getExecutableFile(&aParam.pData);
++    osl_getSystemPathFromFileURL(aParam.pData, &aBin.pData);
++    OString aExec = OUStringToOString(aBin, osl_getThreadTextEncoding());
++    pFakeArgvFreeable[0] = strdup(aExec.getStr());
++    pFakeArgvFreeable[1] = strdup("--nocrashhandler");
++
++    char** pFakeArgv = new char*[nFakeArgc];
++    for (int i = 0; i < nFakeArgc; i++)
++        pFakeArgv[i] = pFakeArgvFreeable[i];
++
++    char* session_manager = nullptr;
++    if (getenv("SESSION_MANAGER") != nullptr)
++    {
++        session_manager = strdup(getenv("SESSION_MANAGER"));
++        unsetenv("SESSION_MANAGER");
++    }
++
++    int* pFakeArgc = new int;
++    *pFakeArgc = nFakeArgc;
++    new QApplication(*pFakeArgc, pFakeArgv);
++
++    if (session_manager != nullptr)
++    {
++        // coverity[tainted_string] - trusted source for setenv
++        setenv("SESSION_MANAGER", session_manager, 1);
++        free(session_manager);
++    }
++
++    QApplication::setQuitOnLastWindowClosed(false);
++}
++
++Service::Service()
++    : enabled_(false)
++{
++    css::uno::Reference<css::uno::XCurrentContext> context(css::uno::getCurrentContext());
++    if (context.is())
++    {
++        if (!qApp)
++        {
++            initQApp();
++        }
++        OUString desktop;
++        context->getValueByName("system.desktop-environment") >>= desktop;
++        enabled_ = desktop == "KDE5" && qApp != nullptr;
++    }
++}
++
++void Service::setPropertyValue(OUString const&, css::uno::Any const&)
++{
++    throw css::lang::IllegalArgumentException(OUString("setPropertyValue not supported"),
++                                              static_cast<cppu::OWeakObject*>(this), -1);
++}
++
++css::uno::Any Service::getPropertyValue(OUString const& PropertyName)
++{
++    if (PropertyName == "EnableATToolSupport" || PropertyName == "ExternalMailer"
++        || PropertyName == "SourceViewFontHeight" || PropertyName == "SourceViewFontName"
++        || PropertyName == "WorkPathVariable" || PropertyName == "ooInetFTPProxyName"
++        || PropertyName == "ooInetFTPProxyPort" || PropertyName == "ooInetHTTPProxyName"
++        || PropertyName == "ooInetHTTPProxyPort" || PropertyName == "ooInetHTTPSProxyName"
++        || PropertyName == "ooInetHTTPSProxyPort" || PropertyName == "ooInetNoProxy"
++        || PropertyName == "ooInetProxyType")
++    {
++        return css::uno::makeAny(enabled_ ? kde5access::getValue(PropertyName)
++                                          : css::beans::Optional<css::uno::Any>());
++    }
++    else if (PropertyName == "givenname" || PropertyName == "sn"
++             || PropertyName == "TemplatePathVariable")
++    {
++        return css::uno::makeAny(css::beans::Optional<css::uno::Any>());
++        //TODO: obtain values from KDE?
++    }
++    throw css::beans::UnknownPropertyException(PropertyName, static_cast<cppu::OWeakObject*>(this));
++}
++
++css::uno::Reference<css::uno::XInterface>
++    SAL_CALL createInstance(css::uno::Reference<css::uno::XComponentContext> const&)
++{
++    return static_cast<cppu::OWeakObject*>(new Service);
++}
++
++static cppu::ImplementationEntry const services[]
++    = { { &createInstance, &getServiceImplementationName, &getServiceSupportedServiceNames,
++          &cppu::createSingleComponentFactory, nullptr, 0 },
++        { nullptr, nullptr, nullptr, nullptr, nullptr, 0 } };
++}
++
++extern "C" SAL_DLLPUBLIC_EXPORT void* SAL_CALL kde5be1_component_getFactory(char const* pImplName,
++                                                                            void* pServiceManager,
++                                                                            void* pRegistryKey)
++{
++    return cppu::component_getFactoryHelper(pImplName, pServiceManager, pRegistryKey, services);
++}
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/shell/source/backends/kde5be/kde5be1.component b/shell/source/backends/kde5be/kde5be1.component
+new file mode 100644
+index 000000000000..74111874cb6b
+--- /dev/null
++++ b/shell/source/backends/kde5be/kde5be1.component
+@@ -0,0 +1,25 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ -->
++
++<component loader="com.sun.star.loader.SharedLibrary" environment="@CPPU_ENV@"
++    prefix="kde5be1" xmlns="http://openoffice.org/2010/uno-components">
++  <implementation name="com.sun.star.comp.configuration.backend.KDE5Backend">
++    <service name="com.sun.star.configuration.backend.KDE5Backend"/>
++  </implementation>
++</component>
+diff --git a/vcl/CustomTarget_gtk3_kde5_moc.mk b/vcl/CustomTarget_gtk3_kde5_moc.mk
+new file mode 100644
+index 000000000000..42f7edbe5105
+--- /dev/null
++++ b/vcl/CustomTarget_gtk3_kde5_moc.mk
+@@ -0,0 +1,22 @@
++# -*- Mode: makefile-gmake; tab-width: 4; indent-tabs-mode: t -*-
++#
++# This file is part of the LibreOffice project.
++#
++# This Source Code Form is subject to the terms of the Mozilla Public
++# License, v. 2.0. If a copy of the MPL was not distributed with this
++# file, You can obtain one at http://mozilla.org/MPL/2.0/.
++#
++
++$(eval $(call gb_CustomTarget_CustomTarget,vcl/unx/gtk3_kde5))
++
++$(call gb_CustomTarget_get_target,vcl/unx/gtk3_kde5) : \
++	$(call gb_CustomTarget_get_workdir,vcl/unx/gtk3_kde5)/kde5_filepicker.moc \
++	$(call gb_CustomTarget_get_workdir,vcl/unx/gtk3_kde5)/kde5_filepicker_ipc.moc \
++
++$(call gb_CustomTarget_get_workdir,vcl/unx/gtk3_kde5)/%.moc : \
++		$(SRCDIR)/vcl/unx/gtk3_kde5/%.hxx \
++		| $(call gb_CustomTarget_get_workdir,vcl/unx/gtk3_kde5)/.dir
++	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),$(true),MOC,1)
++	$(MOC5) $< -o $@
++
++# vim: set noet sw=4:
+diff --git a/vcl/Executable_lo_kde5filepicker.mk b/vcl/Executable_lo_kde5filepicker.mk
+new file mode 100644
+index 000000000000..2eee2cd8711b
+--- /dev/null
++++ b/vcl/Executable_lo_kde5filepicker.mk
+@@ -0,0 +1,99 @@
++# -*- Mode: makefile-gmake; tab-width: 4; indent-tabs-mode: t -*-
++#
++# This file is part of the LibreOffice project.
++#
++# This Source Code Form is subject to the terms of the Mozilla Public
++# License, v. 2.0. If a copy of the MPL was not distributed with this
++# file, You can obtain one at http://mozilla.org/MPL/2.0/.
++#
++# This file incorporates work covered by the following license notice:
++#
++#   Licensed to the Apache Software Foundation (ASF) under one or more
++#   contributor license agreements. See the NOTICE file distributed
++#   with this work for additional information regarding copyright
++#   ownership. The ASF licenses this file to you under the Apache
++#   License, Version 2.0 (the "License"); you may not use this file
++#   except in compliance with the License. You may obtain a copy of
++#   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++#
++
++$(eval $(call gb_Executable_Executable,lo_kde5filepicker))
++
++# FIXME: how to find the moc files automatically?!
++$(eval $(call gb_Executable_set_include,lo_kde5filepicker,\
++    $$(INCLUDE) \
++    -I$(SRCDIR)/vcl/inc \
++    -I$(WORKDIR)/CustomTarget/vcl/unx/gtk3_kde5 \
++))
++
++$(eval $(call gb_Executable_add_cxxflags,lo_kde5filepicker,\
++    $$(INCLUDE) \
++    $$(BOOST_CXXFLAGS) \
++))
++
++$(eval $(call gb_Executable_use_custom_headers,lo_kde5filepicker,\
++	officecfg/registry \
++))
++
++$(eval $(call gb_Executable_use_sdk_api,lo_kde5filepicker))
++
++$(eval $(call gb_Executable_add_libs,lo_kde5filepicker,\
++	-lX11 \
++	-lXext \
++	-lSM \
++	-lICE \
++))
++
++$(eval $(call gb_Executable_use_libraries,lo_kde5filepicker,\
++    vclplug_gen \
++    vcl \
++    tl \
++    utl \
++    sot \
++    ucbhelper \
++    basegfx \
++    comphelper \
++    cppuhelper \
++    i18nlangtag \
++    i18nutil \
++    $(if $(ENABLE_JAVA), \
++        jvmaccess) \
++    cppu \
++    sal \
++))
++
++$(eval $(call gb_Executable_use_externals,lo_kde5filepicker,\
++	boost_headers \
++	epoxy \
++	kde5 \
++	dbus \
++))
++
++$(eval $(call gb_Executable_add_defs,lo_kde5filepicker,\
++    $(QT5_CFLAGS) \
++    $(QT5_GLIB_CFLAGS) \
++    $(KF5_CFLAGS) \
++))
++$(eval $(call gb_Executable_add_libs,lo_kde5filepicker,\
++    $(QT5_LIBS) \
++    $(QT5_GLIB_LIBS) \
++    $(KF5_LIBS) \
++    $(BOOST_PROCESS_LIB) \
++    $(BOOST_FILESYSTEM_LIB) \
++))
++
++$(eval $(call gb_Executable_add_exception_objects,lo_kde5filepicker,\
++	vcl/unx/gtk3_kde5/kde5_lo_filepicker_main \
++	vcl/unx/gtk3_kde5/kde5_filepicker \
++	vcl/unx/gtk3_kde5/kde5_filepicker_ipc \
++))
++
++ifeq ($(OS),LINUX)
++$(eval $(call gb_Executable_add_libs,lo_kde5filepicker,\
++	-lm \
++	-ldl \
++	-lpthread \
++))
++endif
++
++# vim: set noet sw=4 ts=4:
+diff --git a/vcl/Library_vclplug_gtk3_kde5.mk b/vcl/Library_vclplug_gtk3_kde5.mk
+new file mode 100644
+index 000000000000..eaff74cad35c
+--- /dev/null
++++ b/vcl/Library_vclplug_gtk3_kde5.mk
+@@ -0,0 +1,128 @@
++# -*- Mode: makefile-gmake; tab-width: 4; indent-tabs-mode: t -*-
++#
++# This file is part of the LibreOffice project.
++#
++# This Source Code Form is subject to the terms of the Mozilla Public
++# License, v. 2.0. If a copy of the MPL was not distributed with this
++# file, You can obtain one at http://mozilla.org/MPL/2.0/.
++#
++# This file incorporates work covered by the following license notice:
++#
++#   Licensed to the Apache Software Foundation (ASF) under one or more
++#   contributor license agreements. See the NOTICE file distributed
++#   with this work for additional information regarding copyright
++#   ownership. The ASF licenses this file to you under the Apache
++#   License, Version 2.0 (the "License"); you may not use this file
++#   except in compliance with the License. You may obtain a copy of
++#   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++#
++
++$(eval $(call gb_Library_Library,vclplug_gtk3_kde5))
++
++# Silence deprecation warnings wholesale as long as vcl/unx/gtk3/*.cxx just
++# forward to vcl/unx/gtk/*.cxx:
++$(eval $(call gb_Library_add_cxxflags,vclplug_gtk3_kde5, \
++    -Wno-deprecated-declarations \
++))
++
++$(eval $(call gb_Library_set_include,vclplug_gtk3_kde5,\
++    $$(INCLUDE) \
++    -I$(SRCDIR)/vcl/inc \
++    -I$(SRCDIR)/vcl/unx \
++    -I$(SRCDIR)/vcl/unx/gtk3 \
++))
++
++$(eval $(call gb_Library_add_cxxflags,vclplug_gtk3_kde5,\
++    $$(INCLUDE) \
++    $$(GTK3_CFLAGS) \
++))
++
++$(eval $(call gb_Library_add_defs,vclplug_gtk3_kde5,\
++    -DVCLPLUG_GTK_IMPLEMENTATION -DVCLPLUG_GTK3_KDE5_IMPLEMENTATION \
++))
++
++$(eval $(call gb_Library_use_custom_headers,vclplug_gtk3_kde5,\
++	officecfg/registry \
++))
++
++$(eval $(call gb_Library_use_sdk_api,vclplug_gtk3_kde5))
++
++$(eval $(call gb_Library_add_libs,vclplug_gtk3_kde5,\
++	$(GTK3_LIBS) \
++	$(GTHREAD_LIBS) \
++	-lX11 \
++	-lXext \
++	-lSM \
++	-lICE \
++))
++
++$(eval $(call gb_Library_use_libraries,vclplug_gtk3_kde5,\
++    vclplug_gen \
++    vcl \
++    tl \
++    utl \
++    sot \
++    ucbhelper \
++    basegfx \
++    comphelper \
++    cppuhelper \
++    i18nlangtag \
++    i18nutil \
++    $(if $(ENABLE_JAVA), \
++        jvmaccess) \
++    cppu \
++    sal \
++))
++
++$(eval $(call gb_Library_use_externals,vclplug_gtk3_kde5,\
++	boost_headers \
++	boost_filesystem \
++	epoxy \
++	dbus \
++))
++
++$(eval $(call gb_Library_add_exception_objects,vclplug_gtk3_kde5,\
++	vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkaction \
++	vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkbridge \
++	vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkcomponent \
++	vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkeditabletext \
++	vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkfactory \
++	vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkhypertext \
++	vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkimage \
++	vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atklistener \
++	vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkregistry \
++	vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkselection \
++	vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atktable \
++	vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atktextattributes \
++	vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atktext \
++	vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkutil \
++	vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkvalue \
++	vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkwindow \
++	vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkwrapper \
++	vcl/unx/gtk3_kde5/gtk3_kde5_gtkdata \
++	vcl/unx/gtk3_kde5/gtk3_kde5_gtkinst \
++	vcl/unx/gtk3_kde5/gtk3_kde5_gtksys \
++	vcl/unx/gtk3_kde5/gtk3_kde5_filepicker \
++	vcl/unx/gtk3_kde5/gtk3_kde5_filepicker_ipc \
++	vcl/unx/gtk3_kde5/gtk3_kde5_folderpicker \
++	vcl/unx/gtk3_kde5/gtk3_kde5_cairo \
++	vcl/unx/gtk3_kde5/gtk3_kde5_printwrapper \
++	vcl/unx/gtk3_kde5/gtk3_kde5_salnativewidgets-gtk \
++	vcl/unx/gtk3_kde5/gtk3_kde5_salprn-gtk \
++	vcl/unx/gtk3_kde5/gtk3_kde5_gtkframe \
++	vcl/unx/gtk3_kde5/gtk3_kde5_gtkobject \
++	vcl/unx/gtk3_kde5/gtk3_kde5_gtksalmenu \
++	vcl/unx/gtk3_kde5/gtk3_kde5_glomenu \
++	vcl/unx/gtk3_kde5/gtk3_kde5_gloactiongroup \
++	vcl/unx/gtk3_kde5/gtk3_kde5_hudawareness \
++))
++
++ifeq ($(OS),LINUX)
++$(eval $(call gb_Library_add_libs,vclplug_gtk3_kde5,\
++	-lm \
++	-ldl \
++	-lpthread \
++))
++endif
++
++# vim: set noet sw=4 ts=4:
+diff --git a/vcl/Module_vcl.mk b/vcl/Module_vcl.mk
+index 91fcbba026d7..b5ebdb6c8e60 100644
+--- a/vcl/Module_vcl.mk
++++ b/vcl/Module_vcl.mk
+@@ -81,18 +81,26 @@ $(eval $(call gb_Module_add_targets,vcl,\
+     Library_vclplug_kde4 \
+ ))
+ endif
+-ifneq ($(ENABLE_KDE5),)
+-$(eval $(call gb_Module_add_targets,vcl,\
+-    CustomTarget_kde5_moc \
+-    Library_vclplug_kde5 \
+-))
+-endif
++# NOTE: does not compile
++# ifneq ($(ENABLE_KDE5),)
++# $(eval $(call gb_Module_add_targets,vcl,\
++#     CustomTarget_kde5_moc \
++#     Library_vclplug_kde5 \
++# ))
++# endif
+ ifneq ($(ENABLE_QT5),)
+ $(eval $(call gb_Module_add_targets,vcl,\
+     CustomTarget_qt5_moc \
+     Library_vclplug_qt5 \
+ ))
+ endif
++ifneq ($(ENABLE_GTK3_KDE5),)
++$(eval $(call gb_Module_add_targets,vcl,\
++    CustomTarget_gtk3_kde5_moc \
++    Library_vclplug_gtk3_kde5 \
++    Executable_lo_kde5filepicker \
++))
++endif
+ endif
+ 
+ ifeq ($(OS),MACOSX)
+diff --git a/vcl/unx/generic/plugadapt/salplug.cxx b/vcl/unx/generic/plugadapt/salplug.cxx
+index c76077a776b4..b7ed29a22f5d 100644
+--- a/vcl/unx/generic/plugadapt/salplug.cxx
++++ b/vcl/unx/generic/plugadapt/salplug.cxx
+@@ -99,7 +99,7 @@ static SalInstance* tryInstance( const OUString& rModuleBase, bool bForce = fals
+                  * #i109007# KDE3 seems to have the same problem.
+                  * And same applies for KDE4.
+                  */
+-                if( rModuleBase == "gtk" || rModuleBase == "gtk3" || rModuleBase == "kde4" )
++                if( rModuleBase == "gtk" || rModuleBase == "gtk3" || rModuleBase == "kde4" || rModuleBase == "gtk3_kde5")
+                 {
+                     pCloseModule = nullptr;
+                 }
+@@ -163,6 +163,9 @@ static SalInstance* autodetect_plugin()
+ {
+     static const char* const pKDEFallbackList[] =
+     {
++#if ENABLE_GTK3_KDE5
++        "gtk3_kde5",
++#endif
+ #if ENABLE_KDE4
+         "kde4",
+ #endif
+diff --git a/vcl/unx/gtk3_kde5/FPServiceInfo.hxx b/vcl/unx/gtk3_kde5/FPServiceInfo.hxx
+new file mode 100644
+index 000000000000..1fbb8fd276b2
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/FPServiceInfo.hxx
+@@ -0,0 +1,28 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#pragma once
++
++// the service names
++#define FILE_PICKER_SERVICE_NAME "com.sun.star.ui.dialogs.Gtk3KDE5FilePicker"
++
++// the implementation names
++#define FILE_PICKER_IMPL_NAME "com.sun.star.ui.dialogs.Gtk3KDE5FilePicker"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkaction.cxx b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkaction.cxx
+new file mode 100644
+index 000000000000..a3fa632d08a1
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkaction.cxx
+@@ -0,0 +1,12 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ */
++
++#include "../../gtk/a11y/atkaction.cxx"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkbridge.cxx b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkbridge.cxx
+new file mode 100644
+index 000000000000..d8e087956067
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkbridge.cxx
+@@ -0,0 +1,12 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ */
++
++#include "../../gtk/a11y/atkbridge.cxx"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkcomponent.cxx b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkcomponent.cxx
+new file mode 100644
+index 000000000000..e4eabec20fb8
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkcomponent.cxx
+@@ -0,0 +1,12 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ */
++
++#include "../../gtk/a11y/atkcomponent.cxx"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkeditabletext.cxx b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkeditabletext.cxx
+new file mode 100644
+index 000000000000..ea3f0895fb8e
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkeditabletext.cxx
+@@ -0,0 +1,12 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ */
++
++#include "../../gtk/a11y/atkeditabletext.cxx"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkfactory.cxx b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkfactory.cxx
+new file mode 100644
+index 000000000000..c60db2fcc074
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkfactory.cxx
+@@ -0,0 +1,12 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ */
++
++#include "../../gtk/a11y/atkfactory.cxx"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkhypertext.cxx b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkhypertext.cxx
+new file mode 100644
+index 000000000000..bb9749c36af3
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkhypertext.cxx
+@@ -0,0 +1,12 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ */
++
++#include "../../gtk/a11y/atkhypertext.cxx"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkimage.cxx b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkimage.cxx
+new file mode 100644
+index 000000000000..4e2c77e9f2b1
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkimage.cxx
+@@ -0,0 +1,12 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ */
++
++#include "../../gtk/a11y/atkimage.cxx"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atklistener.cxx b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atklistener.cxx
+new file mode 100644
+index 000000000000..eca1cd7ec1d0
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atklistener.cxx
+@@ -0,0 +1,12 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ */
++
++#include "../../gtk/a11y/atklistener.cxx"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkregistry.cxx b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkregistry.cxx
+new file mode 100644
+index 000000000000..126e97a808ae
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkregistry.cxx
+@@ -0,0 +1,12 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ */
++
++#include "../../gtk/a11y/atkregistry.cxx"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkselection.cxx b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkselection.cxx
+new file mode 100644
+index 000000000000..f67b665304d7
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkselection.cxx
+@@ -0,0 +1,12 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ */
++
++#include "../../gtk/a11y/atkselection.cxx"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atktable.cxx b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atktable.cxx
+new file mode 100644
+index 000000000000..d886ac07296a
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atktable.cxx
+@@ -0,0 +1,12 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ */
++
++#include "../../gtk/a11y/atktable.cxx"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atktext.cxx b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atktext.cxx
+new file mode 100644
+index 000000000000..e4bbd5a38980
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atktext.cxx
+@@ -0,0 +1,12 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ */
++
++#include "../../gtk/a11y/atktext.cxx"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atktextattributes.cxx b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atktextattributes.cxx
+new file mode 100644
+index 000000000000..b0edad06a65c
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atktextattributes.cxx
+@@ -0,0 +1,12 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ */
++
++#include "../../gtk/a11y/atktextattributes.cxx"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkutil.cxx b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkutil.cxx
+new file mode 100644
+index 000000000000..8c1eeaf9882b
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkutil.cxx
+@@ -0,0 +1,12 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ */
++
++#include "../../gtk/a11y/atkutil.cxx"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkvalue.cxx b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkvalue.cxx
+new file mode 100644
+index 000000000000..30057943bc44
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkvalue.cxx
+@@ -0,0 +1,12 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ */
++
++#include "../../gtk/a11y/atkvalue.cxx"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkwindow.cxx b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkwindow.cxx
+new file mode 100644
+index 000000000000..cd8479cd4df7
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkwindow.cxx
+@@ -0,0 +1,12 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ */
++
++#include "../../gtk/a11y/atkwindow.cxx"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkwrapper.cxx b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkwrapper.cxx
+new file mode 100644
+index 000000000000..3b07e9536d77
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkwrapper.cxx
+@@ -0,0 +1,12 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ */
++
++#include "../../gtk/a11y/atkwrapper.cxx"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/filepicker_ipc_commands.hxx b/vcl/unx/gtk3_kde5/filepicker_ipc_commands.hxx
+new file mode 100644
+index 000000000000..3aef6da858b1
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/filepicker_ipc_commands.hxx
+@@ -0,0 +1,170 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#pragma once
++
++#include <cstdint>
++#include <iostream>
++#include <vector>
++
++#include <sal/types.h>
++#include <com/sun/star/uno/Sequence.hxx>
++
++// #define DEBUG_FILEPICKER_IPC
++
++namespace rtl
++{
++class OUString;
++}
++class QString;
++
++enum class Commands : uint16_t
++{
++    SetTitle,
++    SetWinId,
++    Execute,
++    SetMultiSelectionMode,
++    SetDefaultName,
++    SetDisplayDirectory,
++    GetDisplayDirectory,
++    GetSelectedFiles,
++    AppendFilter,
++    SetCurrentFilter,
++    GetCurrentFilter,
++    SetValue,
++    GetValue,
++    EnableControl,
++    SetLabel,
++    GetLabel,
++    AddCheckBox,
++    Initialize,
++    Quit,
++    EnablePickFolderMode,
++};
++
++inline std::vector<char> readIpcStringArg(std::istream& stream)
++{
++    uint32_t length = 0;
++    stream >> length;
++    stream.ignore(); // skip space separator
++    std::vector<char> buffer(length, '\0');
++    stream.read(buffer.data(), length);
++    return buffer;
++}
++
++void readIpcArg(std::istream& stream, rtl::OUString& string);
++void readIpcArg(std::istream& stream, QString& string);
++void readIpcArg(std::istream& stream, css::uno::Sequence<rtl::OUString>& seq);
++
++inline void readIpcArg(std::istream& stream, Commands& value)
++{
++    uint16_t v = 0;
++    stream >> v;
++    stream.ignore(); // skip space
++    value = static_cast<Commands>(v);
++}
++
++inline void readIpcArg(std::istream& stream, sal_Bool& value)
++{
++    bool v = false;
++    stream >> v;
++    value = v;
++    stream.ignore(); // skip space
++}
++
++inline void readIpcArg(std::istream& stream, bool& value)
++{
++    stream >> value;
++    stream.ignore(); // skip space
++}
++
++inline void readIpcArg(std::istream& stream, sal_Int16& value)
++{
++    stream >> value;
++    stream.ignore(); // skip space
++}
++
++inline void readIpcArg(std::istream& stream, sal_uIntPtr& value)
++{
++    stream >> value;
++    stream.ignore(); // skip space
++}
++
++inline void readIpcArgs(std::istream& /*stream*/)
++{
++    // end of arguments, nothing to do
++}
++
++template <typename T, typename... Args>
++inline void readIpcArgs(std::istream& stream, T& arg, Args&... args)
++{
++    readIpcArg(stream, arg);
++    readIpcArgs(stream, args...);
++}
++
++void sendIpcArg(std::ostream& stream, const rtl::OUString& string);
++void sendIpcArg(std::ostream& stream, const QString& string);
++
++inline void sendIpcStringArg(std::ostream& stream, uint32_t length, const char* string)
++{
++    stream << length << ' ';
++    stream.write(string, length);
++    stream << ' ';
++}
++
++inline void sendIpcArg(std::ostream& stream, Commands value)
++{
++    stream << static_cast<uint16_t>(value) << ' ';
++}
++
++inline void sendIpcArg(std::ostream& stream, sal_Bool value)
++{
++    stream << static_cast<bool>(value) << ' ';
++}
++
++inline void sendIpcArg(std::ostream& stream, bool value) { stream << value << ' '; }
++
++inline void sendIpcArg(std::ostream& stream, sal_Int16 value) { stream << value << ' '; }
++
++inline void sendIpcArg(std::ostream& stream, sal_uIntPtr value) { stream << value << ' '; }
++
++inline void sendIpcArgsImpl(std::ostream& stream)
++{
++    // end of arguments, flush stream
++    stream << std::endl;
++}
++
++template <typename T, typename... Args>
++inline void sendIpcArgsImpl(std::ostream& stream, const T& arg, const Args&... args)
++{
++    sendIpcArg(stream, arg);
++    sendIpcArgsImpl(stream, args...);
++}
++
++template <typename T, typename... Args>
++inline void sendIpcArgs(std::ostream& stream, const T& arg, const Args&... args)
++{
++    sendIpcArgsImpl(stream, arg, args...);
++#ifdef DEBUG_FILEPICKER_IPC
++    std::cerr << "IPC MSG: ";
++    sendIpcArgsImpl(std::cerr, arg, args...);
++#endif
++}
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/gtk3_kde5_a11y.cxx b/vcl/unx/gtk3_kde5/gtk3_kde5_a11y.cxx
+new file mode 100644
+index 000000000000..02fd47a60d63
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/gtk3_kde5_a11y.cxx
+@@ -0,0 +1,38 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#include "../gtk3/a11y/gtk3atkaction.cxx"
++#include "../gtk3/a11y/gtk3atkbridge.cxx"
++#include "../gtk3/a11y/gtk3atkcomponent.cxx"
++#include "../gtk3/a11y/gtk3atkeditabletext.cxx"
++#include "../gtk3/a11y/gtk3atkfactory.cxx"
++#include "../gtk3/a11y/gtk3atkhypertext.cxx"
++#include "../gtk3/a11y/gtk3atkimage.cxx"
++#include "../gtk3/a11y/gtk3atklistener.cxx"
++#include "../gtk3/a11y/gtk3atkregistry.cxx"
++#include "../gtk3/a11y/gtk3atkselection.cxx"
++#include "../gtk3/a11y/gtk3atktable.cxx"
++#include "../gtk3/a11y/gtk3atktextattributes.cxx"
++#include "../gtk3/a11y/gtk3atktext.cxx"
++#include "../gtk3/a11y/gtk3atkutil.cxx"
++#include "../gtk3/a11y/gtk3atkvalue.cxx"
++#include "../gtk3/a11y/gtk3atkwindow.cxx"
++#include "../gtk3/a11y/gtk3atkwrapper.cxx"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/gtk3_kde5_cairo.cxx b/vcl/unx/gtk3_kde5/gtk3_kde5_cairo.cxx
+new file mode 100644
+index 000000000000..fc271f160e7f
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/gtk3_kde5_cairo.cxx
+@@ -0,0 +1,22 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#include "../gtk3/cairo_gtk3_cairo.cxx"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/gtk3_kde5_filepicker.cxx b/vcl/unx/gtk3_kde5/gtk3_kde5_filepicker.cxx
+new file mode 100644
+index 000000000000..28c0af2047aa
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/gtk3_kde5_filepicker.cxx
+@@ -0,0 +1,456 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#include "gtk3_kde5_filepicker.hxx"
++
++#include <com/sun/star/lang/DisposedException.hpp>
++#include <com/sun/star/lang/XMultiServiceFactory.hpp>
++#include <com/sun/star/lang/IllegalArgumentException.hpp>
++#include <cppuhelper/interfacecontainer.h>
++#include <cppuhelper/supportsservice.hxx>
++#include <com/sun/star/ui/dialogs/TemplateDescription.hpp>
++#include <com/sun/star/ui/dialogs/CommonFilePickerElementIds.hpp>
++#include <com/sun/star/ui/dialogs/ExtendedFilePickerElementIds.hpp>
++#include <com/sun/star/ui/dialogs/ControlActions.hpp>
++#include <com/sun/star/ui/dialogs/ExecutableDialogResults.hpp>
++
++#include <osl/mutex.hxx>
++
++#include <fpicker/strings.hrc>
++
++#include "FPServiceInfo.hxx"
++
++#undef Region
++
++#include "unx/geninst.h"
++
++#include "strings.hrc"
++
++#include <future>
++
++#include <boost/filesystem/path.hpp>
++#include <boost/process/environment.hpp>
++#include <boost/process/search_path.hpp>
++#include <boost/process/io.hpp>
++
++using namespace ::com::sun::star;
++using namespace ::com::sun::star::ui::dialogs;
++using namespace ::com::sun::star::ui::dialogs::TemplateDescription;
++using namespace ::com::sun::star::ui::dialogs::ExtendedFilePickerElementIds;
++using namespace ::com::sun::star::ui::dialogs::CommonFilePickerElementIds;
++using namespace ::com::sun::star::lang;
++using namespace ::com::sun::star::beans;
++using namespace ::com::sun::star::uno;
++namespace bp = boost::process;
++namespace bf = boost::filesystem;
++
++// helper functions
++
++namespace
++{
++uno::Sequence<OUString> SAL_CALL FilePicker_getSupportedServiceNames()
++{
++    uno::Sequence<OUString> aRet(3);
++    aRet[0] = "com.sun.star.ui.dialogs.FilePicker";
++    aRet[1] = "com.sun.star.ui.dialogs.SystemFilePicker";
++    aRet[2] = "com.sun.star.ui.dialogs.Gtk3KDE5FilePicker";
++    return aRet;
++}
++}
++
++// Gtk3KDE5FilePicker
++
++Gtk3KDE5FilePicker::Gtk3KDE5FilePicker(const uno::Reference<uno::XComponentContext>&)
++    : Gtk3KDE5FilePicker_Base(_helperMutex)
++{
++    setMultiSelectionMode(false);
++}
++
++Gtk3KDE5FilePicker::~Gtk3KDE5FilePicker() = default;
++
++void SAL_CALL
++Gtk3KDE5FilePicker::addFilePickerListener(const uno::Reference<XFilePickerListener>& xListener)
++{
++    SolarMutexGuard aGuard;
++    m_xListener = xListener;
++}
++
++void SAL_CALL
++Gtk3KDE5FilePicker::removeFilePickerListener(const uno::Reference<XFilePickerListener>&)
++{
++    SolarMutexGuard aGuard;
++    m_xListener.clear();
++}
++
++void SAL_CALL Gtk3KDE5FilePicker::setTitle(const OUString& title)
++{
++    m_ipc.sendCommand(Commands::SetTitle, title);
++}
++
++sal_Int16 SAL_CALL Gtk3KDE5FilePicker::execute() { return m_ipc.execute(); }
++
++void SAL_CALL Gtk3KDE5FilePicker::setMultiSelectionMode(sal_Bool multiSelect)
++{
++    m_ipc.sendCommand(Commands::SetMultiSelectionMode, multiSelect);
++}
++
++void SAL_CALL Gtk3KDE5FilePicker::setDefaultName(const OUString& name)
++{
++    m_ipc.sendCommand(Commands::SetDefaultName, name);
++}
++
++void SAL_CALL Gtk3KDE5FilePicker::setDisplayDirectory(const OUString& dir)
++{
++    m_ipc.sendCommand(Commands::SetDisplayDirectory, dir);
++}
++
++OUString SAL_CALL Gtk3KDE5FilePicker::getDisplayDirectory()
++{
++    auto id = m_ipc.sendCommand(Commands::GetDisplayDirectory);
++    OUString dir;
++    m_ipc.readResponse(id, dir);
++    return dir;
++}
++
++uno::Sequence<OUString> SAL_CALL Gtk3KDE5FilePicker::getFiles()
++{
++    uno::Sequence<OUString> seq = getSelectedFiles();
++    if (seq.getLength() > 1)
++        seq.realloc(1);
++    return seq;
++}
++
++uno::Sequence<OUString> SAL_CALL Gtk3KDE5FilePicker::getSelectedFiles()
++{
++    auto id = m_ipc.sendCommand(Commands::GetSelectedFiles);
++    uno::Sequence<OUString> seq;
++    m_ipc.readResponse(id, seq);
++    return seq;
++}
++
++void SAL_CALL Gtk3KDE5FilePicker::appendFilter(const OUString& title, const OUString& filter)
++{
++    m_ipc.sendCommand(Commands::AppendFilter, title, filter);
++}
++
++void SAL_CALL Gtk3KDE5FilePicker::setCurrentFilter(const OUString& title)
++{
++    m_ipc.sendCommand(Commands::SetCurrentFilter, title);
++}
++
++OUString SAL_CALL Gtk3KDE5FilePicker::getCurrentFilter()
++{
++    auto id = m_ipc.sendCommand(Commands::GetCurrentFilter);
++    OUString filter;
++    m_ipc.readResponse(id, filter);
++    return filter;
++}
++
++void SAL_CALL Gtk3KDE5FilePicker::appendFilterGroup(const OUString& /*rGroupTitle*/,
++                                                    const uno::Sequence<beans::StringPair>& filters)
++{
++    const sal_uInt16 length = filters.getLength();
++    for (sal_uInt16 i = 0; i < length; ++i)
++    {
++        beans::StringPair aPair = filters[i];
++        appendFilter(aPair.First, aPair.Second);
++    }
++}
++
++void SAL_CALL Gtk3KDE5FilePicker::setValue(sal_Int16 controlId, sal_Int16 nControlAction,
++                                           const uno::Any& value)
++{
++    if (value.has<sal_Bool>())
++    {
++        m_ipc.sendCommand(Commands::SetValue, controlId, nControlAction, value.get<sal_Bool>());
++    }
++    else
++    {
++        OSL_TRACE("set value of unhandled type %d", controlId);
++    }
++}
++
++uno::Any SAL_CALL Gtk3KDE5FilePicker::getValue(sal_Int16 controlId, sal_Int16 nControlAction)
++{
++    if (CHECKBOX_AUTOEXTENSION == controlId)
++        // We ignore this one and rely on QFileDialog to provide the function.
++        // Always return false, to pretend we do not support this, otherwise
++        // LO core would try to be smart and cut the extension in some places,
++        // interfering with QFileDialog's handling of it. QFileDialog also
++        // saves the value of the setting, so LO core is not needed for that either.
++        return uno::Any(false);
++
++    auto id = m_ipc.sendCommand(Commands::GetValue, controlId, nControlAction);
++
++    sal_Bool value = false;
++    m_ipc.readResponse(id, value);
++
++    return uno::Any(value);
++}
++
++void SAL_CALL Gtk3KDE5FilePicker::enableControl(sal_Int16 controlId, sal_Bool enable)
++{
++    m_ipc.sendCommand(Commands::EnableControl, controlId, enable);
++}
++
++void SAL_CALL Gtk3KDE5FilePicker::setLabel(sal_Int16 controlId, const OUString& label)
++{
++    m_ipc.sendCommand(Commands::SetLabel, controlId, label);
++}
++
++OUString SAL_CALL Gtk3KDE5FilePicker::getLabel(sal_Int16 controlId)
++{
++    auto id = m_ipc.sendCommand(Commands::GetLabel, controlId);
++    OUString label;
++    m_ipc.readResponse(id, label);
++    return label;
++}
++
++void Gtk3KDE5FilePicker::addCustomControl(sal_Int16 controlId)
++{
++    const char* resId = nullptr;
++
++    switch (controlId)
++    {
++        case CHECKBOX_AUTOEXTENSION:
++            resId = STR_FPICKER_AUTO_EXTENSION;
++            break;
++        case CHECKBOX_PASSWORD:
++            resId = STR_FPICKER_PASSWORD;
++            break;
++        case CHECKBOX_FILTEROPTIONS:
++            resId = STR_FPICKER_FILTER_OPTIONS;
++            break;
++        case CHECKBOX_READONLY:
++            resId = STR_FPICKER_READONLY;
++            break;
++        case CHECKBOX_LINK:
++            resId = STR_FPICKER_INSERT_AS_LINK;
++            break;
++        case CHECKBOX_PREVIEW:
++            resId = STR_FPICKER_SHOW_PREVIEW;
++            break;
++        case CHECKBOX_SELECTION:
++            resId = STR_FPICKER_SELECTION;
++            break;
++        case CHECKBOX_GPGENCRYPTION:
++            resId = STR_FPICKER_GPGENCRYPT;
++            break;
++        case PUSHBUTTON_PLAY:
++            resId = STR_FPICKER_PLAY;
++            break;
++        case LISTBOX_VERSION:
++            resId = STR_FPICKER_VERSION;
++            break;
++        case LISTBOX_TEMPLATE:
++            resId = STR_FPICKER_TEMPLATES;
++            break;
++        case LISTBOX_IMAGE_TEMPLATE:
++            resId = STR_FPICKER_IMAGE_TEMPLATE;
++            break;
++        case LISTBOX_VERSION_LABEL:
++        case LISTBOX_TEMPLATE_LABEL:
++        case LISTBOX_IMAGE_TEMPLATE_LABEL:
++        case LISTBOX_FILTER_SELECTOR:
++            break;
++    }
++
++    switch (controlId)
++    {
++        case CHECKBOX_AUTOEXTENSION:
++        case CHECKBOX_PASSWORD:
++        case CHECKBOX_FILTEROPTIONS:
++        case CHECKBOX_READONLY:
++        case CHECKBOX_LINK:
++        case CHECKBOX_PREVIEW:
++        case CHECKBOX_SELECTION:
++        case CHECKBOX_GPGENCRYPTION:
++        {
++            // the checkbox is created even for CHECKBOX_AUTOEXTENSION to simplify
++            // code, but the checkbox is hidden and ignored
++            sal_Bool hidden = controlId == CHECKBOX_AUTOEXTENSION;
++
++            m_ipc.sendCommand(Commands::AddCheckBox, controlId, hidden, getResString(resId));
++
++            break;
++        }
++        case PUSHBUTTON_PLAY:
++        case LISTBOX_VERSION:
++        case LISTBOX_TEMPLATE:
++        case LISTBOX_IMAGE_TEMPLATE:
++        case LISTBOX_VERSION_LABEL:
++        case LISTBOX_TEMPLATE_LABEL:
++        case LISTBOX_IMAGE_TEMPLATE_LABEL:
++        case LISTBOX_FILTER_SELECTOR:
++            break;
++    }
++}
++
++void SAL_CALL Gtk3KDE5FilePicker::initialize(const uno::Sequence<uno::Any>& args)
++{
++    // parameter checking
++    uno::Any arg;
++    if (args.getLength() == 0)
++    {
++        throw lang::IllegalArgumentException(OUString("no arguments"),
++                                             static_cast<XFilePicker2*>(this), 1);
++    }
++
++    arg = args[0];
++
++    if ((arg.getValueType() != cppu::UnoType<sal_Int16>::get())
++        && (arg.getValueType() != cppu::UnoType<sal_Int8>::get()))
++    {
++        throw lang::IllegalArgumentException(OUString("invalid argument type"),
++                                             static_cast<XFilePicker2*>(this), 1);
++    }
++
++    sal_Int16 templateId = -1;
++    arg >>= templateId;
++
++    sal_Bool saveDialog = false;
++    switch (templateId)
++    {
++        case FILEOPEN_SIMPLE:
++            break;
++
++        case FILESAVE_SIMPLE:
++            saveDialog = true;
++            break;
++
++        case FILESAVE_AUTOEXTENSION:
++            saveDialog = true;
++            addCustomControl(CHECKBOX_AUTOEXTENSION);
++            break;
++
++        case FILESAVE_AUTOEXTENSION_PASSWORD:
++        {
++            saveDialog = true;
++            addCustomControl(CHECKBOX_PASSWORD);
++            addCustomControl(CHECKBOX_GPGENCRYPTION);
++            break;
++        }
++        case FILESAVE_AUTOEXTENSION_PASSWORD_FILTEROPTIONS:
++        {
++            saveDialog = true;
++            addCustomControl(CHECKBOX_AUTOEXTENSION);
++            addCustomControl(CHECKBOX_PASSWORD);
++            addCustomControl(CHECKBOX_GPGENCRYPTION);
++            addCustomControl(CHECKBOX_FILTEROPTIONS);
++            break;
++        }
++        case FILESAVE_AUTOEXTENSION_SELECTION:
++            saveDialog = true;
++            addCustomControl(CHECKBOX_AUTOEXTENSION);
++            addCustomControl(CHECKBOX_SELECTION);
++            break;
++
++        case FILESAVE_AUTOEXTENSION_TEMPLATE:
++            saveDialog = true;
++            addCustomControl(CHECKBOX_AUTOEXTENSION);
++            addCustomControl(LISTBOX_TEMPLATE);
++            break;
++
++        case FILEOPEN_LINK_PREVIEW_IMAGE_TEMPLATE:
++            addCustomControl(CHECKBOX_LINK);
++            addCustomControl(CHECKBOX_PREVIEW);
++            addCustomControl(LISTBOX_IMAGE_TEMPLATE);
++            break;
++
++        case FILEOPEN_PLAY:
++            addCustomControl(PUSHBUTTON_PLAY);
++            break;
++
++        case FILEOPEN_LINK_PLAY:
++            addCustomControl(CHECKBOX_LINK);
++            addCustomControl(PUSHBUTTON_PLAY);
++            break;
++
++        case FILEOPEN_READONLY_VERSION:
++            addCustomControl(CHECKBOX_READONLY);
++            addCustomControl(LISTBOX_VERSION);
++            break;
++
++        case FILEOPEN_LINK_PREVIEW:
++            addCustomControl(CHECKBOX_LINK);
++            addCustomControl(CHECKBOX_PREVIEW);
++            break;
++
++        case FILEOPEN_PREVIEW:
++            addCustomControl(CHECKBOX_PREVIEW);
++            break;
++
++        default:
++            OSL_TRACE("Unknown templates %d", templateId);
++            return;
++    }
++
++    setTitle(getResString(saveDialog ? STR_FPICKER_SAVE : STR_FPICKER_OPEN));
++
++    m_ipc.sendCommand(Commands::Initialize, saveDialog);
++}
++
++void SAL_CALL Gtk3KDE5FilePicker::cancel()
++{
++    // TODO
++}
++
++void SAL_CALL Gtk3KDE5FilePicker::disposing(const lang::EventObject& rEvent)
++{
++    uno::Reference<XFilePickerListener> xFilePickerListener(rEvent.Source, uno::UNO_QUERY);
++
++    if (xFilePickerListener.is())
++    {
++        removeFilePickerListener(xFilePickerListener);
++    }
++}
++
++OUString SAL_CALL Gtk3KDE5FilePicker::getImplementationName()
++{
++    return OUString(FILE_PICKER_IMPL_NAME);
++}
++
++sal_Bool SAL_CALL Gtk3KDE5FilePicker::supportsService(const OUString& ServiceName)
++{
++    return cppu::supportsService(this, ServiceName);
++}
++
++uno::Sequence<OUString> SAL_CALL Gtk3KDE5FilePicker::getSupportedServiceNames()
++{
++    return FilePicker_getSupportedServiceNames();
++}
++
++void Gtk3KDE5FilePicker::filterChanged()
++{
++    FilePickerEvent aEvent;
++    aEvent.ElementId = LISTBOX_FILTER;
++    OSL_TRACE("filter changed");
++    if (m_xListener.is())
++        m_xListener->controlStateChanged(aEvent);
++}
++
++void Gtk3KDE5FilePicker::selectionChanged()
++{
++    FilePickerEvent aEvent;
++    OSL_TRACE("file selection changed");
++    if (m_xListener.is())
++        m_xListener->fileSelectionChanged(aEvent);
++}
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/gtk3_kde5_filepicker.hxx b/vcl/unx/gtk3_kde5/gtk3_kde5_filepicker.hxx
+new file mode 100644
+index 000000000000..506bc3bb5afc
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/gtk3_kde5_filepicker.hxx
+@@ -0,0 +1,139 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#pragma once
++
++#include <cppuhelper/compbase.hxx>
++
++#include <com/sun/star/lang/XServiceInfo.hpp>
++#include <com/sun/star/lang/XInitialization.hpp>
++#include <com/sun/star/ui/dialogs/XFilePicker3.hpp>
++#include <com/sun/star/ui/dialogs/XFilePickerControlAccess.hpp>
++#include <com/sun/star/uno/XComponentContext.hpp>
++
++#include <osl/conditn.hxx>
++#include <osl/mutex.hxx>
++
++#include <rtl/ustrbuf.hxx>
++
++#include <boost/process/child.hpp>
++#include <boost/process/pipe.hpp>
++
++#include "gtk3_kde5_filepicker_ipc.hxx"
++
++#include <functional>
++
++typedef ::cppu::WeakComponentImplHelper<css::ui::dialogs::XFilePicker3,
++                                        css::ui::dialogs::XFilePickerControlAccess
++                                        // TODO css::ui::dialogs::XFilePreview
++                                        ,
++                                        css::lang::XInitialization, css::lang::XServiceInfo>
++    Gtk3KDE5FilePicker_Base;
++
++class Gtk3KDE5FilePicker : public Gtk3KDE5FilePicker_Base
++{
++protected:
++    css::uno::Reference<css::ui::dialogs::XFilePickerListener> m_xListener;
++
++    osl::Mutex _helperMutex;
++    Gtk3KDE5FilePickerIpc m_ipc;
++
++public:
++    explicit Gtk3KDE5FilePicker(const css::uno::Reference<css::uno::XComponentContext>&);
++    virtual ~Gtk3KDE5FilePicker();
++
++    // XFilePickerNotifier
++    virtual void SAL_CALL addFilePickerListener(
++        const css::uno::Reference<css::ui::dialogs::XFilePickerListener>& xListener) override;
++    virtual void SAL_CALL removeFilePickerListener(
++        const css::uno::Reference<css::ui::dialogs::XFilePickerListener>& xListener) override;
++
++    // XExecutableDialog functions
++    virtual void SAL_CALL setTitle(const OUString& rTitle) override;
++    virtual sal_Int16 SAL_CALL execute() override;
++
++    // XFilePicker functions
++    virtual void SAL_CALL setMultiSelectionMode(sal_Bool bMode) override;
++    virtual void SAL_CALL setDefaultName(const OUString& rName) override;
++    virtual void SAL_CALL setDisplayDirectory(const OUString& rDirectory) override;
++    virtual OUString SAL_CALL getDisplayDirectory() override;
++    virtual css::uno::Sequence<OUString> SAL_CALL getFiles() override;
++
++    // XFilterManager functions
++    virtual void SAL_CALL appendFilter(const OUString& rTitle, const OUString& rFilter) override;
++    virtual void SAL_CALL setCurrentFilter(const OUString& rTitle) override;
++    virtual OUString SAL_CALL getCurrentFilter() override;
++
++    // XFilterGroupManager functions
++    virtual void SAL_CALL
++    appendFilterGroup(const OUString& rGroupTitle,
++                      const css::uno::Sequence<css::beans::StringPair>& rFilters) override;
++
++    // XFilePickerControlAccess functions
++    virtual void SAL_CALL setValue(sal_Int16 nControlId, sal_Int16 nControlAction,
++                                   const css::uno::Any& rValue) override;
++    virtual css::uno::Any SAL_CALL getValue(sal_Int16 nControlId,
++                                            sal_Int16 nControlAction) override;
++    virtual void SAL_CALL enableControl(sal_Int16 nControlId, sal_Bool bEnable) override;
++    virtual void SAL_CALL setLabel(sal_Int16 nControlId, const OUString& rLabel) override;
++    virtual OUString SAL_CALL getLabel(sal_Int16 nControlId) override;
++
++    /* TODO XFilePreview
++
++    virtual css::uno::Sequence< sal_Int16 > SAL_CALL getSupportedImageFormats(  );
++    virtual sal_Int32 SAL_CALL  getTargetColorDepth(  );
++    virtual sal_Int32 SAL_CALL  getAvailableWidth(  );
++    virtual sal_Int32 SAL_CALL  getAvailableHeight(  );
++    virtual void SAL_CALL       setImage( sal_Int16 aImageFormat, const css::uno::Any &rImage );
++    virtual sal_Bool SAL_CALL   setShowState( sal_Bool bShowState );
++    virtual sal_Bool SAL_CALL   getShowState(  );
++    */
++
++    // XFilePicker2 functions
++    virtual css::uno::Sequence<OUString> SAL_CALL getSelectedFiles() override;
++
++    // XInitialization
++    virtual void SAL_CALL initialize(const css::uno::Sequence<css::uno::Any>& rArguments) override;
++
++    // XCancellable
++    virtual void SAL_CALL cancel() override;
++
++    // XEventListener
++    virtual void SAL_CALL disposing(const css::lang::EventObject& rEvent);
++    using cppu::WeakComponentImplHelperBase::disposing;
++
++    // XServiceInfo
++    virtual OUString SAL_CALL getImplementationName() override;
++    virtual sal_Bool SAL_CALL supportsService(const OUString& rServiceName) override;
++    virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
++
++private:
++    Gtk3KDE5FilePicker(const Gtk3KDE5FilePicker&) = delete;
++    Gtk3KDE5FilePicker& operator=(const Gtk3KDE5FilePicker&) = delete;
++
++    //add a custom control widget to the file dialog
++    void addCustomControl(sal_Int16 controlId);
++
++    // emit XFilePickerListener controlStateChanged event
++    void filterChanged();
++    // emit XFilePickerListener fileSelectionChanged event
++    void selectionChanged();
++};
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/gtk3_kde5_filepicker_ipc.cxx b/vcl/unx/gtk3_kde5/gtk3_kde5_filepicker_ipc.cxx
+new file mode 100644
+index 000000000000..983617cbf58e
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/gtk3_kde5_filepicker_ipc.cxx
+@@ -0,0 +1,201 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#include "gtk3_kde5_filepicker_ipc.hxx"
++
++#undef Region
++
++#include "unx/geninst.h"
++
++#include "strings.hrc"
++
++#include <future>
++
++#include <com/sun/star/ui/dialogs/ExecutableDialogResults.hpp>
++
++#include <vcl/svapp.hxx>
++#include <vcl/sysdata.hxx>
++#include <vcl/syswin.hxx>
++
++#include <osl/file.h>
++#include <osl/process.h>
++
++#include <gtk/gtk.h>
++#include <gdk/gdkx.h>
++#include <unx/gtk/gtkdata.hxx>
++
++#include <boost/filesystem/path.hpp>
++#include <boost/process/environment.hpp>
++#include <boost/process/search_path.hpp>
++#include <boost/process/io.hpp>
++
++using namespace ::com::sun::star::ui::dialogs;
++
++namespace bp = boost::process;
++namespace bf = boost::filesystem;
++
++// helper functions
++
++namespace
++{
++bf::path applicationDirPath()
++{
++    OUString applicationFilePath;
++    osl_getExecutableFile(&applicationFilePath.pData);
++    OUString applicationSystemPath;
++    osl_getSystemPathFromFileURL(applicationFilePath.pData, &applicationSystemPath.pData);
++    auto sysPath = applicationSystemPath.toUtf8();
++    auto ret = bf::path(sysPath.getStr(), sysPath.getStr() + sysPath.getLength());
++    ret.remove_filename();
++    return ret;
++}
++
++bf::path findPickerExecutable()
++{
++    auto paths = boost::this_process::path();
++    paths.insert(paths.begin(), applicationDirPath());
++    auto ret = bp::search_path("lo_kde5filepicker", paths);
++    if (ret.empty())
++        throw bp::process_error(std::make_error_code(std::errc::no_such_file_or_directory),
++                                "could not find lo_kde5filepicker executable");
++    return ret;
++}
++}
++
++void readIpcArg(std::istream& stream, OUString& str)
++{
++    const auto buffer = readIpcStringArg(stream);
++    str = OUString::fromUtf8(OString(buffer.data(), buffer.size()));
++}
++
++void readIpcArg(std::istream& stream, css::uno::Sequence<OUString>& seq)
++{
++    uint32_t numFiles = 0;
++    stream >> numFiles;
++    stream.ignore(); // skip space;
++    seq.realloc(numFiles);
++    for (size_t i = 0; i < numFiles; ++i)
++    {
++        readIpcArg(stream, seq[i]);
++    }
++}
++
++void sendIpcArg(std::ostream& stream, const OUString& string)
++{
++    const auto utf8 = string.toUtf8();
++    sendIpcStringArg(stream, utf8.getLength(), utf8.getStr());
++}
++
++OUString getResString(const char* pResId)
++{
++    if (pResId == nullptr)
++        return {};
++
++    return VclResId(pResId);
++}
++
++// Gtk3KDE5FilePicker
++
++Gtk3KDE5FilePickerIpc::Gtk3KDE5FilePickerIpc()
++    // workaround: specify some non-empty argument, otherwise the Qt app will see argc == 0
++    : m_process(findPickerExecutable(), "dummy", bp::std_out > m_stdout, bp::std_in < m_stdin)
++{
++}
++
++Gtk3KDE5FilePickerIpc::~Gtk3KDE5FilePickerIpc()
++{
++    sendCommand(Commands::Quit);
++    if (m_process.running())
++        m_process.wait_for(std::chrono::milliseconds(100));
++}
++
++sal_Int16 SAL_CALL Gtk3KDE5FilePickerIpc::execute()
++{
++    auto restoreMainWindow = blockMainWindow();
++
++    auto id = sendCommand(Commands::Execute);
++    sal_Bool accepted = false;
++    readResponse(id, accepted);
++
++    if (restoreMainWindow)
++        restoreMainWindow();
++
++    return accepted ? ExecutableDialogResults::OK : ExecutableDialogResults::CANCEL;
++}
++
++static gboolean ignoreDeleteEvent(GtkWidget* /*widget*/, GdkEvent* /*event*/,
++                                  gpointer /*user_data*/)
++{
++    return true;
++}
++
++std::function<void()> SAL_CALL Gtk3KDE5FilePickerIpc::blockMainWindow()
++{
++    vcl::Window* pParentWin = Application::GetDefDialogParent();
++    if (!pParentWin)
++        return {};
++
++    const SystemEnvData* pSysData = static_cast<SystemWindow*>(pParentWin)->GetSystemData();
++    if (!pSysData)
++        return {};
++
++    sendCommand(Commands::SetWinId, pSysData->aWindow);
++
++    auto* pMainWindow = reinterpret_cast<GtkWidget*>(pSysData->pWidget);
++    if (!pMainWindow)
++        return {};
++
++    SolarMutexGuard guard;
++    auto deleteEventSignalId = g_signal_lookup("delete_event", gtk_widget_get_type());
++
++    // disable the mainwindow
++    gtk_widget_set_sensitive(pMainWindow, false);
++
++    // block the GtkSalFrame delete_event handler
++    auto blockedHandler = g_signal_handler_find(
++        pMainWindow, static_cast<GSignalMatchType>(G_SIGNAL_MATCH_ID | G_SIGNAL_MATCH_DATA),
++        deleteEventSignalId, 0, nullptr, nullptr, pSysData->pSalFrame);
++    g_signal_handler_block(pMainWindow, blockedHandler);
++
++    // prevent the window from being closed
++    auto ignoreDeleteEventHandler
++        = g_signal_connect(pMainWindow, "delete_event", G_CALLBACK(ignoreDeleteEvent), nullptr);
++
++    return [pMainWindow, ignoreDeleteEventHandler, blockedHandler] {
++        SolarMutexGuard cleanupGuard;
++        // re-enable window
++        gtk_widget_set_sensitive(pMainWindow, true);
++
++        // allow it to be closed again
++        g_signal_handler_disconnect(pMainWindow, ignoreDeleteEventHandler);
++
++        // unblock the GtkSalFrame handler
++        g_signal_handler_unblock(pMainWindow, blockedHandler);
++    };
++}
++
++void SAL_CALL Gtk3KDE5FilePickerIpc::await(const std::future<void>& future)
++{
++    while (future.wait_for(std::chrono::milliseconds(1)) != std::future_status::ready)
++    {
++        GetGtkSalData()->Yield(false, true);
++    }
++}
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/gtk3_kde5_filepicker_ipc.hxx b/vcl/unx/gtk3_kde5/gtk3_kde5_filepicker_ipc.hxx
+new file mode 100644
+index 000000000000..c7b13cd4573f
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/gtk3_kde5_filepicker_ipc.hxx
+@@ -0,0 +1,109 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#pragma once
++
++#include <cppuhelper/compbase.hxx>
++
++#include <osl/conditn.hxx>
++#include <osl/mutex.hxx>
++
++#include <rtl/ustrbuf.hxx>
++
++#include <boost/process/child.hpp>
++#include <boost/process/pipe.hpp>
++
++#include "filepicker_ipc_commands.hxx"
++
++#include <functional>
++#include <future>
++#include <mutex>
++#include <thread>
++
++void readIpcArg(std::istream& stream, OUString& str);
++
++void readIpcArg(std::istream& stream, css::uno::Sequence<OUString>& seq);
++
++void sendIpcArg(std::ostream& stream, const OUString& string);
++
++OUString getResString(const char* pResId);
++
++class Gtk3KDE5FilePickerIpc
++{
++protected:
++    boost::process::ipstream m_stdout;
++    boost::process::opstream m_stdin;
++    boost::process::child m_process;
++    // simple multiplexing: every command gets it's own ID that can be used to
++    // read the corresponding response
++    uint64_t m_msgId = 1;
++    std::mutex m_mutex;
++    uint64_t m_incomingResponse = 0;
++
++public:
++    explicit Gtk3KDE5FilePickerIpc();
++    ~Gtk3KDE5FilePickerIpc();
++
++    sal_Int16 SAL_CALL execute();
++
++    template <typename... Args> uint64_t sendCommand(Commands command, const Args&... args)
++    {
++        auto id = m_msgId;
++        ++m_msgId;
++        sendIpcArgs(m_stdin, id, command, args...);
++        return id;
++    }
++
++    template <typename... Args> void readResponse(uint64_t id, Args&... args)
++    {
++        // read synchronously from a background thread and run the eventloop until the value becomes available
++        // this allows us to keep the GUI responsive and also enables access to the LO clipboard
++        await(std::async(std::launch::async, [&]() {
++            while (true)
++            {
++                // only let one thread read at any given time
++                std::lock_guard<std::mutex> lock(m_mutex);
++
++                // check if we need to read (and potentially wait) a response ID
++                if (m_incomingResponse == 0)
++                    readIpcArgs(m_stdout, m_incomingResponse);
++
++                if (m_incomingResponse == id)
++                {
++                    // the response we are waiting for came in
++                    readIpcArgs(m_stdout, args...);
++                    m_incomingResponse = 0;
++                    break;
++                }
++                else
++                {
++                    // the next response answers some other request, yield
++                    std::this_thread::yield();
++                }
++            }
++        }));
++    }
++
++private:
++    std::function<void()> SAL_CALL blockMainWindow();
++
++    static void SAL_CALL await(const std::future<void>& future);
++};
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/gtk3_kde5_folderpicker.cxx b/vcl/unx/gtk3_kde5/gtk3_kde5_folderpicker.cxx
+new file mode 100644
+index 000000000000..ad89374b47c7
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/gtk3_kde5_folderpicker.cxx
+@@ -0,0 +1,88 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#include "gtk3_kde5_folderpicker.hxx"
++
++#include <com/sun/star/awt/Toolkit.hpp>
++#include <com/sun/star/frame/Desktop.hpp>
++#include <com/sun/star/lang/XMultiComponentFactory.hpp>
++#include <com/sun/star/ui/dialogs/ExecutableDialogResults.hpp>
++#include <com/sun/star/ui/dialogs/CommonFilePickerElementIds.hpp>
++#include <com/sun/star/ui/dialogs/ExtendedFilePickerElementIds.hpp>
++#include <com/sun/star/ui/dialogs/TemplateDescription.hpp>
++#include <vcl/svapp.hxx>
++
++#include <strings.hrc>
++
++using namespace ::com::sun::star;
++using namespace ::com::sun::star::ui::dialogs;
++using namespace ::com::sun::star::lang;
++using namespace ::com::sun::star::uno;
++
++// constructor
++
++Gtk3KDE5FolderPicker::Gtk3KDE5FolderPicker(
++    const uno::Reference<uno::XComponentContext>& /*xContext*/)
++{
++    m_ipc.sendCommand(Commands::EnablePickFolderMode);
++    setTitle(getResString(STR_FPICKER_FOLDER_DEFAULT_TITLE));
++}
++
++Gtk3KDE5FolderPicker::~Gtk3KDE5FolderPicker() = default;
++
++void SAL_CALL Gtk3KDE5FolderPicker::setDisplayDirectory(const OUString& aDirectory)
++{
++    m_ipc.sendCommand(Commands::SetDisplayDirectory, aDirectory);
++}
++
++OUString SAL_CALL Gtk3KDE5FolderPicker::getDisplayDirectory()
++{
++    auto id = m_ipc.sendCommand(Commands::GetDisplayDirectory);
++    OUString ret;
++    m_ipc.readResponse(id, ret);
++    return ret;
++}
++
++OUString SAL_CALL Gtk3KDE5FolderPicker::getDirectory()
++{
++    auto id = m_ipc.sendCommand(Commands::GetSelectedFiles);
++    uno::Sequence<OUString> seq;
++    m_ipc.readResponse(id, seq);
++    return seq.hasElements() ? seq[0] : OUString();
++}
++
++void SAL_CALL Gtk3KDE5FolderPicker::setDescription(const OUString& /*rDescription*/) {}
++
++// XExecutableDialog functions
++
++void SAL_CALL Gtk3KDE5FolderPicker::setTitle(const OUString& aTitle)
++{
++    m_ipc.sendCommand(Commands::SetTitle, aTitle);
++}
++
++sal_Int16 SAL_CALL Gtk3KDE5FolderPicker::execute() { return m_ipc.execute(); }
++
++// XCancellable
++
++void SAL_CALL Gtk3KDE5FolderPicker::cancel()
++{
++    // TODO
++}
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/gtk3_kde5_folderpicker.hxx b/vcl/unx/gtk3_kde5/gtk3_kde5_folderpicker.hxx
+new file mode 100644
+index 000000000000..c6a6c4edfb73
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/gtk3_kde5_folderpicker.hxx
+@@ -0,0 +1,61 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#pragma once
++
++#include <list>
++#include <memory>
++#include <rtl/ustring.hxx>
++#include <cppuhelper/implbase.hxx>
++
++#include <com/sun/star/ui/dialogs/XFolderPicker2.hpp>
++#include <com/sun/star/uno/XComponentContext.hpp>
++
++#include "gtk3_kde5_filepicker_ipc.hxx"
++
++class Gtk3KDE5FolderPicker : public cppu::WeakImplHelper<css::ui::dialogs::XFolderPicker2>
++{
++protected:
++    Gtk3KDE5FilePickerIpc m_ipc;
++
++public:
++    // constructor
++    explicit Gtk3KDE5FolderPicker(
++        const css::uno::Reference<css::uno::XComponentContext>& xServiceMgr);
++    virtual ~Gtk3KDE5FolderPicker();
++
++    // XExecutableDialog functions
++    virtual void SAL_CALL setTitle(const OUString& aTitle) override;
++    virtual sal_Int16 SAL_CALL execute() override;
++
++    // XFolderPicker functions
++    virtual void SAL_CALL setDisplayDirectory(const OUString& rDirectory) override;
++    virtual OUString SAL_CALL getDisplayDirectory() override;
++    virtual OUString SAL_CALL getDirectory() override;
++    virtual void SAL_CALL setDescription(const OUString& rDescription) override;
++
++    // XCancellable
++    virtual void SAL_CALL cancel() override;
++
++private:
++    Gtk3KDE5FolderPicker(const Gtk3KDE5FolderPicker&) = delete;
++    Gtk3KDE5FolderPicker& operator=(const Gtk3KDE5FolderPicker&) = delete;
++};
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/gtk3_kde5_gloactiongroup.cxx b/vcl/unx/gtk3_kde5/gtk3_kde5_gloactiongroup.cxx
+new file mode 100644
+index 000000000000..fa71136f9a28
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/gtk3_kde5_gloactiongroup.cxx
+@@ -0,0 +1,22 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#include "../gtk3/gtk3gloactiongroup.cxx"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/gtk3_kde5_glomenu.cxx b/vcl/unx/gtk3_kde5/gtk3_kde5_glomenu.cxx
+new file mode 100644
+index 000000000000..de79c14c1403
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/gtk3_kde5_glomenu.cxx
+@@ -0,0 +1,22 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#include "../gtk3/gtk3glomenu.cxx"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/gtk3_kde5_gtkdata.cxx b/vcl/unx/gtk3_kde5/gtk3_kde5_gtkdata.cxx
+new file mode 100644
+index 000000000000..200a74131860
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/gtk3_kde5_gtkdata.cxx
+@@ -0,0 +1,22 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#include "../gtk3/gtk3gtkdata.cxx"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/gtk3_kde5_gtkframe.cxx b/vcl/unx/gtk3_kde5/gtk3_kde5_gtkframe.cxx
+new file mode 100644
+index 000000000000..0b2eb38dcec4
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/gtk3_kde5_gtkframe.cxx
+@@ -0,0 +1,22 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#include "../gtk3/gtk3gtkframe.cxx"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/gtk3_kde5_gtkinst.cxx b/vcl/unx/gtk3_kde5/gtk3_kde5_gtkinst.cxx
+new file mode 100644
+index 000000000000..bed2c049aa3a
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/gtk3_kde5_gtkinst.cxx
+@@ -0,0 +1,55 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#include "../gtk3/gtk3gtkinst.cxx"
++
++#include "gtk3_kde5_filepicker.hxx"
++#include "gtk3_kde5_folderpicker.hxx"
++
++#include <boost/process/exception.hpp>
++
++uno::Reference<ui::dialogs::XFilePicker2>
++GtkInstance::createFilePicker(const uno::Reference<uno::XComponentContext>& xMSF)
++{
++    try
++    {
++        return uno::Reference<ui::dialogs::XFilePicker2>(new Gtk3KDE5FilePicker(xMSF));
++    }
++    catch (const boost::process::process_error& error)
++    {
++        OSL_FAIL(error.what());
++        return { nullptr };
++    }
++}
++
++uno::Reference<ui::dialogs::XFolderPicker2>
++GtkInstance::createFolderPicker(const uno::Reference<uno::XComponentContext>& xMSF)
++{
++    try
++    {
++        return uno::Reference<ui::dialogs::XFolderPicker2>(new Gtk3KDE5FolderPicker(xMSF));
++    }
++    catch (const boost::process::process_error& error)
++    {
++        OSL_FAIL(error.what());
++        return { nullptr };
++    }
++}
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/gtk3_kde5_gtkobject.cxx b/vcl/unx/gtk3_kde5/gtk3_kde5_gtkobject.cxx
+new file mode 100644
+index 000000000000..a2eb6b9e1631
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/gtk3_kde5_gtkobject.cxx
+@@ -0,0 +1,22 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#include "../gtk3/gtk3gtkobject.cxx"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/gtk3_kde5_gtksalmenu.cxx b/vcl/unx/gtk3_kde5/gtk3_kde5_gtksalmenu.cxx
+new file mode 100644
+index 000000000000..9eb1c7975800
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/gtk3_kde5_gtksalmenu.cxx
+@@ -0,0 +1,22 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#include "../gtk3/gtk3gtksalmenu.cxx"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/gtk3_kde5_gtksys.cxx b/vcl/unx/gtk3_kde5/gtk3_kde5_gtksys.cxx
+new file mode 100644
+index 000000000000..8f6b38843ec4
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/gtk3_kde5_gtksys.cxx
+@@ -0,0 +1,22 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#include "../gtk3/gtk3gtksys.cxx"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/gtk3_kde5_hudawareness.cxx b/vcl/unx/gtk3_kde5/gtk3_kde5_hudawareness.cxx
+new file mode 100644
+index 000000000000..eb159238983f
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/gtk3_kde5_hudawareness.cxx
+@@ -0,0 +1,22 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#include "../gtk3/gtk3hudawareness.cxx"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/gtk3_kde5_printwrapper.cxx b/vcl/unx/gtk3_kde5/gtk3_kde5_printwrapper.cxx
+new file mode 100644
+index 000000000000..33768f8cac73
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/gtk3_kde5_printwrapper.cxx
+@@ -0,0 +1,22 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#include "../gtk3/gtk3gtkprintwrapper.cxx"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/gtk3_kde5_salnativewidgets-gtk.cxx b/vcl/unx/gtk3_kde5/gtk3_kde5_salnativewidgets-gtk.cxx
+new file mode 100644
+index 000000000000..108e41d470bc
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/gtk3_kde5_salnativewidgets-gtk.cxx
+@@ -0,0 +1,22 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#include "../gtk3/gtk3salnativewidgets-gtk.cxx"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/gtk3_kde5_salprn-gtk.cxx b/vcl/unx/gtk3_kde5/gtk3_kde5_salprn-gtk.cxx
+new file mode 100644
+index 000000000000..a9f8c076fe5c
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/gtk3_kde5_salprn-gtk.cxx
+@@ -0,0 +1,22 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#include "../gtk3/gtk3salprn-gtk.cxx"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/kde5_filepicker.cxx b/vcl/unx/gtk3_kde5/kde5_filepicker.cxx
+new file mode 100644
+index 000000000000..41722afe1a7d
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/kde5_filepicker.cxx
+@@ -0,0 +1,283 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#include "kde5_filepicker.hxx"
++
++#include <KWindowSystem>
++#include <KFileWidget>
++
++#include <QtCore/QDebug>
++#include <QtCore/QUrl>
++#include <QtGui/QClipboard>
++#include <QtGui/QWindow>
++#include <QtWidgets/QCheckBox>
++#include <QtWidgets/QFileDialog>
++#include <QtWidgets/QFormLayout>
++#include <QtWidgets/QWidget>
++#include <QtWidgets/QApplication>
++
++// The dialog should check whether LO also supports the protocol
++// provided by KIO, and KFileWidget::dirOperator() is only 4.3+ .
++// Moreover it's only in this somewhat internal KFileWidget class,
++// which may not necessarily be what QFileDialog::fileWidget() returns,
++// but that's hopefully not a problem in practice.
++//#if Qt_VERSION_MAJOR == 4 && Qt_VERSION_MINOR >= 2
++//#define ALLOW_REMOTE_URLS 1
++//#else
++#define ALLOW_REMOTE_URLS 0
++//#endif
++
++// KDE5FilePicker
++
++KDE5FilePicker::KDE5FilePicker(QObject* parent)
++    : QObject(parent)
++    , _dialog(new QFileDialog(nullptr, QString(""), QString("~")))
++    , _extraControls(new QWidget)
++    , _layout(new QFormLayout(_extraControls))
++    , _winId(0)
++    , allowRemoteUrls(false)
++{
++#if ALLOW_REMOTE_URLS
++    if (KFileWidget* fileWidget = dynamic_cast<KFileWidget*>(_dialog->fileWidget()))
++    {
++        allowRemoteUrls = true;
++        // Use finishedLoading signal rather than e.g. urlEntered, because if there's a problem
++        // such as the URL being mistyped, there's no way to prevent two message boxes about it,
++        // one from us and one from Qt code.
++        connect(fileWidget->dirOperator(), SIGNAL(finishedLoading()), SLOT(checkProtocol()));
++    }
++#endif
++
++    setMultiSelectionMode(false);
++
++    connect(_dialog, &QFileDialog::filterSelected, this, &KDE5FilePicker::filterChanged);
++    connect(_dialog, &QFileDialog::fileSelected, this, &KDE5FilePicker::selectionChanged);
++
++    qApp->installEventFilter(this);
++}
++
++void KDE5FilePicker::enableFolderMode()
++{
++    _dialog->setOption(QFileDialog::ShowDirsOnly, true);
++    _dialog->setFileMode(QFileDialog::Directory);
++}
++
++KDE5FilePicker::~KDE5FilePicker()
++{
++    delete _extraControls;
++    delete _dialog;
++}
++
++void SAL_CALL KDE5FilePicker::setTitle(const QString& title) { _dialog->setWindowTitle(title); }
++
++bool SAL_CALL KDE5FilePicker::execute()
++{
++    if (!_filters.isEmpty())
++        _dialog->setNameFilters(_filters);
++    if (!_currentFilter.isEmpty())
++        _dialog->selectNameFilter(_currentFilter);
++
++    _dialog->show();
++    //block and wait for user input
++    return _dialog->exec() == QFileDialog::Accepted;
++}
++
++void SAL_CALL KDE5FilePicker::setMultiSelectionMode(bool multiSelect)
++{
++    _dialog->setFileMode(multiSelect ? QFileDialog::ExistingFiles : QFileDialog::ExistingFile);
++}
++
++void SAL_CALL KDE5FilePicker::setDefaultName(const QString& name)
++{
++    _dialog->selectUrl(QUrl(name));
++}
++
++void SAL_CALL KDE5FilePicker::setDisplayDirectory(const QString& dir)
++{
++    _dialog->selectUrl(QUrl(dir));
++}
++
++QString SAL_CALL KDE5FilePicker::getDisplayDirectory() const
++{
++    return _dialog->directoryUrl().url();
++}
++
++QList<QUrl> SAL_CALL KDE5FilePicker::getSelectedFiles() const { return _dialog->selectedUrls(); }
++
++void SAL_CALL KDE5FilePicker::appendFilter(const QString& title, const QString& filter)
++{
++    QString t = title;
++    QString f = filter;
++    // '/' need to be escaped else they are assumed to be mime types by kfiledialog
++    //see the docs
++    t.replace("/", "\\/");
++
++    // openoffice gives us filters separated by ';' qt dialogs just want space separated
++    f.replace(";", " ");
++
++    // make sure "*.*" is not used as "all files"
++    f.replace("*.*", "*");
++
++    _filters << QStringLiteral("%1 (%2)").arg(t, f);
++    _titleToFilters[t] = _filters.constLast();
++}
++
++void SAL_CALL KDE5FilePicker::setCurrentFilter(const QString& title)
++{
++    _currentFilter = _titleToFilters.value(title);
++}
++
++QString SAL_CALL KDE5FilePicker::getCurrentFilter() const
++{
++    QString filter = _titleToFilters.key(_dialog->selectedNameFilter());
++
++    //default if not found
++    if (filter.isEmpty())
++        filter = "ODF Text Document (.odt)";
++
++    return filter;
++}
++
++void SAL_CALL KDE5FilePicker::setValue(sal_Int16 controlId, sal_Int16 /*nControlAction*/,
++                                       bool value)
++{
++    if (_customWidgets.contains(controlId))
++    {
++        QCheckBox* cb = dynamic_cast<QCheckBox*>(_customWidgets.value(controlId));
++        if (cb)
++            cb->setChecked(value);
++    }
++    else
++        qWarning() << "set value on unknown control" << controlId;
++}
++
++bool SAL_CALL KDE5FilePicker::getValue(sal_Int16 controlId, sal_Int16 /*nControlAction*/) const
++{
++    bool ret = false;
++    if (_customWidgets.contains(controlId))
++    {
++        QCheckBox* cb = dynamic_cast<QCheckBox*>(_customWidgets.value(controlId));
++        if (cb)
++            ret = cb->isChecked();
++    }
++    else
++        qWarning() << "get value on unknown control" << controlId;
++
++    return ret;
++}
++
++void SAL_CALL KDE5FilePicker::enableControl(sal_Int16 controlId, sal_Bool enable)
++{
++    if (_customWidgets.contains(controlId))
++        _customWidgets.value(controlId)->setEnabled(enable);
++    else
++        qWarning() << "enable on unknown control" << controlId;
++}
++
++void SAL_CALL KDE5FilePicker::setLabel(sal_Int16 controlId, const QString& label)
++{
++    if (_customWidgets.contains(controlId))
++    {
++        QCheckBox* cb = dynamic_cast<QCheckBox*>(_customWidgets.value(controlId));
++        if (cb)
++            cb->setText(label);
++    }
++    else
++        qWarning() << "set label on unknown control" << controlId;
++}
++
++QString SAL_CALL KDE5FilePicker::getLabel(sal_Int16 controlId) const
++{
++    QString label;
++    if (_customWidgets.contains(controlId))
++    {
++        QCheckBox* cb = dynamic_cast<QCheckBox*>(_customWidgets.value(controlId));
++        if (cb)
++            label = cb->text();
++    }
++    else
++        qWarning() << "get label on unknown control" << controlId;
++
++    return label;
++}
++
++void KDE5FilePicker::addCheckBox(sal_Int16 controlId, const QString& label, bool hidden)
++{
++    auto widget = new QCheckBox(_extraControls);
++    widget->setHidden(hidden);
++    if (!hidden)
++    {
++        auto resString = label;
++        resString.replace('~', '&');
++        _layout->addRow(resString, widget);
++    }
++    _customWidgets.insert(controlId, widget);
++}
++
++void SAL_CALL KDE5FilePicker::initialize(bool saveDialog)
++{
++    //default is opening
++    QFileDialog::AcceptMode operationMode
++        = saveDialog ? QFileDialog::AcceptSave : QFileDialog::AcceptOpen;
++
++    _dialog->setAcceptMode(operationMode);
++
++    if (saveDialog)
++    {
++        _dialog->setConfirmOverwrite(true);
++        _dialog->setFileMode(QFileDialog::AnyFile);
++    }
++}
++
++void KDE5FilePicker::checkProtocol()
++{
++    // There's no libreoffice.desktop :(, so find a matching one.
++    /*
++    KService::List services = KServiceTypeTrader::self()->query( "Application", "Exec =~ 'libreoffice %U'" );
++    QStringList protocols;
++    if( !services.isEmpty())
++        protocols = services[ 0 ]->property( "X-Qt-Protocols" ).toStringList();
++    if( protocols.isEmpty()) // incorrect (developer?) installation ?
++        protocols << "file" << "http";
++    if( !protocols.contains( _dialog->baseUrl().protocol()) && !protocols.contains( "KIO" ))
++        KMessageBox::error( _dialog, KIO::buildErrorString( KIO::ERR_UNSUPPORTED_PROTOCOL, _dialog->baseUrl().protocol()));
++*/
++}
++
++void KDE5FilePicker::setWinId(sal_uIntPtr winId) { _winId = winId; }
++
++bool KDE5FilePicker::eventFilter(QObject* o, QEvent* e)
++{
++    if (e->type() == QEvent::Show && o->isWidgetType())
++    {
++        auto* w = static_cast<QWidget*>(o);
++        if (!w->parentWidget() && w->isModal())
++        {
++            KWindowSystem::setMainWindow(w, _winId);
++            if (auto* fileWidget = w->findChild<KFileWidget*>({}, Qt::FindDirectChildrenOnly))
++                fileWidget->setCustomWidget(_extraControls);
++            return false;
++        }
++    }
++    return QObject::eventFilter(o, e);
++}
++
++#include "kde5_filepicker.moc"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/kde5_filepicker.hxx b/vcl/unx/gtk3_kde5/kde5_filepicker.hxx
+new file mode 100644
+index 000000000000..8b364832c6af
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/kde5_filepicker.hxx
+@@ -0,0 +1,113 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#pragma once
++
++#include <QtCore/QObject>
++#include <QtCore/QString>
++#include <QtCore/QStringList>
++#include <QtCore/QHash>
++
++#include <sal/types.h>
++
++class QFileDialog;
++class QWidget;
++class QFormLayout;
++
++class KDE5FilePicker : public QObject
++{
++    Q_OBJECT
++protected:
++    //the dialog to display
++    QFileDialog* _dialog;
++
++    //running filter string to add to dialog
++    QStringList _filters;
++    // map of filter titles to full filter for selection
++    QHash<QString, QString> _titleToFilters;
++    // string to set the current filter
++    QString _currentFilter;
++
++    //mapping of SAL control ID's to created custom controls
++    QHash<sal_Int16, QWidget*> _customWidgets;
++
++    //widget to contain extra custom controls
++    QWidget* _extraControls;
++
++    //layout for extra custom controls
++    QFormLayout* _layout;
++
++    sal_uIntPtr _winId;
++
++    bool allowRemoteUrls;
++
++public:
++    explicit KDE5FilePicker(QObject* parent = nullptr);
++    ~KDE5FilePicker();
++
++    void enableFolderMode();
++
++    // XExecutableDialog functions
++    void SAL_CALL setTitle(const QString& rTitle);
++    bool SAL_CALL execute();
++
++    // XFilePicker functions
++    void SAL_CALL setMultiSelectionMode(bool bMode);
++    void SAL_CALL setDefaultName(const QString& rName);
++    void SAL_CALL setDisplayDirectory(const QString& rDirectory);
++    QString SAL_CALL getDisplayDirectory() const;
++
++    // XFilterManager functions
++    void SAL_CALL appendFilter(const QString& rTitle, const QString& rFilter);
++    void SAL_CALL setCurrentFilter(const QString& rTitle);
++    QString SAL_CALL getCurrentFilter() const;
++
++    // XFilePickerControlAccess functions
++    void SAL_CALL setValue(sal_Int16 nControlId, sal_Int16 nControlAction, bool rValue);
++    bool SAL_CALL getValue(sal_Int16 nControlId, sal_Int16 nControlAction) const;
++    void SAL_CALL enableControl(sal_Int16 nControlId, sal_Bool bEnable);
++    void SAL_CALL setLabel(sal_Int16 nControlId, const QString& rLabel);
++    QString SAL_CALL getLabel(sal_Int16 nControlId) const;
++
++    // XFilePicker2 functions
++    QList<QUrl> getSelectedFiles() const;
++
++    // XInitialization
++    void initialize(bool saveDialog);
++
++    //add a custom control widget to the file dialog
++    void addCheckBox(sal_Int16 nControlId, const QString& label, bool hidden);
++
++    void setWinId(sal_uIntPtr winId);
++
++private:
++    Q_DISABLE_COPY(KDE5FilePicker)
++
++protected:
++    bool eventFilter(QObject* watched, QEvent* event) override;
++
++private Q_SLOTS:
++    void checkProtocol();
++
++Q_SIGNALS:
++    void filterChanged();
++    void selectionChanged();
++};
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/kde5_filepicker_ipc.cxx b/vcl/unx/gtk3_kde5/kde5_filepicker_ipc.cxx
+new file mode 100644
+index 000000000000..9911219d010a
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/kde5_filepicker_ipc.cxx
+@@ -0,0 +1,223 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#include "kde5_filepicker_ipc.hxx"
++
++#include <QSocketNotifier>
++#include <QUrl>
++#include <QThread>
++#include <QApplication>
++#include <QDebug>
++
++#include <iostream>
++
++#include "filepicker_ipc_commands.hxx"
++#include "kde5_filepicker.hxx"
++
++#include <rtl/ustring.h>
++
++void readIpcArg(std::istream& stream, QString& string)
++{
++    const auto buffer = readIpcStringArg(stream);
++    string = QString::fromUtf8(buffer.data(), buffer.size());
++}
++
++void sendIpcArg(std::ostream& stream, const QString& string)
++{
++    const auto utf8 = string.toUtf8();
++    sendIpcStringArg(stream, utf8.size(), utf8.data());
++}
++
++void sendIpcArg(std::ostream& stream, const QList<QUrl>& urls)
++{
++    stream << static_cast<uint32_t>(urls.size()) << ' ';
++    for (const auto& url : urls)
++    {
++        sendIpcArg(stream, url.toString());
++    }
++}
++
++FilePickerIpc::FilePickerIpc(KDE5FilePicker* filePicker, QObject* parent)
++    : QObject(parent)
++    , m_filePicker(filePicker)
++    , m_stdinNotifier(new QSocketNotifier(fileno(stdin), QSocketNotifier::Read, this))
++{
++    connect(m_stdinNotifier, &QSocketNotifier::activated, this, &FilePickerIpc::readCommands);
++}
++
++FilePickerIpc::~FilePickerIpc() = default;
++
++void FilePickerIpc::readCommands()
++{
++    while (!std::cin.eof())
++    {
++        readCommand();
++    }
++}
++
++void FilePickerIpc::readCommand()
++{
++    uint64_t messageId = 0;
++    Commands command;
++    readIpcArgs(std::cin, messageId, command);
++
++    switch (command)
++    {
++        case Commands::SetTitle:
++        {
++            QString title;
++            readIpcArgs(std::cin, title);
++            m_filePicker->setTitle(title);
++            return;
++        }
++        case Commands::SetWinId:
++        {
++            sal_uIntPtr winId = 0;
++            readIpcArgs(std::cin, winId);
++            m_filePicker->setWinId(winId);
++            return;
++        }
++        case Commands::Execute:
++        {
++            sendIpcArgs(std::cout, messageId, m_filePicker->execute());
++            return;
++        }
++        case Commands::SetMultiSelectionMode:
++        {
++            bool multiSelection = false;
++            readIpcArgs(std::cin, multiSelection);
++            m_filePicker->setMultiSelectionMode(multiSelection);
++            return;
++        }
++        case Commands::SetDefaultName:
++        {
++            QString name;
++            readIpcArgs(std::cin, name);
++            m_filePicker->setDefaultName(name);
++            return;
++        }
++        case Commands::SetDisplayDirectory:
++        {
++            QString dir;
++            readIpcArgs(std::cin, dir);
++            m_filePicker->setDisplayDirectory(dir);
++            return;
++        }
++        case Commands::GetDisplayDirectory:
++        {
++            sendIpcArgs(std::cout, messageId, m_filePicker->getDisplayDirectory());
++            return;
++        }
++        case Commands::GetSelectedFiles:
++        {
++            sendIpcArgs(std::cout, messageId, m_filePicker->getSelectedFiles());
++            return;
++        }
++        case Commands::AppendFilter:
++        {
++            QString title, filter;
++            readIpcArgs(std::cin, title, filter);
++            m_filePicker->appendFilter(title, filter);
++            return;
++        }
++        case Commands::SetCurrentFilter:
++        {
++            QString title;
++            readIpcArgs(std::cin, title);
++            m_filePicker->setCurrentFilter(title);
++            return;
++        }
++        case Commands::GetCurrentFilter:
++        {
++            sendIpcArgs(std::cout, messageId, m_filePicker->getCurrentFilter());
++            return;
++        }
++        case Commands::SetValue:
++        {
++            sal_Int16 controlId = 0;
++            sal_Int16 nControlAction = 0;
++            bool value = false;
++            readIpcArgs(std::cin, controlId, nControlAction, value);
++            m_filePicker->setValue(controlId, nControlAction, value);
++            return;
++        }
++        case Commands::GetValue:
++        {
++            sal_Int16 controlId = 0;
++            sal_Int16 nControlAction = 0;
++            readIpcArgs(std::cin, controlId, nControlAction);
++            sendIpcArgs(std::cout, messageId, m_filePicker->getValue(controlId, nControlAction));
++            return;
++        }
++        case Commands::EnableControl:
++        {
++            sal_Int16 controlId = 0;
++            bool enabled = false;
++            readIpcArgs(std::cin, controlId, enabled);
++            m_filePicker->enableControl(controlId, enabled);
++            return;
++        }
++        case Commands::SetLabel:
++        {
++            sal_Int16 controlId = 0;
++            QString label;
++            readIpcArgs(std::cin, controlId, label);
++            m_filePicker->setLabel(controlId, label);
++            return;
++        }
++        case Commands::GetLabel:
++        {
++            sal_Int16 controlId = 0;
++            readIpcArgs(std::cin, controlId);
++            sendIpcArgs(std::cout, messageId, m_filePicker->getLabel(controlId));
++            return;
++        }
++        case Commands::AddCheckBox:
++        {
++            sal_Int16 controlId = 0;
++            bool hidden = false;
++            QString label;
++            readIpcArgs(std::cin, controlId, hidden, label);
++            m_filePicker->addCheckBox(controlId, label, hidden);
++            return;
++        }
++        case Commands::Initialize:
++        {
++            bool saveDialog = false;
++            readIpcArgs(std::cin, saveDialog);
++            m_filePicker->initialize(saveDialog);
++            return;
++        }
++        case Commands::EnablePickFolderMode:
++        {
++            m_filePicker->enableFolderMode();
++            return;
++        }
++        case Commands::Quit:
++        {
++            qApp->quit();
++            return;
++        }
++    }
++    qWarning() << "unhandled command " << static_cast<uint16_t>(command);
++}
++
++#include "kde5_filepicker_ipc.moc"
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/kde5_filepicker_ipc.hxx b/vcl/unx/gtk3_kde5/kde5_filepicker_ipc.hxx
+new file mode 100644
+index 000000000000..8a282675b5e2
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/kde5_filepicker_ipc.hxx
+@@ -0,0 +1,45 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#pragma once
++
++#include <QObject>
++
++class KDE5FilePicker;
++class WinIdEmbedder;
++class QSocketNotifier;
++
++class FilePickerIpc : public QObject
++{
++    Q_OBJECT
++public:
++    explicit FilePickerIpc(KDE5FilePicker* filePicker, QObject* parent = nullptr);
++    ~FilePickerIpc();
++
++private Q_SLOTS:
++    void readCommands();
++
++private:
++    void readCommand();
++
++    KDE5FilePicker* m_filePicker = nullptr;
++    QSocketNotifier* m_stdinNotifier = nullptr;
++};
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/vcl/unx/gtk3_kde5/kde5_lo_filepicker_main.cxx b/vcl/unx/gtk3_kde5/kde5_lo_filepicker_main.cxx
+new file mode 100644
+index 000000000000..43d92aba614a
+--- /dev/null
++++ b/vcl/unx/gtk3_kde5/kde5_lo_filepicker_main.cxx
+@@ -0,0 +1,39 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#include "kde5_filepicker.hxx"
++#include "kde5_filepicker_ipc.hxx"
++
++#include <QApplication>
++
++#include <iostream>
++
++int main(int argc, char** argv)
++{
++    QApplication::setApplicationName(QStringLiteral("lo_kde5filepicker"));
++    QApplication app(argc, argv);
++    app.setQuitOnLastWindowClosed(false);
++
++    KDE5FilePicker filePicker;
++    FilePickerIpc ipc(&filePicker);
++
++    return app.exec();
++}
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
