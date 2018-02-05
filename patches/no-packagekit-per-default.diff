@@ -34,10 +34,10 @@ diff --git a/config_host.mk.in b/config_host.mk.in
 index 6170227..2721820 100644
 --- a/config_host.mk.in
 +++ b/config_host.mk.in
-@@ -157,6 +157,7 @@ export ENABLE_EXTENSION_UPDATE=@ENABLE_EXTENSION_UPDATE@
- export ENABLE_OOENV=@ENABLE_OOENV@
+@@ -153,6 +153,7 @@
  export ENABLE_OPENGL_TRANSITIONS=@ENABLE_OPENGL_TRANSITIONS@
  export ENABLE_OPENGL_CANVAS=@ENABLE_OPENGL_CANVAS@
+ export ENABLE_OPTIMIZED=@ENABLE_OPTIMIZED@
 +export ENABLE_PACKAGEKIT=@ENABLE_PACKAGEKIT@
  export ENABLE_PCH=@ENABLE_PCH@
  export ENABLE_PDFIMPORT=@ENABLE_PDFIMPORT@
@@ -84,81 +84,6 @@ index b6f6f37..c6a9b7d 100644
  AC_MSG_CHECKING([whether to enable Impress remote control])
  if test -n "$enable_sdremote" -a "$enable_sdremote" != "no"; then
      AC_MSG_RESULT([yes])
-diff --git a/vcl/inc/unx/fontmanager.hxx b/vcl/inc/unx/fontmanager.hxx
-index 1ffe504..d365800 100644
---- a/vcl/inc/unx/fontmanager.hxx
-+++ b/vcl/inc/unx/fontmanager.hxx
-@@ -317,12 +317,12 @@ class VCL_PLUGIN_PUBLIC PrintFontManager
-     static void addFontconfigDir(const OString& rDirectory);
- 
-     std::set<OString> m_aPreviousLangSupportRequests;
--#if ENABLE_DBUS
-+#if ENABLE_DBUS && defined(ENABLE_PACKAGEKIT)
-     std::vector<OString> m_aCurrentRequests;
- #endif
-     Timer m_aFontInstallerTimer;
- 
--#if ENABLE_DBUS
-+#if ENABLE_DBUS && defined(ENABLE_PACKAGEKIT)
-     DECL_LINK( autoInstallFontLangSupport, Timer*, void );
- #endif
-     PrintFontManager();
-diff --git a/vcl/unx/generic/fontmanager/fontconfig.cxx b/vcl/unx/generic/fontmanager/fontconfig.cxx
-index aff2848..8def362 100644
---- a/vcl/unx/generic/fontmanager/fontconfig.cxx
-+++ b/vcl/unx/generic/fontmanager/fontconfig.cxx
-@@ -37,7 +37,7 @@ using namespace psp;
- #include <ft2build.h>
- #include <fontconfig/fcfreetype.h>
- 
--#if ENABLE_DBUS
-+#if ENABLE_DBUS && defined(ENABLE_PACKAGEKIT)
- #include <dbus/dbus-glib.h>
- #endif
- 
-@@ -877,7 +877,7 @@ namespace
-         return OStringToOUString(aBuf.makeStringAndClear(), RTL_TEXTENCODING_UTF8);
-     }
- 
--#if ENABLE_DBUS
-+#if ENABLE_DBUS && defined(ENABLE_PACKAGEKIT)
-     guint get_xid_for_dbus()
-     {
-         const vcl::Window *pTopWindow = Application::IsHeadlessModeEnabled() ? nullptr : Application::GetActiveTopWindow();
-@@ -873,7 +873,7 @@ namespace
- #endif
- }
- 
--#if ENABLE_DBUS
-+#if ENABLE_DBUS && defined(ENABLE_PACKAGEKIT)
- IMPL_LINK_NOARG(PrintFontManager, autoInstallFontLangSupport, Timer *, void)
- {
-     if (!officecfg::Office::Common::PackageKit::EnableFontInstallation::get())
-@@ -1098,7 +1098,7 @@ void PrintFontManager::Substitute( FontSelectPattern &rPattern, OUString& rMissi
-                     }
-                 }
-                 OUString sStillMissing(pRemainingCodes.get(), nRemainingLen);
--#if ENABLE_DBUS
-+#if ENABLE_DBUS && defined(ENABLE_PACKAGEKIT)
-                 if (get_xid_for_dbus())
-                 {
-                     if (sStillMissing == rMissingCodes) //replaced nothing
-diff --git a/vcl/unx/generic/fontmanager/fontmanager.cxx b/vcl/unx/generic/fontmanager/fontmanager.cxx
-index 8089eae..b2525ac 100644
---- a/vcl/unx/generic/fontmanager/fontmanager.cxx
-+++ b/vcl/unx/generic/fontmanager/fontmanager.cxx
-@@ -674,7 +674,7 @@ PrintFontManager::PrintFontManager()
-     : m_nNextFontID( 1 )
-     , m_nNextDirAtom( 1 )
- {
--#if ENABLE_DBUS
-+#if ENABLE_DBUS && defined(ENABLE_PACKAGEKIT)
-     m_aFontInstallerTimer.SetInvokeHandler(LINK(this, PrintFontManager, autoInstallFontLangSupport));
-     m_aFontInstallerTimer.SetTimeout(5000);
- #endif
--- 
-2.1.4
-
 diff --git a/Repository.mk b/Repository.mk
 index 858be89..901085e 100644
 --- a/Repository.mk
@@ -177,7 +102,7 @@ index f467783..b48e763 100644
 --- a/sfx2/source/appl/appserv.cxx
 +++ b/sfx2/source/appl/appserv.cxx
 @@ -159,6 +159,7 @@ namespace
-         // make sure we actually can instanciate services from base first
+         // make sure we actually can instantiate services from base first
          if(!lcl_isBaseAvailable())
          {
 +#if defined (ENABLE_PACKAGEKIT)
@@ -187,7 +112,7 @@ index f467783..b48e763 100644
 @@ -176,8 +177,16 @@ namespace
                  SAL_INFO(
                      "sfx.appl",
-                     "trying to install LibreOffice Base, caught " << e.Message);
+                     "trying to install LibreOffice Base, caught " << e);
 +#else
 +                SAL_INFO(
 +                    "sfx.appl",
@@ -234,7 +159,7 @@ index 896b365..5be6a92 100644
 @@ -365,8 +366,15 @@ void SwMailMergeWizardExecutor::ExecuteMailMergeWizard( const SfxItemSet * pArgs
              SAL_INFO(
                  "sw.core",
-                 "trying to install LibreOffice Base, caught " << e.Message);
+                 "trying to install LibreOffice Base, caught " << e);
 +#else
 +            SAL_INFO(
 +                "sw.core",
@@ -264,3 +189,75 @@ index c411fc1..d540983 100644
  	$(if $(ENABLE_GSTREAMER_1_0), \
  		avmedia/source/gstreamer/avmediagstreamer \
  	) \
+diff --git a/vcl/inc/unx/fontmanager.hxx b/vcl/inc/unx/fontmanager.hxx
+index 1c3114e43bbc..41e045dd9978 100644
+--- a/vcl/inc/unx/fontmanager.hxx
++++ b/vcl/inc/unx/fontmanager.hxx
+@@ -202,12 +202,12 @@ class VCL_PLUGIN_PUBLIC PrintFontManager
+     static void addFontconfigDir(const OString& rDirectory);
+ 
+     std::set<OString> m_aPreviousLangSupportRequests;
+-#if ENABLE_GIO
++#if ENABLE_GIO && defined (ENABLE_DBUS) && defined (ENABLE_PACKAGEKIT)
+     std::vector<OString> m_aCurrentRequests;
+ #endif
+     Timer m_aFontInstallerTimer;
+ 
+-#if ENABLE_GIO
++#if ENABLE_GIO && defined (ENABLE_DBUS) && defined (ENABLE_PACKAGEKIT)
+     DECL_LINK( autoInstallFontLangSupport, Timer*, void );
+ #endif
+     PrintFontManager();
+diff --git a/vcl/unx/generic/fontmanager/fontconfig.cxx b/vcl/unx/generic/fontmanager/fontconfig.cxx
+index 68d00eb0d6bf..a163694012a4 100644
+--- a/vcl/unx/generic/fontmanager/fontconfig.cxx
++++ b/vcl/unx/generic/fontmanager/fontconfig.cxx
+@@ -40,7 +40,7 @@ using namespace psp;
+ #include <ft2build.h>
+ #include <fontconfig/fcfreetype.h>
+ 
+-#if ENABLE_GIO
++#if ENABLE_GIO && defined (ENABLE_DBUS) && defined(ENABLE_PACKAGEKIT)
+ #include <gio/gio.h>
+ #endif
+ 
+@@ -862,7 +862,7 @@ namespace
+         return OStringToOUString(aBuf.makeStringAndClear(), RTL_TEXTENCODING_UTF8);
+     }
+ 
+-#if ENABLE_GIO
++#if ENABLE_GIO && defined(ENABLE_DBUS) && defined(ENABLE_PACKAGEKIT)
+     guint get_xid_for_dbus()
+     {
+         // FIXME: Application::GetActiveTopWindow only returns something sensible if LO currently has the focus
+@@ -874,7 +874,7 @@ namespace
+ #endif
+ }
+ 
+-#if ENABLE_GIO
++#if ENABLE_GIO && defined (ENABLE_DBUS) && defined (ENABLE_PACKAGEKIT)
+ IMPL_LINK_NOARG(PrintFontManager, autoInstallFontLangSupport, Timer *, void)
+ {
+     if (!officecfg::Office::Common::PackageKit::EnableFontInstallation::get())
+@@ -1106,7 +1106,7 @@ void PrintFontManager::Substitute( FontSelectPattern &rPattern, OUString& rMissi
+                     }
+                 }
+                 OUString sStillMissing(pRemainingCodes.get(), nRemainingLen);
+-#if ENABLE_GIO
++#if ENABLE_GIO && defined (ENABLE_DBUS) && defined (ENABLE_PACKAGEKIT)
+                 if (get_xid_for_dbus())
+                 {
+                     if (sStillMissing == rMissingCodes) //replaced nothing
+diff --git a/vcl/unx/generic/fontmanager/fontmanager.cxx b/vcl/unx/generic/fontmanager/fontmanager.cxx
+index 6726deeefb90..9e5a940a4b84 100644
+--- a/vcl/unx/generic/fontmanager/fontmanager.cxx
++++ b/vcl/unx/generic/fontmanager/fontmanager.cxx
+@@ -134,7 +134,7 @@ PrintFontManager::PrintFontManager()
+     : m_nNextFontID( 1 )
+     , m_nNextDirAtom( 1 )
+ {
+-#if ENABLE_GIO
++#if ENABLE_GIO && defined (ENABLE_DBUS) && defined (ENABLE_PACKAGEKIT)
+     m_aFontInstallerTimer.SetInvokeHandler(LINK(this, PrintFontManager, autoInstallFontLangSupport));
+     m_aFontInstallerTimer.SetTimeout(5000);
+ #endif

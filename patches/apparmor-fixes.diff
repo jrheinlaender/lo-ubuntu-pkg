@@ -1,29 +1,123 @@
-From 48ff651c521a07e50870f39a9ab5f4cc2ad76d03 Mon Sep 17 00:00:00 2001
-From: Rene Engelhard <rene@debian.org>
-Date: Mon, 11 Dec 2017 19:41:12 +0100
-Subject: [PATCH] apparmor: copy xpdfimport definition into xpdfimport and
- allow "m"
-
-Dec 11 18:46:11 sid kernel: [  176.085106] audit: type=1400 audit(1513014371.237:22): apparmor="DENIED" operation="file_mmap" profile="libreoffice-xpdfimport" name="/usr/lib/libreoffice/program/xpdfimport" pid=1511 comm="xpdfimport" requested_mask="m" denied_mask="m" fsuid=1000 ouid=0
-
-Change-Id: I31ddb412d1dd95506a00d22739a33d2e6770ba23
----
- sysui/desktop/apparmor/program.xpdfimport | 2 ++
- 1 file changed, 2 insertions(+)
-
-diff --git a/sysui/desktop/apparmor/program.xpdfimport b/sysui/desktop/apparmor/program.xpdfimport
-index 3934c0a04006..aa76e85505fe 100644
---- a/sysui/desktop/apparmor/program.xpdfimport
-+++ b/sysui/desktop/apparmor/program.xpdfimport
-@@ -22,6 +22,8 @@ profile libreoffice-xpdfimport INSTDIR-program/xpdfimport {
-   /usr/share/libreoffice/share/config/* r,
-   owner @{HOME}/.config/libreoffice{,dev}/?/user/uno_packages/cache/log.txt rw,
+diff --git a/sysui/desktop/apparmor/program.oosplash b/sysui/desktop/apparmor/program.oosplash
+index fef54b7ee384..333c0617aa86 100644
+--- a/sysui/desktop/apparmor/program.oosplash
++++ b/sysui/desktop/apparmor/program.oosplash
+@@ -1,19 +1,22 @@
+ # ------------------------------------------------------------------
+ #
+ #    Copyright (C) 2016 Canonical Ltd.
++#    Copyright (C) 2018 Software in the Public Interest, Inc.
+ #
+ #    This Source Code Form is subject to the terms of the Mozilla Public
+ #    License, v. 2.0. If a copy of the MPL was not distributed with this
+ #    file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ #
+ #    Author: Bryan Quigley <bryan.quigley@canonical.com>
++#            Rene Engelhard <rene@debian.org>
+ #
+ # ------------------------------------------------------------------
  
-+  INSTDIR-program/xpdfimport        pxm,
+ #include <tunables/global>
+ 
+-profile libreoffice-oopslash INSTDIR-program/oosplash {
++profile libreoffice-oopslash INSTDIR-program/oosplash {
+   #include <abstractions/base>
++  #include <abstractions/X>
+ 
+   /etc/libreoffice/                     r,
+   /etc/libreoffice/**                   r,
+diff --git a/sysui/desktop/apparmor/program.soffice.bin b/sysui/desktop/apparmor/program.soffice.bin
+index a365f6297781..d3df2163d1f6 100644
+--- a/sysui/desktop/apparmor/program.soffice.bin
++++ b/sysui/desktop/apparmor/program.soffice.bin
+@@ -1,7 +1,7 @@
+ # ------------------------------------------------------------------
+ #
+ #    Copyright (C) 2016 Canonical Ltd.
+-#    Copyright (C) 2017 Software in the Public Interest, Inc.
++#    Copyright (C) 2018 Software in the Public Interest, Inc.
+ #
+ #    This Source Code Form is subject to the terms of the Mozilla Public
+ #    License, v. 2.0. If a copy of the MPL was not distributed with this
+@@ -63,7 +63,7 @@
+ #include <tunables/global>
+ 
+ profile libreoffice-soffice INSTDIR-program/soffice.bin {
+-  #include <abstractions/private-files-strict>
++  #include <abstractions/private-files>
+ 
+   #include <abstractions/audio>
+   #include <abstractions/bash>
+@@ -154,4 +154,8 @@ profile libreoffice-soffice INSTDIR-program/soffice.bin {
+   owner @{HOME}/.icons/*/cursors/*      r,
+   /usr/share/*-fonts/conf.avail/*.conf  r,
+   /usr/share/fonts-config/conf.avail/*.conf r,
 +
-   #Uncomment for build testing (should be one directory <- of instdir)
-   #/mnt/store/git/libo/**    r,
++  owner @{HOME}/.mozilla/firefox/profiles.ini r,
++  owner @{HOME}/.mozilla/firefox/*/secmod.db r,
++  owner @{HOME}/.mozilla/firefox/*/cert8.db r,
  }
--- 
-2.11.0
 
+From 19181fd45735005aad7cb910ca1bf3dd7fb687fb Mon Sep 17 00:00:00 2001
+From: Vincas Dargis <vindrg@gmail.com>
+Date: Sun, 21 Jan 2018 16:16:43 +0200
+Subject: deb#887593 apparmor: allow reading device information
+
+* Add file read rule for paths like
+/sys/devices/virtual/block/dm-0/queue/rotational
+used by isRotational() in desktop/unx/source/pagenin.c.
+* Add file read rule for paths like
+/sys/dev/char/226:128/device/uevent
+used by libdrm.
+
+Change-Id: Ic41365b478c817b6766e25adadd6761fa03ff055
+Reviewed-on: https://gerrit.libreoffice.org/48265
+Tested-by: Rene Engelhard <rene@debian.org>
+Reviewed-by: Rene Engelhard <rene@debian.org>
+Tested-by: Jenkins <ci@libreoffice.org>
+---
+ sysui/desktop/apparmor/program.oosplash    | 1 +
+ sysui/desktop/apparmor/program.soffice.bin | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/sysui/desktop/apparmor/program.oosplash b/sysui/desktop/apparmor/program.oosplash
+index e044c1a..bcc0691 100644
+--- a/sysui/desktop/apparmor/program.oosplash
++++ b/sysui/desktop/apparmor/program.oosplash
+@@ -23,6 +23,7 @@ profile libreoffice-oopslash INSTDIR-program/oosplash {
+   /etc/passwd                           r,
+   /etc/nsswitch.conf                    r,
+   /run/nscd/passwd                      r,
++  /sys/devices/{virtual,pci[0-9]*}/**/queue/rotational  r, # for isRotational() in desktop/unx/source/pagein.c
+   /usr/lib{,32,64}/ure/bin/javaldx      rmpux,
+   /usr/share/libreoffice/program/*      r,
+   INSTDIR-program/** 			r,
+diff --git a/sysui/desktop/apparmor/program.soffice.bin b/sysui/desktop/apparmor/program.soffice.bin
+index ecc2498..113562c 100644
+--- a/sysui/desktop/apparmor/program.soffice.bin
++++ b/sysui/desktop/apparmor/program.soffice.bin
+@@ -170,6 +170,7 @@ profile libreoffice-soffice INSTDIR-program/soffice.bin {
+ 
+   #Likely moving to abstractions in the future
+   owner @{HOME}/.icons/*/cursors/*      r,
++  /sys/devices/pci[0-9]*/**/{device,subsystem_device,subsystem_vendor,uevent,vendor} r, # for libdrm
+   /usr/share/*-fonts/conf.avail/*.conf  r,
+   /usr/share/fonts-config/conf.avail/*.conf r,
+ 
+-- 
+cgit v1.1
+
+Description: Apparmor profile update (allow JVM execution)
+Bug: https://bugs.documentfoundation.org/show_bug.cgi?id=115208
+Author: Olivier Tilloy <olivier.tilloy@canonical.com>
+
+--- a/sysui/desktop/apparmor/program.soffice.bin
++++ b/sysui/desktop/apparmor/program.soffice.bin
+@@ -130,6 +130,7 @@ profile libreoffice-soffice INSTDIR-prog
+ 
+   /usr/lib{,32,64}/jvm/                         r,
+   /usr/lib{,32,64}/jvm/**                       r,
++  /usr/lib{,32,64}/jvm/**/jre/bin/java          mix,
+   INSTDIR-**                        rw,
+   INSTDIR-**.so                     m,
+   INSTDIR-program/soffice.bin       mix,
