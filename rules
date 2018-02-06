@@ -396,7 +396,7 @@ else
 endif
 ENABLE_SDBC_POSTGRESQL=y
 BUILD_GTK=y
-ENABLE_SYSTRAY=n
+ENABLE_SYSTRAY=y
 #ifeq "$(DEB_DISTRIBUTION)" "experimental"
 BUILD_GTK3=y
 #endif
@@ -526,7 +526,7 @@ ENABLE_EOT=y
 ifeq "$(ENABLE_EOT)" "y"
 SYSTEM_STUFF += libeot
 endif
-#SYSTEM_STUFF += glm
+SYSTEM_STUFF += glm
 BUILD_PPC64EL=y
 BUILD_ARM64=y
 SYSTEM_STUFF += gpgmepp
@@ -1554,7 +1554,11 @@ else
 	BUILD_DEPS += , libegl1-mesa-dev
 endif
 ifneq (,$(filter glm, $(SYSTEM_STUFF)))
+  ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) ge 7.3 && echo true)" "true"
+	BUILD_DEPS += , libglm-dev (>= 0.9.9~a2)
+  else
 	BUILD_DEPS += , libglm-dev (>= 0.9.6.3)
+  endif
 endif
 
 ifneq (,$(filter gpgmepp, $(SYSTEM_STUFF)))
@@ -3446,10 +3450,12 @@ endif
 ifneq (,$(filter libcmis, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.libcmis >> debian/shlibs.local
 endif
+ifeq "$(ENABLE_FIREBIRD)" "y"
 ifneq (,$(filter firebird, $(SYSTEM_STUFF)))
 	# force the values of .shlibs which  gives us a (wanted) (>= 3.0.0~)
 	# instead of .symbols which gives os only a (>= 2.5.0.25784~ReleaseCandidate1.ds2)...
 	cat /var/lib/dpkg/info/libfbclient2*.shlibs >> debian/shlibs.local
+endif
 endif
 
 	LD_LIBRARY_PATH="$(FAKEROOT_LIBDIR):debian/uno-libs3/$(OODIR)/program:debian/ure/$(OODIR)/program:$(PKGDIR)-core/$(OODIR)/program:$(PKGDIR)-base-core/$(OODIR)/program:$(PKGDIR)-base/$(OODIR)/program:$(PKGDIR)-writer/$(OODIR)/program" \
