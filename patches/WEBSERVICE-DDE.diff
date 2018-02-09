@@ -1,0 +1,1106 @@
+From d778cd0ce51aa9605dd4baaec711925c2a2bf418 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Caol=C3=A1n=20McNamara?= <caolanm@redhat.com>
+Date: Wed, 10 Jan 2018 14:27:35 +0000
+Subject: [PATCH 1/6] limit WEBSERVICE to http[s] protocols
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+and like excel...
+
+'For protocols that aren’t supported, such as ftp:// or file://, WEBSERVICE
+returns the #VALUE! error value.'
+
+Change-Id: I0e9c6fd3426fad56a199eafac48de9b0f23914b3
+Reviewed-on: https://gerrit.libreoffice.org/47776
+Tested-by: Jenkins <ci@libreoffice.org>
+Reviewed-by: Markus Mohrhard <markus.mohrhard@googlemail.com>
+(cherry picked from commit a916fc0c0e0e8b10cb4158fa0fa173fe205d434a)
+---
+ sc/source/core/tool/interpr7.cxx | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/sc/source/core/tool/interpr7.cxx b/sc/source/core/tool/interpr7.cxx
+index 2d48c6b..0d55e87 100644
+--- a/sc/source/core/tool/interpr7.cxx
++++ b/sc/source/core/tool/interpr7.cxx
+@@ -14,6 +14,7 @@
+ #include <rtl/strbuf.hxx>
+ #include <formula/errorcodes.hxx>
+ #include <svtools/miscopt.hxx>
++#include <tools/urlobj.hxx>
+ 
+ #include <com/sun/star/ucb/XSimpleFileAccess3.hpp>
+ #include <com/sun/star/ucb/SimpleFileAccess.hpp>
+@@ -241,6 +242,14 @@ void ScInterpreter::ScWebservice()
+             return;
+         }
+ 
++        INetURLObject aObj(aURI, INetProtocol::File);
++        INetProtocol eProtocol = aObj.GetProtocol();
++        if (eProtocol != INetProtocol::Http && eProtocol != INetProtocol::Https)
++        {
++            PushError( FormulaError::NoValue );
++            return;
++        }
++
+         uno::Reference< ucb::XSimpleFileAccess3 > xFileAccess( ucb::SimpleFileAccess::create( comphelper::getProcessComponentContext() ), uno::UNO_QUERY );
+         if(!xFileAccess.is())
+         {
+-- 
+1.9.1
+
+From 293e442c945785ab11d4a6abf04039995af74709 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Caol=C3=A1n=20McNamara?= <caolanm@redhat.com>
+Date: Thu, 11 Jan 2018 14:16:15 +0000
+Subject: [PATCH 2/6] Better handle ScDde formulas with missing dde-link
+ entries
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+typically each ScDde formula has a matching table:dde-link which
+results in a ScDdeLink getting inserted during the load. If that dde-link
+is missing then no ScDdeLink exists and ScDde() will create a new one without
+cached content. So detect that ScDde is used in the freshing loaded ods
+and defer fetching new content until the right time.
+
+only call GetHasMacroFunc to set SetHasMacroFunc
+
+and bHasMacroFunc is not accessed any other way, so this is an oxbow
+
+Reviewed-on: https://gerrit.libreoffice.org/47757
+Tested-by: Jenkins <ci@libreoffice.org>
+Reviewed-by: Caolán McNamara <caolanm@redhat.com>
+Tested-by: Caolán McNamara <caolanm@redhat.com>
+(cherry picked from commit b0597ba5d745974fce752e1b677451a19350d351)
+Reviewed-on: https://gerrit.libreoffice.org/47818
+Reviewed-by: Eike Rathke <erack@redhat.com>
+(cherry picked from commit 4ede45eb239b1604bca900c22481b7d13e4c2790)
+
+Conflicts:
+	sc/qa/unit/ucalc.cxx
+	sc/source/core/data/documen2.cxx
+
+Change-Id: I016b53288076d83dd49e92e245346a5f7f560522
+---
+ sc/inc/document.hxx                 | 6 +++---
+ sc/source/core/data/documen2.cxx    | 2 +-
+ sc/source/core/data/formulacell.cxx | 8 ++++----
+ sc/source/core/tool/interpr2.cxx    | 8 +++++++-
+ sc/source/ui/docshell/docsh4.cxx    | 2 ++
+ sc/source/ui/view/tabvwsh4.cxx      | 2 +-
+ 6 files changed, 18 insertions(+), 10 deletions(-)
+
+diff --git a/sc/inc/document.hxx b/sc/inc/document.hxx
+index e2fc885..252a7d1 100644
+--- a/sc/inc/document.hxx
++++ b/sc/inc/document.hxx
+@@ -447,7 +447,7 @@ private:
+     // for detective update, is set for each change of a formula
+     bool                bDetectiveDirty;
+ 
+-    bool                bHasMacroFunc;      // valid only after loading
++    bool                bLinkFormulaNeedingCheck; // valid only after loading, for ocDde
+ 
+     sal_uInt8               nAsianCompression;
+     sal_uInt8               nAsianKerning;
+@@ -1910,8 +1910,8 @@ public:
+     bool            IsDetectiveDirty() const     { return bDetectiveDirty; }
+     void            SetDetectiveDirty(bool bSet) { bDetectiveDirty = bSet; }
+ 
+-    bool            GetHasMacroFunc() const      { return bHasMacroFunc; }
+-    void            SetHasMacroFunc(bool bSet)   { bHasMacroFunc = bSet; }
++    bool            HasLinkFormulaNeedingCheck() const      { return bLinkFormulaNeedingCheck; }
++    void            SetLinkFormulaNeedingCheck(bool bSet)   { bLinkFormulaNeedingCheck = bSet; }
+ 
+     static bool     CheckMacroWarn();
+ 
+diff --git a/sc/source/core/data/documen2.cxx b/sc/source/core/data/documen2.cxx
+index bd8d567..ce8f3cc 100644
+--- a/sc/source/core/data/documen2.cxx
++++ b/sc/source/core/data/documen2.cxx
+@@ -200,7 +200,7 @@ ScDocument::ScDocument( ScDocumentMode eMode, SfxObjectShell* pDocShell ) :
+         bInDtorClear( false ),
+         bExpandRefs( false ),
+         bDetectiveDirty( false ),
+-        bHasMacroFunc( false ),
++        bLinkFormulaNeedingCheck( false ),
+         nAsianCompression(SC_ASIANCOMPRESSION_INVALID),
+         nAsianKerning(SC_ASIANKERNING_INVALID),
+         bPastingDrawFromOtherDoc( false ),
+diff --git a/sc/source/core/data/formulacell.cxx b/sc/source/core/data/formulacell.cxx
+index a9cfdec..a8d6f5e 100644
+--- a/sc/source/core/data/formulacell.cxx
++++ b/sc/source/core/data/formulacell.cxx
+@@ -1363,10 +1363,10 @@ void ScFormulaCell::CompileXML( sc::CompileFormulaContext& rCxt, ScProgress& rPr
+             bChanged = true;
+     }
+ 
+-    //  Same as in Load: after loading, it must be known if ocMacro is in any formula
+-    //  (for macro warning, CompileXML is called at the end of loading XML file)
+-    if ( !pDocument->GetHasMacroFunc() && pCode->HasOpCodeRPN( ocMacro ) )
+-        pDocument->SetHasMacroFunc( true );
++    //  After loading, it must be known if ocDde is in any formula
++    //  (for external links warning, CompileXML is called at the end of loading XML file)
++    if (!pDocument->HasLinkFormulaNeedingCheck() && pCode->HasOpCodeRPN(ocDde))
++        pDocument->SetLinkFormulaNeedingCheck(true);
+ 
+     //volatile cells must be added here for import
+     if( pCode->IsRecalcModeAlways() || pCode->IsRecalcModeForced() ||
+diff --git a/sc/source/core/tool/interpr2.cxx b/sc/source/core/tool/interpr2.cxx
+index 38523e5..6dc8660 100644
+--- a/sc/source/core/tool/interpr2.cxx
++++ b/sc/source/core/tool/interpr2.cxx
+@@ -2520,8 +2520,14 @@ void ScInterpreter::ScDde()
+                     pBindings->Invalidate( SID_LINKS );             // Link-Manager enablen
+             }
+ 
++            //if the document was just loaded, but the ScDdeLink entry was missing, then
++            //don't update this link until the links are updated in response to the users
++            //decision
++            if (!pDok->HasLinkFormulaNeedingCheck())
++            {
+                                     //TODO: evaluate asynchron ???
+-            pLink->TryUpdate();     //  TryUpdate doesn't call Update multiple times
++                pLink->TryUpdate(); //  TryUpdate doesn't call Update multiple times
++            }
+ 
+             if (pMyFormulaCell)
+             {
+diff --git a/sc/source/ui/docshell/docsh4.cxx b/sc/source/ui/docshell/docsh4.cxx
+index 853692c..42344e0 100644
+--- a/sc/source/ui/docshell/docsh4.cxx
++++ b/sc/source/ui/docshell/docsh4.cxx
+@@ -470,6 +470,8 @@ void ScDocShell::Execute( SfxRequest& rReq )
+                     rEmbeddedObjectContainer.setUserAllowsLinkUpdate(false);
+                     rReq.Ignore();
+                 }
++
++                rDoc.SetLinkFormulaNeedingCheck(false);
+             }
+             break;
+ 
+diff --git a/sc/source/ui/view/tabvwsh4.cxx b/sc/source/ui/view/tabvwsh4.cxx
+index a8f3197..6c5d5da 100644
+--- a/sc/source/ui/view/tabvwsh4.cxx
++++ b/sc/source/ui/view/tabvwsh4.cxx
+@@ -1564,7 +1564,7 @@ void ScTabViewShell::Construct( TriState nForceDesignMode )
+             if (!bLink)
+             {
+                 const sc::DocumentLinkManager& rMgr = rDoc.GetDocLinkManager();
+-                if (rMgr.hasDdeOrOleLinks() || rDoc.HasAreaLinks())
++                if (rMgr.hasDdeOrOleLinks() || rDoc.HasAreaLinks() || rDoc.HasLinkFormulaNeedingCheck())
+                     bLink = true;
+             }
+             if (bLink)
+-- 
+1.9.1
+
+From e8c8627a61b429c2c4b1d37d27809695c2a275ca Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Caol=C3=A1n=20McNamara?= <caolanm@redhat.com>
+Date: Thu, 11 Jan 2018 20:43:28 +0000
+Subject: [PATCH 3/6] handle ocWebservice similarly to ocDde
+
+might have too much in here seeing as we don't need to worry about
+ocWebservice calling into itself
+
+Reviewed-on: https://gerrit.libreoffice.org/47819
+Tested-by: Jenkins <ci@libreoffice.org>
+Reviewed-by: Eike Rathke <erack@redhat.com>
+(cherry picked from commit e1946d75a1095c2596d7815600454ff01fcd3270)
+
+Conflicts:
+	sc/source/core/tool/interpr7.cxx
+	sc/source/ui/docshell/documentlinkmgr.cxx
+
+Change-Id: I0145f38cc1c1f9ff514a496f7101d81cde9e7c67
+---
+ sc/Library_sc.mk                          |   1 +
+ sc/inc/document.hxx                       |   2 +-
+ sc/inc/documentlinkmgr.hxx                |   6 +-
+ sc/source/core/data/formulacell.cxx       |   4 +-
+ sc/source/core/inc/webservicelink.hxx     |  49 ++++++++++++++
+ sc/source/core/tool/interpr7.cxx          | 101 +++++++++++++++++++---------
+ sc/source/core/tool/webservicelink.cxx    | 106 ++++++++++++++++++++++++++++++
+ sc/source/ui/docshell/docsh4.cxx          |   2 +-
+ sc/source/ui/docshell/documentlinkmgr.cxx |  20 ++++--
+ sc/source/ui/view/tabvwsh4.cxx            |   2 +-
+ 10 files changed, 250 insertions(+), 43 deletions(-)
+ create mode 100644 sc/source/core/inc/webservicelink.hxx
+ create mode 100644 sc/source/core/tool/webservicelink.cxx
+
+diff --git a/sc/Library_sc.mk b/sc/Library_sc.mk
+index 0ef50c3..22f3160 100644
+--- a/sc/Library_sc.mk
++++ b/sc/Library_sc.mk
+@@ -285,6 +285,7 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
+     sc/source/core/tool/unitconv \
+     sc/source/core/tool/userlist \
+     sc/source/core/tool/viewopti \
++    sc/source/core/tool/webservicelink \
+     sc/source/core/tool/zforauto \
+     sc/source/filter/xml/datastreamimport \
+     sc/source/filter/xml/XMLCalculationSettingsContext \
+diff --git a/sc/inc/document.hxx b/sc/inc/document.hxx
+index 252a7d1..828f9833 100644
+--- a/sc/inc/document.hxx
++++ b/sc/inc/document.hxx
+@@ -447,7 +447,7 @@ private:
+     // for detective update, is set for each change of a formula
+     bool                bDetectiveDirty;
+ 
+-    bool                bLinkFormulaNeedingCheck; // valid only after loading, for ocDde
++    bool                bLinkFormulaNeedingCheck; // valid only after loading, for ocDde and ocWebservice
+ 
+     sal_uInt8               nAsianCompression;
+     sal_uInt8               nAsianKerning;
+diff --git a/sc/inc/documentlinkmgr.hxx b/sc/inc/documentlinkmgr.hxx
+index d5d801a..86dba66 100644
+--- a/sc/inc/documentlinkmgr.hxx
++++ b/sc/inc/documentlinkmgr.hxx
+@@ -55,9 +55,9 @@ public:
+     bool idleCheckLinks();
+ 
+     bool hasDdeLinks() const;
+-    bool hasDdeOrOleLinks() const;
++    bool hasDdeOrOleOrWebServiceLinks() const;
+ 
+-    bool updateDdeOrOleLinks(vcl::Window* pWin);
++    bool updateDdeOrOleOrWebServiceLinks(vcl::Window* pWin);
+ 
+     void updateDdeLink( const OUString& rAppl, const OUString& rTopic, const OUString& rItem );
+ 
+@@ -65,7 +65,7 @@ public:
+ 
+     void disconnectDdeLinks();
+ private:
+-    bool hasDdeOrOleLinks(bool bDde, bool bOle) const;
++    bool hasDdeOrOleOrWebServiceLinks(bool bDde, bool bOle, bool bWebService) const;
+ };
+ 
+ }
+diff --git a/sc/source/core/data/formulacell.cxx b/sc/source/core/data/formulacell.cxx
+index a8d6f5e..7af4fb5 100644
+--- a/sc/source/core/data/formulacell.cxx
++++ b/sc/source/core/data/formulacell.cxx
+@@ -1363,9 +1363,9 @@ void ScFormulaCell::CompileXML( sc::CompileFormulaContext& rCxt, ScProgress& rPr
+             bChanged = true;
+     }
+ 
+-    //  After loading, it must be known if ocDde is in any formula
++    //  After loading, it must be known if ocDde/ocWebservice is in any formula
+     //  (for external links warning, CompileXML is called at the end of loading XML file)
+-    if (!pDocument->HasLinkFormulaNeedingCheck() && pCode->HasOpCodeRPN(ocDde))
++    if (!pDocument->HasLinkFormulaNeedingCheck() && (pCode->HasOpCodeRPN(ocDde) || pCode->HasOpCodeRPN(ocWebservice)))
+         pDocument->SetLinkFormulaNeedingCheck(true);
+ 
+     //volatile cells must be added here for import
+diff --git a/sc/source/core/inc/webservicelink.hxx b/sc/source/core/inc/webservicelink.hxx
+new file mode 100644
+index 0000000..e61ebfd
+--- /dev/null
++++ b/sc/source/core/inc/webservicelink.hxx
+@@ -0,0 +1,49 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ */
++
++#ifndef INCLUDED_SC_SOURCE_CORE_INC_WEBSERVICE_HXX
++#define INCLUDED_SC_SOURCE_CORE_INC_WEBSERVICE_HXX
++
++#include <address.hxx>
++#include <sfx2/lnkbase.hxx>
++#include <svl/broadcast.hxx>
++#include <types.hxx>
++
++class ScDocument;
++
++class ScWebServiceLink : public ::sfx2::SvBaseLink, public SvtBroadcaster
++{
++private:
++    ScDocument* pDoc;
++    OUString aURL; // connection/ link data
++    bool bHasResult; // is set aResult is useful
++    OUString aResult;
++
++public:
++    ScWebServiceLink(ScDocument* pD, const OUString& rURL);
++    virtual ~ScWebServiceLink() override;
++
++    // SvBaseLink override:
++    virtual ::sfx2::SvBaseLink::UpdateResult DataChanged(const OUString& rMimeType,
++                                                         const css::uno::Any& rValue) override;
++
++    // SvtBroadcaster override:
++    virtual void ListenersGone() override;
++
++    // for interpreter:
++
++    const OUString& GetResult() const { return aResult; }
++    bool HasResult() const { return bHasResult; }
++
++    const OUString& GetURL() const { return aURL; }
++};
++
++#endif
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */
+diff --git a/sc/source/core/tool/interpr7.cxx b/sc/source/core/tool/interpr7.cxx
+index 0d55e87..b475b1c 100644
+--- a/sc/source/core/tool/interpr7.cxx
++++ b/sc/source/core/tool/interpr7.cxx
+@@ -13,6 +13,7 @@
+ #include "scmatrix.hxx"
+ #include <rtl/strbuf.hxx>
+ #include <formula/errorcodes.hxx>
++#include <sfx2/bindings.hxx>
+ #include <svtools/miscopt.hxx>
+ #include <tools/urlobj.hxx>
+ 
+@@ -24,6 +25,10 @@
+ #include <datastreamgettime.hxx>
+ #include <dpobject.hxx>
+ #include <document.hxx>
++#include <tokenarray.hxx>
++#include <webservicelink.hxx>
++
++#include <sc.hrc>
+ 
+ #include <cstring>
+ #include <memory>
+@@ -229,6 +234,22 @@ void ScInterpreter::ScFilterXML()
+     }
+ }
+ 
++static ScWebServiceLink* lcl_GetWebServiceLink(const sfx2::LinkManager* pLinkMgr, const OUString& rURL)
++{
++    size_t nCount = pLinkMgr->GetLinks().size();
++    for (size_t i=0; i<nCount; ++i)
++    {
++        ::sfx2::SvBaseLink* pBase = pLinkMgr->GetLinks()[i].get();
++        if (ScWebServiceLink* pLink = dynamic_cast<ScWebServiceLink*>(pBase))
++        {
++            if (pLink->GetURL() == rURL)
++                return pLink;
++        }
++    }
++
++    return nullptr;
++}
++
+ void ScInterpreter::ScWebservice()
+ {
+     sal_uInt8 nParamCount = GetByte();
+@@ -246,52 +267,72 @@ void ScInterpreter::ScWebservice()
+         INetProtocol eProtocol = aObj.GetProtocol();
+         if (eProtocol != INetProtocol::Http && eProtocol != INetProtocol::Https)
+         {
+-            PushError( FormulaError::NoValue );
+-            return;
+-        }
+-
+-        uno::Reference< ucb::XSimpleFileAccess3 > xFileAccess( ucb::SimpleFileAccess::create( comphelper::getProcessComponentContext() ), uno::UNO_QUERY );
+-        if(!xFileAccess.is())
+-        {
+             PushError( formula::errNoValue );
+             return;
+         }
+ 
+-        uno::Reference< io::XInputStream > xStream;
+-        try {
+-            xStream = xFileAccess->openFileRead( aURI );
+-        }
+-        catch (...)
+-        {
+-            // don't let any exceptions pass
+-            PushError( formula::errNoValue );
+-            return;
+-        }
+-        if ( !xStream.is() )
++        if (!mpLinkManager)
+         {
+             PushError( formula::errNoValue );
+             return;
+         }
+ 
+-        const sal_Int32 BUF_LEN = 8000;
+-        uno::Sequence< sal_Int8 > buffer( BUF_LEN );
+-        OStringBuffer aBuffer( 64000 );
++        // Need to reinterpret after loading (build links)
++        if (rArr.IsRecalcModeNormal())
++            rArr.SetExclusiveRecalcModeOnLoad();
++
++        //  while the link is not evaluated, idle must be disabled (to avoid circular references)
++        bool bOldEnabled = pDok->IsIdleEnabled();
++        pDok->EnableIdle(false);
++
++        // Get/ Create link object
++        ScWebServiceLink* pLink = lcl_GetWebServiceLink(mpLinkManager, aURI);
+ 
+-        sal_Int32 nRead = 0;
+-        while ( ( nRead = xStream->readBytes( buffer, BUF_LEN ) ) == BUF_LEN )
++        bool bWasError = (pMyFormulaCell && pMyFormulaCell->GetRawError() != formula::errNoCode);
++
++        if (!pLink)
+         {
+-            aBuffer.append( reinterpret_cast< const char* >( buffer.getConstArray() ), nRead );
+-        }
++            pLink = new ScWebServiceLink(pDok, aURI);
++            mpLinkManager->InsertFileLink(*pLink, OBJECT_CLIENT_FILE, aURI);
++            if ( mpLinkManager->GetLinks().size() == 1 )                    // the first one?
++            {
++                SfxBindings* pBindings = pDok->GetViewBindings();
++                if (pBindings)
++                    pBindings->Invalidate( SID_LINKS );             // Link-Manager enabled
++            }
+ 
+-        if ( nRead > 0 )
++            //if the document was just loaded, but the ScDdeLink entry was missing, then
++            //don't update this link until the links are updated in response to the users
++            //decision
++            if (!pDok->HasLinkFormulaNeedingCheck())
++            {
++                pLink->Update();
++            }
++
++            if (pMyFormulaCell)
++            {
++                // StartListening after the Update to avoid circular references
++                pMyFormulaCell->StartListening(*pLink);
++            }
++        }
++        else
+         {
+-            aBuffer.append( reinterpret_cast< const char* >( buffer.getConstArray() ), nRead );
++            if (pMyFormulaCell)
++                pMyFormulaCell->StartListening(*pLink);
+         }
+ 
+-        xStream->closeInput();
++        //  If an new Error from Reschedule appears when the link is executed then reset the errorflag
++        if (pMyFormulaCell && pMyFormulaCell->GetRawError() != formula::errNoCode && !bWasError)
++            pMyFormulaCell->SetErrCode(formula::errNoCode);
++
++        //  check the value
++        if (pLink->HasResult())
++            PushString(pLink->GetResult());
++        else
++            PushError(formula::errNoValue);
+ 
+-        OUString aContent = OStringToOUString( aBuffer.makeStringAndClear(), RTL_TEXTENCODING_UTF8 );
+-        PushString( aContent );
++        pDok->EnableIdle(bOldEnabled);
++        mpLinkManager->CloseCachedComps();
+     }
+ }
+ 
+diff --git a/sc/source/core/tool/webservicelink.cxx b/sc/source/core/tool/webservicelink.cxx
+new file mode 100644
+index 0000000..82310f2
+--- /dev/null
++++ b/sc/source/core/tool/webservicelink.cxx
+@@ -0,0 +1,106 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ */
++
++#include <comphelper/fileformat.h>
++#include <comphelper/string.hxx>
++#include <osl/thread.h>
++#include <sfx2/linkmgr.hxx>
++#include <sfx2/bindings.hxx>
++
++#include <com/sun/star/ucb/XSimpleFileAccess3.hpp>
++#include <com/sun/star/ucb/SimpleFileAccess.hpp>
++#include <com/sun/star/io/XInputStream.hpp>
++
++#include <webservicelink.hxx>
++#include <brdcst.hxx>
++#include <document.hxx>
++#include <scmatrix.hxx>
++#include <patattr.hxx>
++#include <rechead.hxx>
++#include <rangeseq.hxx>
++#include <sc.hrc>
++#include <hints.hxx>
++
++ScWebServiceLink::ScWebServiceLink(ScDocument* pD, const OUString& rURL)
++    : ::sfx2::SvBaseLink(SfxLinkUpdateMode::ALWAYS, SotClipboardFormatId::STRING)
++    , pDoc(pD)
++    , aURL(rURL)
++    , bHasResult(false)
++{
++}
++
++ScWebServiceLink::~ScWebServiceLink() {}
++
++sfx2::SvBaseLink::UpdateResult ScWebServiceLink::DataChanged(const OUString&, const css::uno::Any&)
++{
++    aResult.clear();
++    bHasResult = false;
++
++    css::uno::Reference<css::ucb::XSimpleFileAccess3> xFileAccess(
++        css::ucb::SimpleFileAccess::create(comphelper::getProcessComponentContext()),
++        css::uno::UNO_QUERY);
++    if (!xFileAccess.is())
++        return ERROR_GENERAL;
++
++    css::uno::Reference<css::io::XInputStream> xStream;
++    try
++    {
++        xStream = xFileAccess->openFileRead(aURL);
++    }
++    catch (...)
++    {
++        // don't let any exceptions pass
++        return ERROR_GENERAL;
++    }
++    if (!xStream.is())
++        return ERROR_GENERAL;
++
++    const sal_Int32 BUF_LEN = 8000;
++    css::uno::Sequence<sal_Int8> buffer(BUF_LEN);
++    OStringBuffer aBuffer(64000);
++
++    sal_Int32 nRead = 0;
++    while ((nRead = xStream->readBytes(buffer, BUF_LEN)) == BUF_LEN)
++        aBuffer.append(reinterpret_cast<const char*>(buffer.getConstArray()), nRead);
++
++    if (nRead > 0)
++        aBuffer.append(reinterpret_cast<const char*>(buffer.getConstArray()), nRead);
++
++    xStream->closeInput();
++
++    aResult = OStringToOUString(aBuffer.makeStringAndClear(), RTL_TEXTENCODING_UTF8);
++    bHasResult = true;
++
++    //  Something happened...
++    if (HasListeners())
++    {
++        Broadcast(ScHint(SC_HINT_DATACHANGED, ScAddress()));
++        pDoc->TrackFormulas(); // must happen immediately
++        pDoc->StartTrackTimer();
++    }
++
++    return SUCCESS;
++}
++
++void ScWebServiceLink::ListenersGone()
++{
++    ScDocument* pStackDoc = pDoc; // member pDoc can't be used after removing the link
++
++    sfx2::LinkManager* pLinkMgr = pDoc->GetLinkManager();
++    pLinkMgr->Remove(this); // deletes this
++
++    if (pLinkMgr->GetLinks().empty()) // deleted the last one ?
++    {
++        SfxBindings* pBindings = pStackDoc->GetViewBindings(); // don't use member pDoc!
++        if (pBindings)
++            pBindings->Invalidate(SID_LINKS);
++    }
++}
++
++/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */
+diff --git a/sc/source/ui/docshell/docsh4.cxx b/sc/source/ui/docshell/docsh4.cxx
+index 42344e0..0e7671b 100644
+--- a/sc/source/ui/docshell/docsh4.cxx
++++ b/sc/source/ui/docshell/docsh4.cxx
+@@ -448,7 +448,7 @@ void ScDocShell::Execute( SfxRequest& rReq )
+                     ReloadTabLinks();
+                     aDocument.UpdateExternalRefLinks(GetActiveDialogParent());
+ 
+-                    bool bAnyDde = aDocument.GetDocLinkManager().updateDdeOrOleLinks(GetActiveDialogParent());
++                    bool bAnyDde = aDocument.GetDocLinkManager().updateDdeOrOleOrWebServiceLinks(GetActiveDialogParent());
+ 
+                     if (bAnyDde)
+                     {
+diff --git a/sc/source/ui/docshell/documentlinkmgr.cxx b/sc/source/ui/docshell/documentlinkmgr.cxx
+index 520b854..b8a9df6 100644
+--- a/sc/source/ui/docshell/documentlinkmgr.cxx
++++ b/sc/source/ui/docshell/documentlinkmgr.cxx
+@@ -20,6 +20,7 @@
+ #include <documentlinkmgr.hxx>
+ #include <datastream.hxx>
+ #include <ddelink.hxx>
++#include <webservicelink.hxx>
+ #include <sc.hrc>
+ #include <scresid.hxx>
+ 
+@@ -115,15 +116,15 @@ bool DocumentLinkManager::idleCheckLinks()
+ 
+ bool DocumentLinkManager::hasDdeLinks() const
+ {
+-    return hasDdeOrOleLinks(true, false);
++    return hasDdeOrOleOrWebServiceLinks(true, false, false);
+ }
+ 
+-bool DocumentLinkManager::hasDdeOrOleLinks() const
++bool DocumentLinkManager::hasDdeOrOleOrWebServiceLinks() const
+ {
+-    return hasDdeOrOleLinks(true, true);
++    return hasDdeOrOleOrWebServiceLinks(true, true, true);
+ }
+ 
+-bool DocumentLinkManager::hasDdeOrOleLinks(bool bDde, bool bOle) const
++bool DocumentLinkManager::hasDdeOrOleOrWebServiceLinks(bool bDde, bool bOle, bool bWebService) const
+ {
+     if (!mpImpl->mpLinkManager)
+         return false;
+@@ -136,12 +137,14 @@ bool DocumentLinkManager::hasDdeOrOleLinks(bool bDde, bool bOle) const
+             return true;
+         if (bOle && dynamic_cast<SdrEmbedObjectLink*>(pBase))
+             return true;
++        if (bWebService && dynamic_cast<ScWebServiceLink*>(pBase))
++            return true;
+     }
+ 
+     return false;
+ }
+ 
+-bool DocumentLinkManager::updateDdeOrOleLinks( vcl::Window* pWin )
++bool DocumentLinkManager::updateDdeOrOleOrWebServiceLinks(vcl::Window* pWin)
+ {
+     if (!mpImpl->mpLinkManager)
+         return false;
+@@ -163,6 +166,13 @@ bool DocumentLinkManager::updateDdeOrOleLinks( vcl::Window* pWin )
+             continue;
+         }
+ 
++        ScWebServiceLink* pWebserviceLink = dynamic_cast<ScWebServiceLink*>(pBase);
++        if (pWebserviceLink)
++        {
++            pWebserviceLink->Update();
++            continue;
++        }
++
+         ScDdeLink* pDdeLink = dynamic_cast<ScDdeLink*>(pBase);
+         if (!pDdeLink)
+             continue;
+diff --git a/sc/source/ui/view/tabvwsh4.cxx b/sc/source/ui/view/tabvwsh4.cxx
+index 6c5d5da..f203b13 100644
+--- a/sc/source/ui/view/tabvwsh4.cxx
++++ b/sc/source/ui/view/tabvwsh4.cxx
+@@ -1564,7 +1564,7 @@ void ScTabViewShell::Construct( TriState nForceDesignMode )
+             if (!bLink)
+             {
+                 const sc::DocumentLinkManager& rMgr = rDoc.GetDocLinkManager();
+-                if (rMgr.hasDdeOrOleLinks() || rDoc.HasAreaLinks() || rDoc.HasLinkFormulaNeedingCheck())
++                if (rDoc.HasLinkFormulaNeedingCheck() || rDoc.HasAreaLinks() || rMgr.hasDdeOrOleOrWebServiceLinks())
+                     bLink = true;
+             }
+             if (bLink)
+-- 
+1.9.1
+
+From 66124bccff0a296d759bf51217f503281602717e Mon Sep 17 00:00:00 2001
+From: Eike Rathke <erack@redhat.com>
+Date: Wed, 17 Jan 2018 22:22:55 +0100
+Subject: [PATCH 4/6] CheckLinkFormulaNeedingCheck() for .xls and .xlsx formula
+ cells
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+ This is a combination of 3 commits.
+
+Move implementation to CheckLinkFormulaNeedingCheck() for further reuse
+
+(cherry picked from commit 55e484c7bcd3ef218e08d3fd93f97bf98fd8cb7f)
+
+CheckLinkFormulaNeedingCheck() for .xlsx cell formulas
+
+(cherry picked from commit f96dbc3dd9c33202f75e29ef49d962386595995d)
+
+CheckLinkFormulaNeedingCheck() for .xls cell formulas
+
+(cherry picked from commit 6bc48275558c3f76c4da25eb8af3c48583ac5599)
+
+a6dd195f7eb4d43483e87eeca59f651e7bf2dcb8
+2587fbc4fec39b6f2c8e733331815a2953dee308
+
+Change-Id: I541d2b6e12a88371c064b901b00e71206ee0c18e
+Reviewed-on: https://gerrit.libreoffice.org/48143
+Tested-by: Jenkins <ci@libreoffice.org>
+Reviewed-by: Caolán McNamara <caolanm@redhat.com>
+Tested-by: Caolán McNamara <caolanm@redhat.com>
+(cherry picked from commit 2bef4debcf7650f3b3922134dff0332d4a95da3f)
+---
+ sc/inc/document.hxx                    |  2 ++
+ sc/source/core/data/documen8.cxx       | 10 ++++++++++
+ sc/source/core/data/formulacell.cxx    |  3 +--
+ sc/source/filter/excel/excform.cxx     |  1 +
+ sc/source/filter/excel/excform8.cxx    |  1 +
+ sc/source/filter/excel/impop.cxx       |  1 +
+ sc/source/filter/oox/formulabuffer.cxx |  4 ++++
+ 7 files changed, 20 insertions(+), 2 deletions(-)
+
+diff --git a/sc/inc/document.hxx b/sc/inc/document.hxx
+index 828f9833..c2f6fe8 100644
+--- a/sc/inc/document.hxx
++++ b/sc/inc/document.hxx
+@@ -1912,6 +1912,8 @@ public:
+ 
+     bool            HasLinkFormulaNeedingCheck() const      { return bLinkFormulaNeedingCheck; }
+     void            SetLinkFormulaNeedingCheck(bool bSet)   { bLinkFormulaNeedingCheck = bSet; }
++    /** Check token array and set link check if ocDde/ocWebservice is contained. */
++    SC_DLLPUBLIC void CheckLinkFormulaNeedingCheck( const ScTokenArray& rCode );
+ 
+     static bool     CheckMacroWarn();
+ 
+diff --git a/sc/source/core/data/documen8.cxx b/sc/source/core/data/documen8.cxx
+index a84c2d0..185a2aa 100644
+--- a/sc/source/core/data/documen8.cxx
++++ b/sc/source/core/data/documen8.cxx
+@@ -88,6 +88,7 @@
+ #include "stringutil.hxx"
+ #include <documentlinkmgr.hxx>
+ #include <scopetools.hxx>
++#include <tokenarray.hxx>
+ 
+ #include <memory>
+ 
+@@ -1153,6 +1154,15 @@ void ScDocument::UpdateRefAreaLinks( UpdateRefMode eUpdateRefMode,
+     }
+ }
+ 
++void ScDocument::CheckLinkFormulaNeedingCheck( const ScTokenArray& rCode )
++{
++    if (HasLinkFormulaNeedingCheck())
++        return;
++
++    if (rCode.HasOpCodeRPN(ocDde) || rCode.HasOpCodeRPN(ocWebservice))
++        SetLinkFormulaNeedingCheck(true);
++}
++
+ // TimerDelays etc.
+ void ScDocument::KeyInput( const KeyEvent& )
+ {
+diff --git a/sc/source/core/data/formulacell.cxx b/sc/source/core/data/formulacell.cxx
+index 7af4fb5..b7d8031 100644
+--- a/sc/source/core/data/formulacell.cxx
++++ b/sc/source/core/data/formulacell.cxx
+@@ -1365,8 +1365,7 @@ void ScFormulaCell::CompileXML( sc::CompileFormulaContext& rCxt, ScProgress& rPr
+ 
+     //  After loading, it must be known if ocDde/ocWebservice is in any formula
+     //  (for external links warning, CompileXML is called at the end of loading XML file)
+-    if (!pDocument->HasLinkFormulaNeedingCheck() && (pCode->HasOpCodeRPN(ocDde) || pCode->HasOpCodeRPN(ocWebservice)))
+-        pDocument->SetLinkFormulaNeedingCheck(true);
++    pDocument->CheckLinkFormulaNeedingCheck(*pCode);
+ 
+     //volatile cells must be added here for import
+     if( pCode->IsRecalcModeAlways() || pCode->IsRecalcModeForced() ||
+diff --git a/sc/source/filter/excel/excform.cxx b/sc/source/filter/excel/excform.cxx
+index c319055..7fa0666 100644
+--- a/sc/source/filter/excel/excform.cxx
++++ b/sc/source/filter/excel/excform.cxx
+@@ -157,6 +157,7 @@ void ImportExcel::Formula(
+     {
+         pCell = new ScFormulaCell(&rDoc.getDoc(), aScPos, *pResult);
+         pCell->GetCode()->WrapReference(aScPos, EXC_MAXCOL8, EXC_MAXROW8);
++        rDoc.getDoc().CheckLinkFormulaNeedingCheck( *pCell->GetCode());
+         rDoc.getDoc().EnsureTable(aScPos.Tab());
+         rDoc.setFormulaCell(aScPos, pCell);
+         SetLastFormula(aScPos.Col(), aScPos.Row(), fCurVal, nXF, pCell);
+diff --git a/sc/source/filter/excel/excform8.cxx b/sc/source/filter/excel/excform8.cxx
+index bea8ba3..b5c9fef 100644
+--- a/sc/source/filter/excel/excform8.cxx
++++ b/sc/source/filter/excel/excform8.cxx
+@@ -730,6 +730,7 @@ ConvErr ExcelToSc8::Convert( const ScTokenArray*& rpTokArray, XclImpStream& aIn,
+                                         << nMerk0 << ocClose;
+                                 aPool >> aStack;
+                                 pExtName->CreateDdeData( GetDoc(), aApplic, aTopic );
++                                GetDoc().SetLinkFormulaNeedingCheck(true);
+                             }
+                         }
+                         break;
+diff --git a/sc/source/filter/excel/impop.cxx b/sc/source/filter/excel/impop.cxx
+index 6d27232..1c25921 100644
+--- a/sc/source/filter/excel/impop.cxx
++++ b/sc/source/filter/excel/impop.cxx
+@@ -867,6 +867,7 @@ void ImportExcel::Shrfmla()
+ 
+     ScFormulaCell* pCell = new ScFormulaCell(pD, aPos, *pErgebnis);
+     pCell->GetCode()->WrapReference(aPos, EXC_MAXCOL8, EXC_MAXROW8);
++    rDoc.getDoc().CheckLinkFormulaNeedingCheck( *pCell->GetCode());
+     rDoc.getDoc().EnsureTable(aPos.Tab());
+     rDoc.setFormulaCell(aPos, pCell);
+     pCell->SetNeedNumberFormat(false);
+diff --git a/sc/source/filter/oox/formulabuffer.cxx b/sc/source/filter/oox/formulabuffer.cxx
+index 41c99f8..b139ac9 100644
+--- a/sc/source/filter/oox/formulabuffer.cxx
++++ b/sc/source/filter/oox/formulabuffer.cxx
+@@ -228,6 +228,10 @@ void applyCellFormulas(
+             continue;
+ 
+         aCompiler.CompileTokenArray(); // Generate RPN tokens.
++
++        // Check if ocDde/ocWebservice is in any formula for external links warning.
++        rDoc.getDoc().CheckLinkFormulaNeedingCheck(*pCode);
++
+         ScFormulaCell* pCell = new ScFormulaCell(&rDoc.getDoc(), aPos, pCode);
+         rDoc.setFormulaCell(aPos, pCell);
+         rCache.store(aPos, pCell);
+-- 
+1.9.1
+
+From 68cada33625321ba764f1fc8008aad5ebc8a44b7 Mon Sep 17 00:00:00 2001
+From: Eike Rathke <erack@redhat.com>
+Date: Thu, 25 Jan 2018 13:20:27 +0100
+Subject: [PATCH 5/6] CheckLinkFormulaNeedingCheck() for conditional format
+ expressions
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+ This is a combination of 4 commits.
+
+Prepare CheckLinkFormulaNeedingCheck() to use either RPN or tokenized code
+
+Conditional format formulas aren't finally compiled until needed
+so the check will have to operate on the tokenized expression
+instead of RPN code.
+
+(cherry picked from commit faa0305ba3d0dc698fce4915d4f3a1fb52422380)
+
+CheckLinkFormulaNeedingCheck() for .ods conditional format expressions
+
+(cherry picked from commit 2930ba2ac5d9423f2848b968edcd8ddc71966186)
+
+CheckLinkFormulaNeedingCheck() for .xlsx conditional format expressions
+
+(cherry picked from commit fef24d9f999ee54d7936900485d97ff26656f517)
+
+CheckLinkFormulaNeedingCheck() for .xls conditional format expressions
+
+(cherry picked from commit af2a2a0c72db312902e466c36697b5c198041e82)
+
+45eb1ab5efa0ec9da2663f20427d2474ce300826
+31ede1a23223a798141a0891deeabd8cf88fff58
+afa112cc591b411d80ead48bf726788d361f6eb3
+
+Change-Id: I68837e9bd33f125ab47b10b1a6fa18175abd1627
+Reviewed-on: https://gerrit.libreoffice.org/48719
+Tested-by: Jenkins <ci@libreoffice.org>
+Reviewed-by: Caolán McNamara <caolanm@redhat.com>
+Tested-by: Caolán McNamara <caolanm@redhat.com>
+(cherry picked from commit dc44111ad5965bf4179fc654b677e1e445dea2f0)
+---
+ sc/source/core/data/conditio.cxx          |  6 ++++++
+ sc/source/core/data/documen8.cxx          | 17 +++++++++++++++--
+ sc/source/filter/excel/xicontent.cxx      |  6 ++++++
+ sc/source/filter/oox/condformatbuffer.cxx |  2 ++
+ 4 files changed, 29 insertions(+), 2 deletions(-)
+
+diff --git a/sc/source/core/data/conditio.cxx b/sc/source/core/data/conditio.cxx
+index d3d996d..922d7dd 100644
+--- a/sc/source/core/data/conditio.cxx
++++ b/sc/source/core/data/conditio.cxx
+@@ -521,6 +521,12 @@ void ScConditionEntry::CompileXML()
+     Compile( GetExpression(aSrcPos, 0, 0, eTempGrammar1),
+              GetExpression(aSrcPos, 1, 0, eTempGrammar2),
+              aStrNmsp1, aStrNmsp2, eTempGrammar1, eTempGrammar2, true );
++
++    // Importing ocDde/ocWebservice?
++    if (pFormula1)
++        mpDoc->CheckLinkFormulaNeedingCheck(*pFormula1);
++    if (pFormula2)
++        mpDoc->CheckLinkFormulaNeedingCheck(*pFormula2);
+ }
+ 
+ void ScConditionEntry::SetSrcString( const OUString& rNew )
+diff --git a/sc/source/core/data/documen8.cxx b/sc/source/core/data/documen8.cxx
+index 185a2aa..deb908f 100644
+--- a/sc/source/core/data/documen8.cxx
++++ b/sc/source/core/data/documen8.cxx
+@@ -1159,8 +1159,21 @@ void ScDocument::CheckLinkFormulaNeedingCheck( const ScTokenArray& rCode )
+     if (HasLinkFormulaNeedingCheck())
+         return;
+ 
+-    if (rCode.HasOpCodeRPN(ocDde) || rCode.HasOpCodeRPN(ocWebservice))
+-        SetLinkFormulaNeedingCheck(true);
++    // Prefer RPN over tokenized formula if available.
++    if (rCode.GetCodeLen())
++    {
++        if (rCode.HasOpCodeRPN(ocDde) || rCode.HasOpCodeRPN(ocWebservice))
++            SetLinkFormulaNeedingCheck(true);
++    }
++    else if (rCode.GetLen())
++    {
++        if (rCode.HasOpCode(ocDde) || rCode.HasOpCode(ocWebservice))
++            SetLinkFormulaNeedingCheck(true);
++    }
++    else
++    {
++        assert(!"called with empty ScTokenArray");
++    }
+ }
+ 
+ // TimerDelays etc.
+diff --git a/sc/source/filter/excel/xicontent.cxx b/sc/source/filter/excel/xicontent.cxx
+index 05a142d..a863f9b 100644
+--- a/sc/source/filter/excel/xicontent.cxx
++++ b/sc/source/filter/excel/xicontent.cxx
+@@ -663,7 +663,10 @@ void XclImpCondFormat::ReadCF( XclImpStream& rStrm )
+         rFmlaConv.Convert( pTokArr, rStrm, nFmlaSize1, false, FT_CondFormat );
+         // formula converter owns pTokArr -> create a copy of the token array
+         if( pTokArr )
++        {
+             xTokArr1.reset( pTokArr->Clone() );
++            GetDocRef().CheckLinkFormulaNeedingCheck( *xTokArr1);
++        }
+     }
+ 
+     ::std::unique_ptr< ScTokenArray > pTokArr2;
+@@ -674,7 +677,10 @@ void XclImpCondFormat::ReadCF( XclImpStream& rStrm )
+         rFmlaConv.Convert( pTokArr, rStrm, nFmlaSize2, false, FT_CondFormat );
+         // formula converter owns pTokArr -> create a copy of the token array
+         if( pTokArr )
++        {
+             pTokArr2.reset( pTokArr->Clone() );
++            GetDocRef().CheckLinkFormulaNeedingCheck( *pTokArr2);
++        }
+     }
+ 
+     // *** create the Calc conditional formatting ***
+diff --git a/sc/source/filter/oox/condformatbuffer.cxx b/sc/source/filter/oox/condformatbuffer.cxx
+index 1c1eadd..8526d7f 100644
+--- a/sc/source/filter/oox/condformatbuffer.cxx
++++ b/sc/source/filter/oox/condformatbuffer.cxx
+@@ -875,11 +875,13 @@ void CondFormatRule::finalizeImport()
+         {
+             pTokenArray2.reset(new ScTokenArray());
+             ScTokenConversion::ConvertToTokenArray( rDoc, *pTokenArray2.get(), maModel.maFormulas[ 1 ] );
++            rDoc.CheckLinkFormulaNeedingCheck( *pTokenArray2.get());
+         }
+ 
+         ScTokenArray aTokenArray;
+         OUString aStyleName = getStyles().createDxfStyle( maModel.mnDxfId );
+         ScTokenConversion::ConvertToTokenArray( rDoc, aTokenArray, maModel.maFormulas[ 0 ] );
++        rDoc.CheckLinkFormulaNeedingCheck( aTokenArray);
+         ScCondFormatEntry* pNewEntry = new ScCondFormatEntry(eOperator,
+                                             &aTokenArray, pTokenArray2.get(), &rDoc, aPos, aStyleName);
+         mpFormat->AddEntry(pNewEntry);
+-- 
+1.9.1
+
+From e1fce8c423bbd0f67a78e07f1c48d91a64018e9c Mon Sep 17 00:00:00 2001
+From: Eike Rathke <erack@redhat.com>
+Date: Mon, 29 Jan 2018 18:19:33 +0100
+Subject: [PATCH 6/6] CheckLinkFormulaNeedingCheck() for named expressions
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+ This is a combination of 3 commits.
+
+CheckLinkFormulaNeedingCheck() for .ods named expressions
+
+This is specifically necessary for named expressions that are used
+in conditional format formulas, for which RPN is generated at a
+later stage, not during import.
+
+(cherry picked from commit eae9648e99be53ba441d9d8207aac6f3ce211ef2)
+
+CheckLinkFormulaNeedingCheck() for .xls named expressions
+
+(cherry picked from commit 8512f13c42ae3fbb287a555616fe10ff04295616)
+
+CheckLinkFormulaNeedingCheck() for .xlsx named expressions
+
+(cherry picked from commit a1f933ee2b9e23a505d937035821e9571cf4119c)
+
+ Conflicts:
+	sc/source/filter/oox/defnamesbuffer.cxx
+
+e03cb5767c34f8157a492a6d6c3b0700d065052d
+217c89822ab477a6c383d170ae739e44efd10fa3
+
+Change-Id: I54ab8dc14f81d6b18b0d17f448187d19d8e396fc
+Reviewed-on: https://gerrit.libreoffice.org/48858
+Tested-by: Jenkins <ci@libreoffice.org>
+Reviewed-by: Caolán McNamara <caolanm@redhat.com>
+Tested-by: Caolán McNamara <caolanm@redhat.com>
+(cherry picked from commit 908854a7b281454332af434be9468ec45d420030)
+---
+ sc/source/core/tool/rangenam.cxx        | 8 +++++++-
+ sc/source/filter/excel/xiname.cxx       | 3 +++
+ sc/source/filter/oox/defnamesbuffer.cxx | 2 ++
+ 3 files changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/sc/source/core/tool/rangenam.cxx b/sc/source/core/tool/rangenam.cxx
+index 7626e16..d147b10 100644
+--- a/sc/source/core/tool/rangenam.cxx
++++ b/sc/source/core/tool/rangenam.cxx
+@@ -64,9 +64,14 @@ ScRangeData::ScRangeData( ScDocument* pDok,
+                 mnMaxCol    (-1)
+ {
+     if (!rSymbol.isEmpty())
+-        CompileRangeData( rSymbol, pDoc->IsImportingXML());
++    {
+         // Let the compiler set an error on unknown names for a subsequent
+         // CompileUnresolvedXML().
++        const bool bImporting = pDoc->IsImportingXML();
++        CompileRangeData( rSymbol, bImporting);
++        if (bImporting)
++            pDoc->CheckLinkFormulaNeedingCheck( *pCode);
++    }
+     else
+     {
+         // #i63513#/#i65690# don't leave pCode as NULL.
+@@ -199,6 +204,7 @@ void ScRangeData::CompileUnresolvedXML( sc::CompileFormulaContext& rCxt )
+         // Don't let the compiler set an error for unknown names on final
+         // compile, errors are handled by the interpreter thereafter.
+         CompileRangeData( aSymbol, false);
++        rCxt.getDoc()->CheckLinkFormulaNeedingCheck( *pCode);
+     }
+ }
+ 
+diff --git a/sc/source/filter/excel/xiname.cxx b/sc/source/filter/excel/xiname.cxx
+index d096615..8decfc0 100644
+--- a/sc/source/filter/excel/xiname.cxx
++++ b/sc/source/filter/excel/xiname.cxx
+@@ -265,7 +265,10 @@ void XclImpName::InsertName(const ScTokenArray* pArray)
+         }
+     }
+     if (pData)
++    {
++        GetDoc().CheckLinkFormulaNeedingCheck( *pData->GetCode());
+         mpScData = pData;               // cache for later use
++    }
+ }
+ 
+ XclImpNameManager::XclImpNameManager( const XclImpRoot& rRoot ) :
+diff --git a/sc/source/filter/oox/defnamesbuffer.cxx b/sc/source/filter/oox/defnamesbuffer.cxx
+index 9de5851..586511d 100644
+--- a/sc/source/filter/oox/defnamesbuffer.cxx
++++ b/sc/source/filter/oox/defnamesbuffer.cxx
+@@ -39,6 +39,7 @@
+ #include "tokenarray.hxx"
+ #include "tokenuno.hxx"
+ #include "compiler.hxx"
++#include "document.hxx"
+ 
+ namespace oox {
+ namespace xls {
+@@ -339,6 +340,7 @@ std::unique_ptr<ScTokenArray> DefinedName::getScTokens(
+     // after, a resulting error must be reset.
+     sal_uInt16 nErr = pArray->GetCodeError();
+     aCompiler.CompileTokenArray();
++    getScDocument().CheckLinkFormulaNeedingCheck( *pArray);
+     pArray->DelRPN();
+     pArray->SetCodeError(nErr);
+ 
+-- 
+1.9.1
+
