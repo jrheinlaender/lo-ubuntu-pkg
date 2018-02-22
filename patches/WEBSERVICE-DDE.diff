@@ -1116,3 +1116,147 @@ index 173c744..5a5a8fd 100644
  const sal_uInt16 errIllegalChar          = 501;
  const sal_uInt16 errIllegalArgument      = 502;
  const sal_uInt16 errIllegalFPOperation   = 503; // #NUM!
+
+From 4a412bdf0387cc2cb59d656d0738a63a286ec497 Mon Sep 17 00:00:00 2001
+From: Eike Rathke <erack@redhat.com>
+Date: Mon, 19 Feb 2018 23:43:51 +0100
+Subject: Resolves: tdf#115710 let css::sheet::FunctionAccess execute
+ WEBSERVICE
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+... independent of a LinkManager that is not present in the
+interim FunctionAccess document. FunctionAccess is executed by
+extensions, Add-Ons and macros that the user gave permission
+already.
+
+Change-Id: I9349a59ee24089c3657de7786b49e5e81946f175
+(cherry picked from commit 121fda77b0cc16d54607a1f5f7b26c0f1050284f)
+Reviewed-on: https://gerrit.libreoffice.org/50020
+Tested-by: Jenkins <ci@libreoffice.org>
+Reviewed-by: Caolán McNamara <caolanm@redhat.com>
+Tested-by: Caolán McNamara <caolanm@redhat.com>
+---
+ sc/inc/document.hxx              |  5 ++++-
+ sc/source/core/data/documen2.cxx |  7 +++++--
+ sc/source/core/tool/interpr7.cxx | 28 +++++++++++++++++++++++++++-
+ sc/source/ui/unoobj/funcuno.cxx  |  2 +-
+ 4 files changed, 37 insertions(+), 5 deletions(-)
+
+diff -urN sc-old/inc/document.hxx sc/inc/document.hxx
+--- a/sc/inc/document.hxx	2018-02-22 11:03:24.000000000 +0100
++++ b/sc/inc/document.hxx	2018-02-22 11:06:40.329105073 +0100
+@@ -233,7 +233,8 @@
+ {
+     SCDOCMODE_DOCUMENT,
+     SCDOCMODE_CLIP,
+-    SCDOCMODE_UNDO
++    SCDOCMODE_UNDO,
++    SCDOCMODE_FUNCTIONACCESS
+ };
+ 
+ struct ScDocStat
+@@ -420,6 +421,7 @@
+     bool                bCalculatingFormulaTree;
+     bool                bIsClip;
+     bool                bIsUndo;
++    bool                bIsFunctionAccess;
+     bool                bIsVisible;                     // set from view ctor
+ 
+     bool                bIsEmbedded;                    // display/adjust Embedded area?
+@@ -1351,6 +1353,7 @@
+     bool            IsClipboard() const                         { return bIsClip; }
+     bool            IsUndoEnabled() const                       { return mbUndoEnabled; }
+     SC_DLLPUBLIC void EnableUndo( bool bVal );
++    bool                IsFunctionAccess() const        { return bIsFunctionAccess; }
+ 
+     bool            IsAdjustHeightEnabled() const               { return mbAdjustHeightEnabled; }
+     void            EnableAdjustHeight( bool bVal )             { mbAdjustHeightEnabled = bVal; }
+diff -urN sc-old/source/core/data/documen2.cxx sc/source/core/data/documen2.cxx
+--- a/sc/source/core/data/documen2.cxx	2018-02-22 11:03:24.000000000 +0100
++++ b/sc/source/core/data/documen2.cxx	2018-02-22 11:04:01.777343579 +0100
+@@ -180,12 +180,13 @@
+         eHardRecalcState(HARDRECALCSTATE_OFF),
+         nVisibleTab( 0 ),
+         eLinkMode(LM_UNKNOWN),
+-        bAutoCalc( eMode == SCDOCMODE_DOCUMENT ),
++        bAutoCalc( eMode == SCDOCMODE_DOCUMENT || eMode == SCDOCMODE_FUNCTIONACCESS ),
+         bAutoCalcShellDisabled( false ),
+         bForcedFormulaPending( false ),
+         bCalculatingFormulaTree( false ),
+         bIsClip( eMode == SCDOCMODE_CLIP ),
+         bIsUndo( eMode == SCDOCMODE_UNDO ),
++        bIsFunctionAccess( eMode == SCDOCMODE_FUNCTIONACCESS ),
+         bIsVisible( false ),
+         bIsEmbedded( false ),
+         bInsertingFromOtherDoc( false ),
+@@ -222,7 +223,9 @@
+ 
+     eSrcSet = osl_getThreadTextEncoding();
+ 
+-    if ( eMode == SCDOCMODE_DOCUMENT )
++    /* TODO: for SCDOCMODE_FUNCTIONACCESS it might not even be necessary to
++     * have all of these available. */
++    if ( eMode == SCDOCMODE_DOCUMENT || eMode == SCDOCMODE_FUNCTIONACCESS )
+     {
+         xPoolHelper = new ScPoolHelper( this );
+ 
+diff -urN sc-old/source/core/tool/interpr7.cxx sc/source/core/tool/interpr7.cxx
+--- a/sc/source/core/tool/interpr7.cxx	2018-02-22 11:03:24.000000000 +0100
++++ b/sc/source/core/tool/interpr7.cxx	2018-02-22 11:08:38.336920129 +0100
+@@ -250,6 +250,21 @@
+     return nullptr;
+ }
+ 
++static bool lcl_FunctionAccessLoadWebServiceLink( OUString& rResult, ScDocument* pDoc, const OUString& rURI )
++{
++    // For FunctionAccess service always force a changed data update.
++    ScWebServiceLink aLink( pDoc, rURI);
++    if (aLink.DataChanged( OUString(), css::uno::Any()) != sfx2::SvBaseLink::UpdateResult::SUCCESS)
++        return false;
++
++    if (!aLink.HasResult())
++        return false;
++
++    rResult = aLink.GetResult();
++
++    return true;
++}
++
+ void ScInterpreter::ScWebservice()
+ {
+     sal_uInt8 nParamCount = GetByte();
+@@ -273,7 +288,19 @@
+ 
+         if (!mpLinkManager)
+         {
+-            PushError( formula::errNoValue );
++            if (!pDok->IsFunctionAccess() || pDok->HasLinkFormulaNeedingCheck())
++            {
++                PushError( formula::errNoValue);
++            }
++            else
++            {
++                OUString aResult;
++                if (lcl_FunctionAccessLoadWebServiceLink( aResult, pDok, aURI))
++                    PushString( aResult);
++                else
++                    PushError( formula::errNoValue);
++            }
++
+             return;
+         }
+ 
+diff -urN sc-old/source/ui/unoobj/funcuno.cxx sc/source/ui/unoobj/funcuno.cxx
+--- a/sc/source/ui/unoobj/funcuno.cxx	2018-02-22 11:01:38.905545605 +0100
++++ b/sc/source/ui/unoobj/funcuno.cxx	2018-02-22 11:04:01.781343573 +0100
+@@ -74,7 +74,7 @@
+ 
+ ScDocument* ScTempDocSource::CreateDocument()
+ {
+-    ScDocument* pDoc = new ScDocument;                  // SCDOCMODE_DOCUMENT
++    ScDocument* pDoc = new ScDocument( SCDOCMODE_FUNCTIONACCESS );
+     pDoc->MakeTable( 0 );
+     return pDoc;
+ }
