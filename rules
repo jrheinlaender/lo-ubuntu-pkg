@@ -214,7 +214,9 @@ ifeq "$(BUILD_KDE5)" "y"
 endif
 endif
 endif
-ifneq (noddebs,$(findstring noddebs,$(DEB_BUILD_OPTIONS)))
+# https://www.debian.org/doc/debian-policy/ says this is not defined and must
+# be ignored, but dh_strip mentions (and honours) it, so...
+ifneq (noautodbgsym,$(findstring noautodbgsym,$(DEB_BUILD_OPTIONS)))
 BUILD_DBGSYM_PACKAGES=y
 ifeq "$(DEB_HOST_ARCH)" "amd64"
 USE_DWZ=y
@@ -893,6 +895,10 @@ export DEB_CFLAGS_MAINT_PREPEND DEB_CXXFLAGS_MAINT_PREPEND
   else
 	CONFIGURE_FLAGS += --enable-symbols
   endif
+else
+	DEB_CFLAGS_MAINT_STRIP := -g
+	DEB_CXXFLAGS_MAINT_STRIP := -g
+export DEB_CFLAGS_MAINT_STRIP DEB_CXXFLAGS_MAINT_STRIP
 endif
 export DPKG_EXPORT_BUILDFLAGS=y 
 include /usr/share/dpkg/buildflags.mk
@@ -1566,8 +1572,10 @@ ifneq (,$(filter gpgmepp, $(SYSTEM_STUFF)))
 endif
 ifeq "$(STRETCH_BACKPORT)" "y"
 	BUILD_DEPS+= , gnupg <!nocheck>
+	BUILD_DEPS+= , gnupg-agent <!nocheck>
 else
 	BUILD_DEPS+= , gpg <!nocheck>
+	BUILD_DEPS+= , gpg-agent <!nocheck>
 endif
 
 ifeq "$(ENABLE_GIO)" "y"
@@ -3412,7 +3420,7 @@ endif
 ifeq (,$(filter icu, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.icu >> debian/shlibs.local
 endif
-ifneq (,$(filter libvisio, $(SYSTEM_STUFF)))
+ifeq (,$(filter libvisio, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.libvisio >> debian/shlibs.local
 endif
 ifeq (,$(filter libwpd, $(SYSTEM_STUFF)))
@@ -3767,6 +3775,9 @@ get-orig-source: $(call get_orig_tarball,-tarballs) tarballs/fetch.log
 unpack: tarballs/fetch.log
 	dh_testdir
 endif
+else
+get-orig-source:
+	PATH=$(CURDIR)/debian/scripts:$$PATH uscan --watchfile=$(CURDIR)/debian/watch --verbose --force
 endif
 
 .PHONY: control
