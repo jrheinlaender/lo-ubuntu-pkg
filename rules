@@ -210,7 +210,9 @@ ifeq "$(BUILD_KDE5)" "y"
 endif
 endif
 endif
-ifneq (noddebs,$(findstring noddebs,$(DEB_BUILD_OPTIONS)))
+# https://www.debian.org/doc/debian-policy/ says this is not defined and must
+# be ignored, but dh_strip mentions (and honours) it, so...
+ifneq (noautodbgsym,$(findstring noautodbgsym,$(DEB_BUILD_OPTIONS)))
 BUILD_DBGSYM_PACKAGES=y
 ifeq "$(DEB_HOST_ARCH)" "amd64"
 USE_DWZ=y
@@ -460,7 +462,7 @@ endif
 FAKEROOT_LIBDIR=/usr/lib/$(DEB_HOST_MULTIARCH)/libfakeroot
 SYSTEM_STUFF += liblangtag
 SYSTEM_STUFF += orcus
-LIBORCUS_MINVER=0.13
+LIBORCUS_MINVER=0.13.3
 USE_UCPP=y
 ifeq "$(USE_UCPP)" "y"
   SYSTEM_STUFF += ucpp
@@ -577,8 +579,9 @@ PLATFORMID := $(shell grep PLATFORMID debian/vars.$(DEB_HOST_ARCH) | cut -d"=" -
 
 
 # let's do this only on archs where we have chromium, which is supposedly even only the archs
-# where alsp pdfium is supported.
-OOO_PDFIUM_ARCHS := i386 amd64 armhf arm64
+# where alsp pdfium is supported. Remove arm64, see
+https://lists.freedesktop.org/archives/libreoffice/2018-February/079384.html
+OOO_PDFIUM_ARCHS := i386 amd64 armhf
 ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_PDFIUM_ARCHS)))
 ENABLE_PDFIUM=y
 else
@@ -885,6 +888,10 @@ export DEB_CFLAGS_MAINT_PREPEND DEB_CXXFLAGS_MAINT_PREPEND
   else
 	CONFIGURE_FLAGS += --enable-symbols
   endif
+else
+	DEB_CFLAGS_MAINT_STRIP := -g
+	DEB_CXXFLAGS_MAINT_STRIP := -g
+export DEB_CFLAGS_MAINT_STRIP DEB_CXXFLAGS_MAINT_STRIP
 endif
 export DPKG_EXPORT_BUILDFLAGS=y 
 include /usr/share/dpkg/buildflags.mk
@@ -3404,8 +3411,11 @@ endif
 ifeq (,$(filter libstaroffice, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.libstaroffice >> debian/shlibs.local
 endif
-ifeq (,$(filter orcus, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.orcus >> debian/shlibs.local
+ifneq (,$(filter orcus, $(SYSTEM_STUFF)))
+	# needed for import via orcus...
+	sed -i "s/\(liborcus.*\)$$/\1 liborcus-0.13-0 (>= $(LIBORCUS_MINVER))/" \
+		debian/shlibs.local
 endif
 ifeq (,$(filter liblangtag, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.liblangtag >> debian/shlibs.local
@@ -3729,6 +3739,9 @@ get-orig-source: $(call get_orig_tarball,-tarballs) tarballs/fetch.log
 unpack: tarballs/fetch.log
 	dh_testdir
 endif
+else
+get-orig-source:
+	PATH=$(CURDIR)/debian/scripts:$$PATH uscan --watchfile=$(CURDIR)/debian/watch --verbose --force
 endif
 
 .PHONY: control
