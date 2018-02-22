@@ -1,0 +1,153 @@
+From 20945a9a4de6684010fd5b3603595e6da543807d Mon Sep 17 00:00:00 2001
+From: Kohei Yoshida <kohei.yoshida@gmail.com>
+Date: Wed, 31 Jan 2018 21:27:44 -0500
+Subject: Correctly import solid fill color.
+
+In orcus, a solid fill type uses the foreground color only and ignores
+the background color.  Also, let's not use the alpha component as it
+would cause the color to not get rendered at all.
+
+Some patches are applied against liborcus in order to adjust the ODF
+styles import code for this change.  These changes will be incorporated
+in 0.13.3.
+
+Change-Id: I9e8c243cc6a7f366de2393e7b7ecf77366f5f9ea
+Reviewed-on: https://gerrit.libreoffice.org/49071
+Reviewed-by: Kohei Yoshida <libreoffice@kohei.us>
+Tested-by: Kohei Yoshida <libreoffice@kohei.us>
+---
+ ...-of-0-means-fully-transparent.-I-m-sure-2.patch | 50 ++++++++++++++++++++++
+ ...osed-to-use-the-foreground-color-for-soli.patch | 49 +++++++++++++++++++++
+ external/liborcus/UnpackedTarball_liborcus.mk      |  2 +
+ sc/source/filter/orcus/interface.cxx               | 15 ++++---
+ 4 files changed, 111 insertions(+), 5 deletions(-)
+ create mode 100644 external/liborcus/0001-Alpha-value-of-0-means-fully-transparent.-I-m-sure-2.patch
+ create mode 100644 external/liborcus/0002-We-are-supposed-to-use-the-foreground-color-for-soli.patch
+
+From a1c36eff089c3cd695bd78090575ca1c7677121e Mon Sep 17 00:00:00 2001
+From: Kohei Yoshida <kohei.yoshida@gmail.com>
+Date: Fri, 2 Feb 2018 22:07:28 -0500
+Subject: Ignore the alpha value in font colors.
+
+Using it would remove the color altogether.
+
+Change-Id: I2c14316c9c9c885f4e7615e4057e752a58223227
+Reviewed-on: https://gerrit.libreoffice.org/49170
+Tested-by: Jenkins <ci@libreoffice.org>
+Reviewed-by: Kohei Yoshida <libreoffice@kohei.us>
+---
+ sc/source/filter/orcus/interface.cxx | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+From 45a4e70484e7d90dab07a677914ada2d948b415c Mon Sep 17 00:00:00 2001
+From: Kohei Yoshida <kohei.yoshida@gmail.com>
+Date: Wed, 14 Feb 2018 21:04:28 -0500
+Subject: Update orcus to 0.13.3.
+
+This will be the new baseline for master, since, though this change
+is a fully API-compatible, one bug fix wrt the alpha value handling
+unfortunately would break some unit tests when using an earlier
+version.
+
+Change-Id: I5a17ce4085d3311a165748154d107d12b95e2c71
+Reviewed-on: https://gerrit.libreoffice.org/49784
+Reviewed-by: Kohei Yoshida <libreoffice@kohei.us>
+Tested-by: Kohei Yoshida <libreoffice@kohei.us>
+---
+ configure.ac                                  | 2 +-
+ download.lst                                  | 4 ++--
+ external/liborcus/UnpackedTarball_liborcus.mk | 4 ----
+ 3 files changed, 3 insertions(+), 7 deletions(-)
+
+diff --git a/sc/source/filter/orcus/interface.cxx b/sc/source/filter/orcus/interface.cxx
+index e40a71b..4cfd844 100644
+--- a/sc/source/filter/orcus/interface.cxx
++++ b/sc/source/filter/orcus/interface.cxx
+@@ -1148,7 +1148,8 @@ void ScOrcusStyles::fill::applyToItemSet(SfxItemSet& rSet) const
+         return;
+     }
+ 
+-    rSet.Put(SvxBrushItem(maBgColor, ATTR_BACKGROUND));
++    if (maPattern.equalsIgnoreAsciiCase("solid"))
++        rSet.Put(SvxBrushItem(maFgColor, ATTR_BACKGROUND));
+ }
+ 
+ ScOrcusStyles::protection::protection():
+@@ -1574,15 +1575,19 @@ void ScOrcusStyles::set_fill_pattern_type(const char* s, size_t n)
+     maCurrentFill.mbHasFillAttr = true;
+ }
+ 
+-void ScOrcusStyles::set_fill_fg_color(orcus::spreadsheet::color_elem_t alpha, orcus::spreadsheet::color_elem_t red, orcus::spreadsheet::color_elem_t green, orcus::spreadsheet::color_elem_t blue)
++void ScOrcusStyles::set_fill_fg_color(
++    orcus::spreadsheet::color_elem_t /*alpha*/, orcus::spreadsheet::color_elem_t red, orcus::spreadsheet::color_elem_t green, orcus::spreadsheet::color_elem_t blue)
+ {
+-    maCurrentFill.maFgColor = Color(alpha, red, green, blue);
++    // Ignore the alpha element for now.
++    maCurrentFill.maFgColor = Color(red, green, blue);
+     maCurrentFill.mbHasFillAttr = true;
+ }
+ 
+-void ScOrcusStyles::set_fill_bg_color(orcus::spreadsheet::color_elem_t alpha, orcus::spreadsheet::color_elem_t red, orcus::spreadsheet::color_elem_t green, orcus::spreadsheet::color_elem_t blue)
++void ScOrcusStyles::set_fill_bg_color(
++    orcus::spreadsheet::color_elem_t /*alpha*/, orcus::spreadsheet::color_elem_t red, orcus::spreadsheet::color_elem_t green, orcus::spreadsheet::color_elem_t blue)
+ {
+-    maCurrentFill.maBgColor = Color(alpha, red, green, blue);
++    // Ignore the alpha element for now.
++    maCurrentFill.maBgColor = Color(red, green, blue);
+     maCurrentFill.mbHasFillAttr = true;
+ }
+ 
+-- 
+cgit v1.1
+
+diff --git a/sc/source/filter/orcus/interface.cxx b/sc/source/filter/orcus/interface.cxx
+index 4cfd844..40140ae 100644
+--- a/sc/source/filter/orcus/interface.cxx
++++ b/sc/source/filter/orcus/interface.cxx
+@@ -1485,12 +1485,13 @@ void ScOrcusStyles::set_font_underline_color(orcus::spreadsheet::color_elem_t al
+     maCurrentFont.maUnderlineColor = Color(alpha, red, green, blue);
+ }
+ 
+-void ScOrcusStyles::set_font_color(orcus::spreadsheet::color_elem_t alpha,
++void ScOrcusStyles::set_font_color(orcus::spreadsheet::color_elem_t /*alpha*/,
+             orcus::spreadsheet::color_elem_t red,
+             orcus::spreadsheet::color_elem_t green,
+             orcus::spreadsheet::color_elem_t blue)
+ {
+-    maCurrentFont.maColor = Color(alpha, red, green, blue);
++    // Ignore the alpha value for now.
++    maCurrentFont.maColor = Color(red, green, blue);
+     maCurrentFont.mbHasFontAttr = true;
+ }
+ 
+-- 
+cgit v1.1
+
+diff --git a/configure.ac b/configure.ac
+index 101050c..e33330c 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -9026,7 +9026,7 @@ AC_SUBST(ENABLE_FUZZERS)
+ dnl ===================================================================
+ dnl Orcus
+ dnl ===================================================================
+-libo_CHECK_SYSTEM_MODULE([orcus],[ORCUS],[liborcus-0.13 >= 0.13.0])
++libo_CHECK_SYSTEM_MODULE([orcus],[ORCUS],[liborcus-0.13 >= 0.13.3])
+ if test "$with_system_orcus" != "yes"; then
+     if test "$SYSTEM_BOOST" = "TRUE"; then
+         # ===========================================================
+diff --git a/download.lst b/download.lst
+index 70b6833..12a5f14 100644
+--- a/download.lst
++++ b/download.lst
+@@ -190,8 +190,8 @@ export OPENLDAP_SHA256SUM := cdd6cffdebcd95161a73305ec13fc7a78e9707b46ca9f84fb89
+ export OPENLDAP_TARBALL := openldap-2.4.45.tgz
+ export OPENSSL_SHA256SUM := 8c6ff15ec6b319b50788f42c7abc2890c08ba5a1cdcd3810eb9092deada37b0f
+ export OPENSSL_TARBALL := openssl-1.0.2m.tar.gz
+-export ORCUS_SHA256SUM := d7041ef455bb78db66b4ba7876af1b3d0fa377b9444e3ef72ceaccd2e8400937
+-export ORCUS_TARBALL := liborcus-0.13.1.tar.gz
++export ORCUS_SHA256SUM := 62e76de1fd3101e77118732b860354121b40a87bbb1ebfeb8203477fffac16e9
++export ORCUS_TARBALL := liborcus-0.13.3.tar.gz
+ export OWNCLOUD_ANDROID_LIB_SHA256SUM := b18b3e3ef7fae6a79b62f2bb43cc47a5346b6330f6a383dc4be34439aca5e9fb
+ export OWNCLOUD_ANDROID_LIB_TARBALL := owncloud-android-library-0.9.4-no-binary-deps.tar.gz
+ export PAGEMAKER_SHA256SUM := 66adacd705a7d19895e08eac46d1e851332adf2e736c566bef1164e7a442519d
