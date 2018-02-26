@@ -1,0 +1,27 @@
+#!/bin/sh
+
+set -e
+
+#INCLUDE_SHELL_LIB#
+
+if [ "$1" = "upgrade" ] && [ "$2" = "1:5.4.5-0ubuntu0.17.10.1" ] || [ "$1" = "install" ]; then
+    # The apparmor profiles were accidentally enabled in an artful SRU
+    # (1:5.4.5-0ubuntu0.17.10.1). Disable them permanently and unload them
+    # when upgrading from that version or on new install
+    # (https://launchpad.net/bugs/1751005).
+    APPARMOR_DISABLE_DIR=/etc/apparmor.d/disable/
+    mkdir -p $APPARMOR_DISABLE_DIR
+    LO_PROFILE_ROOT=/etc/apparmor.d/usr.lib.libreoffice.program
+    ln -sf $LO_PROFILE_ROOT.oosplash $APPARMOR_DISABLE_DIR
+    [ "$1" != "install" ] && apparmor_parser -R $LO_PROFILE_ROOT.oosplash || true
+    ln -sf $LO_PROFILE_ROOT.senddoc $APPARMOR_DISABLE_DIR
+    [ "$1" != "install" ] && apparmor_parser -R $LO_PROFILE_ROOT.senddoc || true
+    ln -sf $LO_PROFILE_ROOT.soffice.bin $APPARMOR_DISABLE_DIR
+    [ "$1" != "install" ] && apparmor_parser -R $LO_PROFILE_ROOT.soffice.bin || true
+    ln -sf $LO_PROFILE_ROOT.xpdfimport $APPARMOR_DISABLE_DIR
+    [ "$1" != "install" ] && apparmor_parser -R $LO_PROFILE_ROOT.xpdfimport || true
+fi
+
+#DEBHELPER#
+
+exit 0
