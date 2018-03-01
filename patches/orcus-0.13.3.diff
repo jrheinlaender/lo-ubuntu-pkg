@@ -1,0 +1,122 @@
+From e81e8f8807e7dce62e91845a94920c91a69f7af5 Mon Sep 17 00:00:00 2001
+From: Kohei Yoshida <kohei.yoshida@gmail.com>
+Date: Wed, 31 Jan 2018 21:27:44 -0500
+Subject: Update orcus to 0.13.3 and make necessary adjustments.
+
+This is a collection of the following:
+
+(cherry picked from commit 20945a9a4de6684010fd5b3603595e6da543807d)
+(cherry picked from commit a1c36eff089c3cd695bd78090575ca1c7677121e)
+(cherry picked from commit 45a4e70484e7d90dab07a677914ada2d948b415c)
+
+with all necessary changes to resolve conflicts & preserve correct
+handling of font and cell background color imports.
+
+Change-Id: I08eb3495adf74858bb23a84245a9923ebe2a13e2
+Reviewed-on: https://gerrit.libreoffice.org/50213
+Tested-by: Jenkins <ci@libreoffice.org>
+Reviewed-by: Mike Kaganski <mike.kaganski@collabora.com>
+---
+ configure.ac                                  |  2 +-
+ download.lst                                  |  4 ++--
+ external/liborcus/UnpackedTarball_liborcus.mk |  1 -
+ sc/source/filter/orcus/interface.cxx          | 20 +++++++++++++-------
+ 4 files changed, 16 insertions(+), 11 deletions(-)
+
+diff --git a/configure.ac b/configure.ac
+index 289cf29..956b6ce 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -8960,7 +8960,7 @@ AC_SUBST(ENABLE_FUZZERS)
+ dnl ===================================================================
+ dnl Orcus
+ dnl ===================================================================
+-libo_CHECK_SYSTEM_MODULE([orcus],[ORCUS],[liborcus-0.13 >= 0.13.0])
++libo_CHECK_SYSTEM_MODULE([orcus],[ORCUS],[liborcus-0.13 >= 0.13.3])
+ if test "$with_system_orcus" != "yes"; then
+     if test "$SYSTEM_BOOST" = "TRUE"; then
+         # ===========================================================
+diff --git a/download.lst b/download.lst
+index 9c7b589..89dd6b4 100644
+--- a/download.lst
++++ b/download.lst
+@@ -190,8 +190,8 @@ export OPENLDAP_SHA256SUM := cdd6cffdebcd95161a73305ec13fc7a78e9707b46ca9f84fb89
+ export OPENLDAP_TARBALL := openldap-2.4.45.tgz
+ export OPENSSL_SHA256SUM := 8c6ff15ec6b319b50788f42c7abc2890c08ba5a1cdcd3810eb9092deada37b0f
+ export OPENSSL_TARBALL := openssl-1.0.2m.tar.gz
+-export ORCUS_SHA256SUM := d7041ef455bb78db66b4ba7876af1b3d0fa377b9444e3ef72ceaccd2e8400937
+-export ORCUS_TARBALL := liborcus-0.13.1.tar.gz
++export ORCUS_SHA256SUM := 62e76de1fd3101e77118732b860354121b40a87bbb1ebfeb8203477fffac16e9
++export ORCUS_TARBALL := liborcus-0.13.3.tar.gz
+ export OWNCLOUD_ANDROID_LIB_SHA256SUM := b18b3e3ef7fae6a79b62f2bb43cc47a5346b6330f6a383dc4be34439aca5e9fb
+ export OWNCLOUD_ANDROID_LIB_TARBALL := owncloud-android-library-0.9.4-no-binary-deps.tar.gz
+ export PAGEMAKER_SHA256SUM := 66adacd705a7d19895e08eac46d1e851332adf2e736c566bef1164e7a442519d
+diff --git a/external/liborcus/UnpackedTarball_liborcus.mk b/external/liborcus/UnpackedTarball_liborcus.mk
+index 7fadaa4..6941760 100644
+--- a/external/liborcus/UnpackedTarball_liborcus.mk
++++ b/external/liborcus/UnpackedTarball_liborcus.mk
+@@ -18,7 +18,6 @@ $(eval $(call gb_UnpackedTarball_update_autoconf_configs,liborcus))
+ $(eval $(call gb_UnpackedTarball_add_patches,liborcus,\
+ 	external/liborcus/0001-workaround-a-linking-problem-on-windows.patch \
+ 	external/liborcus/rpath.patch.0 \
+-	external/liborcus/silence-assert.patch \
+ 	external/liborcus/0001-protect-the-self-closing-xml-element-code-against-se.patch \
+ ))
+ 
+diff --git a/sc/source/filter/orcus/interface.cxx b/sc/source/filter/orcus/interface.cxx
+index de52b86..c28954a 100644
+--- a/sc/source/filter/orcus/interface.cxx
++++ b/sc/source/filter/orcus/interface.cxx
+@@ -839,7 +839,8 @@ void ScOrcusStyles::fill::applyToItemSet(SfxItemSet& rSet) const
+         return;
+     }
+ 
+-    rSet.Put(SvxBrushItem(maBgColor, ATTR_BACKGROUND));
++    if (maPattern.equalsIgnoreAsciiCase("solid"))
++        rSet.Put(SvxBrushItem(maFgColor, ATTR_BACKGROUND));
+ }
+ 
+ ScOrcusStyles::protection::protection():
+@@ -1175,12 +1176,13 @@ void ScOrcusStyles::set_font_underline_color(orcus::spreadsheet::color_elem_t al
+     maCurrentFont.maUnderlineColor = Color(alpha, red, green, blue);
+ }
+ 
+-void ScOrcusStyles::set_font_color(orcus::spreadsheet::color_elem_t alpha,
++void ScOrcusStyles::set_font_color(orcus::spreadsheet::color_elem_t /*alpha*/,
+             orcus::spreadsheet::color_elem_t red,
+             orcus::spreadsheet::color_elem_t green,
+             orcus::spreadsheet::color_elem_t blue)
+ {
+-    maCurrentFont.maColor = Color(alpha, red, green, blue);
++    // Ignore the alpha value for now.
++    maCurrentFont.maColor = Color(red, green, blue);
+     maCurrentFont.mbHasFontAttr = true;
+ }
+ 
+@@ -1265,15 +1267,19 @@ void ScOrcusStyles::set_fill_pattern_type(const char* s, size_t n)
+     maCurrentFill.mbHasFillAttr = true;
+ }
+ 
+-void ScOrcusStyles::set_fill_fg_color(orcus::spreadsheet::color_elem_t alpha, orcus::spreadsheet::color_elem_t red, orcus::spreadsheet::color_elem_t green, orcus::spreadsheet::color_elem_t blue)
++void ScOrcusStyles::set_fill_fg_color(
++    orcus::spreadsheet::color_elem_t /*alpha*/, orcus::spreadsheet::color_elem_t red, orcus::spreadsheet::color_elem_t green, orcus::spreadsheet::color_elem_t blue)
+ {
+-    maCurrentFill.maFgColor = Color(alpha, red, green, blue);
++    // Ignore the alpha element for now.
++    maCurrentFill.maFgColor = Color(red, green, blue);
+     maCurrentFill.mbHasFillAttr = true;
+ }
+ 
+-void ScOrcusStyles::set_fill_bg_color(orcus::spreadsheet::color_elem_t alpha, orcus::spreadsheet::color_elem_t red, orcus::spreadsheet::color_elem_t green, orcus::spreadsheet::color_elem_t blue)
++void ScOrcusStyles::set_fill_bg_color(
++    orcus::spreadsheet::color_elem_t /*alpha*/, orcus::spreadsheet::color_elem_t red, orcus::spreadsheet::color_elem_t green, orcus::spreadsheet::color_elem_t blue)
+ {
+-    maCurrentFill.maBgColor = Color(alpha, red, green, blue);
++    // Ignore the alpha element for now.
++    maCurrentFill.maBgColor = Color(red, green, blue);
+     maCurrentFill.mbHasFillAttr = true;
+ }
+ 
+-- 
+cgit v1.1
+

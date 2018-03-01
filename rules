@@ -74,7 +74,7 @@ lo_sources_ver=$(shell grep AC_INIT $(SOURCE_TREE)/configure.ac | grep documentf
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
 GIT_TAG=libreoffice-$(lo_sources_ver)
-GIT_BRANCH=libreoffice-6-0
+GIT_BRANCH=libreoffice-6-0-2
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
 lo_sources_ver=$(shell cat $(CURDIR)/sources.ver | cut -d= -f2)
@@ -205,7 +205,9 @@ ifeq "$(BUILD_KDE5)" "y"
 endif
 endif
 endif
-ifneq (noddebs,$(findstring noddebs,$(DEB_BUILD_OPTIONS)))
+# https://www.debian.org/doc/debian-policy/ says this is not defined and must
+# be ignored, but dh_strip mentions (and honours) it, so...
+ifneq (noautodbgsym,$(findstring noautodbgsym,$(DEB_BUILD_OPTIONS)))
 BUILD_DBGSYM_PACKAGES=y
 ifeq "$(DEB_HOST_ARCH)" "amd64"
 USE_DWZ=y
@@ -455,7 +457,7 @@ endif
 FAKEROOT_LIBDIR=/usr/lib/$(DEB_HOST_MULTIARCH)/libfakeroot
 SYSTEM_STUFF += liblangtag
 SYSTEM_STUFF += orcus
-LIBORCUS_MINVER=0.13
+LIBORCUS_MINVER=0.13.3
 USE_UCPP=y
 ifeq "$(USE_UCPP)" "y"
   SYSTEM_STUFF += ucpp
@@ -572,8 +574,9 @@ PLATFORMID := $(shell grep PLATFORMID debian/vars.$(DEB_HOST_ARCH) | cut -d"=" -
 
 
 # let's do this only on archs where we have chromium, which is supposedly even only the archs
-# where alsp pdfium is supported.
-OOO_PDFIUM_ARCHS := i386 amd64 armhf arm64
+# where alsp pdfium is supported. Remove arm64, see
+https://lists.freedesktop.org/archives/libreoffice/2018-February/079384.html
+OOO_PDFIUM_ARCHS := i386 amd64 armhf
 ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_PDFIUM_ARCHS)))
 ENABLE_PDFIUM=y
 else
@@ -880,6 +883,10 @@ export DEB_CFLAGS_MAINT_PREPEND DEB_CXXFLAGS_MAINT_PREPEND
   else
 	CONFIGURE_FLAGS += --enable-symbols
   endif
+else
+	DEB_CFLAGS_MAINT_STRIP := -g
+	DEB_CXXFLAGS_MAINT_STRIP := -g
+export DEB_CFLAGS_MAINT_STRIP DEB_CXXFLAGS_MAINT_STRIP
 endif
 export DPKG_EXPORT_BUILDFLAGS=y 
 include /usr/share/dpkg/buildflags.mk
@@ -3355,6 +3362,7 @@ endif
 	mv $$TMP debian/uno-libs3/DEBIAN/symbols && \
 	chmod 644 debian/uno-libs3/DEBIAN/symbols
 	dh_installdeb -a
+	rm -f debian/shlibs.local
 ifeq "$(BUILD_KFREEBSD)" "y"
 	cat debian/shlibs.override.libc >> debian/shlibs.local
 endif
@@ -3362,7 +3370,7 @@ endif
 ifeq (,$(filter icu, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.icu >> debian/shlibs.local
 endif
-ifneq (,$(filter libvisio, $(SYSTEM_STUFF)))
+ifeq (,$(filter libvisio, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.libvisio >> debian/shlibs.local
 endif
 ifeq (,$(filter libwpd, $(SYSTEM_STUFF)))
@@ -3389,8 +3397,11 @@ endif
 ifeq (,$(filter libstaroffice, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.libstaroffice >> debian/shlibs.local
 endif
-ifeq (,$(filter orcus, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.orcus >> debian/shlibs.local
+ifneq (,$(filter orcus, $(SYSTEM_STUFF)))
+	# needed for import via orcus...
+	sed -i "s/\(liborcus.*\)$$/\1 liborcus-0.13-0 (>= $(LIBORCUS_MINVER))/" \
+		debian/shlibs.local
 endif
 ifeq (,$(filter liblangtag, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.liblangtag >> debian/shlibs.local
@@ -3621,11 +3632,13 @@ endif
 		-v$(shell echo `echo $(BINARY_VERSION) | cut -d: -f1` + 1 | bc):$(shell debian/scripts/get_ttf_version.pl debian/fonts-opensymbol/usr/share/fonts/truetype/openoffice/opens___.ttf)+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
 ifeq "$(ENABLE_MEDIAWIKI)" "y"
 	dh_gencontrol -plibreoffice-wiki-publisher -- \
+		-V'java-common-depends=$(JAVA_COMMON_DEPENDS)' \
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-v$(shell grep "<version" $(SOURCE_TREE)/swext/mediawiki/src/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
 endif
 ifeq "$(ENABLE_NLPSOLVER)" "y"
 	dh_gencontrol -plibreoffice-nlpsolver -- \
+		-V'java-common-depends=$(JAVA_COMMON_DEPENDS)' \
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-v$(shell grep "<version" $(SOURCE_TREE)/nlpsolver/src/com/sun/star/comp/Calc/NLPSolver/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
 endif
@@ -3691,6 +3704,7 @@ $(call get_orig_tarball,-tarballs): helpcontent2/makefile.pmk translations/makef
 	dh_testdir
 	rm -rf tarballs
 	mkdir -p tarballs
+	quilt push -a
 	./autogen.sh $(filter-out --disable-fetch-external,$(CONFIGURE_FLAGS)) --with-all-tarballs
 	$(MAKE) download gb_LO_VER=$(DEB_VERSION_UPSTREAM)
 	tar cvJf $@ -C tarballs --transform 's,./,,' .
@@ -3714,6 +3728,9 @@ get-orig-source: $(call get_orig_tarball,-tarballs) tarballs/fetch.log
 unpack: tarballs/fetch.log
 	dh_testdir
 endif
+else
+get-orig-source:
+	PATH=$(CURDIR)/debian/scripts:$$PATH uscan --watchfile=$(CURDIR)/debian/watch --verbose --force
 endif
 
 .PHONY: control
