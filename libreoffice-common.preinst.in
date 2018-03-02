@@ -4,11 +4,28 @@ set -e
 
 #INCLUDE_SHELL_LIB#
 
-if [ "$1" = "upgrade" ] && [ "$2" = "1:5.4.5-0ubuntu0.17.10.1" ] || [ "$1" = "install" ]; then
-    # The apparmor profiles were accidentally enabled in an artful SRU
-    # (1:5.4.5-0ubuntu0.17.10.1). Disable them permanently and unload them
-    # when upgrading from that version or on new install
-    # (https://launchpad.net/bugs/1751005).
+if [ "$1" = "upgrade" ] && dpkg --compare-versions "$2" le "1:5.4.5-0ubuntu0.17.10.4" || [ "$1" = "install" ]; then
+    # The apparmor profiles were installed but broken (because of an incorrect
+    # path) in artful before version 1:5.4.4-0ubuntu0.17.10.1 (see
+    # https://git.launchpad.net/~libreoffice/ubuntu/+source/libreoffice/commit/?id=3b225fc69bdb742ad10b790400cfdc9e23410155).
+    # With 1:5.4.4-0ubuntu0.17.10.1 the profiles were fixed and started being
+    # strictly enforced, causing all sorts of breakage (see e.g.
+    # https://launchpad.net/bugs/1751005, https://launchpad.net/bugs/1750087,
+    # https://launchpad.net/bugs/1752320).
+    # Version 1:5.4.5-0ubuntu0.17.10.4 disabled the profiles on new installs and
+    # upgrades from 1:5.4.5-0ubuntu0.17.10.1 (which was incorrectly thought to
+    # be the version that introduced the regression), so that was only a partial
+    # fix that did not cover the upgrade path from e.g. version 1:5.4.1-0ubuntu1
+    # (artful release pocket).
+    # We now permanently disable the profiles on new installs and when upgrading
+    # from versions equal or prior to 1:5.4.5-0ubuntu0.17.10.4, which should
+    # cover all upgrade cases where the profiles started being enforced
+    # accidentally.
+    # This won't affect users who intentionally re-enabled the disabled profiles
+    # after upgrading to a version greater than 1:5.4.5-0ubuntu0.17.10.4.
+    # An unfortunate (one-time) side effect is that users who re-enabled the
+    # disabled profiles after upgrading to 1:5.4.5-0ubuntu0.17.10.4 will see
+    # them disabled again by the upgrade.
     APPARMOR_DISABLE_DIR=/etc/apparmor.d/disable/
     mkdir -p $APPARMOR_DISABLE_DIR
     LO_PROFILE_ROOT=/etc/apparmor.d/usr.lib.libreoffice.program
