@@ -3377,6 +3377,7 @@ endif
 	mv $$TMP debian/uno-libs3/DEBIAN/symbols && \
 	chmod 644 debian/uno-libs3/DEBIAN/symbols
 	dh_installdeb -a
+	rm -f debian/shlibs.local
 ifeq "$(BUILD_KFREEBSD)" "y"
 	cat debian/shlibs.override.libc >> debian/shlibs.local
 endif
@@ -3646,11 +3647,13 @@ endif
 		-v$(shell echo `echo $(BINARY_VERSION) | cut -d: -f1` + 1 | bc):$(shell debian/scripts/get_ttf_version.pl debian/fonts-opensymbol/usr/share/fonts/truetype/openoffice/opens___.ttf)+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
 ifeq "$(ENABLE_MEDIAWIKI)" "y"
 	dh_gencontrol -plibreoffice-wiki-publisher -- \
+		-V'java-common-depends=$(JAVA_COMMON_DEPENDS)' \
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-v$(shell grep "<version" $(SOURCE_TREE)/swext/mediawiki/src/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
 endif
 ifeq "$(ENABLE_NLPSOLVER)" "y"
 	dh_gencontrol -plibreoffice-nlpsolver -- \
+		-V'java-common-depends=$(JAVA_COMMON_DEPENDS)' \
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-v$(shell grep "<version" $(SOURCE_TREE)/nlpsolver/src/com/sun/star/comp/Calc/NLPSolver/description.xml | perl -pi -e 's,<version value=\"(.*)\"/>,\1,; s/^\s+//')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
 endif
@@ -3716,6 +3719,7 @@ $(call get_orig_tarball,-tarballs): helpcontent2/makefile.pmk translations/makef
 	dh_testdir
 	rm -rf tarballs
 	mkdir -p tarballs
+	quilt push -a
 	./autogen.sh $(filter-out --disable-fetch-external,$(CONFIGURE_FLAGS)) --with-all-tarballs
 	$(MAKE) download gb_LO_VER=$(DEB_VERSION_UPSTREAM)
 	tar cvJf $@ -C tarballs --transform 's,./,,' .
