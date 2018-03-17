@@ -1,0 +1,44 @@
+From: Thorsten Behrens <Thorsten.Behrens@CIB.de>
+Date: Fri, 9 Mar 2018 00:38:26 +0000 (+0100)
+Subject: gpg4libre: fix failing gpg test due to over-long filenames
+X-Git-Url: https://gerrit.libreoffice.org/gitweb?p=core.git;a=commitdiff_plain;h=24f5c0b069dddcfb9879fef56600eea20bd8e2b4
+
+gpg4libre: fix failing gpg test due to over-long filenames
+
+With long workdir path, gpg sometimes fails with 'gpg: can't connect
+to the agent: File name too long' error.
+WK recommends to create preferred socket dir under /run/user, needs
+prepping though via gpgconf.
+
+See https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=84720
+
+Change-Id: I2edb27758b2d4581d54eabf549dcdfed0106dba4
+---
+
+diff --git a/xmlsecurity/CppunitTest_xmlsecurity_signing.mk b/xmlsecurity/CppunitTest_xmlsecurity_signing.mk
+index c382e3b..747ffdd 100644
+--- a/xmlsecurity/CppunitTest_xmlsecurity_signing.mk
++++ b/xmlsecurity/CppunitTest_xmlsecurity_signing.mk
+@@ -52,11 +52,21 @@ ifeq ($(ENABLE_PDFIMPORT),TRUE)
+ $(eval $(call gb_CppunitTest_use_executable,xmlsecurity_signing,xpdfimport))
+ endif
+ 
+-# reset the LD_LIBRARY_PATH for spawned GPG processes
++# various hacks to make unit test work on Linux more often
+ ifeq ($(OS),LINUX)
++# reset the LD_LIBRARY_PATH for spawned GPG processes
+ $(call gb_CppunitTest_get_target,xmlsecurity_signing): \
+     EXTRA_ENV_VARS := \
+         LIBO_LD_PATH=$$LD_LIBRARY_PATH
++
++# create socket dir below /run/user/ instead of in workdir
++.PHONY : gb_CppunitTest_run_gpgconf
++gb_CppunitTest_run_gpgconf:
++	GNUPGHOME=$(WORKDIR)/CppunitTest/xmlsecurity_signing.test.user \
++	gpgconf --create-socketdir 2>/dev/null || true
++
++$(call gb_CppunitTest_get_target,xmlsecurity_signing): \
++    gb_CppunitTest_run_gpgconf
+ endif
+ 
+ # vim: set noet sw=4 ts=4:
