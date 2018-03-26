@@ -1,0 +1,50 @@
+#!/bin/bash
+# autopkgtest check: Run smoketest against an installed version of LibreOffice
+# (c) 2018 Software in the Public Interest, Inc.
+# Authors: Rene Engelhard <rene@debian.org>
+
+set -e
+set -E
+
+SRCDIR=`pwd`
+WORKDIR=`mktemp -d`
+CHECK_PARALLELISM=1
+
+function unapply() {
+	cd $SRCDIR
+	echo "====== Unapplying the patches ======"
+	patch -p1 -R < ./debian/tests/patches/smoketest-standalone.diff
+	patch -p0 -R < ./debian/tests/patches/smoketest-disable-extension-tests.diff
+}
+
+trap "unapply" ERR
+
+echo "====== Patching the tree to only build Java-based unittests against an existing installation ======"
+patch -p1 < ./debian/tests/patches/smoketest-standalone.diff
+patch -p0 < ./debian/tests/patches/smoketest-disable-extension-tests.diff
+
+echo
+echo "====== Generating configuration ======="
+rm -f config_host.mk
+./debian/rules config_host.mk enable_report_builder=no
+sed -i 's/export ENABLE_CPPUNIT=.*/export ENABLE_CPPUNIT=TRUE/' config_host.mk
+
+OOO_TEST_SOFFICE="${1:-path:/usr/lib/libreoffice/program/soffice}"
+
+echo
+echo
+echo "====== Enabling core dumps ======"
+# yes, we want core dumps and stack traces
+ulimit -c unlimited
+
+echo "====== Starting smoketest with ${CHECK_PARALLELISM} job against ${OOO_TEST_SOFFICE} ======"
+
+export PARALLELISM=$CHECK_PARALLELISM
+cd smoketest && make -rk \
+    OOO_TEST_SOFFICE=${OOO_TEST_SOFFICE} \
+    CppunitTest_smoketest verbose=t
+
+cd $SRCDIR
+
+unapply
+
