@@ -3609,13 +3609,20 @@ ifeq "$(PACKAGE_SDK)" "y"
 			> debian/libreoffice-dev-doc.doc-base.lo-$$i-ref; \
 	done
 	UDK_CPP_FILES=`find $(CURDIR)/debian/libreoffice-dev-doc/usr/share/doc/libreoffice/sdk/docs/cpp/ref ! -name "*.map" -a ! -name "*.md5" | sed -e 's,$(CURDIR)/debian/libreoffice-dev-doc,,g' | xargs`; \
-	echo "Files: $$UDK_CPP_FILES" >> debian/libreoffice-dev-doc.doc-base.lo-cpp-ref
+	TMP=`mktemp -q`; \
+	cp debian/libreoffice-dev-doc.doc-base.lo-cpp-ref $$TMP; \
+	echo "Files: $$UDK_CPP_FILES" >> $$TMP; \
+	cat $$TMP | perl -e 'while(<>) { if (/^Files/) {$$f=1;} if ($$f eq "1") { chomp(); } print $$_; }' > debian/libreoffice-dev-doc.doc-base.lo-cpp-ref; \
+	rm -f $$TMP
+	# no idea why this happens; afais this can't come from above
+	# since it doesn't affect the files at the end of the lines...
+	# But fix it..
+	perl -pi -e 's,([a-z])\/usr/,$$1 \/usr/,g' debian/libreoffice-dev-doc.doc-base.lo-cpp-ref
   ifeq "$(ENABLE_JAVA)" "y"
 	UDK_JAVA_FILES=`find $(CURDIR)/debian/libreoffice-dev-doc/usr/share/doc/libreoffice/sdk/docs/java/ref ! -name "javadoc_log.txt" | sed -e 's,$(CURDIR)/debian/libreoffice-dev-doc,,g' | xargs`; \
 	echo "Files: $$UDK_JAVA_FILES" >> debian/libreoffice-dev-doc.doc-base.lo-java-ref
 	rm -f $(CURDIR)/debian/libreoffice-dev-doc/usr/share/doc/libreoffice-dev/sdk/docs/java/ref/javadoc_log.txt
   endif
-	# xargs strips the many files here so we need to post-process it.
 	UDK_IDL_FILES=`find $(CURDIR)/debian/libreoffice-dev-doc/usr/share/doc/libreoffice/sdk/docs/idl/ref ! -name "*.map" -a ! -name "*.md5" | sed -e 's,$(CURDIR)/debian/libreoffice-dev-doc,,g' | xargs`; \
 	TMP=`mktemp -q`; \
 	cp debian/libreoffice-dev-doc.doc-base.lo-idl-ref $$TMP; \
