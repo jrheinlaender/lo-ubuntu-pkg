@@ -239,10 +239,6 @@ SMALL_SYMBOLS=y
 
 ifeq "$(ENABLE_JAVA)" "y"
   SYSTEM_STUFF += beanshell
-  SYSTEM_STUFF += hsqldb
-  HSQLDB_MINVER= (>> 1.8.0.10)
-  HSQLDB_TOONEWVER=1.8.1
-  HSQLDB_JAR=/usr/share/java/hsqldb1.8.0.jar
 endif
 SYSTEM_STUFF += lpsolve
 USE_SHARED_LPSOLVE=y
@@ -645,7 +641,7 @@ ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
 	DEBHELPER_OPTIONS += -Nlibreoffice-base libreoffice-base-core -Nlibreoffice-base-drivers
 	DEBHELPER_OPTIONS += -Nlibreoffice-evolution
 	DEBHELPER_OPTIONS += -Nlibreoffice-sdbc-postgresql -Nlibreoffice-mysql-connector
-	DEBHELPER_OPTIONS += -Nlibreoffice-sdbc-hsqldb -Nlibreoffice-sdbc-firebird 
+	DEBHELPER_OPTIONS += -Nlibreoffice-sdbc-firebird 
 	DEBHELPER_OPTIONS += -Nlibreoffice-report-builder-bin -Nlibreoffice-report-builder
 #	CONFIGURE_FLAGS += --disable-database-connectivity
   endif
@@ -1456,13 +1452,6 @@ else
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
-  ifneq (,$(filter hsqldb, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libhsqldb1.8.0-java $(HSQLDB_MINVER)$(OOO_NO_JAVA_ARCHS), libarchive-zip-perl$(OOO_NO_JAVA_ARCHS)
-	BASE_HSQLDB_DEPENDS = libhsqldb1.8.0-java $(HSQLDB_MINVER)
-	CONFIGURE_FLAGS += --with-hsqldb-jar=$(HSQLDB_JAR)
-  else
-	BUILD_DEPS += , libservlet3.1-java
-  endif
   ifeq "$(ENABLE_SCRIPT_PROVIDER_BSH)" "y"
     ifneq (,$(filter beanshell, $(SYSTEM_STUFF)))
 	BUILD_DEPS_INDEP += , libbsh-java
@@ -2359,33 +2348,6 @@ ifeq "$(ENABLE_JAVA)" "y"
 	# fix the classpath
 	jh_classpath --classpath="ridl.jar unoil.jar jurt.jar juh.jar" \
 		$(PKGDIR)-core/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes/officebean.jar
-	
-  ifeq "$(PACKAGE_BASE)" "y"
-	# move sdbc_hsqldb.jar into -base (do the move
-	# to /usr/share/java here directly, we do it for the "rest"
-	# later
-	mkdir -p $(PKGDIR)-base/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes; \
-	mkdir -p $(PKGDIR)-base/$(OODIR)/program/classes; \
-	mv $(PKGDIR)-common/$(OODIR)/program/classes/sdbc_hsqldb.jar \
-		$(PKGDIR)-base/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes; \
-	ln -s $(shell echo /$(OODIR) | sed -e s/lib/share/)/program/classes/sdbc_hsqldb.jar \
-		$(PKGDIR)-base/$(OODIR)/program/classes/sdbc_hsqldb.jar
-    ifneq (,$(filter hsqldb, $(SYSTEM_STUFF)))
-	# fix the classpath (file:// breaks javahelper)
-	jh_classpath --classpath="$(HSQLDB_JAR) .." \
-		$(PKGDIR)-base/$(shell echo /$(OODIR) | sed -e s/lib/share/)/program/classes/sdbc_hsqldb.jar
-    endif
-    ifeq (,$(filter hsqldb, $(SYSTEM_STUFF)))
-	# we need this in -base. Otherwise we get unwanted package differences
-	# in the unstable version and backports which might use internal hsqldb
-	mkdir -p $(PKGDIR)-base/$(OODIR)/program/classes
-	mv $(PKGDIR)-common/$(OODIR)/program/classes/hsqldb.jar \
-		$(PKGDIR)-base/$(OODIR)/program/classes
-    endif
-  else
-	# remove sdbc_hsqldb.jar. otherwise ends up in -java-common
-	rm -f $(PKGDIR)-common/$(OODIR)/program/classes/sdbc_hsqldb.jar
-  endif
 endif
 
 ifeq "$(BUILD_GTK)" "y"
@@ -2768,15 +2730,6 @@ ifeq "$(PACKAGE_BASE)" "y"
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
-  ifneq (,$(filter hsqldb, $(SYSTEM_STUFF)))
-	# link to system hsqldb
-	mkdir -p $(PKGDIR)-base/$(OODIR)/program/classes
-	ln -sf $(HSQLDB_JAR) \
-	        $(PKGDIR)-base/$(OODIR)/program/classes/hsqldb.jar
-  endif
-endif
-
-ifeq "$(ENABLE_JAVA)" "y"
 	rm -rf $(PKGDIR)-officebean
 	mkdir -p -m755 $(PKGDIR)-officebean/$(OODIR)/program/classes
 	mkdir -p -m755 $(PKGDIR)-officebean/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes
@@ -2892,21 +2845,6 @@ ifeq "$(USE_VLC)" "y"
 		$(PKGDIR)-avmedia-backend-vlc/$(OODIR)/program
 endif
 
-ifeq "$(ENABLE_JAVA)" "y"
-	mkdir -p $(PKGDIR)-sdbc-hsqldb/$(OODIR)/program
-	mkdir -p $(PKGDIR)-sdbc-hsqldb/usr/lib/libreoffice/program/classes
-	mkdir -p $(PKGDIR)-sdbc-hsqldb/usr/share/libreoffice/program/classes
-	mv $(PKGDIR)-base/$(OODIR)/program/libhsqldb.so \
-		$(PKGDIR)-sdbc-hsqldb/$(OODIR)/program
-  ifneq (,$(filter hsqldb, $(SYSTEM_STUFF)))
-	mv $(PKGDIR)-base/usr/lib/libreoffice/program/classes/hsqldb.jar \
-		$(PKGDIR)-sdbc-hsqldb/usr/lib/libreoffice/program/classes
-  endif
-	for i in lib share; do \
-		mv $(PKGDIR)-base/usr/$$i/libreoffice/program/classes/sdbc_hsqldb.jar \
-			$(PKGDIR)-sdbc-hsqldb/usr/$$i/libreoffice/program/classes; \
-	done
-endif
 ifeq "$(ENABLE_FIREBIRD)" "y"
 	mkdir -p $(PKGDIR)-sdbc-firebird/$(OODIR)/program
 	mv $(PKGDIR)-core/$(OODIR)/program/libfirebird_sdbclo.so \
@@ -3516,10 +3454,6 @@ ifeq "$(ENABLE_JAVA)" "y"
 		if [ "$$p" = "libreoffice-presentation-console" ]; then continue; fi; \
 		jh_depends -p$$p -Xure; \
 	done
-  ifeq "$(PACKAGE_BASE)" "y"
-	perl -pi -e "s/base-files,//" \
-		debian/libreoffice-sdbc-hsqldb.substvars
-  endif
 	# jh_depends adds ure (${source:Version}) entries. They are overly strict
 	# and do not fit anyway given ure has a different versioning scheme. Excluded
 	# above, readd here  unversioned
@@ -3536,7 +3470,6 @@ endif
 		-V'oover=$(OOVER)' \
 		-V'next-oover=$(NEXT_OOVER)' \
 		-V'help-l10n-virtual-version=$(HELP_L10N_VIRTUAL_VERSION)' \
-		-V'base-hsqldb-depends=$(BASE_HSQLDB_DEPENDS)' \
 		-V'base-firebird-recommends=$(BASE_FIREBIRD_RECOMMENDS)' \
 		-V'java-common-depends=$(JAVA_COMMON_DEPENDS) $(JAVA_COMMON_DEPENDS_VERSION)' \
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
