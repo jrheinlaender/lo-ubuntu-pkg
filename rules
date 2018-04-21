@@ -277,98 +277,9 @@ else
 PACKAGE_SDK_DOCS=y
 endif
 PACKAGE_LOKIT=y
-
-ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
-ifeq "$(ENABLE_JAVA)" "y"
-  ifeq "$(JDK)" "default"
-    ifeq "$(shell LANG=C /usr/lib/jvm/default-java/bin/java -version 2>&1 | tail -n 1 | awk '{ print $$1 }')" "OpenJDK"
-      ifeq "$(DEB_HOST_ARCH_ENDIAN)" "big"
-        RUN_MAKE_CHECK=n
-      else
-        RUN_MAKE_CHECK=y
-      endif
-#        ifeq "$(DEB_HOST_ARCH)" "i386"
-#	  ENABLE_JUNIT4=y
-#        endif
-        ifeq "$(DEB_HOST_ARCH)" "amd64"
-	  ENABLE_JUNIT4=y
-        endif
-#        ifeq "$(DEB_HOST_ARCH)" "armhf"
-#	  ENABLE_JUNIT4=y
-#        endif
-        ifeq "$(DEB_HOST_ARCH)" "arm64"
-	  ENABLE_JUNIT4=y
-        endif
-        ENABLE_CHART_TESTS=n
-        ENABLE_EXPORT_VALIDATION_TESTS=n
-    endif
-  else
-    ifeq "$(JDK)" "openjdk"
-      ifeq "$(DEB_HOST_ARCH_ENDIAN)" "big"
-        RUN_MAKE_CHECK=n
-      else
-        RUN_MAKE_CHECK=y
-      endif
-#        ifeq "$(DEB_HOST_ARCH)" "i386"
-#	  ENABLE_JUNIT4=y
-#        endif
-        ifeq "$(DEB_HOST_ARCH)" "amd64"
-	  ENABLE_JUNIT4=y
-        endif
-#        ifeq "$(DEB_HOST_ARCH)" "armhf"
-#	  ENABLE_JUNIT4=y
-#        endif
-        ifeq "$(DEB_HOST_ARCH)" "arm64"
-	  ENABLE_JUNIT4=y
-        endif
-        ENABLE_CHART_TESTS=n
-        ENABLE_EXPORT_VALIDATION_TESTS=n
-    else
-      RUN_MAKE_CHECK=n
-      ENABLE_JUNIT4=n
-      ENABLE_CHART_TESTS=n
-      ENABLE_EXPORT_VALIDATION_TESTS=n
-      BUILD_TEST_PACKAGE=n
-    endif
-  endif
-#  ifneq (,$(findstring arm,$(DEB_HOST_ARCH)))
-#    export DISABLE_CVE_TESTS=TRUE
-#  endif
-#  ifneq (,$(findstring powerpc,$(DEB_HOST_ARCH)))
-#    export DISABLE_CVE_TESTS=TRUE
-#  endif
-#  ifneq (,$(findstring ppc,$(DEB_HOST_ARCH)))
-#    export DISABLE_CVE_TESTS=TRUE
-#  endif
-#  ifneq (,$(findstring s390,$(DEB_HOST_ARCH)))
-#    export DISABLE_CVE_TESTS=TRUE
-#  endif
-  ifneq (,$(findstring kfreebsd-amd64,$(DEB_HOST_ARCH)))
-    export RUN_MAKE_CHECK=n
-  endif
-  ifneq (,$(findstring kfreebsd-i386,$(DEB_HOST_ARCH)))
-    export RUN_MAKE_CHECK=n
-  endif
-  ifneq (,$(findstring sparc64,$(DEB_HOST_ARCH)))
-    export RUN_MAKE_CHECK=n
-  endif
-else
-  RUN_MAKE_CHECK=n
-  ENABLE_JUNIT4=n
-  ENABLE_CHART_TESTS=n
-  ENABLE_EXPORT_VALIDATION_TESTS=n
-  BUILD_TEST_PACKAGE=n
-endif
-else
-  RUN_MAKE_CHECK=n
-  ENABLE_JUNIT4=n
-  ENABLE_CHART_TESTS=n
-  ENABLE_EXPORT_VALIDATION_TESTS=n
-  BUILD_TEST_PACKAGE=n
-endif
-ifeq "$(ENABLE_JUNIT4)" "y"
-  JUNIT_MIN_VER= (>= 4.8.2-2)
-endif
+ENABLE_CHART_TESTS=n
+ENABLE_EXPORT_VALIDATION_TESTS=n
+JUNIT_MIN_VER= (>= 4.8.2-2)
 USE_LIBCURL4=y
 CURL_SECTYPE=gnutls
 USE_LIBSUITESPARSE=y
@@ -588,25 +499,32 @@ else
 ENABLE_PDFIUM=n
 endif
 
-IGNORE_MAKE_CHECK_FAILURES=-
-#ifeq (i386,$(DEB_HOST_ARCH))
-#  IGNORE_MAKE_CHECK_FAILURES:=
-#endif
-ifeq (amd64,$(DEB_HOST_ARCH))
-  IGNORE_MAKE_CHECK_FAILURES:=
-endif
-ifeq (armhf,$(DEB_HOST_ARCH))
-  IGNORE_MAKE_CHECK_FAILURES:=
-endif
-ifeq (arm64,$(DEB_HOST_ARCH))
-  IGNORE_MAKE_CHECK_FAILURES:=
-endif
-
 OOO_64BIT_ARCHS = $(filter alpha amd64 arm64 ia64 kfreebsd-amd64 mips64 mips64el ppc64 ppc64el s390x sparc64, $(OOO_ARCHS))
 $(eval $(call gen_no_archs,OOO_64BIT_ARCHS))
 OOO_BE_ARCHS = $(filter hppa m68k mips mips64 powerpc powerpcspe ppc64 s390 s390x sparc sparc64,$(OOO_ARCHS))
 OOO_LE_ARCHS = $(filter-out $(OOO_BE_ARCHS),$(OOO_ARCHS))
 $(eval $(call gen_no_archs,OOO_LE_ARCHS))
+
+OOO_CHECK_ARCHS := $(filter-out kfreebsd-i386 kfreebsd-amd64 $(OOO_BE_ARCHS),$(OOO_ARCHS))
+$(eval $(call gen_no_archs,OOO_CHECK_ARCHS))
+#OOO_JUNIT_ARCHS := i386 amd64 armhf arm64
+OOO_JUNIT_ARCHS := amd64 arm64
+$(eval $(call gen_no_archs,OOO_JUNIT_ARCHS))
+#OOO_CHECK_FATAL_ARCHS := i386 amd64 armhf arm64
+OOO_CHECK_FATAL_ARCHS := amd64 arm64
+
+ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
+  ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_CHECK_ARCHS)))
+        RUN_MAKE_CHECK=y
+  endif
+  ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_JUNIT_ARCHS)))
+        ENABLE_JUNIT4=y
+  endif
+  IGNORE_MAKE_CHECK_FAILURES=-
+  ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_CHECK_FATAL_ARCHS)))
+       IGNORE_MAKE_CHECK_FAILURES:=
+  endif
+endif
 
 # Java...
 ifeq "$(JDK)" "default"
@@ -627,9 +545,6 @@ OOO_FIREBIRD_ARCHS := $(OOO_LE_ARCHS)
 $(eval $(call gen_no_archs,OOO_FIREBIRD_ARCHS))
 # chromium only available here.
 OOO_GDRIVE_ARCHS=amd64 arm64 armhf i386
-
-OOO_CHECK_ARCHS := $(filter-out kfreebsd-i386 kfreebsd-amd64 $(OOO_BE_ARCHS),$(OOO_ARCHS))
-$(eval $(call gen_no_archs,OOO_CHECK_ARCHS))
 
 ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
   ifneq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_BASE_ARCHS)))
@@ -939,7 +854,6 @@ endif
 	BUILD_DEPS += , libcppunit-dev (>= $(CPPUNIT_MINVER))$(OOO_NO_CHECK_ARCHS) <!nocheck>
     endif
 	# 17:35 <@sberg_> vmiklos, oh, what kind of poor test is that? "warn:sal.osl:3785:2:sal/osl/unx/process.cxx:344: ChildStatusProc : starting 'pstoedit' failed" etc. is what I see in workdir/CppunitTest/filter_eps_test.test.log...
-
 	BUILD_DEPS += , pstoedit$(OOO_NO_CHECK_ARCHS) <!nocheck>
 	BUILD_DEPS += , imagemagick$(OOO_NO_CHECK_ARCHS) <!nocheck>
 	BUILD_DEPS += , ghostscript$(OOO_NO_CHECK_ARCHS) <!nocheck>
@@ -948,7 +862,7 @@ endif
 	CONFIGURE_FLAGS += --without-cppunit
   endif
   ifeq "$(ENABLE_JUNIT4)" "y"
-	BUILD_DEPS += , junit4 $(JUNIT_MIN_VER)$(OOO_NO_CHECK_ARCHS) <!nocheck>
+	BUILD_DEPS += , junit4 $(JUNIT_MIN_VER) [$(OOO_JUNIT_ARCHS)] <!nocheck>
   else
 	CONFIGURE_FLAGS += --without-junit
   endif
