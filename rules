@@ -505,7 +505,7 @@ OOO_BE_ARCHS = $(filter hppa m68k mips mips64 powerpc powerpcspe ppc64 s390 s390
 OOO_LE_ARCHS = $(filter-out $(OOO_BE_ARCHS),$(OOO_ARCHS))
 $(eval $(call gen_no_archs,OOO_LE_ARCHS))
 
-OOO_CHECK_ARCHS := $(filter-out kfreebsd-i386 kfreebsd-amd64 armel mipsel $(OOO_BE_ARCHS),$(OOO_ARCHS))
+OOO_CHECK_ARCHS := $(filter-out kfreebsd-i386 kfreebsd-amd64 $(OOO_BE_ARCHS),$(OOO_ARCHS))
 $(eval $(call gen_no_archs,OOO_CHECK_ARCHS))
 #OOO_JUNIT_ARCHS := i386 amd64 armhf arm64
 OOO_JUNIT_ARCHS := amd64 arm64
@@ -519,8 +519,10 @@ ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
         RUN_MAKE_CHECK=y
     endif
   endif
-  ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_JUNIT_ARCHS)))
+  ifeq "$(ENABLE_JAVA)" "y"
+    ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_JUNIT_ARCHS)))
         ENABLE_JUNIT4=y
+    endif
   endif
   IGNORE_MAKE_CHECK_FAILURES=-
   ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_CHECK_FATAL_ARCHS)))
@@ -1031,6 +1033,13 @@ export JAVA_HOME
 else
 	CONFIGURE_FLAGS += --without-java
 	DEBHELPER_OPTIONS += -Nlibreoffice-officebean -Nlibreoffice-java-common -Nlibreoffice-script-provider-bsh -Nlibreoffice-script-provider-js
+endif
+
+ifeq "$(ENABLE_JAVA)" "y"
+	ifeq "$(shell $(JAVA_HOME)/bin/java -version 2>&1 | grep -q Zero && echo true)" "true"
+		#RUN_MAKE_CHECK:=n
+		ENABLE_JUNIT4=n
+	endif
 endif
 
 ifneq (,$(filter nss, $(SYSTEM_STUFF)))
