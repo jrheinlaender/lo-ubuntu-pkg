@@ -1,0 +1,56 @@
+diff --git a/config_host.mk.in b/config_host.mk.in
+index 8cbbc5fee1d5..40e37643a0ea 100644
+--- a/config_host.mk.in
++++ b/config_host.mk.in
+@@ -282,6 +282,7 @@ export JAVAFLAGS=@JAVAFLAGS@
+ export JAVAIFLAGS=@JAVAIFLAGS@
+ export JAVA_CLASSPATH_NOT_SET=@JAVA_CLASSPATH_NOT_SET@
+ export JAVAINTERPRETER=@JAVAINTERPRETER@
++export JAVA_HAS_ZERO_VM=@JAVA_HAS_ZERO_VM@
+ export JAVA_HOME=@JAVA_HOME@
+ export JAVA_SOURCE_VER=@JAVA_SOURCE_VER@
+ export JAVA_TARGET_VER=@JAVA_TARGET_VER@
+diff --git a/configure.ac b/configure.ac
+index e6bfb13ebab8..3b7f0a2e1121 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -6675,6 +6675,11 @@ you must use the "--with-jdk-home" configure option explicitly])
+             JAVAIFLAGS=-Xmx64M
+             # set to limit VM usage for javac
+             JAVAFLAGS=-J-Xmx128M
++
++            AC_MSG_CHECKING([whether $JAVAINTERPRETER is using the Zero VM])
++	    if $JAVAINTERPRETER -version 2>&1 | grep -q Zero; then
++		JAVA_HAS_ZERO_VM=y
++            fi
+         fi
+     else
+         AC_MSG_ERROR([Java not found. You need at least jdk-1.6])
+@@ -6684,6 +6689,7 @@ else
+     JAVA_HOME=
+     export JAVA_HOME
+ fi
++AC_SUBST(JAVA_HAS_ZERO_VM)
+ 
+ dnl ===================================================================
+ dnl Set target Java bytecode version
+diff --git a/odk/CustomTarget_build-examples.mk b/odk/CustomTarget_build-examples.mk
+index f7dc1db1e30d..338a3bd02c99 100644
+--- a/odk/CustomTarget_build-examples.mk
++++ b/odk/CustomTarget_build-examples.mk
+@@ -32,6 +32,7 @@ my_example_dirs = \
+ 
+ 
+ ifeq ($(ENABLE_JAVA),TRUE)
++ifneq ($(JAVA_HAS_ZERO_VM),y)
+ my_example_dirs += \
+     DevelopersGuide/BasicAndDialogs/CreatingDialogs \
+     DevelopersGuide/Charts \
+@@ -77,6 +78,7 @@ my_example_dirs += \
+     java/ToDo \
+ 
+ endif
++endif
+ 
+ #    java/ConverterServlet \
+ #    java/EmbedDocument/Container1 \
