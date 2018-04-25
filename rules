@@ -362,6 +362,13 @@ SYSTEM_STUFF += libpng
 SYSTEM_STUFF += nss
 ENABLE_HELP=y
 ifeq "$(ENABLE_HELP)" "y"
+  ENABLE_HTML_HELP=y
+  ifeq "$(ENABLE_HTML_HELP)" "y"
+  HELP_DEPENDS := libreoffice-help-common, x-www-browser
+  else
+  HELP_DEPENDS := libreoffice-writer
+  DEBHELPER_OPTIONS += -Nlibreoffice-help-common
+  endif
   SYSTEM_STUFF += clucene
   ifeq "$(GCC_VERSION_5_OR_GREATER)" "y"
   CLUCENE_MINVER=2.3.3.4-4.1
@@ -463,6 +470,9 @@ CONFIGURE_FLAGS= \
 
 ifeq "$(ENABLE_HELP)" "y"
 CONFIGURE_FLAGS_INDEP+= --with-help
+  ifeq "$(ENABLE_HTML_HELP)" "y"
+	CONFIGURE_FLAGS_INDEP+= --with-help=html
+  endif
 endif
 
 ifeq "$(shell echo $(DEB_VERSION_UPSTREAM) | grep -E '(alpha|beta)'; echo $$?)" "1"
@@ -2100,6 +2110,24 @@ ifeq "$(BUILD_KDE)" "y"
   endif
 endif
 
+ifeq "$(ENABLE_HELP)" "y"
+ifeq "$(ENABLE_HTML_HELP)" "y"
+	# this isn't split upstream yet. everything ends up in gid_Module_Root.
+	# keep the common parts (e.g. media/) in libreoffice-help-common and
+	# split the languages manually
+	for iso in $(HELPISOS); do \
+		mkdir -p debian/tmp/pkg/libreoffice-help-$$iso/$(shell echo $(OODIR) | sed -e s/lib/share/)/help; \
+		mv debian/tmp/pkg/libreoffice-common/$(OODIR)/help/$$iso \
+			debian/tmp/pkg/libreoffice-help-$$iso/$(shell echo $(OODIR) | sed -e s/lib/share/)/help; \
+	done
+	mkdir -p debian/tmp/pkg/libreoffice-help-common/$(shell echo $(OODIR) | sed -e s/lib/share/)
+	mv debian/tmp/pkg/libreoffice-common/$(OODIR)/help \
+		debian/tmp/pkg/libreoffice-help-common/$(shell echo $(OODIR) | sed -e s/lib/share/)
+	ln -s $(shell echo $(OODIR) | sed -e s/lib/share/)/help \
+		debian/tmp/pkg/libreoffice-common/$(OODIR)/help
+endif
+endif
+
 	# prepare install/dir files for dh
 	for i in `cd $(CURDIR)/debian/tmp/pkg; ls -1 | xargs`; do \
 		echo "$${i}/usr/* usr" > debian/$$i.install; \
@@ -2120,12 +2148,14 @@ ifeq (ca-valencia,$(findstring ca-valencia,$(LANGPACKISOS)))
 		rm -f debian/libreoffice-l10n-ca-valencia.dirs debian/libreoffice-l10n-ca-valencia.install; \
 	fi
 endif
+ifeq "$(ENABLE_HELP)" "y"
 ifeq (ca-valencia,$(findstring ca-valencia,$(HELPISOS)))
 	if [ -f debian/libreoffice-help-ca-valencia.dirs -a -f debian/libreoffice-help-ca-valencia.install ]; then \
 		cat debian/libreoffice-help-ca-valencia.dirs >> debian/libreoffice-help-ca.dirs; \
 		cat debian/libreoffice-help-ca-valencia.install >> debian/libreoffice-help-ca.install; \
 		rm -f debian/libreoffice-help-ca-valencia.dirs debian/libreoffice-help-ca-valencia.install; \
 	fi
+endif
 endif
 	# and sr-Latn should be in -sr
 ifeq (sr-Latn,$(findstring sr-Latn,$(LANGPACKISOS)))
@@ -2176,6 +2206,7 @@ endif
 	perl -pi -e 's,\./,,' debian/ure.install
 
 ifneq "$(ENABLE_HELP)" "n"
+  ifneq "$(ENABLE_HTML_HELP)" "y"
 	# remove non-packaged localized help. This a) saves space 
 	# and b) we need this for the following dh_install as there will be
 	# no .install files created and dh_install will warn/fail due
@@ -2188,6 +2219,13 @@ ifneq "$(ENABLE_HELP)" "n"
 			rm -f debian/libreoffice-help-$$pkgiso.install; \
 		fi; \
 	done
+  else
+	for iso in $(filter-out en-US,$(LANGPACKISOS)) qtz; do \
+		if ! `echo $(HELPISOS) | grep -q $$iso` || [ "$$iso" = "sk" ] ; then \
+			rm -rf debian/tmp/pkg/libreoffice-help-common/$(OODIR)/help/$$iso; \
+		fi; \
+	done
+  endif
 endif
 
 ifneq "$(PACKAGE_LIBRELOGO)" "y"
@@ -2259,6 +2297,7 @@ endif
 			$(PKGDIR)-$$i/$(OODIR)/program; \
 	done
 
+ifeq "$(ENABLE_HELP)" "y"
 	# move help to /usr/share
 	for iso in $(HELPISOS); do \
 		pkgiso=`echo $$iso | tr A-Z a-z`; \
@@ -2273,6 +2312,7 @@ ifeq (sk,$(findstring sk,$(HELPISOS)))
 	mkdir -p $(PKGDIR)-help-sk/$(shell echo $(OODIR) | sed -e s/lib/share/)/help
 	ln -s cs \
 		$(PKGDIR)-help-sk/$(shell echo $(OODIR) | sed -e s/lib/share/)/help/sk
+endif
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
@@ -3169,10 +3209,12 @@ endif
 		$(PKGDIR)-common/usr/share/$(OODIRNAME)/shell-lib-extensions.sh
 
 ifneq "$(ENABLE_HELP)" "n"
+  ifneq "$(ENABLE_HTML_HELP)" "y"
 	# those are needed in /usr/share, too
 	mkdir -p $(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)
 	mv $(PKGDIR)-common/$(OODIR)/help \
 		$(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)
+  endif
 endif
 	# help is in /usr/share
 	sed -i 's,$$(instpath)/help,/$(shell echo $(OODIR) | sed -e s/lib/share/)/help,' \
@@ -3615,6 +3657,7 @@ endif
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-V'textcat-data-recommends=$(TEXTCAT_DATA_RECOMMENDS)' \
 		-V'pyuno-depends=$(PYUNO_DEPENDS)' \
+		-V'help-depends=$(HELP_DEPENDS)' \
 		-V'Binary-Version=$(BINARY_VERSION)' \
 		-v$(BINARY_VERSION)
 	dh_gencontrol -pfonts-opensymbol -- \
