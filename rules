@@ -1619,7 +1619,8 @@ clean-debdir:
 
 	rm -f debian/shlibs.local
 
-	rm -f debian/libreoffice-dev-doc.doc-base.*
+	rm -f debian/libreoffice-dev-doc.doc-base.* \
+		debian/libreoffice-help-*.doc-base
 	rm -f debian/*.install debian/*.dirs debian/*.changelog
 	rm -f debian/*.postinst debian/*.postrm debian/*.preinst debian/*.prerm debian/*.triggers
 	rm -f debian/pom*.xml
@@ -3571,6 +3572,22 @@ endif
 	  rm -f debian/$$pkg.*.debhelper;\
 	  rm -rf debian/$$pkg/DEBIAN;\
 	done
+
+ifeq "$(ENABLE_HELP)" "y"
+ifeq "$(ENABLE_HTML_HELP)" "y"
+	HELP_FILES_COMMON=`find $(CURDIR)/debian/libreoffice-help-common/usr/share | sed -e 's,$(CURDIR)/debian/libreoffice-help-common,,g' | xargs`; \
+	for iso in $(shell echo $(HELPISOS) | tr A-Z a-z); do \
+		HELP_FILES_LANG=`find $(CURDIR)/debian/libreoffice-help-$$iso/usr/share | sed -e 's,$(CURDIR)/debian/libreoffice-help-$$iso,,g' | xargs`; \
+		TMP=`mktemp -q`; \
+		cp debian/libreoffice-help.doc-base.in $$TMP; \
+		echo "Files: $$HELP_FILES_COMMON $$HELP_FILES_LANG" >> $$TMP; \
+		cat $$TMP | perl -e 'while(<>) { if (/^Files/) {$$f=1;} if ($$f eq "1") { chomp(); } print $$_; }' > debian/libreoffice-help-$$iso.doc-base; \
+		rm -f $$TMP; \
+		perl -pi -e 's,([a-z])\/usr/,$$1 \/usr/,g' debian/libreoffice-help-$$iso.doc-base; \
+		sed -i s/@LCODE@/$$iso/ debian/libreoffice-help-$$iso.doc-base; \
+	done
+endif
+endif
 
 ifeq "$(PACKAGE_SDK)" "y"
 	for i in idl cpp java; do \
