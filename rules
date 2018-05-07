@@ -74,7 +74,7 @@ lo_sources_ver=$(shell grep AC_INIT $(SOURCE_TREE)/configure.ac | grep documentf
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
 GIT_TAG=libreoffice-$(lo_sources_ver)
-GIT_BRANCH=libreoffice-6-0-3
+GIT_BRANCH=libreoffice-6-0-4
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
 lo_sources_ver=$(shell cat $(CURDIR)/sources.ver | cut -d= -f2)
@@ -1798,6 +1798,14 @@ endif
 ifeq "$(MYSQL_FLAVOUR)" "mysql"
 	perl -pi -e "s/(Build-Conflicts: .*)/\1,libmariadbclient-dev,/" debian/control
 endif
+ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
+	perl -pi -e "s/(Build-Conflicts: .*)/\1,fonts-liberation2 (= 2.00.1-4) <!nocheck>,/" debian/control
+	perl -pi -e "s/(Build-Conflicts: .*)/\1,fonts-liberation2 (= 2.00.1-5) <!nocheck>,/" debian/control
+	# be safe.
+	perl -pi -e "s/(Build-Conflicts: .*)/\1,fonts-liberation (= 1:1.07.4-3) <!nocheck>,/" debian/control
+	perl -pi -e "s/(Build-Conflicts: .*)/\1,fonts-liberation (= 1:1.07.4-4) <!nocheck>,/" debian/control
+	perl -pi -e "s/(Build-Conflicts: .*)/\1,fonts-liberation (= 1:1.07.4-5) <!nocheck>,/" debian/control
+endif
 
 	$(PYTHON) debian/scripts/joinctrl.py < debian/control > debian/control.tmp
 	mv debian/control.tmp debian/control
@@ -3473,15 +3481,15 @@ ifeq "$(PACKAGE_SDK)" "y"
 			| sed -e "s/@lo_sources_ver@/$(lo_sources_ver)/" \
 			> debian/libreoffice-dev-doc.doc-base.lo-$$i-ref; \
 	done
-	UDK_CPP_FILES=`find $(CURDIR)/debian/libreoffice-dev-doc/usr/share/doc/libreoffice/sdk/docs/cpp/ref | sed -e 's,$(CURDIR)/debian/libreoffice-dev-doc,,g' | xargs`; \
+	UDK_CPP_FILES=`find $(CURDIR)/debian/libreoffice-dev-doc/usr/share/doc/libreoffice/sdk/docs/cpp/ref -type f | sed -e 's,$(CURDIR)/debian/libreoffice-dev-doc,,g' | xargs`; \
 	echo "Files: $$UDK_CPP_FILES" >> debian/libreoffice-dev-doc.doc-base.lo-cpp-ref
   ifeq "$(ENABLE_JAVA)" "y"
-	UDK_JAVA_FILES=`find $(CURDIR)/debian/libreoffice-dev-doc/usr/share/doc/libreoffice/sdk/docs/java/ref ! -name "javadoc_log.txt" | sed -e 's,$(CURDIR)/debian/libreoffice-dev-doc,,g' | xargs`; \
+	UDK_JAVA_FILES=`find $(CURDIR)/debian/libreoffice-dev-doc/usr/share/doc/libreoffice/sdk/docs/java/ref -type f ! -name "javadoc_log.txt" | sed -e 's,$(CURDIR)/debian/libreoffice-dev-doc,,g' | xargs`; \
 	echo "Files: $$UDK_JAVA_FILES" >> debian/libreoffice-dev-doc.doc-base.lo-java-ref
 	rm -f $(CURDIR)/debian/libreoffice-dev-doc/usr/share/doc/libreoffice-dev/sdk/docs/java/ref/javadoc_log.txt
   endif
 	# xargs strips the many files here so we need to post-process it.
-	UDK_IDL_FILES=`find $(CURDIR)/debian/libreoffice-dev-doc/usr/share/doc/libreoffice/sdk/docs/idl/ref | sed -e 's,$(CURDIR)/debian/libreoffice-dev-doc,,g' | xargs`; \
+	UDK_IDL_FILES=`find $(CURDIR)/debian/libreoffice-dev-doc/usr/share/doc/libreoffice/sdk/docs/idl/ref -type f | sed -e 's,$(CURDIR)/debian/libreoffice-dev-doc,,g' | xargs`; \
 	TMP=`mktemp -q`; \
 	cp debian/libreoffice-dev-doc.doc-base.lo-idl-ref $$TMP; \
 	echo "Files: $$UDK_IDL_FILES" >> $$TMP; \
