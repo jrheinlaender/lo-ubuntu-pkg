@@ -92,6 +92,7 @@ BUILD_DEPS=\
     bison,\
     bzip2,\
     flex (>= 2.3.35), \
+    fontforge, \
     gperf,\
     libc0.1 (>= 2.10.2-7) [kfreebsd-any],\
     libcups2-dev,\
@@ -1660,6 +1661,8 @@ endif
 
 	rm -f download.list
 
+	rm -f extras/source/truetype/symbol/opens___.ttf
+
 	# obsolete lock file not cleaned up....
 	rm -f dbaccess/qa/extras/testdocuments/fdo84315.odb.lck
 
@@ -1907,7 +1910,6 @@ $(STAMP_DIR)/prepare:
 	for FILE in debian/scripts/move-if-change \
 		    debian/scripts/get_libebook_dep.sh \
 		    debian/scripts/get_libvlc_dep.sh \
-		    debian/scripts/get_ttf_version.pl \
 		    debian/scripts/locale-gen \
 		    autogen.sh; \
 	do \
@@ -1944,6 +1946,10 @@ build-arch: $(STAMP_DIR)/prepare $(STAMP_DIR)/build-arch
 $(STAMP_DIR)/build-arch:
 #build-arch: ENABLE_HELP = n PACKAGE_SDK_DOCS = n ENABLE_MEDIAWIKI = n ENABLE_SCRIPT_PROVIDER_BSH = n ENABLE_SCRIPT_PROVIDER_JS = n
 	dh_testdir
+
+	# rebuild OpenSymbol. Do it here so we can be included in make check...
+	cd $(CURDIR)/extras/source/truetype/symbol && \
+		fontforge -lang=ff -c 'Open($$1); Generate($$2)' OpenSymbol.sfd opens___.ttf
 
 	# Theoretically this should call ./configure instead of
 	# it exists but that causes the configure flags NOT to be hnoured
@@ -3713,7 +3719,7 @@ endif
 		-V'Binary-Version=$(BINARY_VERSION)' \
 		-v$(BINARY_VERSION)
 	dh_gencontrol -pfonts-opensymbol -- \
-		-v$(shell echo `echo $(BINARY_VERSION) | cut -d: -f1` + 1 | bc):$(shell debian/scripts/get_ttf_version.pl debian/fonts-opensymbol/usr/share/fonts/truetype/openoffice/opens___.ttf)+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
+		-v$(shell echo `echo $(BINARY_VERSION) | cut -d: -f1` + 1 | bc):$(shell fontforge -lang=ff -c 'Open($$1); Print ($$fontversion); Quit(0);' debian/fonts-opensymbol/usr/share/fonts/truetype/openoffice/opens___.ttf)+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
 ifeq "$(ENABLE_MEDIAWIKI)" "y"
 	dh_gencontrol -plibreoffice-wiki-publisher -- \
 		-V'java-common-depends=$(JAVA_COMMON_DEPENDS)' \
