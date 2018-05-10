@@ -230,8 +230,10 @@ ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
   BUILD_TEST_PACKAGES=y
 endif
 
+ifneq ($(MAKECMDGOALS),build-indep)
 ENABLE_SYMBOLS=y
 SMALL_SYMBOLS=y
+endif
 
 ifeq "$(ENABLE_JAVA)" "y"
   SYSTEM_STUFF += beanshell
@@ -1983,14 +1985,14 @@ endif
 
 	touch $@
 
-build-indep: $(STAMP_DIR)/prepare $(STAMP_DIR)/build-arch $(STAMP_DIR)/build-indep
+build-indep: $(STAMP_DIR)/prepare $(STAMP_DIR)/build-indep
 $(STAMP_DIR)/build-indep:
 	dh_testdir
 
 ifeq "$(PACKAGE_SDK)" "y"
-	$(MAKE) odk.clean
+	if [ -f Makefile ]; then $(MAKE) odk.clean; fi
 endif
-	$(MAKE) scp2.clean
+	if [ -f Makefile ]; then $(MAKE) scp2.clean; fi
 
 	rm -f config.status autogen.lastrun
 
@@ -2070,7 +2072,12 @@ ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 	# since the gb_SUPPRESS_CHECK stuff in build this isn't checked.
 	# probably should, so do it here manually.
 	$(IGNORE_MAKE_CHECK_FAILURES)cd odk && \
-		$(MAKE) check
+		$(MAKE) CustomTarget_odk/check
+    ifneq ($(MAKECMDGOALS),build-indep)
+	# was already checked in check
+	$(IGNORE_MAKE_CHECK_FAILURES)cd odk && \
+		$(MAKE) CustomTarget_odk/build-examples
+    endif
   endif
 endif
 
