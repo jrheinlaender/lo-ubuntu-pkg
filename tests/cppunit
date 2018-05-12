@@ -1,0 +1,63 @@
+#!/bin/bash
+# autopkgtest check: Run smoketest against an installed version of LibreOffice
+# (c) 2018 Software in the Public Interest, Inc.
+# Authors: Rene Engelhard <rene@debian.org>
+
+set -e
+set -E
+
+SRCDIR=`pwd`
+WORKDIR=`mktemp -d`
+
+function unapply() {
+	cd $SRCDIR
+	echo "====== Unapplying the patches ======"
+	patch -p1 -R < ./debian/tests/patches/cppunit-standalone.diff
+	patch -p1 -R < ./debian/tests/patches/make-check-no-uitest-and-subsequentchecks.diff
+	patch -p1 -R < ./debian/tests/patches/disable-build-examples-test.diff
+	patch -p1 -R < ./debian/tests/patches/smoketest-standalone.diff
+	patch -p0 -R < ./debian/tests/patches/smoketest-disable-extension-tests.diff
+}
+
+trap "unapply" ERR
+
+echo "====== Patching the tree to only build the C++ unittests against an existing installation ======"
+patch -p1 < ./debian/tests/patches/cppunit-standalone.diff
+patch -p1 < ./debian/tests/patches/make-check-no-uitest-and-subsequentchecks.diff
+patch -p1 < ./debian/tests/patches/disable-build-examples-test.diff
+patch -p1 < ./debian/tests/patches/smoketest-standalone.diff
+patch -p0 < ./debian/tests/patches/smoketest-disable-extension-tests.diff
+
+echo
+echo
+echo "====== Enabling core dumps ======"
+# yes, we want core dumps and stack traces
+ulimit -c unlimited
+
+echo "====== Building LO and the tests ======"
+# set nocheck to not try make check here right now
+old_DEB_BUILD_OPTIONS="$DEB_BUILD_OPTIONS"
+export DEB_BUILD_OPTIONS="$DEB_BUILD_OPTIONS nocheck"
+./debian/rules build-arch
+export DEB_BUILD_OPTIONS=$old_DEB_BUILD_OPTIONS
+
+echo
+echo "====== Generating en_US.UTF-8 locale ======"
+$SRCDIR/debian/scripts/locale-gen
+
+echo "====== Starting the tests with ${CHECK_PARALLELISM} job against ${OOO_TEST_SOFFICE} ======"
+
+# in autopkgtest we probably shouldn't do parallel. a) because we then don't
+# get sensible output b) because the trap doesn't make the || make -j1 check
+# from the check target work.
+export PARALLELISM=1
+
+# reuse check target. It normally also does uicheck but that is patched out
+# above by debian/patches/make-check-no-uitest.diff
+export LD_LIBRARY_PATH="/usr/lib/libreoffice/program:$LD_LIBRARY_PATH"
+./debian/rules check
+
+cd $SRCDIR
+
+unapply
+
