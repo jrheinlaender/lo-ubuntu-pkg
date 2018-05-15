@@ -7,13 +7,20 @@ set -e
 set -E
 
 SRCDIR=`pwd`
-WORKDIR=`mktemp -d`
 CHECK_PARALLELISM=1
+if [ -n "$ADTTMP" ]; then
+	TMP=`mktemp -q -p $ADTTMP`
+	WORKDIR=`mktemp -q -d -p $ADTTMP`
+else
+	TMP=`mktemp -q`
+	WORKDIR=`mktemp -q -d`
+fi
 
 function unapply() {
 	cd $SRCDIR
 	echo "====== Unapplying the patches ======"
 	patch -p1 -R < ./debian/tests/patches/smoketest-standalone.diff
+	patch -p1 -R < ./debian/tests/patches/no-instsetoo-dependencies.diff
 	patch -p0 -R < ./debian/tests/patches/smoketest-disable-extension-tests.diff
 }
 
@@ -21,9 +28,8 @@ trap "unapply" ERR
 
 echo "====== Patching the tree to only build the smoketest unittest against an existing installation ======"
 patch -p1 < ./debian/tests/patches/smoketest-standalone.diff
+patch -p1 < ./debian/tests/patches/no-instsetoo-dependencies.diff
 patch -p0 < ./debian/tests/patches/smoketest-disable-extension-tests.diff
-
-OOO_TEST_SOFFICE="${1:-path:/usr/lib/libreoffice/program/soffice}"
 
 echo
 echo
@@ -31,22 +37,41 @@ echo "====== Enabling core dumps ======"
 # yes, we want core dumps and stack traces
 ulimit -c unlimited
 
-echo "====== Building LO and the tests ======"
-# set nocheck to not try make check here right now
-old_DEB_BUILD_OPTIONS="$DEB_BUILD_OPTIONS"
-export DEB_BUILD_OPTIONS="$DEB_BUILD_OPTIONS nocheck"
-./debian/rules build-arch
-export DEB_BUILD_OPTIONS=$old_DEB_BUILD_OPTIONS
+# FIXME: GROSS HACK.
+echo "====== Building needed parts of LibreOffice ======"
+./debian/rules config_host.mk ENABLE_PDFIUM=n ENABLE_MERGELIBS=n BUILD_GTK=n BUILD_GTK3=n BUILD_KDE=n
+cat << EOF >> $TMP
+make test.all verbose=t
+make bridges.all verbose=t
+make javaunohelper.all verbose=t
+make unoil.all verbose=t
+make unotest.all verbose=t
+make ure.all verbose=t
+make i18npool.all verbose=t
+EOF
+chmod 755 $TMP
+#TIMEOUT OPTIONS
+#       --timeout-which=seconds
+#              Use a different timeout for operations on or with  the  testbed.
+#              There are five timeouts affected by five values of which: short:
+#              supposedly short operations like setting up  the  testbed's  apt
+#              and checking the state (default: 100s); install: installation of
+#              packages including dependencies (default:  3,000s);  test:  test
+#              runs  (default:  10,000s);  copy: copy files/directories between
+#              host and testbed (default: 300s); and  build:  builds  (default:
+#              100,000s).   The value must be specified as an integer number of
+#              seconds.
+# 10000s = 160 min. so we have enough time to actually run the test :)
+timeout 150m $TMP || (echo "Skipped. Timeout."; rm -f $TMP; exit 0)
+rm -f $TMP
 
 echo "====== Starting smoketest with ${CHECK_PARALLELISM} job against ${OOO_TEST_SOFFICE} ======"
 
 export PARALLELISM=$CHECK_PARALLELISM
-# the smoketest is a cppunit test. build-arch does --without-cppunit
-sed -i 's/export ENABLE_CPPUNIT=.*/export ENABLE_CPPUNIT=TRUE/' config_host.mk
-sed -i 's/export SYSTEM_CPPUNIT=.*/export SYSTEM_CPPUNIT=TRUE/' config_host.mk
-sed -i 's/export CPPUNIT_CFLAGS=.*/export CPPUNIT_CFLAGS=$(gb_SPACE)/' config_host.mk
-sed -i 's/export CPPUNIT_LIBS=.*/export CPPUNIT_LIBS=$(gb_SPACE) -lcppunit/' config_host.mk
 
+OOO_TEST_SOFFICE="${1:-path:/usr/lib/libreoffice/program/soffice}"
+
+export LD_LIBRARY_PATH=/usr/lib/libreoffice/program:$LD_LIBRARY_PATH
 cd smoketest && make -rk \
     OOO_TEST_SOFFICE=${OOO_TEST_SOFFICE} \
     CppunitTest_smoketest INSTDIR=/usr/lib/libreoffice verbose=t

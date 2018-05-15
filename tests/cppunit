@@ -7,7 +7,11 @@ set -e
 set -E
 
 SRCDIR=`pwd`
-WORKDIR=`mktemp -d`
+if [ -n "$ADTTMP" ]; then
+        WORKDIR=`mktemp -q -d -p $ADTTMP`
+else
+        WORKDIR=`mktemp -q -d`
+fi
 
 function unapply() {
 	cd $SRCDIR
@@ -43,9 +47,12 @@ export DEB_BUILD_OPTIONS=$old_DEB_BUILD_OPTIONS
 
 echo
 echo "====== Generating en_US.UTF-8 locale ======"
+cd $WORKDIR
 $SRCDIR/debian/scripts/locale-gen
 
 echo "====== Starting the tests with ${CHECK_PARALLELISM} job against ${OOO_TEST_SOFFICE} ======"
+
+cd $SRCDIR
 
 # in autopkgtest we probably shouldn't do parallel. a) because we then don't
 # get sensible output b) because the trap doesn't make the || make -j1 check
