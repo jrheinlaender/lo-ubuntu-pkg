@@ -212,7 +212,6 @@ BUILD_DBGSYM_PACKAGES=y
 ifeq "$(DEB_HOST_ARCH)" "amd64"
 USE_DWZ=y
 DWZ_ARGS:=-L 100000000
-USE_DWZ_MULTIFILE=n
 endif
 endif
 SYSTEM_STUFF += xmlsec
@@ -644,11 +643,6 @@ else
 DH_STRIP_DBG_OPTION_LO += --no-automatic-dbgsym
 DH_STRIP_DBG_OPTION_URE += --no-automatic-dbgsym
 DH_STRIP_DBG_OPTION_UNO_LIBS3 += --no-automatic-dbgsym
-endif
-
-ifeq "$(USE_DWZ_MULTIFILE)" "y"
-DWZ_ARGS += -m debian/$(UNO_LIBS_DBG_ROOT)/usr/lib/debug/.dwz/$(DEB_SOURCE)-$(DEB_VERSION).$(DEB_HOST_ARCH) \
-	-M /usr/lib/debug/.dwz/$(DEB_SOURCE)-$(DEB_VERSION).$(DEB_HOST_ARCH)
 endif
 
 CONFIGURE_FLAGS += $(foreach i, $(SYSTEM_STUFF),--with-system-$(i))
@@ -3245,14 +3239,7 @@ ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 	rm -rf debian/$(UNO_LIBS_DBG_ROOT) debian/$(URE_DBG_ROOT) debian/$(CORE_DBG_ROOT) \
 		debian/$(WRITER_DBG_ROOT)
   ifeq "$(USE_DWZ)" "y"
-    ifeq "$(USE_DWZ_MULTIFILE)" "y"
-	mkdir -p debian/$(UNO_LIBS_DBG_ROOT)/usr/lib/debug/.dwz
-	# dh_dwz goes over each package. and -m overwrites the file. so we only
-	# get the base-core one... Run dwz manually on what dh_dwz would do.
-	dwz $(DWZ_ARGS) `dh_dwz -a -v --no-act | sed -e "s,^.*dwz -q -- ,," | xargs`
-    else
 	dh_dwz -a -- $(DWZ_ARGS)
-    endif
   endif
 	dh_strip -a -Nure -Nuno-libs3 $(DH_STRIP_DBG_OPTION_LO)
 	dh_strip -pure $(DH_STRIP_DBG_OPTION_URE)
