@@ -122,6 +122,7 @@ BUILD_DEPS_INDEP += rdfind, symlinks
 # distribution. See configure --help for valid values (--with-system-<value>).
 SYSTEM_STUFF = dicts
 
+ifeq ($(filter nopython,$(DEB_BUILD_PROFILES)),)
 ENABLE_PYTHON=y
 ifeq "$(ENABLE_PYTHON)" "y"
   ENABLE_SCRIPT_PROVIDER_PYTHON=y
@@ -139,6 +140,7 @@ export PYTHON=python3
 else
   PYTHON=python$(PYTHON_VERSION)
 export PYTHON=python$(PYTHON_VERSION)
+endif
 endif
 BUILD_ONLY_EN_US=n
 ENABLE_JAVA=y
@@ -856,20 +858,22 @@ ifeq (noopt,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
 	CONFIGURE_FLAGS += --disable-optimized
 endif
 
+ifeq "$(ENABLE_PYTHON)" "y"
 PYMAJOR:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[0])")
 PYMINOR:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[1])")
 PYMINORPLUS1:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[1]+1)")
 PYTHON_SITE:=debian/python3-uno/$(shell $(PYTHON) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
+endif
 
 	BUILD_DEPS += , $(PYTHON)
 ifeq "$(ENABLE_PYTHON)" "y"
-	BUILD_DEPS += , $(PYTHON)-dev (>= 3.3)
+	BUILD_DEPS += , $(PYTHON)-dev (>= 3.3) <!nopython>
   ifneq "$(STRETCH_BACKPORT)" "y"
-	BUILD_DEPS += , $(PYTHON)-distutils
+	BUILD_DEPS += , $(PYTHON)-distutils <!nopython>
   endif
-	BUILD_DEPS += , dh-python
+	BUILD_DEPS += , dh-python <!nopython>
   ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
-	BUILD_DEPS += , $(PYTHON)-lxml <!nocheck>
+	BUILD_DEPS += , $(PYTHON)-lxml <!nocheck !nopython>
   else
 	CONFIGURE_FLAGS += --without-lxml
   endif
