@@ -1,8 +1,28 @@
+diff --git a/config_host.mk.in b/config_host.mk.in
+index 4a864c745424..a311e6044650 100644
+--- a/config_host.mk.in
++++ b/config_host.mk.in
+@@ -12,6 +12,8 @@ gb_SPACE:=$(gb_SPACE) $(gb_SPACE)
+ export SRC_ROOT=@SRC_ROOT@
+ export BUILDDIR=@BUILDDIR@
+ 
++export SHELL=/bin/bash
++
+ @x_AFLAGS@ export AFLAGS=@AFLAGS@
+ export ABW_CFLAGS=$(gb_SPACE)@ABW_CFLAGS@
+ export ABW_LIBS=$(gb_SPACE)@ABW_LIBS@
 diff --git a/odk/build-examples_common.mk b/odk/build-examples_common.mk
-index 931d6eea856e..3acea24f94ed 100644
+index 931d6eea856e..11772caf0ffe 100644
 --- a/odk/build-examples_common.mk
 +++ b/odk/build-examples_common.mk
-@@ -32,7 +32,7 @@ endif
+@@ -26,13 +26,13 @@ endif
+ 	(saved_library_path=$$$${$(gb_Helper_LIBRARY_PATH_VAR)} && . $$< \
+ 	$(if $(filter MACOSX,$(OS)),, \
+ 	    && $(gb_Helper_LIBRARY_PATH_VAR)=$$$$saved_library_path) \
+-	&& export \
++	&& set -o pipefail; export \
+ 	    UserInstallation=$(call gb_Helper_make_url,$(call gb_CustomTarget_get_workdir,$(1))/user) \
+ 	$(foreach my_dir,$(2), \
  	    && (cd $(INSTDIR)/$(SDKDIRNAME)/examples/$(my_dir) \
  		&& printf 'yes\n' | LC_ALL=C make \
  		    $(if $(filter MACOSX,$(OS)), SHELL=$(ODK_BUILD_SHELL), )))) \
@@ -12,9 +32,18 @@ index 931d6eea856e..3acea24f94ed 100644
  	    $(if $(filter MACOSX,$(OS)), && rm -f $(ODK_BUILD_SHELL) , ) \
  	    && cat $(call gb_CustomTarget_get_workdir,$(1))/log \
 diff --git a/solenv/gbuild/CppunitTest.mk b/solenv/gbuild/CppunitTest.mk
-index 45af5c9b25a7..7675c024f486 100644
+index 45af5c9b25a7..1f60573cf7c4 100644
 --- a/solenv/gbuild/CppunitTest.mk
 +++ b/solenv/gbuild/CppunitTest.mk
+@@ -122,7 +122,7 @@ else
+ 		$(if $(gb_CppunitTest__interactive),, \
+ 			$(if $(value gb_CppunitTest_postprocess), \
+ 				rm -fr $@.core && mkdir $@.core && cd $@.core &&)) \
+-		( \
++		( set -o pipefail; \
+ 		$(if $(gb_CppunitTest_localized),for l in $(WITH_LANG_LIST) ; do LO_TEST_LOCALE="$$l" ) \
+ 		$(if $(gb_CppunitTest_PREGDBTRACE),$(gb_CppunitTest_PREGDBTRACE) &&) \
+ 		$(EXTRA_ENV_VARS) \
 @@ -140,7 +140,7 @@ else
  		$(if $(gb_CppunitTest_localized),|| exit $$?; done) \
  		) \
@@ -25,10 +54,15 @@ index 45af5c9b25a7..7675c024f486 100644
  					RET=$$?; \
  					$(call gb_CppunitTest_postprocess,$(gb_CppunitTest_CPPTESTCOMMAND),$@.core,$$RET) >> $@.log 2>&1;) \
 diff --git a/solenv/gbuild/JunitTest.mk b/solenv/gbuild/JunitTest.mk
-index 36f29b50ef28..1484d56efd2e 100644
+index 36f29b50ef28..a770f81cce60 100644
 --- a/solenv/gbuild/JunitTest.mk
 +++ b/solenv/gbuild/JunitTest.mk
-@@ -44,7 +44,7 @@ else
+@@ -40,11 +40,11 @@ else
+         rm -rf $(call gb_JunitTest_get_userdir,$*) && \
+ 		mkdir -p $(call gb_JunitTest_get_userdir,$*)/user && \
+ 		cp $(SRCDIR)/qadevOOo/qa/registrymodifications.xcu $(call gb_JunitTest_get_userdir,$*)/user/ && \
+-        ($(gb_JunitTest_JAVACOMMAND) \
++        (set -o pipefail; $(gb_JunitTest_JAVACOMMAND) \
              -classpath "$(T_CP)" \
              $(DEFS) \
              org.junit.runner.JUnitCore \
@@ -38,9 +72,18 @@ index 36f29b50ef28..1484d56efd2e 100644
  		&& echo "to rerun just this failed test without all others, run:" \
  		&& echo && echo "    make JunitTest_$*" && echo \
 diff --git a/solenv/gbuild/UITest.mk b/solenv/gbuild/UITest.mk
-index 03d30448ef7b..a45ae5c96b9a 100644
+index 03d30448ef7b..87e4d56a0d9c 100644
 --- a/solenv/gbuild/UITest.mk
 +++ b/solenv/gbuild/UITest.mk
+@@ -59,7 +59,7 @@ else
+ 		    rm -fr $@.core && mkdir -p $(dir $(call gb_UITest_get_target,$*))user/ && mkdir $@.core && cd $@.core && ) \
+ 		$(if $(gb_UITest_use_config), \
+ 		    cp $(gb_UITest_use_config) $(dir $(call gb_UITest_get_target,$*))user/. && ) \
+-		($(gb_UITest_PRECOMMAND) \
++		(set -o pipefail; $(gb_UITest_PRECOMMAND) \
+ 		$(if $(G_SLICE),G_SLICE=$(G_SLICE)) \
+ 		$(if $(GLIBCXX_FORCE_NEW),GLIBCXX_FORCE_NEW=$(GLIBCXX_FORCE_NEW)) \
+ 		$(DEFS) \
 @@ -78,7 +78,7 @@ else
  		--dir=$(strip $(MODULES)) \
  		$(gb_UITest_GDBTRACE) \
