@@ -33,7 +33,6 @@ PACKAGES := $(ARCH_INDEP_PACKAGES) $(ARCH_DEP_PACKAGES)
 include /usr/share/dpkg/architecture.mk
 include /usr/share/dpkg/vendor.mk
 SHELL:=/bin/bash
-export gb_SHELL:=$(SHELL)
 
 #SYSTEM_GCC_VERSION = $(shell gcc --version | sed -n '/^gcc/s/.*\(.\..\)\..$$/\1/p')
 #FIXME
@@ -199,13 +198,12 @@ BUILD_KDE4=n
 QT4_MINVER= (>= 4:4.8)
 KDELIBS_MINVER= (>= 4:4.3.4)
 BUILD_KDE5=y
+ifeq "$(DEB_HOST_ARCH_BITS)" "64"
 ENABLE_QT5=n
 QT5_MINVER= (>= 5.6)
 ifeq "$(BUILD_KDE)" "y"
-ifeq "$(DEB_HOST_ARCH_BITS)" "64"
-  ENABLE_GTK3_KDE5=n
-endif
-  ENABLE_KDE5=y
+  ENABLE_GTK3_KDE5=y
+  ENABLE_KDE5=n
   KDE_MAJOR=5
   # KDE5 depends on Qt5
   ifeq "$(ENABLE_KDE5)" "y"
@@ -333,8 +331,8 @@ ALLOC=system
 SYSTEM_STUFF += libexttextcat
 SYSTEM_STUFF += cppunit
 CPPUNIT_MINVER=1.14
-DEFAULT_IMAGE=colibre
-IMAGES:=$(DEFAULT_IMAGE) tango sifr sifr_dark breeze breeze_dark elementary
+DEFAULT_IMAGE=tango
+IMAGES:=$(DEFAULT_IMAGE) colibre sifr sifr_dark breeze breeze_dark elementary
 CONFIGURE_FLAGS_INDEP += --with-theme="$(IMAGES)"
 ENABLE_MYSQLNATIVE=y
 MYSQL_FLAVOUR=default
@@ -459,6 +457,7 @@ BUILD_ARM64=y
 SYSTEM_STUFF += gpgmepp
 INSTALL_APPARMOR_PROFILES=y
 ENABLE_APPARMOR_PROFILES=y
+CHECK_APPARMOR_PROFILES=true
 ENABLE_LIBNUMBERTEXT=y
 SYSTEM_STUFF += libnumbertext
 
@@ -982,7 +981,7 @@ ifeq "$(ENABLE_JAVA)" "y"
 	BUILD_DEPS += , $(shell echo $(DEFAULT_JDK) | sed -e 's/default-jdk/default-jdk (>= 1:1.6)/' | sed -e "s/\]/ !i386]/")
     else
 	BUILD_DEPS += , java-common (>= 0.49)
-	BUILD_DEPS += , default-jdk (>= 1:1.6) $(shell echo "$(filter-out !ia64,$(OOO_NO_JAVA_ARCHS))" | sed -e "s/\]/ !i386]/")
+	BUILD_DEPS += , default-jdk (>= 1:1.6) $(shell echo "$(filter-out !ia64,$(OOO_NO_JAVA_ARCHS))")
     endif
     ifneq "$(STRETCH_BACKPORT)" "y"
       ifeq (i386,$(findstring i386,$(OOO_JAVA_ARCHS)))
@@ -1236,6 +1235,9 @@ endif
 
 ifeq "$(INSTALL_APPARMOR_PROFILES)" "y"
   BUILD_DEPS += , dh-apparmor
+  ifeq "$(CHECK_APPARMOR_PROFILES)" "true"
+    BUILD_DEPS += , apparmor <!nocheck>
+  endif
 endif
 
 ifeq "$(ENABLE_EOT)" "y"
@@ -1408,6 +1410,10 @@ ifneq "$(ENABLE_PYTHON)" "y"
 else
 	PYUNO_DEPENDS = python3-uno (>= 4.4.0~beta2)
   CONFIGURE_FLAGS += --enable-python=system
+endif
+
+ifneq "$(PACKAGE_LIBRELOGO)" "y"
+	DEBHELPER_OPTIONS+= -Nlibreoffice-librelogo
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
@@ -2143,19 +2149,8 @@ ifeq "$(ENABLE_QT5)" "y"
 		debian/tmp/pkg/libreoffice-qt5/$(OODIR)/program
 endif
 ifeq "$(BUILD_KDE)" "y"
-  ifeq "$(ENABLE_KDE5)" "y"
 	mv debian/tmp/pkg/libreoffice-kde \
 		debian/tmp/pkg/libreoffice-kde$(KDE_MAJOR)
-  else
-    ifeq "$(ENABLE_GTK3_KDE5)" "y"
-	# not installed...
-	mkdir -p debian/tmp/pkg/libreoffice-kde$(KDE_MAJOR)/$(OODIR)/program
-	for i in libvclplug_gtk3_kde5lo.so lo_kde5filepicker; do \
-		cp instdir/program/$$i \
-			debian/tmp/pkg/libreoffice-kde$(KDE_MAJOR)/$(OODIR)/program; \
-	done
-    endif
-  endif
 endif
 
 ifeq "$(ENABLE_HELP)" "y"
@@ -3277,7 +3272,7 @@ endif
 ifeq "$(INSTALL_APPARMOR_PROFILES)" "y"
 	mkdir -p $(PKGDIR)-common/etc/apparmor.d
 	./sysui/desktop/share/apparmor.sh /$(OODIR)/ sysui/desktop/apparmor/ \
-			$(PKGDIR)-common/etc/apparmor.d/ false
+			$(PKGDIR)-common/etc/apparmor.d/ false $(CHECK_APPARMOR_PROFILES)
   ifneq "$(ENABLE_APPARMOR_PROFILES)" "y"
 	# disable the apparmor files per default
 	mkdir -p $(PKGDIR)-common/etc/apparmor.d/disable
@@ -3330,8 +3325,10 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 	done
 	dh_installchangelogs -a -XChangeLog -k
 	dh_installmime -a
+ifeq "$(ENABLE_PYTHON)" "y"
 	dh_python3 -ppython3-uno --no-ext-rename --no-guessing-deps
 	dh_python3 -ppython3-uno --no-ext-rename --no-guessing-deps $(OODIR)/program
+endif
 	dh_lintian -a
 	dh_bugfiles -a -A
 	dh_link -a
