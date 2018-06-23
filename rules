@@ -33,7 +33,6 @@ PACKAGES := $(ARCH_INDEP_PACKAGES) $(ARCH_DEP_PACKAGES)
 include /usr/share/dpkg/architecture.mk
 include /usr/share/dpkg/vendor.mk
 SHELL:=/bin/bash
-export gb_SHELL:=$(SHELL)
 
 #SYSTEM_GCC_VERSION = $(shell gcc --version | sed -n '/^gcc/s/.*\(.\..\)\..$$/\1/p')
 #FIXME
@@ -212,7 +211,6 @@ BUILD_DBGSYM_PACKAGES=y
 ifeq "$(DEB_HOST_ARCH)" "amd64"
 USE_DWZ=y
 DWZ_ARGS:=-L 100000000
-USE_DWZ_MULTIFILE=n
 endif
 endif
 SYSTEM_STUFF += xmlsec
@@ -646,11 +644,6 @@ DH_STRIP_DBG_OPTION_URE += --no-automatic-dbgsym
 DH_STRIP_DBG_OPTION_UNO_LIBS3 += --no-automatic-dbgsym
 endif
 
-ifeq "$(USE_DWZ_MULTIFILE)" "y"
-DWZ_ARGS += -m debian/$(UNO_LIBS_DBG_ROOT)/usr/lib/debug/.dwz/$(DEB_SOURCE)-$(DEB_VERSION).$(DEB_HOST_ARCH) \
-	-M /usr/lib/debug/.dwz/$(DEB_SOURCE)-$(DEB_VERSION).$(DEB_HOST_ARCH)
-endif
-
 CONFIGURE_FLAGS += $(foreach i, $(SYSTEM_STUFF),--with-system-$(i))
 
 CC_PREFIX:=$(shell gcc -dumpmachine)-
@@ -819,10 +812,12 @@ ifeq (noopt,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
 	CONFIGURE_FLAGS += --disable-optimized
 endif
 
+ifeq "$(ENABLE_PYTHON)" "y"
 PYMAJOR:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[0])")
 PYMINOR:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[1])")
 PYMINORPLUS1:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[1]+1)")
 PYTHON_SITE:=debian/python3-uno/$(shell $(PYTHON) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
+endif
 
 	BUILD_DEPS += , $(PYTHON)
 ifeq "$(ENABLE_PYTHON)" "y"
@@ -1348,6 +1343,10 @@ ifneq "$(ENABLE_PYTHON)" "y"
 else
 	PYUNO_DEPENDS = python3-uno (>= 4.4.0~beta2)
   CONFIGURE_FLAGS += --enable-python=system
+endif
+
+ifneq "$(PACKAGE_LIBRELOGO)" "y"
+	DEBHELPER_OPTIONS+= -Nlibreoffice-librelogo
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
@@ -3235,8 +3234,10 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 	done
 	dh_installchangelogs -a -XChangeLog -k
 	dh_installmime -a
+ifeq "$(ENABLE_PYTHON)" "y"
 	dh_python3 -ppython3-uno --no-ext-rename --no-guessing-deps
 	dh_python3 -ppython3-uno --no-ext-rename --no-guessing-deps $(OODIR)/program
+endif
 	dh_lintian -a
 	dh_bugfiles -a -A
 	dh_link -a
@@ -3244,14 +3245,7 @@ ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 	rm -rf debian/$(UNO_LIBS_DBG_ROOT) debian/$(URE_DBG_ROOT) debian/$(CORE_DBG_ROOT) \
 		debian/$(WRITER_DBG_ROOT)
   ifeq "$(USE_DWZ)" "y"
-    ifeq "$(USE_DWZ_MULTIFILE)" "y"
-	mkdir -p debian/$(UNO_LIBS_DBG_ROOT)/usr/lib/debug/.dwz
-	# dh_dwz goes over each package. and -m overwrites the file. so we only
-	# get the base-core one... Run dwz manually on what dh_dwz would do.
-	dwz $(DWZ_ARGS) `dh_dwz -a -v --no-act | sed -e "s,^.*dwz -q -- ,," | xargs`
-    else
 	dh_dwz -a -- $(DWZ_ARGS)
-    endif
   endif
 	dh_strip -a -Nure -Nuno-libs3 $(DH_STRIP_DBG_OPTION_LO)
 	dh_strip -pure $(DH_STRIP_DBG_OPTION_URE)
