@@ -1,0 +1,413 @@
+From cc0b086988c23525f6f7825cb735e8a0d1c54720 Mon Sep 17 00:00:00 2001
+From: Eike Rathke <erack@redhat.com>
+Date: Mon, 18 Dec 2017 20:28:07 +0100
+Subject: Explicitly qualify ICU types with icu:: namespace
+
+It will be required by ICU 61 anyway, see
+https://ssl.icu-project.org/repos/icu/trunk/icu4c/readme.html#RecBuild
+
+Change-Id: I16b6bc8b8c49713f32424df5fc6db494df7b6892
+Reviewed-on: https://gerrit.libreoffice.org/46738
+Reviewed-by: Eike Rathke <erack@redhat.com>
+Tested-by: Eike Rathke <erack@redhat.com>
+(cherry picked from commit f7961456d81c3ee6ee4c13eac9ef7add6c7ea6b5)
+Reviewed-on: https://gerrit.libreoffice.org/56664
+Tested-by: Jenkins
+Reviewed-by: Stephan Bergmann <sbergman@redhat.com>
+---
+ i18npool/inc/collator_unicode.hxx                  |  2 +-
+ .../source/breakiterator/breakiterator_unicode.cxx | 26 +++++++++++-----------
+ i18npool/source/collator/collator_unicode.cxx      | 16 ++++++-------
+ i18npool/source/collator/gencoll_rule.cxx          |  2 +-
+ i18npool/source/ordinalsuffix/ordinalsuffix.cxx    |  2 +-
+ .../transliteration/ignoreDiacritics_CTL.cxx       |  6 ++---
+ 6 files changed, 27 insertions(+), 27 deletions(-)
+
+diff --git a/i18npool/inc/collator_unicode.hxx b/i18npool/inc/collator_unicode.hxx
+index 69d3177..d943bc9 100644
+--- a/i18npool/inc/collator_unicode.hxx
++++ b/i18npool/inc/collator_unicode.hxx
+@@ -63,7 +63,7 @@ public:
+ 
+ private:
+     const sal_Char *implementationName;
+-    RuleBasedCollator *uca_base, *collator;
++    icu::RuleBasedCollator *uca_base, *collator;
+ #ifndef DISABLE_DYNLOADING
+     oslModule hModule;
+ #endif
+diff --git a/i18npool/source/breakiterator/breakiterator_unicode.cxx b/i18npool/source/breakiterator/breakiterator_unicode.cxx
+index b4ca111..77fabbf 100644
+--- a/i18npool/source/breakiterator/breakiterator_unicode.cxx
++++ b/i18npool/source/breakiterator/breakiterator_unicode.cxx
+@@ -56,14 +56,14 @@ BreakIterator_Unicode::~BreakIterator_Unicode()
+ }
+ 
+ /*
+-    Wrapper class to provide public access to the RuleBasedBreakIterator's
++    Wrapper class to provide public access to the icu::RuleBasedBreakIterator's
+     setbreakType method.
+ */
+-class OOoRuleBasedBreakIterator : public RuleBasedBreakIterator
++class OOoRuleBasedBreakIterator : public icu::RuleBasedBreakIterator
+ {
+     public:
+ #if (U_ICU_VERSION_MAJOR_NUM < 58)
+-    // RuleBasedBreakIterator::setBreakType() is private as of ICU 58.
++    // icu::RuleBasedBreakIterator::setBreakType() is private as of ICU 58.
+     void publicSetBreakType(int32_t type)
+         {
+             setBreakType(type);
+@@ -71,7 +71,7 @@ class OOoRuleBasedBreakIterator : public RuleBasedBreakIterator
+ #endif
+     OOoRuleBasedBreakIterator(UDataMemory* image,
+                               UErrorCode &status)
+-        : RuleBasedBreakIterator(image, status)
++        : icu::RuleBasedBreakIterator(image, status)
+         { };
+ 
+ };
+@@ -334,7 +334,7 @@ sal_Int32 SAL_CALL BreakIterator_Unicode::nextCharacters( const OUString& Text,
+         icu::BreakIterator* pBI = character.mpValue->mpBreakIterator.get();
+         for (nDone = 0; nDone < nCount; nDone++) {
+             nStartPos = pBI->following(nStartPos);
+-            if (nStartPos == BreakIterator::DONE)
++            if (nStartPos == icu::BreakIterator::DONE)
+                 return Text.getLength();
+         }
+     } else { // for CHARACTER mode
+@@ -353,7 +353,7 @@ sal_Int32 SAL_CALL BreakIterator_Unicode::previousCharacters( const OUString& Te
+         icu::BreakIterator* pBI = character.mpValue->mpBreakIterator.get();
+         for (nDone = 0; nDone < nCount; nDone++) {
+             nStartPos = pBI->preceding(nStartPos);
+-            if (nStartPos == BreakIterator::DONE)
++            if (nStartPos == icu::BreakIterator::DONE)
+                 return 0;
+         }
+     } else { // for BS to delete one char and CHARACTER mode.
+@@ -371,7 +371,7 @@ Boundary SAL_CALL BreakIterator_Unicode::nextWord( const OUString& Text, sal_Int
+ 
+     Boundary rv;
+     rv.startPos = icuBI->mpValue->mpBreakIterator->following(nStartPos);
+-    if( rv.startPos >= Text.getLength() || rv.startPos == BreakIterator::DONE )
++    if( rv.startPos >= Text.getLength() || rv.startPos == icu::BreakIterator::DONE )
+         rv.endPos = result.startPos;
+     else {
+         if ( (rWordType == WordType::ANYWORD_IGNOREWHITESPACES ||
+@@ -380,7 +380,7 @@ Boundary SAL_CALL BreakIterator_Unicode::nextWord( const OUString& Text, sal_Int
+             rv.startPos = icuBI->mpValue->mpBreakIterator->following(rv.startPos);
+ 
+         rv.endPos = icuBI->mpValue->mpBreakIterator->following(rv.startPos);
+-        if(rv.endPos == BreakIterator::DONE)
++        if(rv.endPos == icu::BreakIterator::DONE)
+             rv.endPos = rv.startPos;
+     }
+     return rv;
+@@ -394,7 +394,7 @@ Boundary SAL_CALL BreakIterator_Unicode::previousWord(const OUString& Text, sal_
+ 
+     Boundary rv;
+     rv.startPos = icuBI->mpValue->mpBreakIterator->preceding(nStartPos);
+-    if( rv.startPos < 0 || rv.startPos == BreakIterator::DONE)
++    if( rv.startPos < 0 || rv.startPos == icu::BreakIterator::DONE)
+         rv.endPos = rv.startPos;
+     else {
+         if ( (rWordType == WordType::ANYWORD_IGNOREWHITESPACES ||
+@@ -403,7 +403,7 @@ Boundary SAL_CALL BreakIterator_Unicode::previousWord(const OUString& Text, sal_
+             rv.startPos = icuBI->mpValue->mpBreakIterator->preceding(rv.startPos);
+ 
+         rv.endPos = icuBI->mpValue->mpBreakIterator->following(rv.startPos);
+-        if(rv.endPos == BreakIterator::DONE)
++        if(rv.endPos == icu::BreakIterator::DONE)
+             rv.endPos = rv.startPos;
+     }
+     return rv;
+@@ -435,9 +435,9 @@ Boundary SAL_CALL BreakIterator_Unicode::getWordBoundary( const OUString& Text,
+             rv.endPos = icuBI->mpValue->mpBreakIterator->following(nPos);
+         }
+     }
+-    if (rv.startPos == BreakIterator::DONE)
++    if (rv.startPos == icu::BreakIterator::DONE)
+         rv.startPos = rv.endPos;
+-    else if (rv.endPos == BreakIterator::DONE)
++    else if (rv.endPos == icu::BreakIterator::DONE)
+         rv.endPos = rv.startPos;
+ 
+     return rv;
+@@ -502,7 +502,7 @@ LineBreakResults SAL_CALL BreakIterator_Unicode::getLineBreak(
+             lbr.breakIndex = nStartPos;
+             lbr.breakType = BreakType::WORDBOUNDARY;
+         } else if (hOptions.rHyphenator.is()) { //Hyphenation break
+-            sal_Int32 boundary_with_punctuation = (pLineBI->next() != BreakIterator::DONE) ? pLineBI->current() : 0;
++            sal_Int32 boundary_with_punctuation = (pLineBI->next() != icu::BreakIterator::DONE) ? pLineBI->current() : 0;
+             pLineBI->preceding(nStartPos + 1); // reset to check correct hyphenation of "word-word"
+ 
+             sal_Int32 nStartPosWordEnd = nStartPos;
+diff --git a/i18npool/source/collator/collator_unicode.cxx b/i18npool/source/collator/collator_unicode.cxx
+index 22b7ed9..552c95e 100644
+--- a/i18npool/source/collator/collator_unicode.cxx
++++ b/i18npool/source/collator/collator_unicode.cxx
+@@ -138,7 +138,7 @@ Collator_Unicode::loadCollatorAlgorithm(const OUString& rAlgorithm, const lang::
+         UErrorCode status = U_ZERO_ERROR;
+         OUString rule = LocaleDataImpl::get()->getCollatorRuleByAlgorithm(rLocale, rAlgorithm);
+         if (!rule.isEmpty()) {
+-            collator = new RuleBasedCollator(reinterpret_cast<const UChar *>(rule.getStr()), status);
++            collator = new icu::RuleBasedCollator(reinterpret_cast<const UChar *>(rule.getStr()), status);
+             if (! U_SUCCESS(status)) throw RuntimeException();
+         }
+         if (!collator && OUString(LOCAL_RULE_LANGS).indexOf(rLocale.Language) >= 0) {
+@@ -343,7 +343,7 @@ Collator_Unicode::loadCollatorAlgorithm(const OUString& rAlgorithm, const lang::
+                 size_t ruleImageSize = funclen();
+ 
+ #if (U_ICU_VERSION_MAJOR_NUM == 4) && (U_ICU_VERSION_MINOR_NUM <= 2)
+-                uca_base = new RuleBasedCollator(static_cast<UChar*>(NULL), status);
++                uca_base = new icu::RuleBasedCollator(static_cast<UChar*>(NULL), status);
+ #else
+                 // Not only changed ICU 53.1 the API behavior that a negative
+                 // length (ruleImageSize) now leads to failure, but also that
+@@ -354,11 +354,11 @@ Collator_Unicode::loadCollatorAlgorithm(const OUString& rAlgorithm, const lang::
+                 // The default collator of the en-US locale would also fulfill
+                 // the requirement. The collator of the actual locale or the
+                 // NULL (default) locale does not.
+-                uca_base = static_cast<RuleBasedCollator*>(icu::Collator::createInstance(
++                uca_base = static_cast<icu::RuleBasedCollator*>(icu::Collator::createInstance(
+                             icu::Locale::getRoot(), status));
+ #endif
+                 if (! U_SUCCESS(status)) throw RuntimeException();
+-                collator = new RuleBasedCollator(
++                collator = new icu::RuleBasedCollator(
+                         reinterpret_cast<const uint8_t*>(ruleImage), ruleImageSize, uca_base, status);
+                 if (! U_SUCCESS(status)) throw RuntimeException();
+             }
+@@ -372,17 +372,17 @@ Collator_Unicode::loadCollatorAlgorithm(const OUString& rAlgorithm, const lang::
+             */
+             icu::Locale icuLocale( LanguageTagIcu::getIcuLocale( LanguageTag( rLocale), rAlgorithm));
+             // load ICU collator
+-            collator = static_cast<RuleBasedCollator*>( icu::Collator::createInstance(icuLocale, status) );
++            collator = static_cast<icu::RuleBasedCollator*>( icu::Collator::createInstance(icuLocale, status) );
+             if (! U_SUCCESS(status)) throw RuntimeException();
+         }
+     }
+ 
+     if (options & CollatorOptions::CollatorOptions_IGNORE_CASE_ACCENT)
+-        collator->setStrength(Collator::PRIMARY);
++        collator->setStrength(icu::Collator::PRIMARY);
+     else if (options & CollatorOptions::CollatorOptions_IGNORE_CASE)
+-        collator->setStrength(Collator::SECONDARY);
++        collator->setStrength(icu::Collator::SECONDARY);
+     else
+-        collator->setStrength(Collator::TERTIARY);
++        collator->setStrength(icu::Collator::TERTIARY);
+ 
+     return 0;
+ }
+diff --git a/i18npool/source/collator/gencoll_rule.cxx b/i18npool/source/collator/gencoll_rule.cxx
+index 7d795b5..3048d12 100644
+--- a/i18npool/source/collator/gencoll_rule.cxx
++++ b/i18npool/source/collator/gencoll_rule.cxx
+@@ -113,7 +113,7 @@ SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv)
+     //UCollator *coll = ucol_openRules(Obuf.getStr(), Obuf.getLength(), UCOL_OFF,
+     //        UCOL_DEFAULT_STRENGTH, &parseError, &status);
+ 
+-    auto coll = o3tl::make_unique<RuleBasedCollator>(reinterpret_cast<const UChar *>(Obuf.getStr()), status);
++    auto coll = o3tl::make_unique<icu::RuleBasedCollator>(reinterpret_cast<const UChar *>(Obuf.getStr()), status);
+ 
+     if (U_SUCCESS(status)) {
+         std::vector<uint8_t> data;
+diff --git a/i18npool/source/ordinalsuffix/ordinalsuffix.cxx b/i18npool/source/ordinalsuffix/ordinalsuffix.cxx
+index a3e7d4a..f325798 100644
+--- a/i18npool/source/ordinalsuffix/ordinalsuffix.cxx
++++ b/i18npool/source/ordinalsuffix/ordinalsuffix.cxx
+@@ -79,7 +79,7 @@ uno::Sequence< OUString > SAL_CALL OrdinalSuffixService::getOrdinalSuffix( sal_I
+     if (!U_SUCCESS(nCode))
+         return retValue;
+ 
+-    std::unique_ptr<NumberFormat> xNumberFormat(icu::NumberFormat::createInstance(aIcuLocale, nCode));
++    std::unique_ptr<icu::NumberFormat> xNumberFormat(icu::NumberFormat::createInstance(aIcuLocale, nCode));
+     if (!U_SUCCESS(nCode))
+         return retValue;
+ 
+diff --git a/i18npool/source/transliteration/ignoreDiacritics_CTL.cxx b/i18npool/source/transliteration/ignoreDiacritics_CTL.cxx
+index 0ddfe64..2b5ca1e 100644
+--- a/i18npool/source/transliteration/ignoreDiacritics_CTL.cxx
++++ b/i18npool/source/transliteration/ignoreDiacritics_CTL.cxx
+@@ -35,7 +35,7 @@ ignoreDiacritics_CTL::transliterateChar2Char(sal_Unicode nInChar)
+     if (!m_transliterator)
+         throw css::uno::RuntimeException();
+ 
+-    UnicodeString aChar(nInChar);
++    icu::UnicodeString aChar(nInChar);
+     m_transliterator->transliterate(aChar);
+ 
+     if (aChar.isEmpty())
+@@ -68,7 +68,7 @@ ignoreDiacritics_CTL::folding(const OUString& rInStr, sal_Int32 nStartPos,
+         {
+             sal_Int32 nIndex = nPosition;
+             UChar32 nChar = rInStr.iterateCodePoints(&nIndex);
+-            UnicodeString aUStr(nChar);
++            icu::UnicodeString aUStr(nChar);
+             m_transliterator->transliterate(aUStr);
+ 
+             if (nOffset + aUStr.length() > rOffset.getLength())
+@@ -87,7 +87,7 @@ ignoreDiacritics_CTL::folding(const OUString& rInStr, sal_Int32 nStartPos,
+     }
+     else
+     {
+-        UnicodeString aUStr(reinterpret_cast<const UChar*>(rInStr.getStr()) + nStartPos, nCount);
++        icu::UnicodeString aUStr(reinterpret_cast<const UChar*>(rInStr.getStr()) + nStartPos, nCount);
+         m_transliterator->transliterate(aUStr);
+         return OUString(reinterpret_cast<const sal_Unicode*>(aUStr.getBuffer()), aUStr.length());
+     }
+-- 
+cgit v1.1
+
+From 8790243df458250b00de67bf6fc892b3fa5660ad Mon Sep 17 00:00:00 2001
+From: Eike Rathke <erack@redhat.com>
+Date: Mon, 18 Dec 2017 20:41:30 +0100
+Subject: Explicitly qualify ICU types with icu:: namespace
+
+It will be required by ICU 61 anyway, see
+https://ssl.icu-project.org/repos/icu/trunk/icu4c/readme.html#RecBuild
+
+Change-Id: Ib7accd75a6e35932048d779cf7bf0a5a33f8ed0d
+Reviewed-on: https://gerrit.libreoffice.org/46741
+Reviewed-by: Eike Rathke <erack@redhat.com>
+Tested-by: Eike Rathke <erack@redhat.com>
+(cherry picked from commit 8960ecc689ce41cfaa40b65d75830d7491b06463)
+Reviewed-on: https://gerrit.libreoffice.org/56680
+Tested-by: Jenkins
+Reviewed-by: Stephan Bergmann <sbergman@redhat.com>
+---
+ opencl/source/openclconfig.cxx | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/opencl/source/openclconfig.cxx b/opencl/source/openclconfig.cxx
+index b81ffed..0ec2347 100644
+--- a/opencl/source/openclconfig.cxx
++++ b/opencl/source/openclconfig.cxx
+@@ -119,7 +119,7 @@ bool match(const OUString& rPattern, const OUString& rInput)
+     UErrorCode nIcuError(U_ZERO_ERROR);
+     icu::UnicodeString sIcuPattern(reinterpret_cast<const UChar*>(rPattern.getStr()), rPattern.getLength());
+     icu::UnicodeString sIcuInput(reinterpret_cast<const UChar*>(rInput.getStr()), rInput.getLength());
+-    RegexMatcher aMatcher(sIcuPattern, sIcuInput, 0, nIcuError);
++    icu::RegexMatcher aMatcher(sIcuPattern, sIcuInput, 0, nIcuError);
+ 
+     return U_SUCCESS(nIcuError) && aMatcher.matches(nIcuError) && U_SUCCESS(nIcuError);
+ }
+-- 
+cgit v1.1
+
+From 63ebde2117d768c974252db9c4d9cce1ef4334c6 Mon Sep 17 00:00:00 2001
+From: Eike Rathke <erack@redhat.com>
+Date: Mon, 18 Dec 2017 20:33:03 +0100
+Subject: Explicitly qualify ICU types with icu:: namespace
+
+It will be required by ICU 61 anyway, see
+https://ssl.icu-project.org/repos/icu/trunk/icu4c/readme.html#RecBuild
+
+Change-Id: Ia051e8e2aa64b0e32a7f16a2afebaef0e4ebf531
+Reviewed-on: https://gerrit.libreoffice.org/46739
+Reviewed-by: Eike Rathke <erack@redhat.com>
+Tested-by: Eike Rathke <erack@redhat.com>
+(cherry picked from commit ad3b7c27cdc957a8a38876c040e86a81c3cf7003)
+Reviewed-on: https://gerrit.libreoffice.org/56713
+Tested-by: Jenkins
+Reviewed-by: Stephan Bergmann <sbergman@redhat.com>
+---
+ i18nutil/source/utility/unicode.cxx | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/i18nutil/source/utility/unicode.cxx b/i18nutil/source/utility/unicode.cxx
+index 0173a4a..697875b 100644
+--- a/i18nutil/source/utility/unicode.cxx
++++ b/i18nutil/source/utility/unicode.cxx
+@@ -750,15 +750,15 @@ OUString SAL_CALL unicode::formatPercent(double dNumber,
+ 
+     icu::Locale aLocale = LanguageTagIcu::getIcuLocale(aLangTag);
+ 
+-    std::unique_ptr<NumberFormat> xF(
+-        NumberFormat::createPercentInstance(aLocale, errorCode));
++    std::unique_ptr<icu::NumberFormat> xF(
++        icu::NumberFormat::createPercentInstance(aLocale, errorCode));
+     if(U_FAILURE(errorCode))
+     {
+-        SAL_WARN("i18n", "NumberFormat::createPercentInstance failed");
++        SAL_WARN("i18n", "icu::NumberFormat::createPercentInstance failed");
+         return OUString::number(dNumber) + "%";
+     }
+ 
+-    UnicodeString output;
++    icu::UnicodeString output;
+     xF->format(dNumber/100, output);
+     OUString aRet(reinterpret_cast<const sal_Unicode *>(output.getBuffer()),
+         output.length());
+-- 
+cgit v1.1
+
+From 4d06789a836f1a271399cd9955b2cb96030f393a Mon Sep 17 00:00:00 2001
+From: Eike Rathke <erack@redhat.com>
+Date: Tue, 19 Dec 2017 15:22:09 +0100
+Subject: vcl: explicitly qualify ICU types with icu:: namespace
+
+It will be required by ICU 61 anyway, see
+https://ssl.icu-project.org/repos/icu/trunk/icu4c/readme.html#RecBuild
+
+Change-Id: Iecb30b903e9a67252147a8cc78c641621d763755
+(cherry picked from commit f240332f8e965ea17b70b0ccaa9990ce0a53cfc6)
+Reviewed-on: https://gerrit.libreoffice.org/56735
+Tested-by: Jenkins
+Reviewed-by: Stephan Bergmann <sbergman@redhat.com>
+---
+ vcl/inc/scrptrun.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/vcl/inc/scrptrun.h b/vcl/inc/scrptrun.h
+index cbe151d..46a5c08 100644
+--- a/vcl/inc/scrptrun.h
++++ b/vcl/inc/scrptrun.h
+@@ -58,7 +58,7 @@ struct ParenStackEntry
+     }
+ };
+ 
+-class ScriptRun : public UObject {
++class ScriptRun : public icu::UObject {
+ public:
+ 
+     ScriptRun(const UChar chars[], int32_t length);
+-- 
+cgit v1.1
+
+From 3aabc93b8a3f55eb0a3f9e413b124fd8deab7e47 Mon Sep 17 00:00:00 2001
+From: Eike Rathke <erack@redhat.com>
+Date: Mon, 18 Dec 2017 20:38:59 +0100
+Subject: Explicitly qualify ICU types with icu:: namespace
+
+It will be required by ICU 61 anyway, see
+https://ssl.icu-project.org/repos/icu/trunk/icu4c/readme.html#RecBuild
+
+Change-Id: If7f1330550981fd28eb7eea6329f21e116291cca
+Reviewed-on: https://gerrit.libreoffice.org/46740
+Reviewed-by: Eike Rathke <erack@redhat.com>
+Tested-by: Eike Rathke <erack@redhat.com>
+Reviewed-on: https://gerrit.libreoffice.org/56779
+Tested-by: Jenkins
+Reviewed-by: Stephan Bergmann <sbergman@redhat.com>
+---
+ lotuswordpro/source/filter/localtime.cxx | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/lotuswordpro/source/filter/localtime.cxx b/lotuswordpro/source/filter/localtime.cxx
+index 47d2024..3805c5d 100644
+--- a/lotuswordpro/source/filter/localtime.cxx
++++ b/lotuswordpro/source/filter/localtime.cxx
+@@ -174,7 +174,7 @@ bool LtgLocalTime(long rtime,LtTm& rtm)
+ 
+     if ((rtime > 3 * DAY_SEC)&&(rtime < LONG_MAX - 3 * DAY_SEC))
+     {
+-        TimeZone* pLocalZone = TimeZone::createDefault();
++        icu::TimeZone* pLocalZone = icu::TimeZone::createDefault();
+         long offset = (pLocalZone->getRawOffset())/1000;
+         delete pLocalZone;
+         long ltime = rtime + offset;
+-- 
+cgit v1.1
+
