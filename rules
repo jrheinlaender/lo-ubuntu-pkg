@@ -33,7 +33,6 @@ PACKAGES := $(ARCH_INDEP_PACKAGES) $(ARCH_DEP_PACKAGES)
 include /usr/share/dpkg/architecture.mk
 include /usr/share/dpkg/vendor.mk
 SHELL:=/bin/bash
-export gb_SHELL:=$(SHELL)
 
 #SYSTEM_GCC_VERSION = $(shell gcc --version | sed -n '/^gcc/s/.*\(.\..\)\..$$/\1/p')
 #FIXME
@@ -72,11 +71,11 @@ ifeq "$(USE_GIT_TARBALLS)" "y"
 GIT_BASEURL:=git://anongit.freedesktop.org/libreoffice
 # bootstraping this from the source tree is breaking get-orig-source
 #lo_sources_ver=$(shell grep AC_INIT $(SOURCE_TREE)/configure.ac | grep documentfoundation | cut -d, -f2 | sed -e 's,\[,,' -e 's,\],,')
-lo_sources_ver=6.0.5.1
+lo_sources_ver=6.0.6.1
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
 GIT_TAG=libreoffice-$(lo_sources_ver)
-GIT_BRANCH=libreoffice-6-0-5
+GIT_BRANCH=libreoffice-6-0-6
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
 lo_sources_ver=$(shell cat $(CURDIR)/sources.ver | cut -d= -f2)
@@ -125,6 +124,7 @@ SYSTEM_STUFF = dicts
 
 ENABLE_PYTHON=y
 ifeq "$(ENABLE_PYTHON)" "y"
+  CONFIGURE_FLAGS += --with-python=system
   ENABLE_SCRIPT_PROVIDER_PYTHON=y
   PACKAGE_LIBRELOGO=y
 endif
@@ -136,10 +136,14 @@ endif
 PYTHON_VERSION=current
 ifeq "$(PYTHON_VERSION)" "current"
   PYTHON=python3
-export PYTHON=python3
+  export PYTHON
 else
+  # somehow configure insists on using python3 "for pyuno". The only way to
+  # override this (afaics) is this...
   PYTHON=python$(PYTHON_VERSION)
-export PYTHON=python$(PYTHON_VERSION)
+  PYTHON_CFLAGS=$(shell pkg-config --cflags python-$(PYTHON_VERSION))
+  PYTHON_LIBS=$(shell pkg-config --libs python-$(PYTHON_VERSION))
+  export PYTHON PYTHON_VERSION PYTHON_CFLAGS PYTHON_LIBS
 endif
 BUILD_ONLY_EN_US=n
 ENABLE_JAVA=y
@@ -214,7 +218,6 @@ BUILD_DBGSYM_PACKAGES=y
 ifeq "$(DEB_HOST_ARCH)" "amd64"
 USE_DWZ=y
 DWZ_ARGS:=-L 100000000
-USE_DWZ_MULTIFILE=n
 endif
 endif
 SYSTEM_STUFF += xmlsec
@@ -623,6 +626,7 @@ ifeq "$(DEB_DISTRIBUTION)" "stretch-backports"
   # needs newer stuff for tests, we can't make it conditional on RUN_MAKE_CHECK since
   # BE archs don't run them anyway and this wouldn't be in effect...
   SYSTEM_STUFF := $(filter-out libwps libmwaw libetonyek,$(SYSTEM_STUFF))
+  USE_DWZ := n
   STRETCH_BACKPORT=y
 endif
 
@@ -672,11 +676,6 @@ else
 DH_STRIP_DBG_OPTION_LO += --no-automatic-dbgsym
 DH_STRIP_DBG_OPTION_URE += --no-automatic-dbgsym
 DH_STRIP_DBG_OPTION_UNO_LIBS3 += --no-automatic-dbgsym
-endif
-
-ifeq "$(USE_DWZ_MULTIFILE)" "y"
-DWZ_ARGS += -m debian/$(UNO_LIBS_DBG_ROOT)/usr/lib/debug/.dwz/$(DEB_SOURCE)-$(DEB_VERSION).$(DEB_HOST_ARCH) \
-	-M /usr/lib/debug/.dwz/$(DEB_SOURCE)-$(DEB_VERSION).$(DEB_HOST_ARCH)
 endif
 
 CONFIGURE_FLAGS += $(foreach i, $(SYSTEM_STUFF),--with-system-$(i))
@@ -847,10 +846,12 @@ ifeq (noopt,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
 	CONFIGURE_FLAGS += --disable-optimized
 endif
 
+ifeq "$(ENABLE_PYTHON)" "y"
 PYMAJOR:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[0])")
 PYMINOR:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[1])")
 PYMINORPLUS1:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[1]+1)")
 PYTHON_SITE:=debian/python3-uno/$(shell $(PYTHON) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
+endif
 
 	BUILD_DEPS += , $(PYTHON)
 ifeq "$(ENABLE_PYTHON)" "y"
@@ -962,7 +963,16 @@ ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(JDK)" "default"
 	BUILD_DEPS += , java-common (>= 0.49)
 	JAVA_HOME=/usr/lib/jvm/default-java
-	BUILD_DEPS += , default-jdk (>= 1:1.6) $(filter-out !ia64,$(OOO_NO_JAVA_ARCHS))
+  ifneq "$(STRETCH_BACKPORT)" "y"
+	BUILD_DEPS += , default-jdk (>= 1:1.6) $(shell echo "$(filter-out !ia64,$(OOO_NO_JAVA_ARCHS))" | sed -e "s/\]/ !i386]/")
+  else
+	BUILD_DEPS += , default-jdk (>= 1:1.6) $(shell echo "$(filter-out !ia64,$(OOO_NO_JAVA_ARCHS))")
+  endif
+  ifneq "$(STRETCH_BACKPORT)" "y"
+    ifeq (i386,$(findstring i386,$(OOO_JAVA_ARCHS)))
+	BUILD_DEPS += , default-jdk (>= 2:1.9) [i386]
+    endif
+  endif
     ifneq (,$(findstring ia64,$(OOO_JAVA_ARCHS)))
 	BUILD_DEPS += , default-jdk (>= 1:1.7-48) [ia64]
     endif
@@ -1366,6 +1376,10 @@ ifneq "$(ENABLE_PYTHON)" "y"
 else
 	PYUNO_DEPENDS = python3-uno (>= 4.4.0~beta2)
   CONFIGURE_FLAGS += --enable-python=system
+endif
+
+ifneq "$(PACKAGE_LIBRELOGO)" "y"
+	DEBHELPER_OPTIONS+= -Nlibreoffice-librelogo
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
@@ -3007,8 +3021,10 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 	done
 	dh_installchangelogs -a -XChangeLog -k
 	dh_installmime -a
+ifeq "$(ENABLE_PYTHON)" "y"
 	dh_python3 -ppython3-uno --no-ext-rename --no-guessing-deps
 	dh_python3 -ppython3-uno --no-ext-rename --no-guessing-deps $(OODIR)/program
+endif
 	dh_lintian -a
 	dh_bugfiles -a -A
 	dh_link -a
@@ -3016,14 +3032,7 @@ ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 #	rm -rf debian/$(UNO_LIBS_DBG_ROOT) debian/$(URE_DBG_ROOT) debian/$(CORE_DBG_ROOT) \
 #		debian/$(WRITER_DBG_ROOT)
   ifeq "$(USE_DWZ)" "y"
-    ifeq "$(USE_DWZ_MULTIFILE)" "y"
-	mkdir -p debian/$(UNO_LIBS_DBG_ROOT)/usr/lib/debug/.dwz
-	# dh_dwz goes over each package. and -m overwrites the file. so we only
-	# get the base-core one... Run dwz manually on what dh_dwz would do.
-	dwz $(DWZ_ARGS) `dh_dwz -a -v --no-act | sed -e "s,^.*dwz -q -- ,," | xargs`
-    else
 	dh_dwz -a -- $(DWZ_ARGS)
-    endif
   endif
 	dh_strip -a -Nure -Nuno-libs3 $(DH_STRIP_DBG_OPTION_LO)
 	dh_strip -pure $(DH_STRIP_DBG_OPTION_URE)
