@@ -499,7 +499,9 @@ ifeq "$(DEB_DISTRIBUTION)" "UNRELEASED"
 BUGS=mailto:debian-openoffice@lists.debian.org
 endif
 
+ifneq (terse,$(findstring terse,$(DEB_BUILD_OPTIONS)))
 export verbose=t
+endif
 
 CONFIGURE_FLAGS += --with-alloc=$(ALLOC)
 
@@ -1893,8 +1895,6 @@ endif
 	# match myspell-fi and libreoffice-soikko/-voikko
 	perl -pi -e 's/myspell-dictionary-fi/myspell-dictionary-fi | libreoffice-spellcheck-fi/' debian/control
 	perl -pi -e 's/hyphen-fi/hyphen-fi | libreoffice-hyphenation-fi/' debian/control
-	# similar for tr (libreoffice-zemberek)
-	perl -pi -e 's/myspell-dictionary-tr/myspell-dictionary-tr | libreoffice-spellcheck-tr/' debian/control
 
 ifeq "$(USE_DBUS)" "y"
   ifeq "$(ENABLE_BLUETOOTH)" "y"
@@ -1943,6 +1943,17 @@ $(STAMP_DIR)/prepare:
 	if [ ! -f $(TARFILE_LOCATION)/185d60944ea767075d27247c3162b3bc-unowinreg.dll ]; then \
 		touch $(TARFILE_LOCATION)/185d60944ea767075d27247c3162b3bc-unowinreg.dll; \
 	fi
+
+ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
+ifeq (terse,$(findstring terse,$(DEB_BUILD_OPTIONS)))
+	if [ -d .pc/do-not-hide-test-output.diff ]; then \
+		patch -p1 -R < debian/patches/do-not-hide-test-output.diff; \
+		TMP=`mktemp -q`; grep -v do-not-hide-test-output .pc/applied-patches \
+			> $$TMP && mv $$TMP .pc/applied-patches; \
+		rm -rf .pc/do-not-hide-test-output.diff; \
+	fi
+endif
+endif
 
 	touch $@
 
