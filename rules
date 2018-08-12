@@ -72,7 +72,7 @@ GIT_BASEURL:=git://anongit.freedesktop.org/libreoffice
 lo_sources_ver=$(shell grep AC_INIT $(SOURCE_TREE)/configure.ac | grep documentfoundation | cut -d, -f2 | sed -e 's,\[,,' -e 's,\],,')
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
-GIT_TAG=libreoffice-$(lo_sources_ver)-buildfix1
+GIT_TAG=libreoffice-$(lo_sources_ver)
 GIT_BRANCH=libreoffice-6-1-0
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
@@ -493,7 +493,9 @@ ifeq "$(DEB_DISTRIBUTION)" "UNRELEASED"
 BUGS=mailto:debian-openoffice@lists.debian.org
 endif
 
+ifneq (terse,$(findstring terse,$(DEB_BUILD_OPTIONS)))
 export verbose=t
+endif
 
 CONFIGURE_FLAGS += --with-alloc=$(ALLOC)
 
@@ -1895,8 +1897,6 @@ endif
 	# match myspell-fi and libreoffice-soikko/-voikko
 	perl -pi -e 's/myspell-dictionary-fi/myspell-dictionary-fi | libreoffice-spellcheck-fi/' debian/control
 	perl -pi -e 's/hyphen-fi/hyphen-fi | libreoffice-hyphenation-fi/' debian/control
-	# similar for tr (libreoffice-zemberek)
-	perl -pi -e 's/myspell-dictionary-tr/myspell-dictionary-tr | libreoffice-spellcheck-tr/' debian/control
 
 ifeq "$(USE_DBUS)" "y"
   ifeq "$(ENABLE_BLUETOOTH)" "y"
@@ -1945,6 +1945,17 @@ $(STAMP_DIR)/prepare:
 	if [ ! -f $(TARFILE_LOCATION)/185d60944ea767075d27247c3162b3bc-unowinreg.dll ]; then \
 		touch $(TARFILE_LOCATION)/185d60944ea767075d27247c3162b3bc-unowinreg.dll; \
 	fi
+
+ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
+ifeq (terse,$(findstring terse,$(DEB_BUILD_OPTIONS)))
+	if [ -d .pc/do-not-hide-test-output.diff ]; then \
+		patch -p1 -R < debian/patches/do-not-hide-test-output.diff; \
+		TMP=`mktemp -q`; grep -v do-not-hide-test-output .pc/applied-patches \
+			> $$TMP && mv $$TMP .pc/applied-patches; \
+		rm -rf .pc/do-not-hide-test-output.diff; \
+	fi
+endif
+endif
 
 	touch $@
 
@@ -3183,6 +3194,13 @@ endif
 		$(PKGDIR)-common/usr/share/applications/libreoffice-$$i.desktop; \
 	done
 
+	# fix the shebangs to make lintian happy
+	sed -i "s,/usr/bin/env perl,/usr/bin/perl,g" \
+		$(PKGDIR)-common/usr/share/$(OODIRNAME)/bin/lo-xlate-lang
+	for i in $(PKGDIR)-common/$(OODIR)/share/config/webcast/*.pl; do \
+		sed -i "s,/usr/bin/env perl,/usr/bin/perl,g" $$i; \
+	done
+
 	for i in $(ARCH_INDEP_PACKAGES); do \
 		if [ -e debian/$$i.bug-script.in ]; then \
 			cat debian/$$i.bug-script.in \
@@ -3578,6 +3596,7 @@ ifeq "$(ENABLE_HTML_HELP)" "y"
 		cat $$TMP | perl -e 'while(<>) { if (/^Files/) {$$f=1;} if ($$f eq "1") { chomp(); } print $$_; }' > debian/libreoffice-help-$$pkgiso.doc-base; \
 		rm -f $$TMP; \
 		perl -pi -e 's,([a-z])\/usr/,$$1 \/usr/,g' debian/libreoffice-help-$$pkgiso.doc-base; \
+		perl -pi -e 's,([0-9])\/usr/,$$1 \/usr/,g' debian/libreoffice-help-$$pkgiso.doc-base; \
 		sed -i s/@LCODE@/$$pkgiso/ debian/libreoffice-help-$$pkgiso.doc-base; \
 		sed -i s/@HELPISO@/$$iso/ debian/libreoffice-help-$$pkgiso.doc-base; \
 	done
