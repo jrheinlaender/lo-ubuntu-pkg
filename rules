@@ -331,12 +331,9 @@ CPPUNIT_MINVER=1.14
 DEFAULT_IMAGE=tango
 IMAGES:=$(DEFAULT_IMAGE) colibre sifr sifr_dark breeze breeze_dark elementary karasa_jaga
 CONFIGURE_FLAGS_INDEP += --with-theme="$(IMAGES)"
-ENABLE_MYSQLNATIVE=y
 MYSQL_FLAVOUR=default
 # set this also to y for system-mysql..
 SYSTEM_STUFF += mariadb
-SYSTEM_STUFF += mysql-cppconn
-MYSQLCPPCONN_MINVER= (>= 1.1.7-4)
 SYSTEM_STUFF += postgresql
 DICT_DIR=/usr/share/hunspell
 HYPH_DIR=/usr/share/hyphen
@@ -561,12 +558,11 @@ ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
   ifneq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_BASE_ARCHS)))
 	PACKAGE_BASE=n
 	ENABLE_SDBC_POSTGRESQL=n
-	ENABLE_MYSQLNATIVE=n
 	ENABLE_EVO2=n
 	ENABLE_REPORTBUILDER=n
 	DEBHELPER_OPTIONS += -Nlibreoffice-base libreoffice-base-core -Nlibreoffice-base-drivers
 	DEBHELPER_OPTIONS += -Nlibreoffice-evolution
-	DEBHELPER_OPTIONS += -Nlibreoffice-sdbc-postgresql -Nlibreoffice-mysql-connector
+	DEBHELPER_OPTIONS += -Nlibreoffice-sdbc-postgresql -Nlibreoffice-sdbc-mysql
 	DEBHELPER_OPTIONS += -Nlibreoffice-sdbc-hsqldb -Nlibreoffice-sdbc-firebird 
 	DEBHELPER_OPTIONS += -Nlibreoffice-report-builder-bin -Nlibreoffice-report-builder
 #	CONFIGURE_FLAGS += --disable-database-connectivity
@@ -578,8 +574,6 @@ ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_BE_ARCHS)))
 	DEBHELPER_OPTIONS += -Nlibreoffice-sdbc-firebird
 endif
 ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
-	ENABLE_MYSQLNATIVE=n
-	DEBHELPER_OPTIONS += -Nlibreoffice-mysql-connector
 	DEBHELPER_OPTIONS += -Nlibreoffice-presentation-minimizer
 endif
 ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
@@ -1284,27 +1278,19 @@ ifeq "$(ENABLE_QT5)" "y"
 	export QT_SELECT=5
 endif
 
-ifeq "$(ENABLE_MYSQLNATIVE)" "y"
-	CONFIGURE_FLAGS += --enable-ext-mariadb-connector
-  ifeq "$(MYSQL_FLAVOUR)" "default"
+ifeq "$(MYSQL_FLAVOUR)" "default"
 	BUILD_DEPS += , default-libmysqlclient-dev
-  else
-    ifeq "$(MYSQL_FLAVOUR)" "mysql"
-      ifneq (,$(filter mysql-cppconn, $(SYSTEM_STUFF)))
-        BUILD_DEPS += , libmysqlclient-dev
-      endif
+else
+  ifeq "$(MYSQL_FLAVOUR)" "mysql"
+      BUILD_DEPS += , libmysqlclient-dev
       MARIADBCONFIG=/usr/bin/mysql_config
-    endif
-    ifeq "$(MYSQL_FLAVOUR)" "mariadb"
-      ifneq (,$(filter mariadb, $(SYSTEM_STUFF)))
+  endif
+  ifeq "$(MYSQL_FLAVOUR)" "mariadb"
+    ifneq (,$(filter mariadb, $(SYSTEM_STUFF)))
 	# deducted from default-libmysqlclient-dev Depends
 	BUILD_DEPS += , libmariadbclient-dev-compat
-      endif
-      MARIADBCONFIG=/usr/bin/mariadb_config
     endif
-  endif
-  ifneq (,$(filter mysql-cppconn, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libmysqlcppconn-dev $(MYSQLCPPCONN_MINVER)
+    MARIADBCONFIG=/usr/bin/mariadb_config
   endif
 endif
 
@@ -1972,12 +1958,9 @@ ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 endif
 
 ifneq "$(BUILD_ISOS)" "en-US"
-	# build sysui and some extensions again with all languages; as it contains language-specific help
-	# and/or descriptions...
+	# build sysui again with all languages; as it contains language-specific help and/or descriptions...
 	$(MAKE) sysui.clean
-	$(MAKE) mysqlc.clean
 	make cmd cmd="cd sysui; export WITH_LANG='$(LANGPACKISOS)'; export WITH_LANG_LIST='$(LANGPACKISOS)'; $(MAKE)"
-	make cmd cmd="cd mysqlc; export WITH_LANG='$(LANGPACKISOS)'; export WITH_LANG_LIST='$(LANGPACKISOS)'; $(MAKE)"
 endif
 
 	touch $@
@@ -2824,10 +2807,6 @@ ifeq "$(ENABLE_PRESENTER_CONSOLE)" "y"
 	rm -f usr/lib/libreoffice/share/extensions/presenter-screen/registration/LICENSE
 endif
 
-ifeq "$(ENABLE_MYSQLNATIVE)" "y"
-	rm -f $(PKGDIR)-mysql-connector/$(OODIR)/share/extensions/mysql-connector-ooo/registration/LICENSE
-endif
-
 ifeq "$(PACKAGE_SDK)" "y"
 	# move ui-previewer into -dev
 	mkdir -p $(PKGDIR)-dev/$(OODIR)/program
@@ -2874,6 +2853,10 @@ ifeq "$(ENABLE_FIREBIRD)" "y"
 	done
   endif
 endif
+	mkdir -p $(PKGDIR)-sdbc-mysql/$(OODIR)/program
+	mv $(PKGDIR)-base/$(OODIR)/program/libmysqlc.uno.so \
+		$(PKGDIR)-sdbc-mysql/$(OODIR)/program
+	
 	mkdir -p $(PKGDIR)-base-drivers/$(OODIR)/program
 	for i in `find $(PKGDIR)-base/$(OODIR)/program/ -name "*.so" \
 		-a \! -name "libdbulo*" -a \! -name "libdbaxml*" -a \! -name "libdbp*" -a \! -name "libabplo.so"`; do \
@@ -3294,9 +3277,9 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 	# Also not for extensions, as they have an own version
 	# python3-uno has additional examples...
 	dh_installdocs -a -A -Nure -Nuno-libs3 \
-		-Npython3-uno -Nlibreoffice-mysql-connector -Nlibreoffice -Nlibreofficekit-dev \
+		-Npython3-uno -Nlibreoffice -Nlibreofficekit-dev \
 		--link-doc=libreoffice-core
-	dh_installdocs -pure -puno-libs3 -ppython3-uno -plibreoffice-mysql-connector -plibreoffice -plibreofficekit-dev
+	dh_installdocs -pure -puno-libs3 -ppython3-uno -plibreoffice -plibreofficekit-dev
 	cp workdir/CustomTarget/readlicense_oo/readme/README_en-US \
 		$(PKGDIR)-core/usr/share/doc/libreoffice-core/README
 	dh_installdebconf -a
@@ -3484,7 +3467,7 @@ endif
 # causes ldd crashes sometimes when used with fakeroot:
 #          -l $(PKGDIR)-core/$(OPENOFFICEDIR)/program
 	dh_gencontrol -a $(DEBHELPER_OPTIONS) -Nure -Nuno-libs3 \
-		-Nlibreoffice-mysql-connector -- \
+		-- \
 		-V"ure:Version=$(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }')" \
 		-V'base-version=$(BASE_VERSION)' \
 		-V'oover=$(OOVER)' \
@@ -3509,14 +3492,6 @@ endif
 		-V'firebird-engine-depends=$(FIREBIRD_ENGINE_DEPENDS)' \
 		-V'libsane-suggests=$(shell dpkg -S /usr/lib/$(DEB_HOST_MULTIARCH)/libsane.so.1 | cut -d: -f1)' \
 		-v$(BINARY_VERSION)
-ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
-ifeq "$(PACKAGE_BASE)" "y"
-  ifeq "$(ENABLE_MYSQLNATIVE)" "y"
-	dh_gencontrol -plibreoffice-mysql-connector -- \
-		-v$(shell grep "<version" $(SOURCE_TREE)/mysqlc/source/description.xml | perl -pi -e 's,<version value=\"(.*)\" />,\1,; s/^\s+//; s/\s+$$//')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
-  endif
-endif
-endif
 	dh_gencontrol -pure -puno-libs3 -- \
 		-V"ure:Version=`echo $(BINARY_VERSION) | cut -d: -f2`" \
 		-v"`echo $(BINARY_VERSION) | cut -d: -f2`"
