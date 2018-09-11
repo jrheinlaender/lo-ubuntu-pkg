@@ -1,0 +1,64 @@
+From ff0b1f3c8063f4d7c171a9ea2db4efbff16eda39 Mon Sep 17 00:00:00 2001
+From: Miklos Vajna <vmiklos@collabora.co.uk>
+Date: Tue, 28 Aug 2018 09:05:06 +0200
+Subject: tdf#119050 sfx2 store: don't inherit temp file permissions when
+ overwriting
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The too aggressive error handling in commit
+fb04780cf8523ad4e900ae8b9cecbe7a2697a12a (tdf#116117 sfx2 store: don't
+inherit temp file permissions when renaming, 2018-03-12) means that if
+the file is already there, then we don't try to stat() it; even if there
+is no problem with that.
+
+(cherry picked from commit 38afe2976eea427999c39ee3a73e7938ec8d5f7b)
+
+Change-Id: Ie0b9084064834e339bcae3ad7b4a35c54cb9d3c2
+Reviewed-on: https://gerrit.libreoffice.org/59709
+Reviewed-by: Caolán McNamara <caolanm@redhat.com>
+Tested-by: Caolán McNamara <caolanm@redhat.com>
+---
+ sfx2/qa/cppunit/test_misc.cxx | 8 ++++++++
+ sfx2/source/doc/docfile.cxx   | 4 +++-
+ 2 files changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/sfx2/qa/cppunit/test_misc.cxx b/sfx2/qa/cppunit/test_misc.cxx
+index d74687b..817e246 100644
+--- a/sfx2/qa/cppunit/test_misc.cxx
++++ b/sfx2/qa/cppunit/test_misc.cxx
+@@ -146,6 +146,14 @@ void MiscTest::testNoThumbnail()
+     // requested so.
+     CPPUNIT_ASSERT(aStatus.getAttributes() & osl_File_Attribute_GrpRead);
+     CPPUNIT_ASSERT(aStatus.getAttributes() & osl_File_Attribute_OthRead);
++
++    // Now "save as" again to trigger the "overwrite" case.
++    xStorable->storeToURL(aTempFile.GetURL(), {});
++    CPPUNIT_ASSERT_EQUAL(osl::DirectoryItem::E_None, aItem.getFileStatus(aStatus));
++    // The following check used to fail in the past, result had temp file
++    // permissions.
++    CPPUNIT_ASSERT(aStatus.getAttributes() & osl_File_Attribute_GrpRead);
++
+     umask(nMask);
+ #endif
+ 
+diff --git a/sfx2/source/doc/docfile.cxx b/sfx2/source/doc/docfile.cxx
+index 72a6c13..2e8b874 100644
+--- a/sfx2/source/doc/docfile.cxx
++++ b/sfx2/source/doc/docfile.cxx
+@@ -179,8 +179,10 @@ sal_uInt64 GetDefaultFileAttributes(const OUString& rURL)
+     if (!comphelper::isFileUrl(rURL))
+         return nRet;
+ 
++    // Make sure the file exists (and create it if not).
+     osl::File aFile(rURL);
+-    if (aFile.open(osl_File_OpenFlag_Create) != osl::File::E_None)
++    osl::File::RC nRes = aFile.open(osl_File_OpenFlag_Create);
++    if (nRes != osl::File::E_None && nRes != osl::File::E_EXIST)
+         return nRet;
+ 
+     aFile.close();
+-- 
+cgit v1.1
+
