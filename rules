@@ -606,16 +606,11 @@ endif
 #############
 # Distro-specific overrides
 
-# Debian Stretch
-ifeq "$(DEB_DISTRIBUTION)" "stretch-backports"
+# Debian Buster
+ifeq "$(DEB_DISTRIBUTION)" "buster-backports"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out libzmf libstaroffice orcus cppunit xmlsec libqxp libepubgen mdds libnumbertext,$(SYSTEM_STUFF))
-  # needs newer stuff for tests, we can't make it conditional on RUN_MAKE_CHECK since
-  # BE archs don't run them anyway and this wouldn't be in effect...
-  SYSTEM_STUFF := $(filter-out libwps libmwaw libetonyek,$(SYSTEM_STUFF))
-  HELP_COMMON_DEPENDS :=
   USE_DWZ := n
-  STRETCH_BACKPORT=y
+  BUSTER_BACKPORT=y
 endif
 
 ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
@@ -755,22 +750,14 @@ ifneq (,$(filter curl, $(SYSTEM_STUFF)))
 endif
 
 COINMP_MINVER=(>= 1.7.6+dfsg1-2)
-  ifeq "$(STRETCH_BACKPORT)" "y"
-	COINUTILS_MINVER=(>= 2.9.15-3.1)
-  else
 	COINUTILS_MINVER=(>= 2.10.14+repack1-1)
 	# go sure given #873362
 	COINMP_MINVER=(>= 1.8.3-2)
-  endif
 ifneq ($(ENABLE_COINMP),y)
 	CONFIGURE_FLAGS += --disable-coinmp
 else
   ifneq (,$(filter coinmp, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , coinor-libcoinmp-dev $(COINMP_MINVER), coinor-libcoinutils-dev $(COINUTILS_MINVER)
-    # https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=838620
-    ifeq "$(STRETCH_BACKPORT)" "y"
-	BUILD_DEPS += , libbz2-dev
-    endif
   endif
 endif
 
@@ -819,9 +806,7 @@ endif
 	BUILD_DEPS += , $(PYTHON)
 ifeq "$(ENABLE_PYTHON)" "y"
 	BUILD_DEPS += , $(PYTHON)-dev (>= 3.3) <!nopython>
-  ifneq "$(STRETCH_BACKPORT)" "y"
 	BUILD_DEPS += , $(PYTHON)-distutils <!nopython>
-  endif
 	BUILD_DEPS += , dh-python <!nopython>
   ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 	BUILD_DEPS += , $(PYTHON)-lxml <!nocheck !nopython>
@@ -925,19 +910,12 @@ ifeq "$(ENABLE_JAVA)" "y"
   BUILD_DEPS += , maven-repo-helper
   ifeq "$(JDK)" "default"
 	JAVA_HOME=/usr/lib/jvm/default-java
-    ifneq "$(STRETCH_BACKPORT)" "y"
 	BUILD_DEPS += , java-common (>= 0.61)
 	DEFAULT_JDK := $(call java_dependency, default-jdk)
 	BUILD_DEPS += , $(shell echo $(DEFAULT_JDK) | sed -e 's/default-jdk/default-jdk (>= 1:1.6)/' | sed -e "s/\]/ !i386]/")
-    else
-	BUILD_DEPS += , java-common (>= 0.49)
-	BUILD_DEPS += , default-jdk (>= 1:1.6) $(shell echo "$(filter-out !ia64,$(OOO_NO_JAVA_ARCHS))")
-    endif
-    ifneq "$(STRETCH_BACKPORT)" "y"
       ifeq (i386,$(findstring i386,$(OOO_JAVA_ARCHS)))
 	BUILD_DEPS += , default-jdk (>= 2:1.9) [i386]
       endif
-    endif
     ifneq (,$(findstring ia64,$(OOO_JAVA_ARCHS)))
 	BUILD_DEPS += , default-jdk (>= 1:1.7-48) [ia64]
     endif
@@ -1487,14 +1465,9 @@ endif
 ifneq (,$(filter gpgmepp, $(SYSTEM_STUFF)))
 	BUILD_DEPS+= , libgpgmepp-dev, libgpgme-dev, libgpg-error-dev
 endif
-ifeq "$(STRETCH_BACKPORT)" "y"
-	BUILD_DEPS+= , gnupg <!nocheck>
-	BUILD_DEPS+= , gnupg-agent <!nocheck>
-else
 	BUILD_DEPS+= , gpg <!nocheck>
 	BUILD_DEPS+= , gpgconf <!nocheck>
 	BUILD_DEPS+= , gpg-agent <!nocheck>
-endif
 
 ifeq "$(ENABLE_GIO)" "y"
   ifneq "$(BUILD_GTK3)" "y"
@@ -3586,11 +3559,7 @@ ifeq "$(ENABLE_HELP)" "y"
 endif
 	dh_lintian -i
 	dh_bugfiles -i -A
-ifeq "$(STRETCH_BACKPORT)" "y"
-	dh_link -i -Nlibreoffice-help-common
-else
 	dh_link -i
-endif
 	dh_fixperms -i
 	dh_icons -i
 ifeq "$(INSTALL_APPARMOR_PROFILES)" "y"
