@@ -545,8 +545,6 @@ OOO_REPORTBUILDER_ARCHS := $(OOO_BASE_ARCHS)
 $(eval $(call gen_no_archs,OOO_REPORTBUILDER_ARCHS))
 OOO_FIREBIRD_ARCHS := $(OOO_BASE_ARCHS)
 $(eval $(call gen_no_archs,OOO_FIREBIRD_ARCHS))
-# chromium only available here.
-OOO_GDRIVE_ARCHS=amd64 arm64 armhf i386
 
 ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
   ifneq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_BASE_ARCHS)))
@@ -613,12 +611,6 @@ ifeq "$(DEB_DISTRIBUTION)" "buster-backports"
   BUGS=mailto:debian-backports@lists.debian.org
   USE_DWZ := n
   BUSTER_BACKPORT=y
-endif
-
-ifeq "$(DEB_VENDOR)" "Debian"
-  ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_GDRIVE_ARCHS)))
-    ENABLE_GDRIVE=y
-  endif
 endif
 
 ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
@@ -1157,13 +1149,6 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
   endif
 endif
 	CONFIGURE_FLAGS += --with-external-thes-dir=$(THES_DIR)
-
-ifeq "$(ENABLE_GDRIVE)" "y"
-  # Google API stuff for GDrive access
-  BUILD_DEPS += , chromium [$(OOO_GDRIVE_ARCHS)]
-  include /etc/chromium.d/apikeys
-  CONFIGURE_FLAGS += --with-gdrive-client-id=$(GOOGLE_DEFAULT_CLIENT_ID) --with-gdrive-client-secret=$(GOOGLE_DEFAULT_CLIENT_SECRET)
-endif
 
 ifeq "$(INSTALL_APPARMOR_PROFILES)" "y"
   BUILD_DEPS += , dh-apparmor
@@ -2009,10 +1994,12 @@ ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 	# probably should, so do it here manually.
 	$(IGNORE_MAKE_CHECK_FAILURES)cd odk && \
 		$(MAKE) CustomTarget_odk/check
-    ifeq ($(MAKECMDGOALS),build-indep)
+    ifneq (,$(findstring -indep,$(MAKECMDGOALS)))
 	# was already checked in check
-	$(IGNORE_MAKE_CHECK_FAILURES)cd odk && \
-		$(MAKE) CustomTarget_odk/build-examples
+	$(IGNORE_MAKE_CHECK_FAILURES)if [ ! -e $(STAMP_DIR)/build-arch ]; then \
+		cd odk && $(MAKE) CustomTarget_odk/build-examples && \
+			$(MAKE) CustomTarget_odk/build-examples_java; \
+	fi
     endif
   endif
 endif
