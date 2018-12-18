@@ -75,7 +75,7 @@ lo_sources_ver=6.1.3.2
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
 GIT_TAG=libreoffice-$(lo_sources_ver)
-GIT_BRANCH=libreoffice-6-1-3
+GIT_BRANCH=libreoffice-6-1-4
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
 lo_sources_ver=$(shell cat $(CURDIR)/sources.ver | cut -d= -f2)
@@ -334,26 +334,34 @@ CPPUNIT_MINVER=1.14
 DEFAULT_IMAGE=colibre
 IMAGES:=$(DEFAULT_IMAGE) tango sifr sifr_dark breeze breeze_dark elementary
 CONFIGURE_FLAGS_INDEP += --with-theme="$(IMAGES)"
+DICT_DIR=/usr/share/hunspell
+HYPH_DIR=/usr/share/hyphen
+THES_DIR=/usr/share/mythes
+SYSTEM_STUFF += libcmis
+ifeq "$(GCC_VERSION_5_OR_GREATER)" "y"
+LIBCMIS_MINVER=0.5.0-3
+else
+LIBCMIS_MINVER=0.5.0
+endif
 ENABLE_MYSQLNATIVE=y
 MYSQL_FLAVOUR=default
 # set this also to y for system-mysql..
 SYSTEM_STUFF += mariadb
 SYSTEM_STUFF += mysql-cppconn
 ifeq "$(GCC_VERSION_5_OR_GREATER)" "y"
-MYSQLCPPCONN_MINVER= (>= 1.1.7-4)
+  ifneq (,$(filter libcmis, $(SYSTEM_STUFF)))
+    ifeq "$(shell pkg-config --modversion libcmis)" "0.5.2"
+	MYSQLCPPCONN_MINVER= (>= 1.1.9-4)
+    else
+	MYSQLCPPCONN_MINVER= (>= 1.1.9-4)
+    endif
+  else
+	MYSQLCPPCONN_MINVER= (>= 1.1.7-4)
+  endif
 else
 MYSQLCPPCONN_MINVER= (>= 1.1.0~r791)
 endif
 SYSTEM_STUFF += postgresql
-DICT_DIR=/usr/share/hunspell
-HYPH_DIR=/usr/share/hyphen
-THES_DIR=/usr/share/mythes
-SYSTEM_STUFF += libcmis
-ifeq "$(GCC_VERSION_5_OR_GREATER)" "y"
-LIBCMIS_MINVER=0.5.0-3ubuntu1
-else
-LIBCMIS_MINVER=0.5.0
-endif
 SYSTEM_STUFF += jpeg
 SYSTEM_STUFF += libxml
 SYSTEM_STUFF += expat
@@ -382,7 +390,7 @@ endif
 FAKEROOT_LIBDIR=/usr/lib/$(DEB_HOST_MULTIARCH)/libfakeroot
 SYSTEM_STUFF += liblangtag
 SYSTEM_STUFF += orcus
-LIBORCUS_MINVER=0.13.3
+LIBORCUS_MINVER=0.14.0+really0.14.0
 USE_UCPP=y
 ifeq "$(USE_UCPP)" "y"
   SYSTEM_STUFF += ucpp
@@ -430,9 +438,6 @@ USE_OPENCL=y
 #                      wizards?
 #10:17 < ahunt> _rene_: yes, unfortunately.
 ENABLE_FIREBIRD=y
-ifeq "$(DEB_HOST_ARCH_ENDIAN)" "big"
-  ENABLE_FIREBIRD=n
-endif
 ifeq "$(ENABLE_FIREBIRD)" "y"
   SYSTEM_STUFF += firebird
   ifeq (,$(filter firebird, $(SYSTEM_STUFF)))
@@ -558,10 +563,8 @@ OOO_BASE_ARCHS := $(OOO_JAVA_ARCHS)
 $(eval $(call gen_no_archs,OOO_BASE_ARCHS))
 OOO_REPORTBUILDER_ARCHS := $(OOO_BASE_ARCHS)
 $(eval $(call gen_no_archs,OOO_REPORTBUILDER_ARCHS))
-OOO_FIREBIRD_ARCHS := $(OOO_LE_ARCHS)
+OOO_FIREBIRD_ARCHS := $(OOO_BASE_ARCHS)
 $(eval $(call gen_no_archs,OOO_FIREBIRD_ARCHS))
-# chromium only available here.
-OOO_GDRIVE_ARCHS=amd64 arm64 armhf i386
 
 ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
   ifneq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_BASE_ARCHS)))
@@ -579,10 +582,6 @@ ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
   endif
 endif
 
-ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_BE_ARCHS)))
-	ENABLE_FIREBIRD=n
-	DEBHELPER_OPTIONS += -Nlibreoffice-sdbc-firebird
-endif
 ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
 	ENABLE_MYSQLNATIVE=n
 	DEBHELPER_OPTIONS += -Nlibreoffice-mysql-connector
@@ -640,12 +639,6 @@ ifeq "$(DEB_DISTRIBUTION)" "stretch-backports"
   HELP_COMMON_DEPENDS :=
   USE_DWZ := n
   STRETCH_BACKPORT=y
-endif
-
-ifeq "$(DEB_VENDOR)" "Debian"
-  ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_GDRIVE_ARCHS)))
-    ENABLE_GDRIVE=y
-  endif
 endif
 
 ifeq "$(DEB_VENDOR)" "Ubuntu"
@@ -1155,7 +1148,7 @@ ifneq (,$(filter boost, $(SYSTEM_STUFF)))
 endif
 
 ifneq (,$(filter mdds, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libmdds-dev (>= 1.2.3)
+	BUILD_DEPS += , libmdds-dev (>= 1.4.1)
 endif
 
 ifneq (,$(filter orcus, $(SYSTEM_STUFF)))
@@ -1234,13 +1227,6 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
   endif
 endif
 	CONFIGURE_FLAGS += --with-external-thes-dir=$(THES_DIR)
-
-ifeq "$(ENABLE_GDRIVE)" "y"
-  # Google API stuff for GDrive access
-  BUILD_DEPS += , chromium [$(OOO_GDRIVE_ARCHS)]
-  include /etc/chromium.d/apikeys
-  CONFIGURE_FLAGS += --with-gdrive-client-id=$(GOOGLE_DEFAULT_CLIENT_ID) --with-gdrive-client-secret=$(GOOGLE_DEFAULT_CLIENT_SECRET)
-endif
 
 ifeq "$(INSTALL_APPARMOR_PROFILES)" "y"
   BUILD_DEPS += , dh-apparmor
@@ -1346,10 +1332,10 @@ endif
 ifeq "$(ENABLE_FIREBIRD)" "y"
 	BASE_FIREBIRD_RECOMMENDS = libreoffice-sdbc-firebird [$(OOO_FIREBIRD_ARCHS)]
   ifneq (,$(filter libatomic-ops, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libatomic-ops-dev (>= 7.3~alpha1+git20110913-1)$(OOO_NO_BE_ARCHS)
+	BUILD_DEPS += , libatomic-ops-dev (>= 7.3~alpha1+git20110913-1)$(OOO_NO_FIREBIRD_ARCHS)
   endif
   ifneq (,$(filter libtommath, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libtommath-dev$(OOO_NO_BE_ARCHS)
+	BUILD_DEPS += , libtommath-dev$(OOO_NO_FIREBIRD_ARCHS)
   endif
   ifneq (,$(filter firebird, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , firebird-dev (>= 3.0.0.32483.ds4-4)$(OOO_NO_FIREBIRD_ARCHS)
@@ -2019,10 +2005,12 @@ ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 	# probably should, so do it here manually.
 	$(IGNORE_MAKE_CHECK_FAILURES)cd odk && \
 		$(MAKE) CustomTarget_odk/check
-    ifeq ($(MAKECMDGOALS),build-indep)
+    ifneq (,$(findstring -indep,$(MAKECMDGOALS)))
 	# was already checked in check
-	$(IGNORE_MAKE_CHECK_FAILURES)cd odk && \
-		$(MAKE) CustomTarget_odk/build-examples
+	$(IGNORE_MAKE_CHECK_FAILURES)if [ ! -e $(STAMP_DIR)/build-arch ]; then \
+		cd odk && $(MAKE) CustomTarget_odk/build-examples && \
+			$(MAKE) CustomTarget_odk/build-examples_java; \
+	fi
     endif
   endif
 endif
@@ -3188,11 +3176,8 @@ endif
 ifeq (,$(filter libstaroffice, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.libstaroffice >> debian/shlibs.local
 endif
+ifeq (,$(filter orcus, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.orcus >> debian/shlibs.local
-ifneq (,$(filter orcus, $(SYSTEM_STUFF)))
-	# needed for import via orcus...
-	sed -i "s/\(liborcus.*\)$$/\1 liborcus-0.13-0 (>= $(LIBORCUS_MINVER))/" \
-		debian/shlibs.local
 endif
 ifeq (,$(filter liblangtag, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.liblangtag >> debian/shlibs.local
