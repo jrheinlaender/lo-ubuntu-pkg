@@ -1,0 +1,45 @@
+--- libreoffice-5.2.7.orig/include/sfx2/signaturestate.hxx
++++ libreoffice-5.2.7/include/sfx2/signaturestate.hxx
+@@ -33,7 +33,9 @@ enum class SignatureState
+     NOTVALIDATED  = 4,
+     //signatur and certificate are ok,but not al files are signed, as was the case in
+     //OOo 2.x - OOo 3.1.1. This state is only used  together with document signatures.
+-    PARTIAL_OK    = 5
++    PARTIAL_OK    = 5,
++    /// Certificate could not be validated and the document is only partially signed.
++    NOTVALIDATED_PARTIAL_OK = 6
+ };
+ 
+ #endif // INCLUDED_SFX2_SIGNATURESTATE_HXX
+--- libreoffice-5.2.7.orig/sfx2/source/doc/objserv.cxx
++++ libreoffice-5.2.7/sfx2/source/doc/objserv.cxx
+@@ -1293,7 +1293,9 @@ SignatureState SfxObjectShell::ImplCheck
+         }
+     }
+ 
+-    if ( nResult == SignatureState::OK && !bCertValid )
++    if ( nResult == SignatureState::OK && !bCertValid && !bCompleteSignature )
++        nResult = SignatureState::NOTVALIDATED_PARTIAL_OK;
++    else if (nResult == SignatureState::OK && !bCertValid)
+         nResult = SignatureState::NOTVALIDATED;
+     else if ( nResult == SignatureState::OK && bCertValid && !bCompleteSignature)
+         nResult = SignatureState::PARTIAL_OK;
+--- libreoffice-5.2.7.orig/xmlsecurity/qa/unit/signing/signing.cxx
++++ libreoffice-5.2.7/xmlsecurity/qa/unit/signing/signing.cxx
+@@ -358,13 +358,14 @@ void SigningTest::testOOXMLPartial()
+     SfxObjectShell* pObjectShell = pBaseModel->GetObjectShell();
+     CPPUNIT_ASSERT(pObjectShell);
+     // This was SignatureState::BROKEN due to missing RelationshipTransform and SHA-256 support.
+-    // We expect NOTVALIDATED in case the root CA is not imported on the system, and PARTIAL_OK otherwise, so accept both.
++    // We expect NOTVALIDATED_PARTIAL_OK in case the root CA is not imported on the system, and PARTIAL_OK otherwise, so accept both.
++    // But reject NOTVALIDATED, hiding incompleteness is not OK.
+     SignatureState nActual = pObjectShell->GetDocumentSignatureState();
+     CPPUNIT_ASSERT_MESSAGE(
+         (OString::number(
+              static_cast<std::underlying_type<SignatureState>::type>(nActual))
+          .getStr()),
+-        (nActual == SignatureState::NOTVALIDATED
++        (nActual == SignatureState::NOTVALIDATED_PARTIAL_OK
+          || nActual == SignatureState::PARTIAL_OK));
+ }
+ 
