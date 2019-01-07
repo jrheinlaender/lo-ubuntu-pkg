@@ -1,0 +1,92 @@
+--- a/configure.ac-old	2018-11-12 06:51:15.504128408 +0100
++++ b/configure.ac	2018-11-12 06:52:32.427358015 +0100
+@@ -6898,6 +6898,7 @@
+ 
+             # set to limit VM usage for JunitTests
+             JAVAIFLAGS=-Xmx64M
++            JAVAIFLAGS="$JAVAIFLAGS -Djdk.net.URLClassPath.disableClassPathURLCheck=true"
+             # set to limit VM usage for javac
+             JAVAFLAGS=-J-Xmx128M
+ 
+From 905c107cde4a0a7059b1e11b5f23a0a59188cb0c Mon Sep 17 00:00:00 2001
+From: Jan-Marek Glogowski <glogow@fbihome.de>
+Date: Thu, 6 Dec 2018 13:26:48 +0000
+Subject: tdf#121925 test for URLClassPath.ClassPathURLCheck
+
+Adds a configure test to check for the enabled ClassPathURLCheck.
+Should be reverted, if our jars pass it.
+
+Change-Id: I040b41f329ccae21b92118fd58270682e50e95c1
+Reviewed-on: https://gerrit.libreoffice.org/64709
+Tested-by: Jenkins
+Reviewed-by: Stephan Bergmann <sbergman@redhat.com>
+---
+ configure.ac | 52 ++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 52 insertions(+)
+
+diff --git a/configure.ac b/configure.ac
+index 4dc6274..97836e1 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -7308,6 +7308,58 @@ if test -n "$ENABLE_JAVA" -a -z "$JAVAINC"; then
+ fi
+ SOLARINC="$SOLARINC $JAVAINC"
+ 
++if test "$ENABLE_JAVA" != "" -a "x" != "x$JAVACOMPILER"; then
++    url_check_unknown=0
++    java_base="testurlcheck"
++    java_src="${java_base}.java"
++    java_cls="${java_base}.class"
++    cat > "${java_src}" <<_ACEOF
++[import jdk.internal.loader.URLClassPath;
++import java.lang.reflect.Field;
++import java.net.URL;
++
++class ${java_base}
++{
++    public static void main(String args[])
++    {
++        try {
++            URLClassPath cp = new URLClassPath(new URL[0], null);
++            Field field = cp.getClass().getDeclaredField("DISABLE_CP_URL_CHECK");
++            field.setAccessible(true);
++            System.out.println(field.get(cp).toString());
++        } catch(Exception e) {
++            System.out.println("unknown");
++        }
++    }
++}]
++_ACEOF
++    AC_MSG_CHECKING([if jdk.net.URLClassPath.ClassPathURLCheck is disabled])
++    java_cmd="$JAVACOMPILER --add-exports java.base/jdk.internal.loader=ALL-UNNAMED ${java_src} 1>&2"
++    AC_TRY_EVAL(java_cmd)
++    if test $? = 0 -a -f "./${java_cls}"; then
++        java_res=`$JAVAINTERPRETER --add-opens java.base/jdk.internal.loader=ALL-UNNAMED ${java_base} 2>/dev/null`
++        if test $? = 0; then
++            case "${java_res}" in
++            true) AC_MSG_RESULT([yes]) ;;
++            false)
++                rm -f "./${java_src}" "./${java_cls}"
++                AC_MSG_ERROR([no - Java unit tests will break!])
++                ;;
++            *) url_check_unknown=1 ;;
++            esac
++        else
++            url_check_unknown=1
++        fi
++    else
++        url_check_unknown=1
++    fi
++    if test $url_check_unknown -eq 1; then
++        AC_MSG_RESULT([unknown - assuming yes])
++        add_warning "Unable to find the default value for jdk.net.URLClassPath.ClassPathURLCheck - java tests might fail!"
++    fi
++    rm -f "./${java_src}" "./${java_cls}"
++fi
++
+ AC_SUBST(JAVACOMPILER)
+ AC_SUBST(JAVADOC)
+ AC_SUBST(JAVAINTERPRETER)
+-- 
+cgit v1.1
+
