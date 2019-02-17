@@ -102,7 +102,7 @@ create_package_directory gid_Module_Optional_Pyuno_LibreLogo	pkg/libreoffice-lib
 create_package_directory gid_Module_Script_Provider_For_Python		pkg/libreoffice-script-provider-python
 create_package_directory gid_Module_Optional_Gnome              pkg/libreoffice-gnome
 create_package_directory gid_Module_Optional_Kde                pkg/libreoffice-kde
-create_package_directory gid_Module_Optional_OGLTrans		pkg/libreoffice-ogltrans
+create_package_directory gid_Module_Optional_OGLTrans		pkg/libreoffice-impress
 create_package_directory gid_Module_Root_SDK                    pkg/libreoffice-dev
 # WTF? Why is this suddently not installed itself?
 mv usr/lib/libreoffice/sdk/lib \
