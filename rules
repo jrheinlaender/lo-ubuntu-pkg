@@ -711,7 +711,11 @@ else
        CONFIGURE_FLAGS += --without-system-libxml
 endif
 ifneq (,$(filter xmlsec, $(SYSTEM_STUFF)))
+  ifeq "$(shell dpkg --compare-versions `pkg-config --modversion icu-i18n` ge 64 && echo true)" "true"
+       BUILD_DEPS += , libxmlsec1-dev (>= 1.2.27-3)
+  else
        BUILD_DEPS += , libxmlsec1-dev (>= 1.2.24)
+  endif
 endif
 ifneq (,$(filter expat, $(SYSTEM_STUFF)))
        BUILD_DEPS += , libexpat1-dev
@@ -939,10 +943,6 @@ ifeq "$(ENABLE_JAVA)" "y"
 	BUILD_DEPS_INDEP += , ant (>= 1.6.5)$(OOO_NO_JAVA_ARCHS)
     endif
   endif
-  # force Java with #876069 (9) and #882436 (8) fixed on i386
-  ifeq "$(DEB_HOST_ARCH)" "i386"
-	JAVA_RUNTIME_DEPENDS := openjdk-8-jre (>= 8u151-b12-2~) | openjdk-9-jre (>= 9.0.1+11-1~)
-  else
 	JAVA_RUNTIME_DEPENDS = default-jre
   ifneq (,$(filter $(DEB_HOST_ARCH), $(OOO_OPENJDK_ARCHS)))
     ifneq "$(DEB_HOST_ARCH)" "ia64"
@@ -957,7 +957,6 @@ ifeq "$(ENABLE_JAVA)" "y"
 	JAVA_RUNTIME_DEPENDS += | java6-runtime
 	# Suns Java "packages"
 	JAVA_RUNTIME_DEPENDS += | jre
-  endif
 export JAVA_HOME
 	CONFIGURE_FLAGS += --with-jdk-home=$(JAVA_HOME)
 	JAVA_COMMON_DEPENDS= , libreoffice-java-common
