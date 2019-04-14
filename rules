@@ -362,7 +362,7 @@ endif
 # kfreebsd runs into SIZE_MAX problems, and the rest might
 # get OOM (mips(el)...) so enable mergelibs only for 64bit
 # archs (exception: i386)
-ifeq (,$(findstring kfreebsd,$(DEB_HOST_ARCH)))
+ifeq (,$(filter kfreebsd,$(DEB_HOST_ARCH)))
   ifeq "$(DEB_HOST_ARCH_BITS)" "64"
 	ENABLE_MERGELIBS=y
   else
@@ -477,7 +477,7 @@ PLATFORMID := $(shell grep PLATFORMID debian/vars.$(DEB_HOST_ARCH) | cut -d"=" -
 # let's do this only on archs where we have chromium, which is supposedly even only the archs
 # where alsp pdfium is supported.
 OOO_PDFIUM_ARCHS := i386 amd64 armhf arm64
-ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_PDFIUM_ARCHS)))
+ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_PDFIUM_ARCHS)))
 ENABLE_PDFIUM=y
 else
 ENABLE_PDFIUM=n
@@ -497,17 +497,18 @@ $(eval $(call gen_no_archs,OOO_JUNIT_ARCHS))
 #OOO_CHECK_FATAL_ARCHS := i386 amd64 armhf arm64
 OOO_CHECK_FATAL_ARCHS := amd64 arm64
 
+RUN_MAKE_CHECK=n
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
-  ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_CHECK_ARCHS)))
+  ifeq ($(DEB_HOST_ARCH),$(filter $(DEB_HOST_ARCH),$(OOO_CHECK_ARCHS)))
         RUN_MAKE_CHECK=y
   endif
   ifeq "$(ENABLE_JAVA)" "y"
-    ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_JUNIT_ARCHS)))
+    ifeq ($(DEB_HOST_ARCH),$(filter $(DEB_HOST_ARCH),$(OOO_JUNIT_ARCHS)))
         ENABLE_JUNIT4=y
     endif
   endif
   IGNORE_MAKE_CHECK_FAILURES=-
-  ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_CHECK_FATAL_ARCHS)))
+  ifeq ($(DEB_HOST_ARCH),$(filter $(DEB_HOST_ARCH),$(OOO_CHECK_FATAL_ARCHS)))
        IGNORE_MAKE_CHECK_FAILURES:=
   endif
 endif
@@ -530,8 +531,8 @@ $(eval $(call gen_no_archs,OOO_REPORTBUILDER_ARCHS))
 OOO_FIREBIRD_ARCHS := $(OOO_BASE_ARCHS)
 $(eval $(call gen_no_archs,OOO_FIREBIRD_ARCHS))
 
-ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
-  ifneq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_BASE_ARCHS)))
+ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
+  ifneq ($(DEB_HOST_ARCH),$(filter $(DEB_HOST_ARCH),$(OOO_BASE_ARCHS)))
 	PACKAGE_BASE=n
 	ENABLE_SDBC_POSTGRESQL=n
 	ENABLE_EVO2=n
@@ -545,10 +546,10 @@ ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
   endif
 endif
 
-ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
+ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
 	DEBHELPER_OPTIONS += -Nlibreoffice-presentation-minimizer
 endif
-ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
+ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
 	ENABLE_MEDIAWIKI=n
 	ENABLE_REPORTBUILDER=n
 	ENABLE_NLPSOLVER=n
@@ -749,10 +750,10 @@ else
   endif
 endif
 
-ifneq (,$(findstring i386,$(DEB_HOST_ARCH)))
+ifneq (,$(filter i386,$(DEB_HOST_ARCH)))
 	SMALL_SYMBOLS = n
 else
-  ifneq (,$(findstring amd64,$(DEB_HOST_ARCH)))
+  ifneq (,$(filter amd64,$(DEB_HOST_ARCH)))
 	SMALL_SYMBOLS = n
   endif
 endif
@@ -907,16 +908,16 @@ ifeq "$(ENABLE_JAVA)" "y"
 	BUILD_DEPS += , java-common (>= 0.61)
 	DEFAULT_JDK := $(call java_dependency, default-jdk)
 	BUILD_DEPS += , $(shell echo $(DEFAULT_JDK) | sed -e 's/default-jdk/default-jdk (>= 1:1.6)/' | sed -e "s/\]/ !i386]/")
-      ifeq (i386,$(findstring i386,$(OOO_JAVA_ARCHS)))
+      ifeq (i386,$(filter i386,$(OOO_JAVA_ARCHS)))
 	BUILD_DEPS += , default-jdk (>= 2:1.9) [i386]
       endif
-    ifneq (,$(findstring ia64,$(OOO_JAVA_ARCHS)))
+    ifneq (,$(filter ia64,$(OOO_JAVA_ARCHS)))
 	BUILD_DEPS += , default-jdk (>= 1:1.7-48) [ia64]
     endif
     ifneq (,$(findstring kfreebsd,$(OOO_JAVA_ARCHS)))
 	BUILD_DEPS += , default-jdk (>= 2:1.7-52.1) [kfreebsd-any]
     endif
-    ifneq (,$(findstring sparc64,$(OOO_JAVA_ARCHS)))
+    ifneq (,$(filter sparc64,$(OOO_JAVA_ARCHS)))
 	BUILD_DEPS += , default-jdk (>= 2:1.8-55) [sparc64]
     endif
   endif
@@ -1950,10 +1951,10 @@ endif
 
 check: 
 ifeq "$(RUN_MAKE_CHECK)" "y"
-ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
+ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
 	patch -p1 < $(CURDIR)/debian/tests/patches/disable-db-tests.diff
 endif
-ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
+ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
 	cd $(SOURCE_TREE)/smoketest && \
 		patch -p1 < $(CURDIR)/debian/tests/patches/smoketest-disable-extension-tests.diff
 endif
@@ -1989,10 +1990,10 @@ endif
 		if [ -x /usr/bin/gdb ]; then ulimit -c unlimited; fi && \
 		$(MAKE) -k check || PARALLELISM=1 $(MAKE) check && \
 	rm -rf $$t
-ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
+ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
 	patch -p1 -R < $(CURDIR)/debian/tests/patches/disable-db-tests.diff
 endif
-ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
+ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
 	cd $(SOURCE_TREE)/smoketest && \
 		patch -p1 -R < $(CURDIR)/debian/tests/patches/smoketest-disable-extension-tests.diff
 endif
@@ -3462,7 +3463,7 @@ endif
 
 binary-indep: $(GSI_EXPORT_STAMP) $(STAMP_DIR)/binary-indep
 $(STAMP_DIR)/binary-indep: $(STAMP_DIR)/install-indep debian/control $(STAMP_DIR)/maintscripts $(STAMP_DIR)/langpacks
-ifneq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_JAVA_ARCHS)))
+ifneq ($(DEB_HOST_ARCH),$(filter $(DEB_HOST_ARCH),$(OOO_JAVA_ARCHS)))
 	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 	echo "For uploads with binary-all packages, please use arches where Java is enabled"
 	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
