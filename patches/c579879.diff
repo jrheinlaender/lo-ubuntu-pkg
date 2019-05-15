@@ -1,0 +1,42 @@
+From c5798790e5d8af9b75e4afb9d04593833545cfb5 Mon Sep 17 00:00:00 2001
+From: Michael Weghorn <m.weghorn@posteo.de>
+Date: Wed, 15 May 2019 13:28:15 +0200
+Subject: [PATCH] qt5: Fix build error on 32 bit archs
+
+... as observed in [1]:
+
+> [...]
+> In file included from /usr/include/c++/8/algorithm:61,
+>                  from /usr/include/i386-linux-gnu/qt5/QtCore/qglobal.h:142,
+>                  from /usr/include/i386-linux-gnu/qt5/QtGui/qtguiglobal.h:43,
+>                  from /usr/include/i386-linux-gnu/qt5/QtWidgets/qtwidgetsglobal.h:43,
+>                  from /usr/include/i386-linux-gnu/qt5/QtWidgets/qwidget.h:43,
+>                  from /usr/include/i386-linux-gnu/qt5/QtWidgets/QWidget:1,
+>                  from /<<PKGBUILDDIR>>/vcl/inc/qt5/Qt5Widget.hxx:22,
+>                  from /<<PKGBUILDDIR>>/vcl/qt5/Qt5Widget.cxx:20:
+> /usr/include/c++/8/bits/stl_algobase.h:265:5: note: candidate: ‘template<class _Tp, class _Compare> constexpr const _Tp& std::max(const _Tp&, const _Tp&, _Compare)’
+>      max(const _Tp& __a, const _Tp& __b, _Compare __comp)
+>      ^~~
+> /usr/include/c++/8/bits/stl_algobase.h:265:5: note:   template argument deduction/substitution failed:
+> /<<PKGBUILDDIR>>/vcl/qt5/Qt5Widget.cxx:502:69: note:   deduced conflicting types for parameter ‘const _Tp’ (‘int’ and ‘sal_Int32’ {aka ‘long int’})
+>          std::vector<ExtTextInputAttr> aTextAttrs(std::max(1, nLength), ExtTextInputAttr::NONE);
+
+[1] https://buildd.debian.org/status/fetch.php?pkg=libreoffice&arch=i386&ver=1%3A6.3.0%7Ealpha1-1&stamp=1557890923&raw=0
+
+Change-Id: Ic0e3e0b8bc65d9755b3d62385673f8d1e357b122
+---
+
+diff --git a/vcl/qt5/Qt5Widget.cxx b/vcl/qt5/Qt5Widget.cxx
+index 23afbea..88ce1b1 100644
+--- a/vcl/qt5/Qt5Widget.cxx
++++ b/vcl/qt5/Qt5Widget.cxx
+@@ -499,7 +499,8 @@
+ 
+         const sal_Int32 nLength = aInputEvent.maText.getLength();
+         const QList<QInputMethodEvent::Attribute>& rAttrList = pEvent->attributes();
+-        std::vector<ExtTextInputAttr> aTextAttrs(std::max(1, nLength), ExtTextInputAttr::NONE);
++        std::vector<ExtTextInputAttr> aTextAttrs(std::max(sal_Int32(1), nLength),
++                                                 ExtTextInputAttr::NONE);
+         aInputEvent.mpTextAttr = &aTextAttrs[0];
+ 
+         for (int i = 0; i < rAttrList.size(); ++i)
