@@ -1,0 +1,36 @@
+From 0cf4e7fe796d5e0055aacbb2fe2035a3a5a7a216 Mon Sep 17 00:00:00 2001
+From: Jan-Marek Glogowski <glogow@fbihome.de>
+Date: Sun, 02 Jun 2019 20:04:28 +0200
+Subject: [PATCH] Qt5 return expected QVariants int sizes
+
+Grep'ing the Qt source code, most of the places call toInt()
+on the QVariants returned from Qt::ImCursorPosition and
+Qt::ImAnchorPosition (toUInt() is probably a bug). So actually
+deliver these (and fix the 32bit build with the sal_Int32
+ambiguity - there is no "signed long" QVariant constructor).
+
+Change-Id: Id6b8fbabb8156692592bdef48437db140c6b7cca
+---
+
+diff --git a/vcl/qt5/Qt5Widget.cxx b/vcl/qt5/Qt5Widget.cxx
+index d2a2d81..a6b3d29 100644
+--- a/vcl/qt5/Qt5Widget.cxx
++++ b/vcl/qt5/Qt5Widget.cxx
+@@ -629,7 +629,7 @@
+         {
+             sal_Int32 nCursorPos, nAnchor;
+             if (lcl_retrieveSurrounding(nCursorPos, nAnchor, nullptr, nullptr))
+-                return QVariant(nCursorPos);
++                return QVariant(static_cast<int>(nCursorPos));
+             [[fallthrough]];
+         }
+         case Qt::ImCursorRectangle:
+@@ -643,7 +643,7 @@
+         {
+             sal_Int32 nCursorPos, nAnchor;
+             if (lcl_retrieveSurrounding(nCursorPos, nAnchor, nullptr, nullptr))
+-                return QVariant(nAnchor);
++                return QVariant(static_cast<int>(nAnchor));
+             [[fallthrough]];
+         }
+         case Qt::ImCurrentSelection:
