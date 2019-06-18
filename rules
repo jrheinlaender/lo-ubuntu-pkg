@@ -22,8 +22,8 @@ CURDIR ?= $(realpath $(dir $(firstword $(MAKEFILE_LIST)))/..)
 BASE_VERSION:=$(shell echo $(DEB_VERSION) | cut -d: -f1):$(DEB_VERSION_UPSTREAM)
 BINARY_VERSION=$(DEB_VERSION)
 #HELP_L10N_VIRTUAL_VERSION:=$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d: -f2 | tr [~] [\\-])
-HELP_L10N_VIRTUAL_VERSION:=6.1
-OOVER:=6.1
+HELP_L10N_VIRTUAL_VERSION:=6.2
+OOVER:=6.2
 NEXT_OOVER:=$(shell echo "$(OOVER) + 0.1" | bc)
 
 ARCH_INDEP_PACKAGES := $(shell dh_listpackages -i)
@@ -37,9 +37,6 @@ SHELL:=/bin/bash
 #SYSTEM_GCC_VERSION = $(shell gcc --version | sed -n '/^gcc/s/.*\(.\..\)\..$$/\1/p')
 #FIXME
 SYSTEM_GCC_VERSION = $(shell gcc --version | sed -n '/^gcc/s/.*\(.\..\)\../\1/p' | cut -d" " -f1)
-ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) ge 5 && echo true)" "true"
-	GCC_VERSION_5_OR_GREATER=y
-endif
 
 PKGDIR:=debian/libreoffice
 OODIRNAME=libreoffice
@@ -73,7 +70,7 @@ lo_sources_ver=$(shell grep AC_INIT $(SOURCE_TREE)/configure.ac | grep documentf
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
 GIT_TAG=libreoffice-$(lo_sources_ver)
-GIT_BRANCH=libreoffice-6-1-5
+GIT_BRANCH=libreoffice-6-2-4
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
 lo_sources_ver=$(shell cat $(CURDIR)/sources.ver | cut -d= -f2)
@@ -121,6 +118,7 @@ BUILD_DEPS_INDEP += rdfind, symlinks
 # distribution. See configure --help for valid values (--with-system-<value>).
 SYSTEM_STUFF = dicts
 
+ifeq ($(filter nopython,$(DEB_BUILD_PROFILES)),)
 ENABLE_PYTHON=y
 ifeq "$(ENABLE_PYTHON)" "y"
   CONFIGURE_FLAGS += --with-python=system
@@ -144,6 +142,7 @@ else
   PYTHON_LIBS=$(shell pkg-config --libs python-$(PYTHON_VERSION))
   export PYTHON PYTHON_VERSION PYTHON_CFLAGS PYTHON_LIBS
 endif
+endif
 BUILD_ONLY_EN_US=n
 ENABLE_JAVA=y
 ifeq "$(ENABLE_JAVA)" "y"
@@ -155,24 +154,16 @@ ifeq "$(ENABLE_JAVA)" "y"
 endif
 JAVAHELPER_MIN_VERSION= (>= 0.37~)
 SYSTEM_STUFF += hunspell
-HUNSPELL_MIN_VER= (>= 1.1.5-2)
 SYSTEM_STUFF += altlinuxhyph
-USE_LIBHYPHEN=y
-LIBHYPHEN_MINVER= (>= 2.4)
 SYSTEM_STUFF += boost
 BOOST_VERSION=default
 ifeq "$(BOOST_VERSION)" "default"
-  ifeq "$(GCC_VERSION_5_OR_GREATER)" "y"
-    BOOST_MINVER= (>= 1.58)
-  else
-    BOOST_MINVER= (>= 1.55)
-  endif
+  BOOST_MINVER= (>= 1.58)
 endif
 SYSTEM_STUFF += mdds
 USE_EXTERNAL_CXXLIBS=y
 SYSTEM_STUFF += mythes
 SYSTEM_STUFF += icu
-ICU_MINVER= (>= 52)
 SYSTEM_STUFF += librevenge
 SYSTEM_STUFF += libwpd libwpg libwps
 SYSTEM_STUFF += libvisio
@@ -194,21 +185,23 @@ SYSTEM_STUFF += libstaroffice
 SYSTEM_STUFF += libqxp
 BUILD_CAIROCANVAS=y
 SYSTEM_STUFF += cairo
-CAIRO_FONTS_PATCH=y
 BUILD_KDE=y
 BUILD_KDE4=n
 # < 4.8 fails with gcc 4.7, see #667911
 QT4_MINVER= (>= 4:4.8)
 KDELIBS_MINVER= (>= 4:4.3.4)
 BUILD_KDE5=y
-ifeq "$(DEB_HOST_ARCH_BITS)" "64"
 ENABLE_QT5=n
-endif
 QT5_MINVER= (>= 5.6)
 ifeq "$(BUILD_KDE)" "y"
-  ENABLE_GTK3_KDE5=y
-  ENABLE_KDE5=n
+  ENABLE_GTK3_KDE5=n
+  ENABLE_KDE5=y
   KDE_MAJOR=5
+  # KDE5 depends on Qt5
+  ifeq "$(ENABLE_KDE5)" "y"
+    ENABLE_QT5=y
+    KDE5_QT5_DEPENDS := libreoffice-qt5 (= $${binary:Version})
+  endif
 endif
 ifeq "$(BUILD_KDE)" "y"
 ifeq "$(BUILD_KDE4)" "y"
@@ -243,9 +236,6 @@ endif
 ifeq "$(ENABLE_JAVA)" "y"
   SYSTEM_STUFF += beanshell
   SYSTEM_STUFF += hsqldb
-  HSQLDB_MINVER= (>> 1.8.0.10)
-  HSQLDB_TOONEWVER=1.8.1
-  HSQLDB_JAR=/usr/share/java/hsqldb1.8.0.jar
 endif
 SYSTEM_STUFF += lpsolve
 USE_SHARED_LPSOLVE=y
@@ -288,13 +278,10 @@ PACKAGE_LOKIT=y
 ENABLE_CHART_TESTS=n
 ENABLE_EXPORT_VALIDATION_TESTS=n
 JUNIT_MIN_VER= (>= 4.8.2-2)
-USE_LIBCURL4=y
 CURL_SECTYPE=gnutls
 USE_LIBSUITESPARSE=y
 SUITESPARSE_MIN_VERSION= (>= 1:3.4.0)
 PARALLEL_BUILD=y
-ENABLE_LDAP=y
-USE_OPENLDAP=y
 SYSTEM_STUFF += epoxy
 ifeq "$(ENABLE_JAVA)" "y"
   ENABLE_REPORTBUILDER=y
@@ -326,41 +313,19 @@ ENABLE_RANDR=y
 PACKAGE_BASE=y
 SYSTEM_STUFF += graphite
 SYSTEM_STUFF += harfbuzz
-ALLOC=system
 SYSTEM_STUFF += libexttextcat
 SYSTEM_STUFF += cppunit
-CPPUNIT_MINVER=1.14
 DEFAULT_IMAGE=tango
-IMAGES:=$(DEFAULT_IMAGE) colibre sifr sifr_dark breeze breeze_dark elementary
+IMAGES:=$(DEFAULT_IMAGE) colibre sifr sifr_dark breeze breeze_dark breeze_svg elementary elementary_svg karasa_jaga
 CONFIGURE_FLAGS_INDEP += --with-theme="$(IMAGES)"
+MYSQL_FLAVOUR=default
+# set this also to y for system-mysql..
+SYSTEM_STUFF += mariadb
+SYSTEM_STUFF += postgresql
 DICT_DIR=/usr/share/hunspell
 HYPH_DIR=/usr/share/hyphen
 THES_DIR=/usr/share/mythes
 SYSTEM_STUFF += libcmis
-ifeq "$(GCC_VERSION_5_OR_GREATER)" "y"
-LIBCMIS_MINVER=0.5.0-3
-else
-LIBCMIS_MINVER=0.5.0
-endif
-ENABLE_MYSQLNATIVE=y
-MYSQL_FLAVOUR=default
-# set this also to y for system-mysql..
-SYSTEM_STUFF += mariadb
-SYSTEM_STUFF += mysql-cppconn
-ifeq "$(GCC_VERSION_5_OR_GREATER)" "y"
-  ifneq (,$(filter libcmis, $(SYSTEM_STUFF)))
-    ifeq "$(shell dpkg --compare-versions `dpkg -l libcmis-dev | grep ^ii | awk '{ print $$3 }'` ge 0.5.2~ && echo true)" "true"
-	MYSQLCPPCONN_MINVER= (>= 1.1.9-4)
-    else
-	MYSQLCPPCONN_MINVER= (>= 1.1.7-4)
-    endif
-  else
-	MYSQLCPPCONN_MINVER= (>= 1.1.7-4)
-  endif
-else
-MYSQLCPPCONN_MINVER= (>= 1.1.0~r791)
-endif
-SYSTEM_STUFF += postgresql
 SYSTEM_STUFF += jpeg
 SYSTEM_STUFF += libxml
 SYSTEM_STUFF += expat
@@ -381,11 +346,6 @@ ifeq "$(ENABLE_HELP)" "y"
   DEBHELPER_OPTIONS += -Nlibreoffice-help-common
   endif
   SYSTEM_STUFF += clucene
-  ifeq "$(GCC_VERSION_5_OR_GREATER)" "y"
-  CLUCENE_MINVER=2.3.3.4-4.1
-  else
-  CLUCENE_MINVER=2.3.3.4-2
-  endif
 endif
 SYSTEM_STUFF += lcms2
 SYSTEM_STUFF += openldap
@@ -393,10 +353,8 @@ PACKAGE_UNOWINREG_DLL=y
 ifeq "$(DEB_VENDOR)" "Debian"
 BUILD_UNOWINREG_DLL=y
 endif
-FAKEROOT_LIBDIR=/usr/lib/$(DEB_HOST_MULTIARCH)/libfakeroot
 SYSTEM_STUFF += liblangtag
 SYSTEM_STUFF += orcus
-LIBORCUS_MINVER=0.14.0+really0.14.0
 USE_UCPP=y
 ifeq "$(USE_UCPP)" "y"
   SYSTEM_STUFF += ucpp
@@ -404,7 +362,7 @@ endif
 # kfreebsd runs into SIZE_MAX problems, and the rest might
 # get OOM (mips(el)...) so enable mergelibs only for 64bit
 # archs (exception: i386)
-ifeq (,$(findstring kfreebsd,$(DEB_HOST_ARCH)))
+ifeq (,$(filter kfreebsd,$(DEB_HOST_ARCH)))
   ifeq "$(DEB_HOST_ARCH_BITS)" "64"
 	ENABLE_MERGELIBS=y
   else
@@ -472,6 +430,7 @@ CONFIGURE_FLAGS= \
                 --prefix=/usr --mandir=/usr/share/man \
                 --docdir=/usr/share/doc/libreoffice \
 		--libdir=/usr/lib \
+		--bindir=/usr/bin \
 		--host=$(DEB_HOST_GNU_TYPE) --build=$(DEB_BUILD_GNU_TYPE) \
 		--disable-online-update \
 		--disable-fetch-external \
@@ -502,8 +461,6 @@ ifneq (terse,$(findstring terse,$(DEB_BUILD_OPTIONS)))
 export verbose=t
 endif
 
-CONFIGURE_FLAGS += --with-alloc=$(ALLOC)
-
 #############
 # Architecture-specific changes
 
@@ -520,7 +477,7 @@ PLATFORMID := $(shell grep PLATFORMID debian/vars.$(DEB_HOST_ARCH) | cut -d"=" -
 # let's do this only on archs where we have chromium, which is supposedly even only the archs
 # where alsp pdfium is supported.
 OOO_PDFIUM_ARCHS := i386 amd64 armhf arm64
-ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_PDFIUM_ARCHS)))
+ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_PDFIUM_ARCHS)))
 ENABLE_PDFIUM=y
 else
 ENABLE_PDFIUM=n
@@ -532,7 +489,7 @@ OOO_BE_ARCHS = $(filter hppa m68k mips mips64 powerpc powerpcspe ppc64 s390 s390
 OOO_LE_ARCHS = $(filter-out $(OOO_BE_ARCHS),$(OOO_ARCHS))
 $(eval $(call gen_no_archs,OOO_LE_ARCHS))
 
-OOO_CHECK_ARCHS := $(filter-out kfreebsd-i386 kfreebsd-amd64 $(OOO_BE_ARCHS),$(OOO_ARCHS))
+OOO_CHECK_ARCHS := $(filter-out kfreebsd-i386 kfreebsd-amd64 mips,$(OOO_ARCHS))
 $(eval $(call gen_no_archs,OOO_CHECK_ARCHS))
 #OOO_JUNIT_ARCHS := i386 amd64 armhf arm64
 OOO_JUNIT_ARCHS := amd64 arm64
@@ -540,19 +497,18 @@ $(eval $(call gen_no_archs,OOO_JUNIT_ARCHS))
 #OOO_CHECK_FATAL_ARCHS := i386 amd64 armhf arm64
 OOO_CHECK_FATAL_ARCHS := amd64 arm64
 
+RUN_MAKE_CHECK=n
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
-  ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_CHECK_ARCHS)))
-    ifneq "$(DEB_HOST_ARCH_ENDIAN)" "big"
+  ifeq ($(DEB_HOST_ARCH),$(filter $(DEB_HOST_ARCH),$(OOO_CHECK_ARCHS)))
         RUN_MAKE_CHECK=y
-    endif
   endif
   ifeq "$(ENABLE_JAVA)" "y"
-    ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_JUNIT_ARCHS)))
+    ifeq ($(DEB_HOST_ARCH),$(filter $(DEB_HOST_ARCH),$(OOO_JUNIT_ARCHS)))
         ENABLE_JUNIT4=y
     endif
   endif
   IGNORE_MAKE_CHECK_FAILURES=-
-  ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_CHECK_FATAL_ARCHS)))
+  ifeq ($(DEB_HOST_ARCH),$(filter $(DEB_HOST_ARCH),$(OOO_CHECK_FATAL_ARCHS)))
        IGNORE_MAKE_CHECK_FAILURES:=
   endif
 endif
@@ -575,28 +531,25 @@ $(eval $(call gen_no_archs,OOO_REPORTBUILDER_ARCHS))
 OOO_FIREBIRD_ARCHS := $(OOO_BASE_ARCHS)
 $(eval $(call gen_no_archs,OOO_FIREBIRD_ARCHS))
 
-ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
-  ifneq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_BASE_ARCHS)))
+ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
+  ifneq ($(DEB_HOST_ARCH),$(filter $(DEB_HOST_ARCH),$(OOO_BASE_ARCHS)))
 	PACKAGE_BASE=n
 	ENABLE_SDBC_POSTGRESQL=n
-	ENABLE_MYSQLNATIVE=n
 	ENABLE_EVO2=n
 	ENABLE_REPORTBUILDER=n
 	DEBHELPER_OPTIONS += -Nlibreoffice-base libreoffice-base-core -Nlibreoffice-base-drivers
 	DEBHELPER_OPTIONS += -Nlibreoffice-evolution
-	DEBHELPER_OPTIONS += -Nlibreoffice-sdbc-postgresql -Nlibreoffice-mysql-connector
+	DEBHELPER_OPTIONS += -Nlibreoffice-sdbc-postgresql -Nlibreoffice-sdbc-mysql
 	DEBHELPER_OPTIONS += -Nlibreoffice-sdbc-hsqldb -Nlibreoffice-sdbc-firebird 
 	DEBHELPER_OPTIONS += -Nlibreoffice-report-builder-bin -Nlibreoffice-report-builder
 #	CONFIGURE_FLAGS += --disable-database-connectivity
   endif
 endif
 
-ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
-	ENABLE_MYSQLNATIVE=n
-	DEBHELPER_OPTIONS += -Nlibreoffice-mysql-connector
+ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
 	DEBHELPER_OPTIONS += -Nlibreoffice-presentation-minimizer
 endif
-ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
+ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
 	ENABLE_MEDIAWIKI=n
 	ENABLE_REPORTBUILDER=n
 	ENABLE_NLPSOLVER=n
@@ -638,16 +591,11 @@ endif
 #############
 # Distro-specific overrides
 
-# Debian Stretch
-ifeq "$(DEB_DISTRIBUTION)" "stretch-backports"
+# Debian Buster
+ifeq "$(DEB_DISTRIBUTION)" "buster-backports"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out libzmf libstaroffice orcus cppunit xmlsec libqxp libepubgen mdds libnumbertext,$(SYSTEM_STUFF))
-  # needs newer stuff for tests, we can't make it conditional on RUN_MAKE_CHECK since
-  # BE archs don't run them anyway and this wouldn't be in effect...
-  SYSTEM_STUFF := $(filter-out libwps libmwaw libetonyek,$(SYSTEM_STUFF))
-  HELP_COMMON_DEPENDS :=
   USE_DWZ := n
-  STRETCH_BACKPORT=y
+  BUSTER_BACKPORT=y
 endif
 
 ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
@@ -767,7 +715,11 @@ else
        CONFIGURE_FLAGS += --without-system-libxml
 endif
 ifneq (,$(filter xmlsec, $(SYSTEM_STUFF)))
+  ifeq "$(shell dpkg --compare-versions `pkg-config --modversion icu-i18n` ge 64 && echo true)" "true"
+       BUILD_DEPS += , libxmlsec1-dev (>= 1.2.27-3)
+  else
        BUILD_DEPS += , libxmlsec1-dev (>= 1.2.24)
+  endif
 endif
 ifneq (,$(filter expat, $(SYSTEM_STUFF)))
        BUILD_DEPS += , libexpat1-dev
@@ -786,35 +738,22 @@ ifneq (,$(filter curl, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libcurl4-$(CURL_SECTYPE)-dev
 endif
 
-ifeq "$(GCC_VERSION_5_OR_GREATER)" "y"
 COINMP_MINVER=(>= 1.7.6+dfsg1-2)
-  ifeq "$(STRETCH_BACKPORT)" "y"
-	COINUTILS_MINVER=(>= 2.9.15-3.1)
-  else
 	COINUTILS_MINVER=(>= 2.10.14+repack1-1)
 	# go sure given #873362
 	COINMP_MINVER=(>= 1.8.3-2)
-  endif
-else
-COINMP_MINVER=
-COINUTILS_MINVER=
-endif
 ifneq ($(ENABLE_COINMP),y)
 	CONFIGURE_FLAGS += --disable-coinmp
 else
   ifneq (,$(filter coinmp, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , coinor-libcoinmp-dev $(COINMP_MINVER), coinor-libcoinutils-dev $(COINUTILS_MINVER)
-    # https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=838620
-    ifeq "$(STRETCH_BACKPORT)" "y"
-	BUILD_DEPS += , libbz2-dev
-    endif
   endif
 endif
 
-ifneq (,$(findstring i386,$(DEB_HOST_ARCH)))
+ifneq (,$(filter i386,$(DEB_HOST_ARCH)))
 	SMALL_SYMBOLS = n
 else
-  ifneq (,$(findstring amd64,$(DEB_HOST_ARCH)))
+  ifneq (,$(filter amd64,$(DEB_HOST_ARCH)))
 	SMALL_SYMBOLS = n
   endif
 endif
@@ -855,13 +794,11 @@ endif
 
 	BUILD_DEPS += , $(PYTHON)
 ifeq "$(ENABLE_PYTHON)" "y"
-	BUILD_DEPS += , $(PYTHON)-dev (>= 3.3)
-  ifneq "$(STRETCH_BACKPORT)" "y"
-	BUILD_DEPS += , $(PYTHON)-distutils
-  endif
-	BUILD_DEPS += , dh-python
+	BUILD_DEPS += , $(PYTHON)-dev (>= 3.3) <!nopython>
+	BUILD_DEPS += , $(PYTHON)-distutils <!nopython>
+	BUILD_DEPS += , dh-python <!nopython>
   ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
-	BUILD_DEPS += , $(PYTHON)-lxml <!nocheck>
+	BUILD_DEPS += , $(PYTHON)-lxml <!nocheck !nopython>
   else
 	CONFIGURE_FLAGS += --without-lxml
   endif
@@ -882,12 +819,12 @@ endif
 	BUILD_DEPS += , gdb$(OOO_NO_CHECK_ARCHS) <!nocheck>
 	BUILD_DEPS += , fontconfig$(OOO_NO_CHECK_ARCHS) <!nocheck>
 	BUILD_DEPS += , fonts-liberation2$(OOO_NO_CHECK_ARCHS) <!nocheck>
-  	BUILD_DEPS += , fonts-crosextra-carlito$(OOO_NO_CHECK_ARCHS) <!nocheck>
-        # https://lists.freedesktop.org/archives/libreoffice/2017-May/077764.html
-        BUILD_DEPS += , fonts-dejavu$(OOO_NO_CHECK_ARCHS) <!nocheck>
+	BUILD_DEPS += , fonts-crosextra-carlito$(OOO_NO_CHECK_ARCHS) <!nocheck>
+	# https://lists.freedesktop.org/archives/libreoffice/2017-May/077764.html
+	BUILD_DEPS += , fonts-dejavu$(OOO_NO_CHECK_ARCHS) <!nocheck>
   ifeq "$(RUN_MAKE_CHECK)" "y"
     ifneq (,$(filter cppunit, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libcppunit-dev (>= $(CPPUNIT_MINVER))$(OOO_NO_CHECK_ARCHS) <!nocheck>
+	BUILD_DEPS += , libcppunit-dev (>= 1.14)$(OOO_NO_CHECK_ARCHS) <!nocheck>
     endif
 	# 17:35 <@sberg_> vmiklos, oh, what kind of poor test is that? "warn:sal.osl:3785:2:sal/osl/unx/process.cxx:344: ChildStatusProc : starting 'pstoedit' failed" etc. is what I see in workdir/CppunitTest/filter_eps_test.test.log...
 	BUILD_DEPS += , pstoedit$(OOO_NO_CHECK_ARCHS) <!nocheck>
@@ -935,7 +872,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 	HELPISOS:=
     else
 	#HELPISOS:=$(shell $(SOURCE_TREE)/bin/lo-xlate-lang -i all') 
-	HELPISOS:=en-US ca ca-valencia cs da de dz el en-GB es et eu fi fr gl hi hu it \
+	HELPISOS:=en-US ca ca-valencia cs da de dz el en-GB es et eu fi fr gl hi hu id it \
 	  ja km ko nl om pl pt pt-BR ru sk sl sv tr vi zh-CN zh-TW
     endif
 	#LANGPACKISOS:=$(shell $(SOURCE_TREE)/bin/lo-xlate-lang -i all')
@@ -968,26 +905,19 @@ ifeq "$(ENABLE_JAVA)" "y"
   BUILD_DEPS += , maven-repo-helper
   ifeq "$(JDK)" "default"
 	JAVA_HOME=/usr/lib/jvm/default-java
-    ifneq "$(STRETCH_BACKPORT)" "y"
 	BUILD_DEPS += , java-common (>= 0.61)
 	DEFAULT_JDK := $(call java_dependency, default-jdk)
 	BUILD_DEPS += , $(shell echo $(DEFAULT_JDK) | sed -e 's/default-jdk/default-jdk (>= 1:1.6)/' | sed -e "s/\]/ !i386]/")
-    else
-	BUILD_DEPS += , java-common (>= 0.49)
-	BUILD_DEPS += , default-jdk (>= 1:1.6) $(shell echo "$(filter-out !ia64,$(OOO_NO_JAVA_ARCHS))")
-    endif
-    ifneq "$(STRETCH_BACKPORT)" "y"
-      ifeq (i386,$(findstring i386,$(OOO_JAVA_ARCHS)))
+      ifeq (i386,$(filter i386,$(OOO_JAVA_ARCHS)))
 	BUILD_DEPS += , default-jdk (>= 2:1.9) [i386]
       endif
-    endif
-    ifneq (,$(findstring ia64,$(OOO_JAVA_ARCHS)))
+    ifneq (,$(filter ia64,$(OOO_JAVA_ARCHS)))
 	BUILD_DEPS += , default-jdk (>= 1:1.7-48) [ia64]
     endif
     ifneq (,$(findstring kfreebsd,$(OOO_JAVA_ARCHS)))
 	BUILD_DEPS += , default-jdk (>= 2:1.7-52.1) [kfreebsd-any]
     endif
-    ifneq (,$(findstring sparc64,$(OOO_JAVA_ARCHS)))
+    ifneq (,$(filter sparc64,$(OOO_JAVA_ARCHS)))
 	BUILD_DEPS += , default-jdk (>= 2:1.8-55) [sparc64]
     endif
   endif
@@ -1099,12 +1029,12 @@ endif
 	BUILD_DEPS += , $(IDLC_CPP_DEPENDS)
 
 ifneq (,$(filter hunspell, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libhunspell-dev $(HUNSPELL_MIN_VER)
+	BUILD_DEPS += , libhunspell-dev (>= 1.1.5-2)
 endif
 	CONFIGURE_FLAGS += --with-external-dict-dir=$(DICT_DIR)
 
 ifneq (,$(filter altlinuxhyph, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libhyphen-dev $(LIBHYPHEN_MINVER)
+	BUILD_DEPS += , libhyphen-dev (>= 2.4)
 endif
 	CONFIGURE_FLAGS += --with-external-hyph-dir=$(HYPH_DIR)
 
@@ -1138,11 +1068,11 @@ ifneq (,$(filter mdds, $(SYSTEM_STUFF)))
 endif
 
 ifneq (,$(filter orcus, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , liborcus-dev (>= $(LIBORCUS_MINVER))
+	BUILD_DEPS += , liborcus-dev (>= 0.14.0+really0.14.0)
 endif
 
 ifneq (,$(filter clucene, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libclucene-dev (>= $(CLUCENE_MINVER))
+	BUILD_DEPS += , libclucene-dev (>= 2.3.3.4-4.1)
 endif
 
 ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
@@ -1209,7 +1139,7 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
 	BUILD_DEPS += , libe-book-dev (>= 0.1.2) <!nocheck>
   endif
   ifneq (,$(filter libcmis, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libcmis-dev (>= $(LIBCMIS_MINVER))
+	BUILD_DEPS += , libcmis-dev (>= 0.5.0-3)
   endif
 endif
 	CONFIGURE_FLAGS += --with-external-thes-dir=$(THES_DIR)
@@ -1241,7 +1171,7 @@ ifneq (,$(filter liblangtag, $(SYSTEM_STUFF)))
 endif
 
 ifneq (,$(filter icu, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libicu-dev $(ICU_MINVER)
+	BUILD_DEPS += , libicu-dev (>= 52)
 endif
 
 
@@ -1277,8 +1207,8 @@ ifeq "$(BUILD_KDE5)" "y"
   ifeq "$(ENABLE_KDE5)" "y"
 	CONFIGURE_FLAGS += --enable-kde5
   endif
-	BUILD_DEPS += , libqt5x11extras5-dev $(QT5_MINVER)
 	BUILD_DEPS += , libkf5coreaddons-dev, libkf5i18n-dev, libkf5config-dev, libkf5windowsystem-dev, libkf5kio-dev
+	BUILD_DEPS += , libqt5x11extras5-dev $(QT5_MINVER)
 	BUILD_DEPS += , libxcb1-dev
 endif
 
@@ -1291,31 +1221,21 @@ ifeq "$(ENABLE_QT5)" "y"
 	export QT_SELECT=5
 endif
 
-ifeq "$(ENABLE_MYSQLNATIVE)" "y"
-	CONFIGURE_FLAGS += --enable-ext-mariadb-connector
-  ifeq "$(MYSQL_FLAVOUR)" "default"
-      ifneq (,$(filter mariadb, $(SYSTEM_STUFF)))
+ifeq "$(MYSQL_FLAVOUR)" "default"
 	BUILD_DEPS += , default-libmysqlclient-dev
-      endif
-  else
-    ifeq "$(MYSQL_FLAVOUR)" "mysql"
-      ifneq (,$(filter mysql-cppconn, $(SYSTEM_STUFF)))
+else
+  ifeq "$(MYSQL_FLAVOUR)" "mysql"
       ifneq (,$(filter mariadb, $(SYSTEM_STUFF)))
         BUILD_DEPS += , libmysqlclient-dev
       endif
-      endif
       MARIADBCONFIG=/usr/bin/mysql_config
-    endif
-    ifeq "$(MYSQL_FLAVOUR)" "mariadb"
-      ifneq (,$(filter mariadb, $(SYSTEM_STUFF)))
+  endif
+  ifeq "$(MYSQL_FLAVOUR)" "mariadb"
+    ifneq (,$(filter mariadb, $(SYSTEM_STUFF)))
 	# deducted from default-libmysqlclient-dev Depends
 	BUILD_DEPS += , libmariadbclient-dev-compat
-      endif
-      MARIADBCONFIG=/usr/bin/mariadb_config
     endif
-  endif
-  ifneq (,$(filter mysql-cppconn, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libmysqlcppconn-dev $(MYSQLCPPCONN_MINVER)
+    MARIADBCONFIG=/usr/bin/mariadb_config
   endif
 endif
 
@@ -1361,7 +1281,7 @@ ifeq "$(BUILD_GTK3)" "y"
   endif
 else
        CONFIGURE_FLAGS+= --disable-gtk3
-       GNOME_GTK_DEPENDS += libreoffice-gtk2
+       GNOME_GTK_RECOMMENDS += libreoffice-gtk2
 endif
 
 ifeq "$(ENABLE_EVO2)" "n"
@@ -1404,6 +1324,8 @@ endif
 
 ifeq "$(ENABLE_JAVA)" "y"
   ifneq (,$(filter hsqldb, $(SYSTEM_STUFF)))
+	HSQLDB_MINVER= (>> 1.8.0.10)
+	HSQLDB_JAR=/usr/share/java/hsqldb1.8.0.jar
 	BUILD_DEPS += , libhsqldb1.8.0-java $(HSQLDB_MINVER)$(OOO_NO_JAVA_ARCHS), libarchive-zip-perl$(OOO_NO_JAVA_ARCHS)
 	BASE_HSQLDB_DEPENDS = libhsqldb1.8.0-java $(HSQLDB_MINVER)
 	CONFIGURE_FLAGS += --with-hsqldb-jar=$(HSQLDB_JAR)
@@ -1442,9 +1364,10 @@ ifneq (,$(filter lpsolve, $(SYSTEM_STUFF)))
 endif
 
 ifeq "$(USE_DBUS)" "y"
-	BUILD_DEPS += , libdbus-glib-1-dev (>= 0.70)
+	BUILD_DEPS += , libdbus-1-dev (>= 0.60)
 	CONFIGURE_FLAGS += --enable-dbus
   ifeq "$(ENABLE_BLUETOOTH)" "y"
+	BUILD_DEPS += , libglib2.0-dev (>= 2.4)
     ifneq (,$(filter bluez, $(SYSTEM_STUFF)))
        BUILD_DEPS += , libbluetooth-dev [linux-any]
     endif
@@ -1532,14 +1455,9 @@ endif
 ifneq (,$(filter gpgmepp, $(SYSTEM_STUFF)))
 	BUILD_DEPS+= , libgpgmepp-dev, libgpgme-dev, libgpg-error-dev
 endif
-ifeq "$(STRETCH_BACKPORT)" "y"
-	BUILD_DEPS+= , gnupg <!nocheck>
-	BUILD_DEPS+= , gnupg-agent <!nocheck>
-else
 	BUILD_DEPS+= , gpg <!nocheck>
 	BUILD_DEPS+= , gpgconf <!nocheck>
 	BUILD_DEPS+= , gpg-agent <!nocheck>
-endif
 
 ifeq "$(ENABLE_GIO)" "y"
   ifneq "$(BUILD_GTK3)" "y"
@@ -1564,8 +1482,7 @@ ifeq ($(ENABLE_LTO),y)
 endif
 
 ifeq ($(USE_GOLD),y)
-       DEB_LDFLAGS_MAINT_APPEND += -fuse-ld=gold
-export DEB_LDFLAGS_MAINT_APPEND
+       CONFIGURE_FLAGS += --enable-ld=gold
 endif
 
 # Use compiler cache?  Include ccache in DEB_BUILD_OPTIONS for much faster rebuild times
@@ -1824,9 +1741,6 @@ ifeq "$(ENABLE_QT5)" "y"
 	cat debian/control.qt5.in >> debian/control
 endif
 	cat debian/control.postgresql.in >> debian/control
-ifeq "$(ENABLE_MYSQLNATIVE)" "y"
-	cat debian/control.mysql.in >> debian/control
-endif
 ifeq "$(ENABLE_EVO2)" "y"
 	cat debian/control.evolution.in >> debian/control
 endif
@@ -1871,20 +1785,8 @@ ifeq "$(MYSQL_FLAVOUR)" "mysql"
 	perl -pi -e "s/(Build-Conflicts: .*)/\1,libmariadbclient-dev,/" debian/control
 endif
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
-	perl -pi -e "s/(Build-Conflicts: .*)/\1,fonts-liberation2 (= 2.00.1-4) <!nocheck>,/" debian/control
-	perl -pi -e "s/(Build-Conflicts: .*)/\1,fonts-liberation2 (= 2.00.1-5) <!nocheck>,/" debian/control
-	# be safe.
-	perl -pi -e "s/(Build-Conflicts: .*)/\1,fonts-liberation (= 1:1.07.4-3) <!nocheck>,/" debian/control
-	perl -pi -e "s/(Build-Conflicts: .*)/\1,fonts-liberation (= 1:1.07.4-4) <!nocheck>,/" debian/control
-	perl -pi -e "s/(Build-Conflicts: .*)/\1,fonts-liberation (= 1:1.07.4-5) <!nocheck>,/" debian/control
 	# be sure to use our rebuilt font
 	perl -pi -e "s/(Build-Conflicts: .*)/\1,fonts-opensymbol <!nocheck>,/" debian/control
-endif
-
-ifeq "$(STRETCH_BACKPORTS)" "y"
-	perl -pi -e 's/fonts-noto-mono/fonts-noto-hinted, fonts-noto-mono/' debian/control
-else
-	perl -pi -e 's/fonts-noto-mono/fonts-noto-core, fonts-noto-ui-core, fonts-noto-mono/' debian/control
 endif
 
 	$(PYTHON) debian/scripts/joinctrl.py < debian/control > debian/control.tmp
@@ -2002,12 +1904,9 @@ ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 endif
 
 ifneq "$(BUILD_ISOS)" "en-US"
-	# build sysui and some extensions again with all languages; as it contains language-specific help
-	# and/or descriptions...
+	# build sysui again with all languages; as it contains language-specific help and/or descriptions...
 	$(MAKE) sysui.clean
-	$(MAKE) mysqlc.clean
 	make cmd cmd="cd sysui; export WITH_LANG='$(LANGPACKISOS)'; export WITH_LANG_LIST='$(LANGPACKISOS)'; $(MAKE)"
-	make cmd cmd="cd mysqlc; export WITH_LANG='$(LANGPACKISOS)'; export WITH_LANG_LIST='$(LANGPACKISOS)'; $(MAKE)"
 endif
 
 	touch $@
@@ -2052,10 +1951,10 @@ endif
 
 check: 
 ifeq "$(RUN_MAKE_CHECK)" "y"
-ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
+ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
 	patch -p1 < $(CURDIR)/debian/tests/patches/disable-db-tests.diff
 endif
-ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
+ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
 	cd $(SOURCE_TREE)/smoketest && \
 		patch -p1 < $(CURDIR)/debian/tests/patches/smoketest-disable-extension-tests.diff
 endif
@@ -2091,10 +1990,10 @@ endif
 		if [ -x /usr/bin/gdb ]; then ulimit -c unlimited; fi && \
 		$(MAKE) -k check || PARALLELISM=1 $(MAKE) check && \
 	rm -rf $$t
-ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
+ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
 	patch -p1 -R < $(CURDIR)/debian/tests/patches/disable-db-tests.diff
 endif
-ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
+ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
 	cd $(SOURCE_TREE)/smoketest && \
 		patch -p1 -R < $(CURDIR)/debian/tests/patches/smoketest-disable-extension-tests.diff
 endif
@@ -2858,10 +2757,6 @@ ifeq "$(ENABLE_PRESENTER_CONSOLE)" "y"
 	rm -f usr/lib/libreoffice/share/extensions/presenter-screen/registration/LICENSE
 endif
 
-ifeq "$(ENABLE_MYSQLNATIVE)" "y"
-	rm -f $(PKGDIR)-mysql-connector/$(OODIR)/share/extensions/mysql-connector-ooo/registration/LICENSE
-endif
-
 ifeq "$(PACKAGE_SDK)" "y"
 	# move ui-previewer into -dev
 	mkdir -p $(PKGDIR)-dev/$(OODIR)/program
@@ -2908,6 +2803,10 @@ ifeq "$(ENABLE_FIREBIRD)" "y"
 	done
   endif
 endif
+	mkdir -p $(PKGDIR)-sdbc-mysql/$(OODIR)/program
+	mv $(PKGDIR)-base/$(OODIR)/program/libmysqlclo.so \
+		$(PKGDIR)-sdbc-mysql/$(OODIR)/program
+	
 	mkdir -p $(PKGDIR)-base-drivers/$(OODIR)/program
 	for i in `find $(PKGDIR)-base/$(OODIR)/program/ -name "*.so" \
 		-a \! -name "libdbulo*" -a \! -name "libdbaxml*" -a \! -name "libdbp*" -a \! -name "libabplo.so"`; do \
@@ -3127,7 +3026,10 @@ endif
 	for i in $(IMAGES); do \
 		z=images_$$i.zip; p=$$i; \
 		if [ "$$i" = "breeze_dark" ]; then p=breeze; fi; \
+		if [ "$$i" = "breeze_svg" ]; then p=breeze; fi; \
+		if [ "$$i" = "elementary_svg" ]; then p=elementary; fi; \
 		if [ "$$i" = "sifr_dark" ]; then p=sifr; fi; \
+		if [ "$$i" = "karasa_jaga" ]; then p=karasa-jaga; fi; \
 		mkdir -p $(PKGDIR)-style-$$p/$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config; \
 		mv $(PKGDIR)-common/$(OODIR)/share/config/$$z \
 			$(PKGDIR)-style-$$p/$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config/; \
@@ -3327,9 +3229,9 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 	# Also not for extensions, as they have an own version
 	# python3-uno has additional examples...
 	dh_installdocs -a -A -Nure -Nuno-libs3 \
-		-Npython3-uno -Nlibreoffice-mysql-connector -Nlibreoffice -Nlibreofficekit-dev \
+		-Npython3-uno -Nlibreoffice -Nlibreofficekit-dev \
 		--link-doc=libreoffice-core
-	dh_installdocs -pure -puno-libs3 -ppython3-uno -plibreoffice-mysql-connector -plibreoffice -plibreofficekit-dev
+	dh_installdocs -pure -puno-libs3 -ppython3-uno -plibreoffice -plibreofficekit-dev
 	cp workdir/CustomTarget/readlicense_oo/readme/README_en-US \
 		$(PKGDIR)-core/usr/share/doc/libreoffice-core/README
 	dh_installdebconf -a
@@ -3471,10 +3373,9 @@ ifneq (,$(filter firebird, $(SYSTEM_STUFF)))
 endif
 endif
 
-	LD_LIBRARY_PATH="$(FAKEROOT_LIBDIR):debian/uno-libs3/$(OODIR)/program:debian/ure/$(OODIR)/program:$(PKGDIR)-core/$(OODIR)/program:$(PKGDIR)-base-core/$(OODIR)/program:$(PKGDIR)-base/$(OODIR)/program:$(PKGDIR)-writer/$(OODIR)/program" \
 		dh_shlibdeps -a \
 			-Lure -Luno-libs3 \
-			-ldebian/uno-libs3/$(OODIR)/program:debian/ure/$(OODIR)/program:$(PKGDIR)-core/$(OODIR)/program:$(PKGDIR)-base/$(OODIR)/program \
+			-l$(CURDIR)/debian/uno-libs3/$(OODIR)/program:$(CURDIR)/debian/ure/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-core/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-base-core/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-base/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-writer/$(OODIR)/program \
 			$(SHLIBS_OVERRIDE)
 ifneq (,$(filter redland, $(SYSTEM_STUFF)))
 	# dpkg-shlibdeps "in practice" always will look for this in
@@ -3514,7 +3415,7 @@ endif
 # causes ldd crashes sometimes when used with fakeroot:
 #          -l $(PKGDIR)-core/$(OPENOFFICEDIR)/program
 	dh_gencontrol -a $(DEBHELPER_OPTIONS) -Nure -Nuno-libs3 \
-		-Nlibreoffice-mysql-connector -- \
+		-- \
 		-V"ure:Version=$(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }')" \
 		-V'base-version=$(BASE_VERSION)' \
 		-V'oover=$(OOVER)' \
@@ -3527,6 +3428,7 @@ endif
 		-V'Binary-Version=$(BINARY_VERSION)' \
 		-V'ooo-officebean-dep=$(OOO_OFFICEBEAN_DEP)' \
 		-V'kde-iconset-dep=$(KDE_ICONSET_DEP)' \
+		-V'kde5-qt5-depends=$(KDE5_QT5_DEPENDS)' \
 		-V'lpsolve-dep=$(LPSOLVE_DEP)' \
 		-V'gstreamer-plugins-suggests=$(GSTREAMER_PLUGINS_SUGGESTS)' \
 		-V'libebook-dep=$(LIBEBOOK_DEP)' \
@@ -3538,14 +3440,6 @@ endif
 		-V'firebird-engine-depends=$(FIREBIRD_ENGINE_DEPENDS)' \
 		-V'libsane-suggests=$(shell dpkg -S /usr/lib/$(DEB_HOST_MULTIARCH)/libsane.so.1 | cut -d: -f1)' \
 		-v$(BINARY_VERSION)
-ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
-ifeq "$(PACKAGE_BASE)" "y"
-  ifeq "$(ENABLE_MYSQLNATIVE)" "y"
-	dh_gencontrol -plibreoffice-mysql-connector -- \
-		-v$(shell grep "<version" $(SOURCE_TREE)/mysqlc/source/description.xml | perl -pi -e 's,<version value=\"(.*)\" />,\1,; s/^\s+//; s/\s+$$//')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
-  endif
-endif
-endif
 	dh_gencontrol -pure -puno-libs3 -- \
 		-V"ure:Version=`echo $(BINARY_VERSION) | cut -d: -f2`" \
 		-v"`echo $(BINARY_VERSION) | cut -d: -f2`"
@@ -3569,7 +3463,7 @@ endif
 
 binary-indep: $(GSI_EXPORT_STAMP) $(STAMP_DIR)/binary-indep
 $(STAMP_DIR)/binary-indep: $(STAMP_DIR)/install-indep debian/control $(STAMP_DIR)/maintscripts $(STAMP_DIR)/langpacks
-ifneq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH),$(OOO_JAVA_ARCHS)))
+ifneq ($(DEB_HOST_ARCH),$(filter $(DEB_HOST_ARCH),$(OOO_JAVA_ARCHS)))
 	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 	echo "For uploads with binary-all packages, please use arches where Java is enabled"
 	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
@@ -3665,11 +3559,7 @@ ifeq "$(ENABLE_HELP)" "y"
 endif
 	dh_lintian -i
 	dh_bugfiles -i -A
-ifeq "$(STRETCH_BACKPORT)" "y"
-	dh_link -i -Nlibreoffice-help-common
-else
 	dh_link -i
-endif
 	dh_fixperms -i
 	dh_icons -i
 ifeq "$(INSTALL_APPARMOR_PROFILES)" "y"
@@ -3697,6 +3587,7 @@ endif
 	dh_gencontrol -i $(DEBHELPER_OPTIONS) \
 		-Nlibreoffice-wiki-publisher \
 		-Nlibreoffice-nlpsolver \
+		-Nlibreoffice-report-builder \
 		-Nfonts-opensymbol -- \
 		-V'base-version=$(BASE_VERSION)' \
 		-V'oover=$(OOVER)' \
