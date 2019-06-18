@@ -1,0 +1,137 @@
+diff --git a/sw/inc/unosett.hxx b/sw/inc/unosett.hxx
+index dff4f1f8aee0..0aa6daefce36 100644
+--- a/sw/inc/unosett.hxx
++++ b/sw/inc/unosett.hxx
+@@ -208,7 +208,7 @@ public:
+ 
+     static css::uno::Sequence<css::beans::PropertyValue> GetPropertiesForNumFormat(
+             const SwNumFormat& rFormat, OUString const& rCharFormatName,
+-            OUString const* pHeadingStyleName);
++            OUString const* pHeadingStyleName, OUString const & referer);
+     static void SetPropertiesToNumFormat(
+             SwNumFormat & aFormat,
+             OUString & rCharStyleName,
+diff --git a/sw/source/core/text/porfld.cxx b/sw/source/core/text/porfld.cxx
+index 8c489de68590..c3de3a25128e 100644
+--- a/sw/source/core/text/porfld.cxx
++++ b/sw/source/core/text/porfld.cxx
+@@ -756,7 +756,7 @@ SwBulletPortion::SwBulletPortion( const sal_Unicode cBullet,
+ SwGrfNumPortion::SwGrfNumPortion(
+         SwFrame*,
+         const OUString& rGraphicFollowedBy,
+-        const SvxBrushItem* pGrfBrush,
++        const SvxBrushItem* pGrfBrush, OUString const & referer,
+         const SwFormatVertOrient* pGrfOrient, const Size& rGrfSize,
+         const bool bLft, const bool bCntr, const sal_uInt16 nMinDst,
+         const bool bLabelAlignmentPosAndSpaceModeActive ) :
+@@ -770,7 +770,7 @@ SwGrfNumPortion::SwGrfNumPortion(
+     if( pGrfBrush )
+     {
+         *pBrush = *pGrfBrush;
+-        const Graphic* pGraph = pGrfBrush->GetGraphic();
++        const Graphic* pGraph = pGrfBrush->GetGraphic(referer);
+         if( pGraph )
+             SetAnimated( pGraph->IsAnimated() );
+         else
+diff --git a/sw/source/core/text/porfld.hxx b/sw/source/core/text/porfld.hxx
+index cc5e350dbefa..a4f94d5147a1 100644
+--- a/sw/source/core/text/porfld.hxx
++++ b/sw/source/core/text/porfld.hxx
+@@ -172,6 +172,7 @@ public:
+     SwGrfNumPortion( SwFrame *pFrame,
+                      const OUString& rGraphicFollowedBy,
+                      const SvxBrushItem* pGrfBrush,
++                     OUString const & referer,
+                      const SwFormatVertOrient* pGrfOrient,
+                      const Size& rGrfSize,
+                      const bool bLeft,
+diff --git a/sw/source/core/text/txtfld.cxx b/sw/source/core/text/txtfld.cxx
+index d024e556ea43..26725e1cba3a 100644
+--- a/sw/source/core/text/txtfld.cxx
++++ b/sw/source/core/text/txtfld.cxx
+@@ -52,6 +52,7 @@
+ #include "flddat.hxx"
+ #include "fmtautofmt.hxx"
+ #include <IDocumentSettingAccess.hxx>
++#include <sfx2/docfile.hxx>
+ #include <svl/itemiter.hxx>
+ 
+ static bool lcl_IsInBody( SwFrame *pFrame )
+@@ -478,9 +479,18 @@ SwNumberPortion *SwTextFormatter::NewNumberPortion( SwTextFormatInfo &rInf ) con
+ 
+         if( SVX_NUM_BITMAP == rNumFormat.GetNumberingType() )
+         {
++            OUString referer;
++            if (auto const sh1 = rInf.GetVsh()) {
++                if (auto const doc = sh1->GetDoc()) {
++                    auto const sh2 = doc->GetPersist();
++                    if (sh2 != nullptr && sh2->HasName()) {
++                        referer = sh2->GetMedium()->GetName();
++                    }
++                }
++            }
+             pRet = new SwGrfNumPortion( const_cast<SwTextFrame*>(GetTextFrame()),
+                                         pTextNd->GetLabelFollowedBy(),
+-                                        rNumFormat.GetBrush(),
++                                        rNumFormat.GetBrush(), referer,
+                                         rNumFormat.GetGraphicOrientation(),
+                                         rNumFormat.GetGraphicSize(),
+                                         bLeft, bCenter, nMinDist,
+diff --git a/sw/source/core/unocore/unosett.cxx b/sw/source/core/unocore/unosett.cxx
+index 81fd65d30a05..afbee31d0340 100644
+--- a/sw/source/core/unocore/unosett.cxx
++++ b/sw/source/core/unocore/unosett.cxx
+@@ -54,6 +54,7 @@
+ #include <vcl/font.hxx>
+ #include <editeng/flstitem.hxx>
+ #include <vcl/metric.hxx>
++#include <sfx2/docfile.hxx>
+ #include <svtools/ctrltool.hxx>
+ #include <osl/mutex.hxx>
+ #include <vcl/svapp.hxx>
+@@ -1341,13 +1342,21 @@ uno::Sequence<beans::PropertyValue> SwXNumberingRules::GetNumberingRuleByIndex(
+         SwStyleNameMapper::FillProgName(sValue, aUString, nsSwGetPoolIdFromName::GET_POOLID_TXTCOLL, true);
+     }
+ 
+-    return GetPropertiesForNumFormat(rFormat, CharStyleName, (pDocShell) ? & aUString : nullptr);
++    OUString referer;
++    if (pDoc != nullptr) {
++        auto const sh = pDoc->GetPersist();
++        if (sh != nullptr && sh->HasName()) {
++            referer = sh->GetMedium()->GetName();
++        }
++    }
++    return GetPropertiesForNumFormat(
++        rFormat, CharStyleName, (pDocShell) ? & aUString : nullptr, referer);
+ 
+ }
+ 
+ uno::Sequence<beans::PropertyValue> SwXNumberingRules::GetPropertiesForNumFormat(
+         const SwNumFormat& rFormat, OUString const& rCharFormatName,
+-        OUString const*const pHeadingStyleName)
++        OUString const*const pHeadingStyleName, OUString const & referer)
+ {
+     bool bChapterNum = pHeadingStyleName != nullptr;
+ 
+@@ -1479,7 +1488,7 @@ uno::Sequence<beans::PropertyValue> SwXNumberingRules::GetPropertiesForNumFormat
+             //graphicbitmap
+             const Graphic* pGraphic = nullptr;
+             if(pBrush )
+-                pGraphic = pBrush->GetGraphic();
++                pGraphic = pBrush->GetGraphic(referer);
+             if(pGraphic)
+             {
+                 uno::Reference<awt::XBitmap> xBmp = VCLUnoHelper::CreateBitmap( pGraphic->GetBitmapEx() );
+diff --git a/sw/source/uibase/config/StoredChapterNumbering.cxx b/sw/source/uibase/config/StoredChapterNumbering.cxx
+index 75b49a22a085..793c13719c5f 100644
+--- a/sw/source/uibase/config/StoredChapterNumbering.cxx
++++ b/sw/source/uibase/config/StoredChapterNumbering.cxx
+@@ -135,7 +135,7 @@ public:
+         OUString dummy; // pass in empty HeadingStyleName - can't import anyway
+         uno::Sequence<beans::PropertyValue> const ret(
+             SwXNumberingRules::GetPropertiesForNumFormat(
+-                *pNumFormat, *pCharStyleName, &dummy));
++                *pNumFormat, *pCharStyleName, &dummy, ""));
+         return uno::makeAny(ret);
+     }
+ 
