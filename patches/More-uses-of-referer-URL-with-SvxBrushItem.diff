@@ -1,0 +1,165 @@
+From 87c418a98650ab6e4a62a0b4b72e02fee358dced Mon Sep 17 00:00:00 2001
+From: Stephan Bergmann <sbergman@redhat.com>
+Date: Fri, 7 Jun 2019 09:28:12 +0200
+Subject: More uses of referer URL with SvxBrushItem
+
+Reviewed-on: https://gerrit.libreoffice.org/73643
+Tested-by: Jenkins
+Reviewed-by: Stephan Bergmann <sbergman@redhat.com>
+(cherry picked from commit b518882de8213ef71a8003f95fbdf7689069c06d)
+Conflicts:
+	sw/source/core/text/porfld.cxx
+	sw/source/core/unocore/unosett.cxx
+
+Change-Id: I04b524784df4ef453d8b1feec13b62f183a17e23
+Reviewed-on: https://gerrit.libreoffice.org/73860
+Tested-by: Jenkins
+Reviewed-by: Miklos Vajna <vmiklos@collabora.com>
+---
+ sw/inc/unosett.hxx                                 |  2 +-
+ sw/source/core/text/porfld.cxx                     |  4 ++--
+ sw/source/core/text/porfld.hxx                     |  1 +
+ sw/source/core/text/txtfld.cxx                     | 12 +++++++++++-
+ sw/source/core/unocore/unosett.cxx                 | 15 ++++++++++++---
+ sw/source/uibase/config/StoredChapterNumbering.cxx |  2 +-
+ 6 files changed, 28 insertions(+), 8 deletions(-)
+
+diff --git a/sw/inc/unosett.hxx b/sw/inc/unosett.hxx
+index a6d49603..4d83c77 100644
+--- a/sw/inc/unosett.hxx
++++ b/sw/inc/unosett.hxx
+@@ -209,7 +209,7 @@ public:
+ 
+     static css::uno::Sequence<css::beans::PropertyValue> GetPropertiesForNumFormat(
+             const SwNumFormat& rFormat, OUString const& rCharFormatName,
+-            OUString const* pHeadingStyleName);
++            OUString const* pHeadingStyleName, OUString const & referer);
+     static void SetPropertiesToNumFormat(
+             SwNumFormat & aFormat,
+             OUString & rCharStyleName,
+diff --git a/sw/source/core/text/porfld.cxx b/sw/source/core/text/porfld.cxx
+index be4bf77..bb563e6 100644
+--- a/sw/source/core/text/porfld.cxx
++++ b/sw/source/core/text/porfld.cxx
+@@ -751,7 +751,7 @@ SwBulletPortion::SwBulletPortion( const sal_Unicode cBullet,
+ 
+ SwGrfNumPortion::SwGrfNumPortion(
+         const OUString& rGraphicFollowedBy,
+-        const SvxBrushItem* pGrfBrush,
++        const SvxBrushItem* pGrfBrush, OUString const & referer,
+         const SwFormatVertOrient* pGrfOrient, const Size& rGrfSize,
+         const bool bLft, const bool bCntr, const sal_uInt16 nMinDst,
+         const bool bLabelAlignmentPosAndSpaceModeActive ) :
+@@ -765,7 +765,7 @@ SwGrfNumPortion::SwGrfNumPortion(
+     if( pGrfBrush )
+     {
+         *pBrush = *pGrfBrush;
+-        const Graphic* pGraph = pGrfBrush->GetGraphic();
++        const Graphic* pGraph = pGrfBrush->GetGraphic(referer);
+         if( pGraph )
+             SetAnimated( pGraph->IsAnimated() );
+         else
+diff --git a/sw/source/core/text/porfld.hxx b/sw/source/core/text/porfld.hxx
+index 1514041..1490d93 100644
+--- a/sw/source/core/text/porfld.hxx
++++ b/sw/source/core/text/porfld.hxx
+@@ -162,6 +162,7 @@ class SwGrfNumPortion : public SwNumberPortion
+ public:
+     SwGrfNumPortion( const OUString& rGraphicFollowedBy,
+                      const SvxBrushItem* pGrfBrush,
++                     OUString const & referer,
+                      const SwFormatVertOrient* pGrfOrient,
+                      const Size& rGrfSize,
+                      const bool bLeft,
+diff --git a/sw/source/core/text/txtfld.cxx b/sw/source/core/text/txtfld.cxx
+index 9138a35e..1bed580 100644
+--- a/sw/source/core/text/txtfld.cxx
++++ b/sw/source/core/text/txtfld.cxx
+@@ -52,6 +52,7 @@
+ #include <flddat.hxx>
+ #include <fmtautofmt.hxx>
+ #include <IDocumentSettingAccess.hxx>
++#include <sfx2/docfile.hxx>
+ #include <svl/itemiter.hxx>
+ 
+ static bool lcl_IsInBody( SwFrame const *pFrame )
+@@ -505,8 +506,17 @@ SwNumberPortion *SwTextFormatter::NewNumberPortion( SwTextFormatInfo &rInf ) con
+ 
+         if( SVX_NUM_BITMAP == rNumFormat.GetNumberingType() )
+         {
++            OUString referer;
++            if (auto const sh1 = rInf.GetVsh()) {
++                if (auto const doc = sh1->GetDoc()) {
++                    auto const sh2 = doc->GetPersist();
++                    if (sh2 != nullptr && sh2->HasName()) {
++                        referer = sh2->GetMedium()->GetName();
++                    }
++                }
++            }
+             pRet = new SwGrfNumPortion( pTextNd->GetLabelFollowedBy(),
+-                                        rNumFormat.GetBrush(),
++                                        rNumFormat.GetBrush(), referer,
+                                         rNumFormat.GetGraphicOrientation(),
+                                         rNumFormat.GetGraphicSize(),
+                                         bLeft, bCenter, nMinDist,
+diff --git a/sw/source/core/unocore/unosett.cxx b/sw/source/core/unocore/unosett.cxx
+index 3a72361..02ae09e 100644
+--- a/sw/source/core/unocore/unosett.cxx
++++ b/sw/source/core/unocore/unosett.cxx
+@@ -60,6 +60,7 @@
+ #include <vcl/metric.hxx>
+ #include <vcl/graph.hxx>
+ #include <vcl/GraphicLoader.hxx>
++#include <sfx2/docfile.hxx>
+ #include <svtools/ctrltool.hxx>
+ #include <vcl/svapp.hxx>
+ #include <editeng/unofdesc.hxx>
+@@ -1301,13 +1302,21 @@ uno::Sequence<beans::PropertyValue> SwXNumberingRules::GetNumberingRuleByIndex(
+         SwStyleNameMapper::FillProgName(sValue, aUString, SwGetPoolIdFromName::TxtColl);
+     }
+ 
+-    return GetPropertiesForNumFormat(rFormat, CharStyleName, (pDocShell) ? & aUString : nullptr);
++    OUString referer;
++    if (pDoc != nullptr) {
++        auto const sh = pDoc->GetPersist();
++        if (sh != nullptr && sh->HasName()) {
++            referer = sh->GetMedium()->GetName();
++        }
++    }
++    return GetPropertiesForNumFormat(
++        rFormat, CharStyleName, (pDocShell) ? & aUString : nullptr, referer);
+ 
+ }
+ 
+ uno::Sequence<beans::PropertyValue> SwXNumberingRules::GetPropertiesForNumFormat(
+         const SwNumFormat& rFormat, OUString const& rCharFormatName,
+-        OUString const*const pHeadingStyleName)
++        OUString const*const pHeadingStyleName, OUString const & referer)
+ {
+     bool bChapterNum = pHeadingStyleName != nullptr;
+ 
+@@ -1429,7 +1438,7 @@ uno::Sequence<beans::PropertyValue> SwXNumberingRules::GetPropertiesForNumFormat
+         if (SVX_NUM_BITMAP == rFormat.GetNumberingType())
+         {
+             const SvxBrushItem* pBrush = rFormat.GetBrush();
+-            const Graphic* pGraphic = pBrush ? pBrush->GetGraphic() : nullptr;
++            const Graphic* pGraphic = pBrush ? pBrush->GetGraphic(referer) : nullptr;
+             if (pGraphic)
+             {
+                 //GraphicBitmap
+diff --git a/sw/source/uibase/config/StoredChapterNumbering.cxx b/sw/source/uibase/config/StoredChapterNumbering.cxx
+index 940ffb3..7be6460 100644
+--- a/sw/source/uibase/config/StoredChapterNumbering.cxx
++++ b/sw/source/uibase/config/StoredChapterNumbering.cxx
+@@ -130,7 +130,7 @@ public:
+         OUString dummy; // pass in empty HeadingStyleName - can't import anyway
+         uno::Sequence<beans::PropertyValue> const ret(
+             SwXNumberingRules::GetPropertiesForNumFormat(
+-                *pNumFormat, *pCharStyleName, &dummy));
++                *pNumFormat, *pCharStyleName, &dummy, ""));
+         return uno::makeAny(ret);
+     }
+ 
+-- 
+cgit v1.1
+
