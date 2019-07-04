@@ -22,8 +22,8 @@ CURDIR ?= $(realpath $(dir $(firstword $(MAKEFILE_LIST)))/..)
 BASE_VERSION:=$(shell echo $(DEB_VERSION) | cut -d: -f1):$(DEB_VERSION_UPSTREAM)
 BINARY_VERSION=$(DEB_VERSION)
 #HELP_L10N_VIRTUAL_VERSION:=$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d: -f2 | tr [~] [\\-])
-HELP_L10N_VIRTUAL_VERSION:=6.2
-OOVER:=6.2
+HELP_L10N_VIRTUAL_VERSION:=6.3
+OOVER:=6.3
 NEXT_OOVER:=$(shell echo "$(OOVER) + 0.1" | bc)
 
 ARCH_INDEP_PACKAGES := $(shell dh_listpackages -i)
@@ -70,7 +70,7 @@ lo_sources_ver=$(shell grep AC_INIT $(SOURCE_TREE)/configure.ac | grep documentf
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
 GIT_TAG=libreoffice-$(lo_sources_ver)
-GIT_BRANCH=libreoffice-6-2-5
+GIT_BRANCH=libreoffice-6-3
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
 lo_sources_ver=$(shell cat $(CURDIR)/sources.ver | cut -d= -f2)
@@ -89,7 +89,7 @@ BUILD_DEPS=\
     bzip2,\
     flex (>= 2.3.35), \
     fontforge-nox | fontforge, \
-    gperf,\
+    gperf (>= 3.1),\
     libc0.1 (>= 2.10.2-7) [kfreebsd-any],\
     libcups2-dev,\
     libfontconfig1-dev,\
@@ -186,10 +186,6 @@ SYSTEM_STUFF += libqxp
 BUILD_CAIROCANVAS=y
 SYSTEM_STUFF += cairo
 BUILD_KDE=y
-BUILD_KDE4=n
-# < 4.8 fails with gcc 4.7, see #667911
-QT4_MINVER= (>= 4:4.8)
-KDELIBS_MINVER= (>= 4:4.3.4)
 BUILD_KDE5=y
 ENABLE_QT5=n
 QT5_MINVER= (>= 5.6)
@@ -202,13 +198,6 @@ ifeq "$(BUILD_KDE)" "y"
     ENABLE_QT5=y
     KDE5_QT5_DEPENDS := libreoffice-qt5 (= $${binary:Version})
   endif
-endif
-ifeq "$(BUILD_KDE)" "y"
-ifeq "$(BUILD_KDE4)" "y"
-ifeq "$(BUILD_KDE5)" "y"
-        $(error only either KDE4 or KDE5 supported)
-endif
-endif
 endif
 # https://www.debian.org/doc/debian-policy/ says this is not defined and must
 # be ignored, but dh_strip mentions (and honours) it, so...
@@ -282,6 +271,8 @@ CURL_SECTYPE=gnutls
 USE_LIBSUITESPARSE=y
 SUITESPARSE_MIN_VERSION= (>= 1:3.4.0)
 PARALLEL_BUILD=y
+ENABLE_LDAP=y
+SYSTEM_STUFF += openldap
 SYSTEM_STUFF += epoxy
 ifeq "$(ENABLE_JAVA)" "y"
   ENABLE_REPORTBUILDER=y
@@ -332,6 +323,8 @@ SYSTEM_STUFF += expat
 SYSTEM_STUFF += odbc
 SYSTEM_STUFF += curl
 SYSTEM_STUFF += sane
+ENABLE_PDFIMPORT=y
+ENABLE_POPPLER=y
 SYSTEM_STUFF += poppler
 SYSTEM_STUFF += libpng
 SYSTEM_STUFF += nss
@@ -348,7 +341,6 @@ ifeq "$(ENABLE_HELP)" "y"
   SYSTEM_STUFF += clucene
 endif
 SYSTEM_STUFF += lcms2
-SYSTEM_STUFF += openldap
 PACKAGE_UNOWINREG_DLL=y
 ifeq "$(DEB_VENDOR)" "Debian"
 BUILD_UNOWINREG_DLL=y
@@ -594,6 +586,7 @@ endif
 # Debian Buster
 ifeq "$(DEB_DISTRIBUTION)" "buster-backports"
   BUGS=mailto:debian-backports@lists.debian.org
+  SYSTEM_STUFF := $(filter-out libmwaw,$(SYSTEM_STUFF))
   USE_DWZ := n
   BUSTER_BACKPORT=y
 endif
@@ -632,32 +625,30 @@ ifneq "$(USE_CLANG)" "y"
       CXX=$(CC_PREFIX)g++-$(GCC_VERSION)
     endif
   endif
-	BUILD_DEPS += , gcc (>= 4:7) [m68k], g++ (>= 4:7) [m68k]
+	BUILD_DEPS += , gcc (>= 4:7), g++ (>= 4:7)
 else
   ifeq "$(CLANG_VERSION)" "default"
 	CLANG=clang
-	BUILD_DEPS += , clang
+	BUILD_DEPS += , clang (>= 1:5.0.2)
 	CONFIGURE_FLAGS+= CC=clang CXX=clang++
   else
 	CLANG=clang-$(CLANG_VERSION)
-	BUILD_DEPS += , clang-$(CLANG_VERSION)
+	BUILD_DEPS += , clang-$(CLANG_VERSION) 
 	CONFIGURE_FLAGS+= CC=clang-$(CLANG_VERSION) CXX=clang++-$(CLANG_VERSION)
   endif
   ifeq "$(ENABLE_COMPILER_PLUGINS)" "y"
   	CONFIGURE_FLAGS += --enable-compiler-plugins
   	CLANGDIR := /usr/lib/llvm-$(shell $(CLANG) --version | head -n 1 | awk '{ print $$3 }' | cut -d. -f1,2)
     ifeq "$(CLANG_VERSION)" "default"
-	BUILD_DEPS += , libclang-dev
+	BUILD_DEPS += , libclang-dev (>= 1:5.0.2)
     else
 	BUILD_DEPS += , libclang-$(CLANG_VERSION)-dev
     endif
   endif 
 endif
 USE_GOLD=n
-ENABLE_CXX17=y
-ifeq "$(ENABLE_CXX17)" "n"
-	CONFIGURE_FLAGS += --disable-c++17
-endif
+# leaves cruft around after building because it runs update_pch.sh..
+ENABLE_PCH=n
 
 ifeq "$(USE_DWZ)" "y"
 	BUILD_DEPS += , debhelper (>= 10.10.4)
@@ -677,10 +668,15 @@ else
   endif
 endif
 
+ifeq "$(ENABLE_PDFIMPORT)" "y"
+  ifeq "$(ENABLE_POPPLER)" "y"
 	BUILD_DEPS += , libpoppler-dev (>= 0.12.0), libpoppler-private-dev, libpoppler-cpp-dev
-
-ifeq "$(ENABLE_PDFIUM)" "n"
+  else
+	CONFIGURE_FLAGS += --disable-poppler
+  endif
+  ifeq "$(ENABLE_PDFIUM)" "n"
 	CONFIGURE_FLAGS += --disable-pdfium
+  endif
 endif
 
 ifneq (,$(filter graphite, $(SYSTEM_STUFF)))
@@ -694,6 +690,10 @@ endif
 ifneq (,$(filter libexttextcat, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libexttextcat-dev (>= 3.4.1)
 	TEXTCAT_DATA_RECOMMENDS := libexttextcat-data
+endif
+
+ifneq "$(ENABLE_LDAP)" "y"
+	CONFIGURE_FLAGS += --disable-ldap
 endif
 
 ifeq "$(ENABLE_LIBNUMBERTEXT)" "y"
@@ -920,21 +920,18 @@ ifeq "$(ENABLE_JAVA)" "y"
     ifneq (,$(filter sparc64,$(OOO_JAVA_ARCHS)))
 	BUILD_DEPS += , default-jdk (>= 2:1.8-55) [sparc64]
     endif
+    ifeq ($(shell test `java --version | head -n1 | cut -d- -f1 | awk '{ print $$2 }' | cut -d. -f1` -ge 12 && echo true),true)
+	export JAVA_SOURCE_VER=1.7
+	export JAVA_TARGET_VER=1.7
+    endif
   endif
   ifeq "$(JDK)" "openjdk"
-    ifeq "$(JAVA_MAINVER)" "6"
-	BUILD_DEPS += , openjdk-$(JAVA_MAINVER)-jdk (>= 6b23~pre8-2) [$(filter-out ia64,$(OOO_JAVA_ARCHS)])
-    else
-	BUILD_DEPS += , openjdk-$(JAVA_MAINVER)-jdk [$(filter-out mips mipsel,$(OOO_JAVA_ARCHS))]
-      # no 7 on mips(el)
-      ifneq (,$(findstring mips,$(OOO_JAVA_ARCHS)))
-	BUILD_DEPS += , openjdk-6-jdk (>= 6b23~pre8-2) [mips mipsel]
-        ifneq (,$(findstring mips,$(DEB_HOST_ARCH)))
-          JAVA_MAINVER=6
-        endif
-      endif
-    endif
+	BUILD_DEPS += , openjdk-$(JAVA_MAINVER)-jdk
 	JAVA_HOME=/usr/lib/jvm/java-$(JAVA_MAINVER)-openjdk-$(DEB_HOST_ARCH)
+        ifeq ($(shell test $(JAVA_MAINVER) -ge 12 && echo true),true)
+		export JAVA_SOURCE_VER=1.7
+		export JAVA_TARGET_VER=1.7
+        endif
   endif
         TEST_JAVA_HOME=$(JAVA_HOME)
   ifeq "$(ENABLE_MEDIAWIKI)" "y"
@@ -1103,7 +1100,7 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
   endif
   ifneq (,$(filter libmwaw, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libmwaw-dev (>= 0.3.1)
-	BUILD_DEPS += , libmwaw-dev (>= 0.3.13) <!nocheck>
+	BUILD_DEPS += , libmwaw-dev (>= 0.3.15) <!nocheck>
   endif
   ifneq (,$(filter libodfgen, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libodfgen-dev (>= 0.1)
@@ -1139,7 +1136,7 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
 	BUILD_DEPS += , libe-book-dev (>= 0.1.2) <!nocheck>
   endif
   ifneq (,$(filter libcmis, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libcmis-dev (>= 0.5.0-3)
+	BUILD_DEPS += , libcmis-dev (>= 0.5.2~)
   endif
 endif
 	CONFIGURE_FLAGS += --with-external-thes-dir=$(THES_DIR)
@@ -1183,15 +1180,6 @@ else
 	CONFIGURE_FLAGS+= --disable-cairo
 endif
 
-ifeq "$(BUILD_KDE4)" "n"
-	CONFIGURE_FLAGS += --disable-kde4
-else
-	CONFIGURE_FLAGS += --enable-kde4
-	KDE_ICONSET_DEP=libreoffice-style-breeze
-	BUILD_DEPS += , kdelibs5-dev $(KDELIBS_MINVER)
-	BUILD_DEPS += , libqt4-dev $(QT4_MINVER)
-endif
-
 ifeq "$(BUILD_KDE5)" "y"
 	KDE_ICONSET_DEP=libreoffice-style-breeze
   ifeq "$(ENABLE_GTK3_KDE5)" "y"
@@ -1208,14 +1196,14 @@ ifeq "$(BUILD_KDE5)" "y"
 	CONFIGURE_FLAGS += --enable-kde5
   endif
 	BUILD_DEPS += , libkf5coreaddons-dev, libkf5i18n-dev, libkf5config-dev, libkf5windowsystem-dev, libkf5kio-dev
-	BUILD_DEPS += , libqt5x11extras5-dev $(QT5_MINVER)
-	BUILD_DEPS += , libxcb1-dev
 endif
 
 ifeq "$(ENABLE_QT5)" "y"
 	CONFIGURE_FLAGS += --enable-qt5
 	BUILD_DEPS += , qtbase5-dev $(QT5_MINVER), qt5-qmake $(QT5_MINVER), qtbase5-dev-tools $(QT5_MINVER)
+	BUILD_DEPS += , libqt5x11extras5-dev $(QT5_MINVER)
 	BUILD_DEPS += , libglib2.0-dev (>= 2.4)
+	BUILD_DEPS += , libxcb1-dev
         # for correct qmake/moc
 	BUILD_DEPS += , qtchooser
 	export QT_SELECT=5
@@ -1483,12 +1471,23 @@ endif
 
 ifeq ($(USE_GOLD),y)
        CONFIGURE_FLAGS += --enable-ld=gold
+else
+# --enable-ld=gold is default for debug builds if found
+ifneq (debug,$(findstring debug,$(DEB_BUILD_OPTIONS)))
+       CONFIGURE_FLAGS += --disable-ld
+endif
+endif
+
+ifeq "$(ENABLE_PCH)" "y"
+	CONFIGURE_FLAGS += --enable-pch
 endif
 
 # Use compiler cache?  Include ccache in DEB_BUILD_OPTIONS for much faster rebuild times
 # A complete build uses about 9G of compiler cache.
 ifneq (ccache,$(findstring ccache,$(DEB_BUILD_OPTIONS)))
 	CONFIGURE_FLAGS += --disable-ccache
+else
+	CONFIGURE_FLAGS += --enable-ccache=nodepend
 endif
 
 ## Build n projects in parallel?
@@ -1860,6 +1859,11 @@ ifeq (terse,$(findstring terse,$(DEB_BUILD_OPTIONS)))
 		rm -rf .pc/do-not-hide-test-output.diff; \
 	fi
 endif
+endif
+
+ifeq "$(ENABLE_PCH)" "y"
+	# regen PCHs to go sure...
+	bin/update_pch.sh
 endif
 
 	touch $@
@@ -2949,7 +2953,6 @@ endif
 	for i in editpic poll savepic show webcast; do \
 		chmod 755 $(PKGDIR)-common/$(OODIR)/share/config/webcast/$$i.pl; \
 	done
-	chmod 644 $(PKGDIR)-common/$(OODIR)/LICENSE.fodt
 	chmod 644 $(PKGDIR)-common/$(OODIR)/CREDITS.fodt
 	# Do we really need this (ALV2 mandating it) or can this go?
 	chmod 644 $(PKGDIR)-common/$(OODIR)/NOTICE
