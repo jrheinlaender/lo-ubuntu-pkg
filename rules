@@ -244,7 +244,6 @@ ifeq "$(USE_DBUS)" "y"
 endif
 ENABLE_AVAHI=y
 USE_GSTREAMER=y
-USE_VLC=y
 ENABLE_WEBDAV=y
 ifeq "$(ENABLE_WEBDAV)" "y"
 WEBDAV_LIB=neon
@@ -1043,17 +1042,11 @@ ifneq (,$(filter boost, $(SYSTEM_STUFF)))
     ifeq (,$(filter orcus, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libboost-system$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-iostreams$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-program-options$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-filesystem$(BOOST_VERSION)-dev $(BOOST_MINVER)
     endif
-    ifeq ($(USE_VLC),y)
-	BUILD_DEPS += , libboost-system$(BOOST_VERSION)-dev $(BOOST_MINVER)
-    endif
   else
 	BUILD_DEPS += , libboost-dev $(BOOST_MINVER), libboost-date-time-dev $(BOOST_MINVER), libboost-iostreams-dev $(BOOST_MINVER), libboost-filesystem-dev $(BOOST_MINVER), libboost-locale-dev $(BOOST_MINVER)
 	#BUILD_DEPS += , libboost-thread-dev, libboost-program-options-dev
     ifeq (,$(filter orcus, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libboost-system-dev $(BOOST_MINVER), libboost-iostreams-dev $(BOOST_MINVER), libboost-program-options-dev $(BOOST_MINVER), libboost-filesystem-dev $(BOOST_MINVER)
-    endif
-    ifeq ($(USE_VLC),y)
-	BUILD_DEPS += , libboost-system-dev $(BOOST_MINVER)
     endif
   endif
   ifeq "$(shell if [ -e /usr/lib/$(DEB_HOST_MULTIARCH)/libboost_date_time.so ]; then echo true; fi)" "true"
@@ -1381,23 +1374,8 @@ ifeq "$(USE_GSTREAMER)" "y"
 	CONFIGURE_FLAGS += --enable-gstreamer-1-0
 	BUILD_DEPS += , libgstreamer-plugins-base1.0-dev
 	GSTREAMER_PLUGINS_SUGGESTS += , gstreamer1.0-plugins-base, gstreamer1.0-plugins-good, gstreamer1.0-plugins-ugly, gstreamer1.0-plugins-bad, gstreamer1.0-libav
-	AVMEDIA_BE_DEPENDS += , libreoffice-avmedia-backend-gstreamer
 else
 	CONFIGURE_FLAGS += --disable-gstreamer-1-0
-	DEBHELPER_OPTIONS += -Nlibreoffice-avmedia-backend-gstreamer
-endif
-
-ifeq "$(USE_VLC)" "y"
-	CONFIGURE_FLAGS += --enable-vlc
-	LIBVLC_DEP = $(shell debian/scripts/get_libvlc_dep.sh) (>= 2.0.8)
-	BUILD_DEPS += , $(LIBVLC_DEP)
-  ifeq "$(AVMEDIA_BE_DEPENDS)" ""
-	AVMEDIA_BE_DEPENDS += , libreoffice-avmedia-backend-vlc
-  else
-	AVMEDIA_BE_DEPENDS += | libreoffice-avmedia-backend-vlc
-  endif
-else
-	DEBHELPER_OPTIONS += -Nlibreoffice-avmedia-backend-vlc
 endif
 
 ifeq "$(ENABLE_WEBDAV)" "y"
@@ -1837,7 +1815,6 @@ $(STAMP_DIR)/prepare:
 	set -e;\
 	for FILE in debian/scripts/move-if-change \
 		    debian/scripts/get_libebook_dep.sh \
-		    debian/scripts/get_libvlc_dep.sh \
 		    debian/scripts/locale-gen \
 		    autogen.sh; \
 	do \
@@ -2774,17 +2751,6 @@ else
 	rm -f $(PKGDIR)-core/$(OODIR)/program/ui-previewer
 endif
 
-ifeq "$(USE_GSTREAMER)" "y"
-	mkdir -p $(PKGDIR)-avmedia-backend-gstreamer/$(OODIR)/program
-	mv $(PKGDIR)-core/$(OODIR)/program/libavmediagst.so \
-		$(PKGDIR)-avmedia-backend-gstreamer/$(OODIR)/program
-endif
-ifeq "$(USE_VLC)" "y"
-	mkdir -p $(PKGDIR)-avmedia-backend-vlc/$(OODIR)/program
-	mv $(PKGDIR)-core/$(OODIR)/program/libavmediavlc.so \
-		$(PKGDIR)-avmedia-backend-vlc/$(OODIR)/program
-endif
-
 ifeq "$(ENABLE_JAVA)" "y"
 	mkdir -p $(PKGDIR)-sdbc-hsqldb/$(OODIR)/program
 	mkdir -p $(PKGDIR)-sdbc-hsqldb/usr/lib/libreoffice/program/classes
@@ -2885,7 +2851,7 @@ $(STAMP_DIR)/install-indep: $(STAMP_DIR)/build-indep $(STAMP_DIR)/install-common
 	dh_testdir
 	dh_testroot
 
-ifneq "$(shell echo $(USE_GSTREAMER)$(USE_VLC) | grep -q y && echo 0)" "0"
+ifneq "$(shell echo $(USE_GSTREAMER) | grep -q y && echo 0)" "0"
 	# sound doesn't work anyway, remove the .wav files to save space
 	rm -rf $(PKGDIR)-common/$(OODIR)/share/gallery/sounds
 	rm -f $(PKGDIR)-common/$(OODIR)/share/gallery/sg9.*
@@ -3439,10 +3405,8 @@ endif
 		-V'lpsolve-dep=$(LPSOLVE_DEP)' \
 		-V'gstreamer-plugins-suggests=$(GSTREAMER_PLUGINS_SUGGESTS)' \
 		-V'libebook-dep=$(LIBEBOOK_DEP)' \
-		-V'libvlc-dep=$(LIBVLC_DEP)' \
 		-V'idlc-cpp-depends=$(IDLC_CPP_DEPENDS)' \
 		-V'pyuno-depends=$(PYUNO_DEPENDS)' \
-		-V'avmedia-be-depends=$(AVMEDIA_BE_DEPENDS)' \
 		-V'gnome-gtk-recommends=$(GNOME_GTK_RECOMMENDS)' \
 		-V'firebird-engine-depends=$(FIREBIRD_ENGINE_DEPENDS)' \
 		-V'libsane-suggests=$(shell dpkg -S /usr/lib/$(DEB_HOST_MULTIARCH)/libsane.so.1 | cut -d: -f1)' \
