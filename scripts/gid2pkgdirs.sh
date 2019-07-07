@@ -151,7 +151,7 @@ mkdir -p $OODESTDIR/pkg/libreoffice-core/$OOINSTBASE/program; \
 fi &&
 ( cd pkg/libreoffice-common/$OOINSTBASE/program
   find -maxdepth 1 \
-     -regex '\./\(.*\.so.*\|.*\.bin\|pagein.*\|kdefilepicker\|msfontextract\|.*\.rdb\|javaldx\|oosplash\|uri-encode\|xpdfimport\|ui-previewer\)' \
+     -regex '\./\(.*\.so.*\|.*\.bin\|pagein.*\|kdefilepicker\|msfontextract\|.*\.rdb\|javaldx\|oosplash\|uri-encode\|xpdfimport\|ui-previewer\|opencltest\)' \
      -exec mv {} $OODESTDIR/pkg/libreoffice-core/$OOINSTBASE/program \;
 );
 for i in types services; do \
