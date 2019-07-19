@@ -22,8 +22,8 @@ CURDIR ?= $(realpath $(dir $(firstword $(MAKEFILE_LIST)))/..)
 BASE_VERSION:=$(shell echo $(DEB_VERSION) | cut -d: -f1):$(DEB_VERSION_UPSTREAM)
 BINARY_VERSION=$(DEB_VERSION)
 #HELP_L10N_VIRTUAL_VERSION:=$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d: -f2 | tr [~] [\\-])
-HELP_L10N_VIRTUAL_VERSION:=6.2
-OOVER:=6.2
+HELP_L10N_VIRTUAL_VERSION:=6.3
+OOVER:=6.3
 NEXT_OOVER:=$(shell echo "$(OOVER) + 0.1" | bc)
 
 ARCH_INDEP_PACKAGES := $(shell dh_listpackages -i)
@@ -72,7 +72,7 @@ lo_sources_ver=6.2.5.2
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
 GIT_TAG=libreoffice-$(lo_sources_ver)
-GIT_BRANCH=libreoffice-6-2-5
+GIT_BRANCH=libreoffice-6-3-0
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
 lo_sources_ver=$(shell cat $(CURDIR)/sources.ver | cut -d= -f2)
@@ -91,7 +91,7 @@ BUILD_DEPS=\
     bzip2,\
     flex (>= 2.3.35), \
     fontforge-nox | fontforge, \
-    gperf,\
+    gperf (>= 3.1),\
     libc0.1 (>= 2.10.2-7) [kfreebsd-any],\
     libcups2-dev,\
     libfontconfig1-dev,\
@@ -188,10 +188,6 @@ SYSTEM_STUFF += libqxp
 BUILD_CAIROCANVAS=y
 SYSTEM_STUFF += cairo
 BUILD_KDE=y
-BUILD_KDE4=n
-# < 4.8 fails with gcc 4.7, see #667911
-QT4_MINVER= (>= 4:4.8)
-KDELIBS_MINVER= (>= 4:4.3.4)
 BUILD_KDE5=y
 ENABLE_QT5=n
 QT5_MINVER= (>= 5.6)
@@ -205,19 +201,12 @@ ifeq "$(BUILD_KDE)" "y"
     KDE5_QT5_DEPENDS := libreoffice-qt5 (= $${binary:Version})
   endif
 endif
-ifeq "$(BUILD_KDE)" "y"
-ifeq "$(BUILD_KDE4)" "y"
-ifeq "$(BUILD_KDE5)" "y"
-        $(error only either KDE4 or KDE5 supported)
-endif
-endif
-endif
 # https://www.debian.org/doc/debian-policy/ says this is not defined and must
 # be ignored, but dh_strip mentions (and honours) it, so...
 ifneq (noautodbgsym,$(findstring noautodbgsym,$(DEB_BUILD_OPTIONS)))
 BUILD_DBGSYM_PACKAGES=y
 ifeq "$(DEB_HOST_ARCH)" "amd64"
-USE_DWZ=n
+USE_DWZ=y
 DWZ_ARGS:=-L 100000000
 endif
 endif
@@ -255,7 +244,6 @@ ifeq "$(USE_DBUS)" "y"
 endif
 ENABLE_AVAHI=y
 USE_GSTREAMER=y
-USE_VLC=y
 ENABLE_WEBDAV=y
 ifeq "$(ENABLE_WEBDAV)" "y"
 WEBDAV_LIB=neon
@@ -283,6 +271,8 @@ CURL_SECTYPE=gnutls
 USE_LIBSUITESPARSE=y
 SUITESPARSE_MIN_VERSION= (>= 1:3.4.0)
 PARALLEL_BUILD=y
+ENABLE_LDAP=y
+SYSTEM_STUFF += openldap
 SYSTEM_STUFF += epoxy
 ifeq "$(ENABLE_JAVA)" "y"
   ENABLE_REPORTBUILDER=y
@@ -333,6 +323,8 @@ SYSTEM_STUFF += expat
 SYSTEM_STUFF += odbc
 SYSTEM_STUFF += curl
 SYSTEM_STUFF += sane
+ENABLE_PDFIMPORT=y
+ENABLE_POPPLER=y
 SYSTEM_STUFF += poppler
 SYSTEM_STUFF += libpng
 SYSTEM_STUFF += nss
@@ -342,7 +334,6 @@ ifeq "$(ENABLE_HELP)" "y"
   SYSTEM_STUFF += clucene
 endif
 SYSTEM_STUFF += lcms2
-SYSTEM_STUFF += openldap
 PACKAGE_UNOWINREG_DLL=y
 ifeq "$(DEB_VENDOR)" "Debian"
 BUILD_UNOWINREG_DLL=y
@@ -585,6 +576,7 @@ endif
 # Debian Buster
 ifeq "$(DEB_DISTRIBUTION)" "buster-backports"
   BUGS=mailto:debian-backports@lists.debian.org
+  SYSTEM_STUFF := $(filter-out libmwaw,$(SYSTEM_STUFF))
   USE_DWZ := n
   BUSTER_BACKPORT=y
 endif
@@ -652,36 +644,37 @@ ifneq "$(USE_CLANG)" "y"
       CXX=$(CC_PREFIX)g++-$(GCC_VERSION)
     endif
   endif
-	BUILD_DEPS += , gcc (>= 4:7) [m68k], g++ (>= 4:7) [m68k]
+	BUILD_DEPS += , gcc (>= 4:7), g++ (>= 4:7)
 else
   ifeq "$(CLANG_VERSION)" "default"
 	CLANG=clang
-	BUILD_DEPS += , clang
+	BUILD_DEPS += , clang (>= 1:5.0.2)
 	CONFIGURE_FLAGS+= CC=clang CXX=clang++
   else
 	CLANG=clang-$(CLANG_VERSION)
-	BUILD_DEPS += , clang-$(CLANG_VERSION)
+	BUILD_DEPS += , clang-$(CLANG_VERSION) 
 	CONFIGURE_FLAGS+= CC=clang-$(CLANG_VERSION) CXX=clang++-$(CLANG_VERSION)
   endif
   ifeq "$(ENABLE_COMPILER_PLUGINS)" "y"
   	CONFIGURE_FLAGS += --enable-compiler-plugins
   	CLANGDIR := /usr/lib/llvm-$(shell $(CLANG) --version | head -n 1 | awk '{ print $$3 }' | cut -d. -f1,2)
     ifeq "$(CLANG_VERSION)" "default"
-	BUILD_DEPS += , libclang-dev
+	BUILD_DEPS += , libclang-dev (>= 1:5.0.2)
     else
 	BUILD_DEPS += , libclang-$(CLANG_VERSION)-dev
     endif
   endif 
 endif
 USE_GOLD=n
-ENABLE_CXX17=y
-ifeq "$(ENABLE_CXX17)" "n"
-	CONFIGURE_FLAGS += --disable-c++17
-endif
+# leaves cruft around after building because it runs update_pch.sh..
+ENABLE_PCH=n
 
 ifeq "$(USE_DWZ)" "y"
 	BUILD_DEPS += , debhelper (>= 10.10.4)
-	BUILD_DEPS += , dwz
+	# dwz 0.12-3 claims to have DW_OP_GNU support but still
+	# dwz: debian/libreoffice-core/usr/lib/libreoffice/program/libmergedlo.so: Couldn't find DIE referenced by DW_OP_GNU_parameter_ref
+	# happens 
+	BUILD_DEPS += , dwz (>> 0.12-3)
 endif
 
 ifneq "$(PACKAGE_SDK)" "y"
@@ -697,10 +690,15 @@ else
   endif
 endif
 
+ifeq "$(ENABLE_PDFIMPORT)" "y"
+  ifeq "$(ENABLE_POPPLER)" "y"
 	BUILD_DEPS += , libpoppler-dev (>= 0.12.0), libpoppler-private-dev, libpoppler-cpp-dev
-
-ifeq "$(ENABLE_PDFIUM)" "n"
+  else
+	CONFIGURE_FLAGS += --disable-poppler
+  endif
+  ifeq "$(ENABLE_PDFIUM)" "n"
 	CONFIGURE_FLAGS += --disable-pdfium
+  endif
 endif
 
 ifneq (,$(filter graphite, $(SYSTEM_STUFF)))
@@ -714,6 +712,10 @@ endif
 ifneq (,$(filter libexttextcat, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libexttextcat-dev (>= 3.4.1)
 	TEXTCAT_DATA_RECOMMENDS := libexttextcat-data
+endif
+
+ifneq "$(ENABLE_LDAP)" "y"
+	CONFIGURE_FLAGS += --disable-ldap
 endif
 
 ifeq "$(ENABLE_LIBNUMBERTEXT)" "y"
@@ -736,7 +738,7 @@ else
 endif
 ifneq (,$(filter xmlsec, $(SYSTEM_STUFF)))
   ifeq "$(shell dpkg --compare-versions `pkg-config --modversion icu-i18n` ge 64 && echo true)" "true"
-       BUILD_DEPS += , libxmlsec1-dev (>= 1.2.27-3)
+       BUILD_DEPS += , libxmlsec1-dev (>= 1.2.28~)
   else
        BUILD_DEPS += , libxmlsec1-dev (>= 1.2.24)
   endif
@@ -939,21 +941,18 @@ ifeq "$(ENABLE_JAVA)" "y"
     ifneq (,$(filter sparc64,$(OOO_JAVA_ARCHS)))
 	BUILD_DEPS += , default-jdk (>= 2:1.8-55) [sparc64]
     endif
+    ifeq ($(shell test `java --version | head -n1 | cut -d- -f1 | awk '{ print $$2 }' | cut -d. -f1` -ge 12 && echo true),true)
+	export JAVA_SOURCE_VER=1.7
+	export JAVA_TARGET_VER=1.7
+    endif
   endif
   ifeq "$(JDK)" "openjdk"
-    ifeq "$(JAVA_MAINVER)" "6"
-	BUILD_DEPS += , openjdk-$(JAVA_MAINVER)-jdk (>= 6b23~pre8-2) [$(filter-out ia64,$(OOO_JAVA_ARCHS)])
-    else
-	BUILD_DEPS += , openjdk-$(JAVA_MAINVER)-jdk [$(filter-out mips mipsel,$(OOO_JAVA_ARCHS))]
-      # no 7 on mips(el)
-      ifneq (,$(findstring mips,$(OOO_JAVA_ARCHS)))
-	BUILD_DEPS += , openjdk-6-jdk (>= 6b23~pre8-2) [mips mipsel]
-        ifneq (,$(findstring mips,$(DEB_HOST_ARCH)))
-          JAVA_MAINVER=6
-        endif
-      endif
-    endif
+	BUILD_DEPS += , openjdk-$(JAVA_MAINVER)-jdk
 	JAVA_HOME=/usr/lib/jvm/java-$(JAVA_MAINVER)-openjdk-$(DEB_HOST_ARCH)
+        ifeq ($(shell test $(JAVA_MAINVER) -ge 12 && echo true),true)
+		export JAVA_SOURCE_VER=1.7
+		export JAVA_TARGET_VER=1.7
+        endif
   endif
         TEST_JAVA_HOME=$(JAVA_HOME)
   ifeq "$(ENABLE_MEDIAWIKI)" "y"
@@ -1059,17 +1058,11 @@ ifneq (,$(filter boost, $(SYSTEM_STUFF)))
     ifeq (,$(filter orcus, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libboost-system$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-iostreams$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-program-options$(BOOST_VERSION)-dev $(BOOST_MINVER), libboost-filesystem$(BOOST_VERSION)-dev $(BOOST_MINVER)
     endif
-    ifeq ($(USE_VLC),y)
-	BUILD_DEPS += , libboost-system$(BOOST_VERSION)-dev $(BOOST_MINVER)
-    endif
   else
 	BUILD_DEPS += , libboost-dev $(BOOST_MINVER), libboost-date-time-dev $(BOOST_MINVER), libboost-iostreams-dev $(BOOST_MINVER), libboost-filesystem-dev $(BOOST_MINVER), libboost-locale-dev $(BOOST_MINVER)
 	#BUILD_DEPS += , libboost-thread-dev, libboost-program-options-dev
     ifeq (,$(filter orcus, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libboost-system-dev $(BOOST_MINVER), libboost-iostreams-dev $(BOOST_MINVER), libboost-program-options-dev $(BOOST_MINVER), libboost-filesystem-dev $(BOOST_MINVER)
-    endif
-    ifeq ($(USE_VLC),y)
-	BUILD_DEPS += , libboost-system-dev $(BOOST_MINVER)
     endif
   endif
   ifeq "$(shell if [ -e /usr/lib/$(DEB_HOST_MULTIARCH)/libboost_date_time.so ]; then echo true; fi)" "true"
@@ -1117,7 +1110,7 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
   endif
   ifneq (,$(filter libmwaw, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libmwaw-dev (>= 0.3.1)
-	BUILD_DEPS += , libmwaw-dev (>= 0.3.13) <!nocheck>
+	BUILD_DEPS += , libmwaw-dev (>= 0.3.15) <!nocheck>
   endif
   ifneq (,$(filter libodfgen, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libodfgen-dev (>= 0.1)
@@ -1153,7 +1146,7 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
 	BUILD_DEPS += , libe-book-dev (>= 0.1.2) <!nocheck>
   endif
   ifneq (,$(filter libcmis, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libcmis-dev (>= 0.5.0-3)
+	BUILD_DEPS += , libcmis-dev (>= 0.5.2~)
   endif
 endif
 	CONFIGURE_FLAGS += --with-external-thes-dir=$(THES_DIR)
@@ -1197,15 +1190,6 @@ else
 	CONFIGURE_FLAGS+= --disable-cairo
 endif
 
-ifeq "$(BUILD_KDE4)" "n"
-	CONFIGURE_FLAGS += --disable-kde4
-else
-	CONFIGURE_FLAGS += --enable-kde4
-	KDE_ICONSET_DEP=libreoffice-style-breeze
-	BUILD_DEPS += , kdelibs5-dev $(KDELIBS_MINVER)
-	BUILD_DEPS += , libqt4-dev $(QT4_MINVER)
-endif
-
 ifeq "$(BUILD_KDE5)" "y"
 	KDE_ICONSET_DEP=libreoffice-style-breeze
   ifeq "$(ENABLE_GTK3_KDE5)" "y"
@@ -1222,14 +1206,14 @@ ifeq "$(BUILD_KDE5)" "y"
 	CONFIGURE_FLAGS += --enable-kde5
   endif
 	BUILD_DEPS += , libkf5coreaddons-dev, libkf5i18n-dev, libkf5config-dev, libkf5windowsystem-dev, libkf5kio-dev
-	BUILD_DEPS += , libqt5x11extras5-dev $(QT5_MINVER)
-	BUILD_DEPS += , libxcb1-dev
 endif
 
 ifeq "$(ENABLE_QT5)" "y"
 	CONFIGURE_FLAGS += --enable-qt5
 	BUILD_DEPS += , qtbase5-dev $(QT5_MINVER), qt5-qmake $(QT5_MINVER), qtbase5-dev-tools $(QT5_MINVER)
+	BUILD_DEPS += , libqt5x11extras5-dev $(QT5_MINVER)
 	BUILD_DEPS += , libglib2.0-dev (>= 2.4)
+	BUILD_DEPS += , libxcb1-dev
         # for correct qmake/moc
 	BUILD_DEPS += , qtchooser
 	export QT_SELECT=5
@@ -1400,23 +1384,8 @@ ifeq "$(USE_GSTREAMER)" "y"
 	CONFIGURE_FLAGS += --enable-gstreamer-1-0
 	BUILD_DEPS += , libgstreamer-plugins-base1.0-dev
 	GSTREAMER_PLUGINS_SUGGESTS += , gstreamer1.0-plugins-base, gstreamer1.0-plugins-good, gstreamer1.0-plugins-ugly, gstreamer1.0-plugins-bad, gstreamer1.0-libav
-	AVMEDIA_BE_DEPENDS += , libreoffice-avmedia-backend-gstreamer
 else
 	CONFIGURE_FLAGS += --disable-gstreamer-1-0
-	DEBHELPER_OPTIONS += -Nlibreoffice-avmedia-backend-gstreamer
-endif
-
-ifeq "$(USE_VLC)" "y"
-	CONFIGURE_FLAGS += --enable-vlc
-	LIBVLC_DEP = $(shell debian/scripts/get_libvlc_dep.sh) (>= 2.0.8)
-	BUILD_DEPS += , $(LIBVLC_DEP)
-  ifeq "$(AVMEDIA_BE_DEPENDS)" ""
-	AVMEDIA_BE_DEPENDS += , libreoffice-avmedia-backend-vlc
-  else
-	AVMEDIA_BE_DEPENDS += | libreoffice-avmedia-backend-vlc
-  endif
-else
-	DEBHELPER_OPTIONS += -Nlibreoffice-avmedia-backend-vlc
 endif
 
 ifeq "$(ENABLE_WEBDAV)" "y"
@@ -1494,12 +1463,23 @@ endif
 
 ifeq ($(USE_GOLD),y)
        CONFIGURE_FLAGS += --enable-ld=gold
+else
+# --enable-ld=gold is default for debug builds if found
+ifneq (debug,$(findstring debug,$(DEB_BUILD_OPTIONS)))
+       CONFIGURE_FLAGS += --disable-ld
+endif
+endif
+
+ifeq "$(ENABLE_PCH)" "y"
+	CONFIGURE_FLAGS += --enable-pch
 endif
 
 # Use compiler cache?  Include ccache in DEB_BUILD_OPTIONS for much faster rebuild times
 # A complete build uses about 9G of compiler cache.
 ifneq (ccache,$(findstring ccache,$(DEB_BUILD_OPTIONS)))
 	CONFIGURE_FLAGS += --disable-ccache
+else
+	CONFIGURE_FLAGS += --enable-ccache=nodepend
 endif
 
 ## Build n projects in parallel?
@@ -1739,7 +1719,6 @@ $(STAMP_DIR)/prepare:
 	set -e;\
 	for FILE in debian/scripts/move-if-change \
 		    debian/scripts/get_libebook_dep.sh \
-		    debian/scripts/get_libvlc_dep.sh \
 		    debian/scripts/locale-gen \
 		    autogen.sh; \
 	do \
@@ -1768,6 +1747,11 @@ endif
 endif
 
 	rm -f vcl/qa/cppunit/graphicfilter/data/wmf/fail/seek-1.wmf
+
+ifeq "$(ENABLE_PCH)" "y"
+	# regen PCHs to go sure...
+	bin/update_pch.sh
+endif
 
 	touch $@
 
@@ -2500,17 +2484,6 @@ else
 	rm -f $(PKGDIR)-core/$(OODIR)/program/ui-previewer
 endif
 
-ifeq "$(USE_GSTREAMER)" "y"
-	mkdir -p $(PKGDIR)-avmedia-backend-gstreamer/$(OODIR)/program
-	mv $(PKGDIR)-core/$(OODIR)/program/libavmediagst.so \
-		$(PKGDIR)-avmedia-backend-gstreamer/$(OODIR)/program
-endif
-ifeq "$(USE_VLC)" "y"
-	mkdir -p $(PKGDIR)-avmedia-backend-vlc/$(OODIR)/program
-	mv $(PKGDIR)-core/$(OODIR)/program/libavmediavlc.so \
-		$(PKGDIR)-avmedia-backend-vlc/$(OODIR)/program
-endif
-
 ifeq "$(ENABLE_JAVA)" "y"
 	mkdir -p $(PKGDIR)-sdbc-hsqldb/$(OODIR)/program
 	mkdir -p $(PKGDIR)-sdbc-hsqldb/usr/lib/libreoffice/program/classes
@@ -2611,7 +2584,7 @@ $(STAMP_DIR)/install-indep: $(STAMP_DIR)/build-indep $(STAMP_DIR)/install-common
 	dh_testdir
 	dh_testroot
 
-ifneq "$(shell echo $(USE_GSTREAMER)$(USE_VLC) | grep -q y && echo 0)" "0"
+ifneq "$(shell echo $(USE_GSTREAMER) | grep -q y && echo 0)" "0"
 	# sound doesn't work anyway, remove the .wav files to save space
 	rm -rf $(PKGDIR)-common/$(OODIR)/share/gallery/sounds
 	rm -f $(PKGDIR)-common/$(OODIR)/share/gallery/sg9.*
@@ -2683,7 +2656,6 @@ endif
 	for i in editpic poll savepic show webcast; do \
 		chmod 755 $(PKGDIR)-common/$(OODIR)/share/config/webcast/$$i.pl; \
 	done
-	chmod 644 $(PKGDIR)-common/$(OODIR)/LICENSE.fodt
 	chmod 644 $(PKGDIR)-common/$(OODIR)/CREDITS.fodt
 	# Do we really need this (ALV2 mandating it) or can this go?
 	chmod 644 $(PKGDIR)-common/$(OODIR)/NOTICE
@@ -3167,10 +3139,8 @@ endif
 		-V'lpsolve-dep=$(LPSOLVE_DEP)' \
 		-V'gstreamer-plugins-suggests=$(GSTREAMER_PLUGINS_SUGGESTS)' \
 		-V'libebook-dep=$(LIBEBOOK_DEP)' \
-		-V'libvlc-dep=$(LIBVLC_DEP)' \
 		-V'idlc-cpp-depends=$(IDLC_CPP_DEPENDS)' \
 		-V'pyuno-depends=$(PYUNO_DEPENDS)' \
-		-V'avmedia-be-depends=$(AVMEDIA_BE_DEPENDS)' \
 		-V'gnome-gtk-recommends=$(GNOME_GTK_RECOMMENDS)' \
 		-V'firebird-engine-depends=$(FIREBIRD_ENGINE_DEPENDS)' \
 		-V'libsane-suggests=$(shell dpkg -S /usr/lib/$(DEB_HOST_MULTIARCH)/libsane.so.1 | cut -d: -f1)' \
