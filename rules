@@ -186,18 +186,15 @@ SYSTEM_STUFF += libqxp
 SYSTEM_STUFF += qrcodegen
 BUILD_CAIROCANVAS=y
 SYSTEM_STUFF += cairo
-BUILD_KDE=y
-BUILD_KDE5=y
+BUILD_PLASMA=y
 ENABLE_QT5=n
 QT5_MINVER= (>= 5.6)
-ifeq "$(BUILD_KDE)" "y"
-  ENABLE_GTK3_KDE5=n
-  ENABLE_KDE5=y
-  KDE_MAJOR=5
-  # KDE5 depends on Qt5
-  ifeq "$(ENABLE_KDE5)" "y"
+ifeq "$(BUILD_PLASMA)" "y"
+  ENABLE_KF5=y
+  # KF5 depends on Qt5
+  ifeq "$(ENABLE_KF5)" "y"
     ENABLE_QT5=y
-    KDE5_QT5_DEPENDS := libreoffice-qt5 (= $${binary:Version})
+    KF5_QT5_DEPENDS := libreoffice-qt5 (= $${binary:Version})
   endif
 endif
 # https://www.debian.org/doc/debian-policy/ says this is not defined and must
@@ -1180,20 +1177,10 @@ else
 	CONFIGURE_FLAGS+= --disable-cairo
 endif
 
-ifeq "$(BUILD_KDE5)" "y"
-	KDE_ICONSET_DEP=libreoffice-style-breeze
-  ifeq "$(ENABLE_GTK3_KDE5)" "y"
-	CONFIGURE_FLAGS += --enable-gtk3-kde5
-	# set them here as we don't build the Qt5 plugin. If it is built
-	# it is set below
-	BUILD_DEPS += , qtbase5-dev $(QT5_MINVER), qt5-qmake $(QT5_MINVER), qtbase5-dev-tools $(QT5_MINVER)
-	BUILD_DEPS += , libglib2.0-dev (>= 2.4)
-        # for correct qmake/moc
-	BUILD_DEPS += , qtchooser
-	export QT_SELECT=5
-  endif
-  ifeq "$(ENABLE_KDE5)" "y"
-	CONFIGURE_FLAGS += --enable-kde5
+ifeq "$(BUILD_PLASMA)" "y"
+	PLASMA_ICONSET_DEP=libreoffice-style-breeze
+  ifeq "$(ENABLE_KF5)" "y"
+	CONFIGURE_FLAGS += --enable-kf5
   endif
 	BUILD_DEPS += , libkf5coreaddons-dev, libkf5i18n-dev, libkf5config-dev, libkf5windowsystem-dev, libkf5kio-dev
 endif
@@ -1718,11 +1705,14 @@ endif
 ifeq "$(BUILD_GTK3)" "y"
 	cat debian/control.gtk3.in >> debian/control
 endif
-ifeq "$(BUILD_KDE)" "y"
-	cat debian/control.kde$(KDE_MAJOR).in >> debian/control
+ifeq "$(ENABLE_QT5)" "y"
+	cat debian/control.kf5.in >> debian/control
 endif
 ifeq "$(ENABLE_QT5)" "y"
 	cat debian/control.qt5.in >> debian/control
+endif
+ifeq "$(ENABLE_PLASMA)" "y"
+	cat debian/control.plasma.in >> debian/control
 endif
 	cat debian/control.postgresql.in >> debian/control
 ifeq "$(ENABLE_EVO2)" "y"
@@ -1750,8 +1740,8 @@ endif
 	perl -pi -e "s,%OOO_NO_FIREBIRD_ARCHS%,$(OOO_NO_FIREBIRD_ARCHS),g" debian/control
 	perl -pi -e "s#%BUILD_DEPS%#$(strip $(BUILD_DEPS))#g" debian/control
 	perl -pi -e "s#%JUNIT_MIN_VER%#$(JUNIT_MIN_VER)#g" debian/control
-ifeq "$(BUILD_KDE)" "y"
-	perl -pi -e 's/%LO-DESKTOP-INTEGRATION%/libreoffice-gnome | libreoffice-kde$(KDE_MAJOR)/' debian/control
+ifeq "$(BUILD_PLASMA)" "y"
+	perl -pi -e 's/%LO-DESKTOP-INTEGRATION%/libreoffice-gnome | libreoffice-plasma/' debian/control
 else
 	perl -pi -e 's/%LO-DESKTOP-INTEGRATION%/libreoffice-gnome/' debian/control
 endif
@@ -2039,15 +2029,15 @@ endif
 	cd $(CURDIR)/debian/tmp/pkg && rm -rf \*
 
 ifeq "$(ENABLE_QT5)" "y"
-	# we need to do it here. If -kde isn't built
-	# there's no -kde.install generated, so dh_missing complains later
+	# we need to do it here. If -kf5 isn't built
+	# there's no -kf5.install generated, so dh_missing complains later
 	mkdir -p debian/tmp/pkg/libreoffice-qt5/$(OODIR)/program
 	mv debian/tmp/pkg/libreoffice-kde/$(OODIR)/program/libvclplug_qt5lo.so\
 		debian/tmp/pkg/libreoffice-qt5/$(OODIR)/program
 endif
-ifeq "$(BUILD_KDE)" "y"
+ifeq "$(ENABLE_KF5)" "y"
 	mv debian/tmp/pkg/libreoffice-kde \
-		debian/tmp/pkg/libreoffice-kde$(KDE_MAJOR)
+		debian/tmp/pkg/libreoffice-kf5
 endif
 
 ifeq "$(ENABLE_HELP)" "y"
@@ -2158,8 +2148,8 @@ endif
 		echo "../usr/share/appdata/libreoffice-$$i.appdata.xml /usr/share/metainfo/" >> $(PKGDIR)-$$i.install; \
 	done
 
-ifeq "$(BUILD_KDE)" "y"
-	echo "../usr/share/appdata/org.libreoffice.kde.metainfo.xml /usr/share/metainfo/" >> $(PKGDIR)-kde$(KDE_MAJOR).install
+ifeq "$(BUILD_PLASMA)" "y"
+	echo "../usr/share/appdata/org.libreoffice.kde.metainfo.xml /usr/share/metainfo/" >> $(PKGDIR)-plasma.install
 endif
 
 ifeq "$(PACKAGE_LOKIT)" "y"
@@ -2581,32 +2571,32 @@ endif
 	done
 
 
-ifeq "$(BUILD_KDE)" "y"
-	# install files for KDEs "create new" ...
-	mkdir -p $(PKGDIR)-kde$(KDE_MAJOR)/usr/share/templates/.source
+ifeq "$(BUILD_PLASMA)" "y"
+	# install files for "create new" ...
+	mkdir -p $(PKGDIR)-plasma/usr/share/templates/.source
 	for i in $(SOURCE_TREE)/extras/source/shellnew/*; do \
-		cp $$i $(PKGDIR)-kde$(KDE_MAJOR)/usr/share/templates/.source/`basename $$i`; \
+		cp $$i $(PKGDIR)-plasma/usr/share/templates/.source/`basename $$i`; \
 	done
 	cat debian/templates/soffice-template.desktop.in \
 		| sed -e "s/@APP@/Writer/" \
 		| sed -e "s/@EXT@/odt/" \
 		| sed -e "s/@TYPE@/text/" \
-		> $(PKGDIR)-kde$(KDE_MAJOR)/usr/share/templates/soffice.odt.desktop
+		> $(PKGDIR)-plasma/usr/share/templates/soffice.odt.desktop
 	cat debian/templates/soffice-template.desktop.in \
 		| sed -e "s/@APP@/Calc/" \
 		| sed -e "s/@EXT@/ods/" \
 		| sed -e "s/@TYPE@/spreadsheet/" \
-		> $(PKGDIR)-kde$(KDE_MAJOR)/usr/share/templates/soffice.ods.desktop
+		> $(PKGDIR)-plasma/usr/share/templates/soffice.ods.desktop
 	cat debian/templates/soffice-template.desktop.in \
 		| sed -e "s/@APP@/Impress/" \
 		| sed -e "s/@EXT@/odp/" \
 		| sed -e "s/@TYPE@/presentation/" \
-		> $(PKGDIR)-kde$(KDE_MAJOR)/usr/share/templates/soffice.odp.desktop
+		> $(PKGDIR)-plasma/usr/share/templates/soffice.odp.desktop
 	cat debian/templates/soffice-template.desktop.in \
 		| sed -e "s/@APP@/Draw/" \
 		| sed -e "s/@EXT@/odg/" \
 		| sed -e "s/@TYPE@/drawing/" \
-		> $(PKGDIR)-kde$(KDE_MAJOR)/usr/share/templates/soffice.odg.desktop
+		> $(PKGDIR)-plasma/usr/share/templates/soffice.odg.desktop
 endif
 
 	# split out gtk stuff
@@ -3403,8 +3393,8 @@ endif
 		-V'java-runtime-depends=$(JAVA_RUNTIME_DEPENDS)' \
 		-V'Binary-Version=$(BINARY_VERSION)' \
 		-V'ooo-officebean-dep=$(OOO_OFFICEBEAN_DEP)' \
-		-V'kde-iconset-dep=$(KDE_ICONSET_DEP)' \
-		-V'kde5-qt5-depends=$(KDE5_QT5_DEPENDS)' \
+		-V'plasma-iconset-dep=$(PLASMA_ICONSET_DEP)' \
+		-V'kf5-qt5-depends=$(KF5_QT5_DEPENDS)' \
 		-V'lpsolve-dep=$(LPSOLVE_DEP)' \
 		-V'gstreamer-plugins-suggests=$(GSTREAMER_PLUGINS_SUGGESTS)' \
 		-V'libebook-dep=$(LIBEBOOK_DEP)' \
