@@ -68,7 +68,7 @@ ifeq "$(USE_GIT_TARBALLS)" "y"
 GIT_BASEURL:=git://anongit.freedesktop.org/libreoffice
 # bootstraping this from the source tree is breaking get-orig-source
 #lo_sources_ver=$(shell grep AC_INIT $(SOURCE_TREE)/configure.ac | grep documentfoundation | cut -d, -f2 | sed -e 's,\[,,' -e 's,\],,')
-lo_sources_ver=6.3.0.2
+lo_sources_ver=6.3.0.4
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
 GIT_TAG=libreoffice-$(lo_sources_ver)
@@ -206,7 +206,7 @@ endif
 ifneq (noautodbgsym,$(findstring noautodbgsym,$(DEB_BUILD_OPTIONS)))
 BUILD_DBGSYM_PACKAGES=y
 ifeq "$(DEB_HOST_ARCH)" "amd64"
-USE_DWZ=y
+USE_DWZ=n
 DWZ_ARGS:=-L 100000000
 endif
 endif
@@ -241,6 +241,7 @@ ifeq "$(USE_DBUS)" "y"
     ENABLE_BLUETOOTH=y
     SYSTEM_STUFF += bluez
   endif
+    ENABLE_PACKAGEKIT=n
 endif
 ENABLE_AVAHI=y
 USE_GSTREAMER=y
@@ -306,8 +307,8 @@ SYSTEM_STUFF += graphite
 SYSTEM_STUFF += harfbuzz
 SYSTEM_STUFF += libexttextcat
 SYSTEM_STUFF += cppunit
-DEFAULT_IMAGE=colibre
-IMAGES:=$(DEFAULT_IMAGE) tango sifr sifr_dark breeze breeze_dark breeze_svg elementary elementary_svg karasa_jaga
+DEFAULT_IMAGE=tango
+IMAGES:=$(DEFAULT_IMAGE) colibre sifr sifr_dark breeze breeze_dark breeze_svg elementary elementary_svg karasa_jaga
 CONFIGURE_FLAGS_INDEP += --with-theme="$(IMAGES)"
 MYSQL_FLAVOUR=default
 # set this also to y for system-mysql..
@@ -330,7 +331,14 @@ SYSTEM_STUFF += libpng
 SYSTEM_STUFF += nss
 ENABLE_HELP=y
 ifeq "$(ENABLE_HELP)" "y"
+  ENABLE_HTML_HELP=y
+  ifeq "$(ENABLE_HTML_HELP)" "y"
+  HELP_DEPENDS := libreoffice-help-common (= $${binary:Version}), firefox-esr | epiphany-browser | konqueror | chromium | firefox
+  HELP_COMMON_DEPENDS := libjs-normalize.css
+  else
   HELP_DEPENDS := libreoffice-writer
+  DEBHELPER_OPTIONS += -Nlibreoffice-help-common
+  endif
   SYSTEM_STUFF += clucene
 endif
 SYSTEM_STUFF += lcms2
@@ -346,14 +354,10 @@ ifeq "$(USE_UCPP)" "y"
 endif
 # kfreebsd runs into SIZE_MAX problems, and the rest might
 # get OOM (mips(el)...) so enable mergelibs only for 64bit
-# archs (exception: i386)
+# archs
 ifeq (,$(filter kfreebsd,$(DEB_HOST_ARCH)))
   ifeq "$(DEB_HOST_ARCH_BITS)" "64"
 	ENABLE_MERGELIBS=y
-  else
-    ifeq "$(DEB_HOST_ARCH)" "i386"
-	ENABLE_MERGELIBS=y
-    endif
   endif
 endif
 #ifeq "$(ENABLE_MERGELIBS)" "y"
@@ -425,6 +429,9 @@ CONFIGURE_FLAGS= \
 
 ifeq "$(ENABLE_HELP)" "y"
 CONFIGURE_FLAGS_INDEP+= --with-help
+  ifeq "$(ENABLE_HTML_HELP)" "y"
+	CONFIGURE_FLAGS_INDEP+= --with-help=html
+  endif
 endif
 
 ifeq "$(shell echo $(DEB_VERSION_UPSTREAM) | grep -E '(alpha|beta)'; echo $$?)" "1"
@@ -471,7 +478,7 @@ OOO_BE_ARCHS = $(filter hppa m68k mips mips64 powerpc powerpcspe ppc64 s390 s390
 OOO_LE_ARCHS = $(filter-out $(OOO_BE_ARCHS),$(OOO_ARCHS))
 $(eval $(call gen_no_archs,OOO_LE_ARCHS))
 
-OOO_CHECK_ARCHS := $(filter-out kfreebsd-i386 kfreebsd-amd64 mips,$(OOO_ARCHS))
+OOO_CHECK_ARCHS := $(filter-out kfreebsd-i386 kfreebsd-amd64 mips mipsel mips64el armel armhf,$(OOO_ARCHS))
 $(eval $(call gen_no_archs,OOO_CHECK_ARCHS))
 #OOO_JUNIT_ARCHS := i386 amd64 armhf arm64
 OOO_JUNIT_ARCHS := amd64 arm64
@@ -566,10 +573,6 @@ ifeq "$(BUILD_TEST_PACKAGES)" "n"
 	DEBHELPER_OPTIONS += -Nlibreoffice-subsequentcheckbase
 endif
 
-ifneq (,$(findstring mips, $(OOO_ARCHS)))
-  BUILD_DEPS += , binutils (>= 2.23) [mips mipsel], libc6 (>= 2.17-6) [mips mipsel]
-endif
-
 #############
 # Distro-specific overrides
 
@@ -604,8 +607,8 @@ ifeq "$(DEB_VENDOR)" "Ubuntu"
     BUGS=mailto:libreoffice@lists.launchpad.net
   endif
 
-  USE_DWZ=n
-  USE_VLC:=n
+  USE_DWZ := n
+  USE_VLC := n
 
   ENABLE_COINMP := n
 endif
@@ -772,12 +775,8 @@ else
   endif
 endif
 
-ifneq (,$(filter i386,$(DEB_HOST_ARCH)))
+ifneq (,$(filter amd64,$(DEB_HOST_ARCH)))
 	SMALL_SYMBOLS = n
-else
-  ifneq (,$(filter amd64,$(DEB_HOST_ARCH)))
-	SMALL_SYMBOLS = n
-  endif
 endif
 
 ifeq "$(ENABLE_SYMBOLS)" "y"
@@ -918,6 +917,7 @@ BUILD_ISOS = $(ISOS)
 ifneq "$(BUILD_ONLY_EN_US)" "y"
   ifneq "$(BUILD_ISOS)" "en-US"
 	CONFIGURE_FLAGS_LANG += --with-lang="$(BUILD_ISOS)"
+	CONFIGURE_FLAGS_INDEP += $(CONFIGURE_FLAGS_LANG)
 	BUILD_DEPS_INDEP += , gettext
   endif
 endif
@@ -956,9 +956,15 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
         TEST_JAVA_HOME=$(JAVA_HOME)
   ifeq "$(ENABLE_MEDIAWIKI)" "y"
+	#BUILD_DEPS_INDEP += , ant (>= 1.7.0)$(OOO_NO_JAVA_ARCHS), ant-optional (>= 1.7.0)$(OOO_NO_JAVA_ARCHS)
 	BUILD_DEPS += , ant (>= 1.7.0)$(OOO_NO_JAVA_ARCHS), ant-optional (>= 1.7.0)$(OOO_NO_JAVA_ARCHS)
   else
+    # report-builder is done in build-arch already
+    ifneq (,$(filter jfreereport, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , ant (>= 1.6.5)$(OOO_NO_JAVA_ARCHS)
+    else
+	BUILD_DEPS_INDEP += , ant (>= 1.6.5)$(OOO_NO_JAVA_ARCHS)
+    endif
   endif
 	JAVA_RUNTIME_DEPENDS = default-jre
   ifneq (,$(filter $(DEB_HOST_ARCH), $(OOO_OPENJDK_ARCHS)))
@@ -1372,6 +1378,9 @@ ifeq "$(USE_DBUS)" "y"
   else
 	CONFIGURE_FLAGS += --disable-sdremote-bluetooth
   endif
+  ifeq "$(ENABLE_PACKAGEKIT)" "y"
+	CONFIGURE_FLAGS += --enable-packagekit
+  endif
 endif
 
 ifeq "$(ENABLE_AVAHI)" "y"
@@ -1516,7 +1525,7 @@ endif
 # that match the given targets will be removed automagically.
 stampdir_targets+=prepare
 stampdir_targets+=build build-arch build-indep maintscripts
-stampdir_targets+=install-common install-arch install-indep
+stampdir_targets+=install-common install-arch install-indep langpacks
 stampdir_targets+=binary-arch binary-indep
 ifdef FORCE
  DUMMY:=$(shell rm -f $(patsubst %,$(STAMP_DIR)/%,$(filter $(stampdir_targets),$(MAKECMDGOALS))))
@@ -1537,13 +1546,16 @@ clean-debdir:
 
 	find debian -name "*.links" ! -name "libreoffice-dev-doc.links" \
 		! -name "libreoffice-java-common.links" \
-		! -name "liblibreofficekitgtk.links" -exec rm {} \;
+		! -name "liblibreofficekitgtk.links" \
+		! -name "libreoffice-help-common.links" -exec rm {} \;
 	if [ -d "$(STAMP_DIR)" ]; then rm -rf "$(STAMP_DIR)"; fi
 	rm -f debian/*.bug-script
 
 	rm -f debian/shlibs.local
 
-	rm -f debian/libreoffice-dev-doc.doc-base.*
+	rm -f debian/libreoffice-dev-doc.doc-base.* \
+		debian/libreoffice-help-*.doc-base
+	rm -f debian/libreoffice-help-*.lintian-overrides
 	rm -f debian/*.install debian/*.dirs debian/*.changelog
 	rm -f debian/*.postinst debian/*.postrm debian/*.preinst debian/*.prerm debian/*.triggers
 	rm -f debian/pom*.xml
@@ -1600,6 +1612,103 @@ debian/control: $(wildcard debian/control*in) $(SOURCE_TREE)/bin/lo-xlate-lang  
 	    -e "s#@BUGS@#$(BUGS)#g" \
 	    < debian/control.in > debian/control
 
+	for LNUM in $(filter-out en-US,$(LANGPACKISOS)) ; do \
+	    LNAME=`$(SOURCE_TREE)/bin/lo-xlate-lang -l $$LNUM | perl -e 'print ucfirst(<STDIN>);'`; \
+	    LCODE=`$(SOURCE_TREE)/bin/lo-xlate-lang -i $$LNUM | tr A-Z a-z`; \
+	    [ "$$LNUM" = ca-valencia ] && continue; \
+	    [ "$$LNUM" = sr-Latn ] && continue; \
+	    [ "$$LCODE" = kmr-latn ] && LCODE=kmr; \
+	    CCODE=`echo $$LCODE | sed 's/-.*//'`; \
+	    case "$$LCODE" in \
+		bn) \
+			FONT_RECOMMENDS=", fonts-beng"; \
+			;; \
+		gu) \
+			FONT_RECOMMENDS=", fonts-gujr"; \
+			;; \
+		pa-in) \
+			FONT_RECOMMENDS=", fonts-guru"; \
+			;; \
+		ml) \
+			FONT_RECOMMENDS=", fonts-mlym"; \
+			;; \
+		or) \
+			FONT_RECOMMENDS=", fonts-orya"; \
+			;; \
+		te) \
+			FONT_RECOMMENDS=", fonts-telu"; \
+			;; \
+		ta) \
+			FONT_RECOMMENDS=", fonts-taml"; \
+			;; \
+		hi-in|ne|mr) \
+			FONT_RECOMMENDS=", fonts-deva"; \
+			;; \
+		he) \
+			FONT_RECOMMENDS=", culmus"; \
+			;; \
+		km) \
+			FONT_RECOMMENDS=", fonts-khmeros"; \
+			;; \
+		ar) \
+			FONT_RECOMMENDS=", fonts-kacst, fonts-hosny-amiri, fonts-sil-scheherazade, fonts-hosny-thabit"; \
+			;; \
+		fa) \
+			FONT_RECOMMENDS=", fonts-farsiweb"; \
+			;; \
+		dz) \
+			FONT_RECOMMENDS=", fonts-dzongkha"; \
+			;; \
+		th) \
+			FONT_RECOMMENDS=", fonts-thai-tlwg"; \
+			;; \
+		*) \
+			FONT_RECOMMENDS= ;; \
+	    esac; \
+	    case "$$LCODE" in \
+		rw) \
+			LOCALES_DEPENDS="locales (>= 2.3.6) | locales-all (>= 2.3.6)" \
+			;; \
+		ss|ts|km|ns|tn) \
+			LOCALES_DEPENDS="locales (>= 2.3.5-12) | locales-all" \
+			;; \
+		sr) \
+			LOCALES_DEPENDS="locales (>= 2.3.6.ds1-5) | locales-all" \
+			;; \
+		as|or|nr) \
+			LOCALES_DEPENDS="locales (>= 2.3.6.ds1-1) | locales-all (>= 2.3.6.ds1-1)" \
+			;; \
+		sw) \
+			LOCALES_DEPENDS="locales (>= 2.13-5) | locales-all (>= 2.13-5)" \
+			;; \
+		*) \
+			LOCALES_DEPENDS="locales | locales-all" \
+			;; \
+	    esac; \
+	    sed -e "s|@LNAME@|$$LNAME|g" -e "s|@LCODE@|$$LCODE|g" \
+		-e "s|@CCODE@|$$CCODE|g" \
+	        -e "s|@FONT_RECOMMENDS@|$$FONT_RECOMMENDS|g" \
+	        -e "s:@LOCALES_DEPENDS@:$$LOCALES_DEPENDS:g" \
+		-e "s|@LDAP_LIB@|$(LDAP_LIB)|g" \
+	        >> debian/control < debian/control.lang.in; \
+	done
+
+ifneq "$(ENABLE_HELP)" "n"
+	for LNUM in $(HELPISOS) ; do \
+	    LNAME=`$(SOURCE_TREE)/bin/lo-xlate-lang -l $$LNUM | perl -e 'print ucfirst(<STDIN>);'`; \
+	    LCODE=`$(SOURCE_TREE)/bin/lo-xlate-lang -i $$LNUM | tr A-Z a-z`; \
+	    [ "$$LNUM" = ca-valencia ] && continue; \
+	    CCODE=`echo $$LCODE | sed 's/-.*//'`; \
+	    sed -e "s|@LNAME@|$$LNAME|g" -e "s|@LCODE@|$$LCODE|g" \
+		-e "s|@CCODE@|$$CCODE|g" \
+	        >> debian/control < debian/control.help.in; \
+	done
+	# en_US is in -common
+	perl -pi -e 's|(Depends: libreoffice-writer \| language-support-translations-en), libreoffice-l10n-en-us|\1|' \
+		debian/control
+	perl -pi -e 's|(Depends: libreoffice-writer, libreoffice-l10n-en-us)|\1, fonts-deva|' \
+		debian/control
+endif
 	cat debian/control.ure.in >> debian/control
 ifeq "$(ENABLE_JAVA)" "y"
   ifeq "$(ENABLE_MEDIAWIKI)" "y"
@@ -1680,7 +1789,7 @@ ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 	perl -pi -e "s/(Build-Conflicts: .*)/\1,fonts-opensymbol <!nocheck>,/" debian/control
 endif
 
-	python3 debian/scripts/joinctrl.py < debian/control > debian/control.tmp
+	$(PYTHON) debian/scripts/joinctrl.py < debian/control > debian/control.tmp
 	mv debian/control.tmp debian/control
 
 	# make -l10n-fi suggest libreoffice-spellcheck-fi to
@@ -1697,6 +1806,12 @@ endif
 
 ifneq "$(DICT_DIR)" "/usr/share/hunspell"
 	perl -pi -e 's/^Breaks:.*myspell.*\n//' debian/control
+endif
+
+ifeq "$(ENABLE_APPARMOR_PROFILES)" "y"
+	perl -pi -e 's/ttf-mscorefonts-installer/ttf-mscorefonts-installer, apparmor (>= 2.13.1~)/' debian/control
+	perl -pi -e 's/openoffice-unbundled/openoffice-unbundled, apparmor (<< 2.13.1~)/' debian/control
+
 endif
 
 .DELETE_ON_ERROR: debian/control
@@ -1746,8 +1861,6 @@ ifeq (terse,$(findstring terse,$(DEB_BUILD_OPTIONS)))
 endif
 endif
 
-	rm -f vcl/qa/cppunit/graphicfilter/data/wmf/fail/seek-1.wmf
-
 ifeq "$(ENABLE_PCH)" "y"
 	# regen PCHs to go sure...
 	bin/update_pch.sh
@@ -1763,7 +1876,6 @@ config_host.mk:
 	MARIADBCONFIG=$(MARIADBCONFIG) \
 	FIREBIRD_CFLAGS=$(FIREBIRD_CFLAGS) FIREBIRD_LIBS=$(FIREBIRD_LIBS) \
 	./autogen.sh $(CONFIGURE_FLAGS)
-	echo "export gb_TRANS_LANGS_INTEGRAL=$(filter-out en-US,$(BUILD_ISOS))" >> config_host.mk
 
 build:
 	$(CURDIR)/debian/rules build-arch
@@ -1788,7 +1900,6 @@ $(STAMP_DIR)/build-arch:
 		--disable-scripting-javascript --disable-scripting-beanshell \
 		--without-doxygen --without-javadoc \
 		--with-galleries=no --with-theme="$(DEFAULT_IMAGE)"
-	echo "export gb_TRANS_LANGS_INTEGRAL=$(filter-out en-US,$(BUILD_ISOS))" >> config_host.mk
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build-non-l10n-only
 
@@ -1955,6 +2066,14 @@ ifeq "$(BUILD_KDE)" "y"
 		debian/tmp/pkg/libreoffice-kde$(KDE_MAJOR)
 endif
 
+ifeq "$(ENABLE_HELP)" "y"
+ifeq "$(ENABLE_HTML_HELP)" "y"
+	mkdir -p debian/tmp/pkg/libreoffice-help-common/$(OODIR); \
+	mv debian/tmp/pkg/libreoffice-common/$(OODIR)/help \
+		debian/tmp/pkg/libreoffice-help-common/$(OODIR)
+endif
+endif
+
 	# prepare install/dir files for dh
 	for i in `cd $(CURDIR)/debian/tmp/pkg; ls -1 | xargs`; do \
 		echo "$${i}/usr/* usr" > debian/$$i.install; \
@@ -1966,10 +2085,86 @@ endif
 	cat debian/libreoffice-l10n-en-US.dirs >> debian/libreoffice-common.dirs
 	cat debian/libreoffice-l10n-en-US.install >> debian/libreoffice-common.install
 	rm -f debian/libreoffice-l10n-en-US.dirs debian/libreoffice-l10n-en-US.install
+
+	# and ca-valencia in -ca...
+ifeq (ca-valencia,$(findstring ca-valencia,$(LANGPACKISOS)))
+	if [ -f debian/libreoffice-l10n-ca-valencia.dirs -a -f debian/libreoffice-l10n-ca-valencia.install ]; then \
+		cat debian/libreoffice-l10n-ca-valencia.dirs >> debian/libreoffice-l10n-ca.dirs; \
+		cat debian/libreoffice-l10n-ca-valencia.install >> debian/libreoffice-l10n-ca.install; \
+		rm -f debian/libreoffice-l10n-ca-valencia.dirs debian/libreoffice-l10n-ca-valencia.install; \
+	fi
+endif
+ifeq "$(ENABLE_HELP)" "y"
+ifeq (ca-valencia,$(findstring ca-valencia,$(HELPISOS)))
+	if [ -f debian/libreoffice-help-ca-valencia.dirs -a -f debian/libreoffice-help-ca-valencia.install ]; then \
+		cat debian/libreoffice-help-ca-valencia.dirs >> debian/libreoffice-help-ca.dirs; \
+		cat debian/libreoffice-help-ca-valencia.install >> debian/libreoffice-help-ca.install; \
+		rm -f debian/libreoffice-help-ca-valencia.dirs debian/libreoffice-help-ca-valencia.install; \
+	fi
+endif
+endif
+	# and sr-Latn should be in -sr
+ifeq (sr-Latn,$(findstring sr-Latn,$(LANGPACKISOS)))
+	if [ -f debian/libreoffice-l10n-sr-Latn.dirs -a -f debian/libreoffice-l10n-sr-Latn.install ]; then \
+		cat debian/libreoffice-l10n-sr-Latn.dirs >> debian/libreoffice-l10n-sr.dirs; \
+		cat debian/libreoffice-l10n-sr-Latn.install >> debian/libreoffice-l10n-sr.install; \
+		rm -f debian/libreoffice-l10n-sr-Latn.dirs debian/libreoffice-l10n-sr-Latn.install; \
+	fi
+endif
+
+	# This should be in -kmr... This is different like the above where
+	# we move different "variants" into the "base" but there's only kmr-Latn
+	# for Kurmanji, but I don't really want to have that -latn suffix in 
+	# the packages
+ifeq (kmr-Latn,$(findstring kmr-Latn,$(LANGPACKISOS)))
+	if [ -f debian/libreoffice-l10n-kmr-Latn.dirs -a -f debian/libreoffice-l10n-kmr-Latn.install ]; then \
+		cat debian/libreoffice-l10n-kmr-Latn.dirs >> debian/libreoffice-l10n-kmr.dirs; \
+		cat debian/libreoffice-l10n-kmr-Latn.install >> debian/libreoffice-l10n-kmr.install; \
+		rm -f debian/libreoffice-l10n-kmr-Latn.dirs debian/libreoffice-l10n-kmr-Latn.install; \
+	fi
+endif
+
+	# fixup case (-l10n-pt-BR -> l10n-pt-br etc.)
+	for iso in $(ISOS); do \
+		pkgiso=`echo $$iso | tr A-Z a-z`; \
+		if [ "$$iso" != "$$pkgiso" ]; then \
+			if [ "$$iso" != "en-US" -a \
+			  -e debian/libreoffice-l10n-$$iso.dirs -a \
+			  -e debian/libreoffice-l10n-$$iso.install ]; then \
+				mv debian/libreoffice-l10n-$$iso.dirs \
+					debian/libreoffice-l10n-$$pkgiso.dirs; \
+				mv debian/libreoffice-l10n-$$iso.install \
+					debian/libreoffice-l10n-$$pkgiso.install; \
+			fi; \
+			if [ -e debian/libreoffice-help-$$iso.dirs -a \
+			  -e debian/libreoffice-help-$$iso.install ]; then \
+				mv debian/libreoffice-help-$$iso.dirs \
+					debian/libreoffice-help-$$pkgiso.dirs; \
+				mv debian/libreoffice-help-$$iso.install \
+					debian/libreoffice-help-$$pkgiso.install; \
+			fi; \
+		fi; \
+	done
+
 	# fix up still sneaking in ./. They break dh_install (it installs
 	# but wrongly complains about it as not-installed files)
 	perl -pi -e 's,\./,,' debian/libreoffice-common.install
 	perl -pi -e 's,\./,,' debian/ure.install
+
+ifneq "$(ENABLE_HELP)" "n"
+	# remove non-packaged localized help. This a) saves space 
+	# and b) we need this for the following dh_install as there will be
+	# no .install files created and dh_install will warn/fail due
+	# to non-installed files.
+	for iso in $(filter-out en-US,$(LANGPACKISOS)); do \
+		if ! `echo $(HELPISOS) | grep -q $$iso` || [ "$$iso" = "sk" ] ; then \
+			pkgiso=`echo $$iso | tr A-Z a-z`; \
+			rm -rf debian/tmp/pkg/libreoffice-help-$$iso; \
+			rm -f debian/libreoffice-help-$$pkgiso.dirs; \
+			rm -f debian/libreoffice-help-$$pkgiso.install; \
+		fi; \
+	done
+endif
 
 ifneq "$(PACKAGE_LIBRELOGO)" "y"
 	rm -rf debian/tmp/pkg/libreoffice-librelogo
@@ -1994,10 +2189,9 @@ endif
 	dh_installdirs -A
 	if [ -x /usr/bin/dh_missing ]; then \
 		dh_install -A --sourcedir=debian/tmp/pkg && \
-		rm -rf debian/tmp/pkg/libreoffice-help-en-US && \
 		dh_missing -A --sourcedir=debian/tmp/pkg --fail-missing; \
 	else \
-		dh_install -A --sourcedir=debian/tmp/pkg --fail-missing --exclude libreoffice-help-en-US; \
+		dh_install -A --sourcedir=debian/tmp/pkg --fail-missing; \
 	fi
 
 	# somehow this isn't installed anymore on -B builds...
@@ -2041,8 +2235,30 @@ endif
 			$(PKGDIR)-$$i/$(OODIR)/program; \
 	done
 
+ifeq "$(ENABLE_HELP)" "y"
+	# move help to /usr/share
+  ifeq "$(ENABLE_HTML_HELP)" "y"
+	mv $(PKGDIR)-help-common/usr/lib \
+		$(PKGDIR)-help-common/usr/share
+  endif
+	for iso in $(HELPISOS); do \
+		pkgiso=`echo $$iso | tr A-Z a-z`; \
+		if [ -e $(PKGDIR)-help-$$pkgiso/usr ]; then \
+			mv $(PKGDIR)-help-$$pkgiso/usr/lib \
+				$(PKGDIR)-help-$$pkgiso/usr/share; \
+		fi; \
+	done
+
+ifeq (sk,$(findstring sk,$(HELPISOS)))
+	# add fake sk help
+	mkdir -p $(PKGDIR)-help-sk/$(shell echo $(OODIR) | sed -e s/lib/share/)/help
+	ln -s cs \
+		$(PKGDIR)-help-sk/$(shell echo $(OODIR) | sed -e s/lib/share/)/help/sk
+endif
+endif
+
 ifeq "$(ENABLE_JAVA)" "y"
-	# move officebean.jar into -officebean (They will be moved out of -core
+	# move officebean.jar into -officebean via -core (They will be moved out of -core
 	# in the install-arch target). Do the /usr/share move here already
 	mkdir -p $(PKGDIR)-core/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes; \
 	mv $(PKGDIR)-common/$(OODIR)/program/classes/officebean.jar \
@@ -2277,6 +2493,74 @@ $(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*.sh) $(wildcard debian/*.
 
 	touch $@
 
+# Install files generated by setup into package directories
+langpacks: $(STAMP_DIR)/langpacks
+$(STAMP_DIR)/langpacks: $(STAMP_DIR)/build-indep $(STAMP_DIR)/install-indep $(SOURCE_TREE)/bin/lo-xlate-lang
+
+	# remove empty uno_packages dirs somehow in the langpacks(?)
+	for iso in `echo $(LANGPACKISOS) | tr A-Z a-z`; do \
+		rm -rf $(PKGDIR)-l10n-$$iso/$(OODIR)/share/uno_packages; \
+	done
+
+	# remove ooo dirs somehow in the langpacks(?)
+	for iso in `echo $(LANGPACKISOS) | tr A-Z a-z`; do \
+		rm -rf $(PKGDIR)-l10n-$$iso/$(OODIR)/share/dict/ooo; \
+	done
+
+	# remove extra license files
+	for iso in `echo $(LANGPACKISOS) | tr A-Z a-z`; do \
+		rm -rf $(PKGDIR)-l10n-$$iso/$(OODIR)/licenses; \
+		rm -f $(PKGDIR)-l10n-$$iso/$(OODIR)/share/readme/LICENSE*; \
+	done
+
+	# remove extra readme files
+	for iso in `echo $(LANGPACKISOS) | tr A-Z a-z`; do \
+		rm -rf $(PKGDIR)-l10n-$$iso/$(OODIR)/readmes; \
+		rm -f $(PKGDIR)-l10n-$$iso/$(OODIR)/share/readme/README*; \
+	done
+
+	# remove empty help directories
+	for iso in `echo $(LANGPACKISOS) | tr A-Z a-z`; do \
+		rm -rf $(PKGDIR)-l10n-$$iso/$(shell echo $(OODIR) | sed -e s/lib/share/)/help; \
+		rm -rf $(PKGDIR)-l10n-$$iso/$(OODIR)/help; \
+	done
+
+	# install technical.dic
+	for iso in $(LANGPACKISOS); do \
+		if [ "$$iso" = "en-US" ]; then pkg=common; \
+		elif [ "$$iso" = "ca-valencia" ]; then pkg=l10n-ca; \
+		elif [ "$$iso" = "sr-Latn" ]; then pkg=l10n-sr; \
+		elif [ "$$iso" = "kmr-Latn" ]; then pkg=l10n-kmr; \
+		else pkg=l10n-`echo $$iso | tr A-Z a-z`; \
+		fi; \
+		mkdir -p $(PKGDIR)-$$pkg/$(OODIR)/share/wordbook/$$iso; \
+		install -m644 $(SOURCE_TREE)/extras/source/wordbook/technical.dic \
+			$(PKGDIR)-$$pkg/$(OODIR)/share/wordbook/$$iso/technical.dic; \
+	done
+
+ifeq "$(DEB_VENDOR)" "Debian"
+	# install Debian presentation template
+	otps=`cd debian/templates; echo *.otp`; \
+	for iso in $(LANGPACKISOS); do \
+	  [ "$$iso" = "en-US" ] && continue; \
+	  pkgiso=`echo $$iso | tr \[:upper:\] \[:lower:\]`; \
+	  [ "$$pkgiso" = "ca-valencia" ] && pkgiso=ca; \
+	  [ "$$pkgiso" = "sr-latn" ] && pkgiso=sr; \
+	  [ "$$pkgiso" = "kmr-latn" ] && pkgiso=kmr; \
+	  mkdir -p $(PKGDIR)-l10n-$$pkgiso/$(OODIR)/share/template/$$iso/presnt; \
+	  for otp in $$otps; do \
+	    ln -sf ../../en-US/presnt/$$otp \
+	    $(PKGDIR)-l10n-$$pkgiso/$(OODIR)/share/template/$$iso/presnt/$$odt; \
+	  done; \
+	done
+endif
+
+ifeq (he,$(findstring he,$(LANGPACKISOS)))
+	perl -pi -e 's#<prop oor:name="CTLSequenceChecking"><value>true</value></prop>#<prop oor:name="CTLSequenceChecking"><value>false</value></prop>#' $(PKGDIR)-l10n-he/$(OODIR)/share/registry/ctl_he.xcd
+endif
+
+	touch $@
+
 # Install files generated by setup into arch-dependent package directories
 install-arch: $(STAMP_DIR)/install-arch
 $(STAMP_DIR)/install-arch: $(STAMP_DIR)/build-arch $(STAMP_DIR)/install-common
@@ -2357,6 +2641,8 @@ ifeq "$(BUILD_GTK)" "y"
   ifeq "$(ENABLE_GIO)" "y"
 	mv $(PKGDIR)-gtk2/$(OODIR)/program/libucpgio1lo.so \
 		$(PKGDIR)-gnome/$(OODIR)/program/
+  endif
+  ifeq "$(ENABLE_PACKAGEKIT)" "y"
 	mv $(PKGDIR)-gtk2/$(OODIR)/program/liblosessioninstalllo.so \
 		$(PKGDIR)-gnome/$(OODIR)/program/
   endif
@@ -2641,6 +2927,9 @@ ifeq "$(BUILD_TEST_PACKAGES)" "y"
 	for jar in OOoRunner test test-tools ConnectivityTools; do \
 		cp workdir/Jar/$$jar.jar $(PKGDIR)-subsequentcheckbase/$(OODIR)/program/classes/; \
 	done
+	# fix Class-Path: to not include build path
+	jh_classpath --classpath="juh.jar ridl.jar unoil.jar OOoRunner.jar file:///usr/share/java/junit4.jar "\
+                $(PKGDIR)-subsequentcheckbase/$(OODIR)/program/classes/test.jar
   endif
 
 	rm -rf $(PKGDIR)-smoketest-data
@@ -2848,10 +3137,12 @@ endif
 		$(PKGDIR)-common/usr/share/$(OODIRNAME)/shell-lib-extensions.sh
 
 ifneq "$(ENABLE_HELP)" "n"
+  ifneq "$(ENABLE_HTML_HELP)" "y"
 	# those are needed in /usr/share, too
 	mkdir -p $(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)
 	mv $(PKGDIR)-common/$(OODIR)/help \
 		$(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)
+  endif
 endif
 	# help is in /usr/share
 	sed -i 's,$$(instpath)/help,/$(shell echo $(OODIR) | sed -e s/lib/share/)/help,' \
@@ -2958,8 +3249,8 @@ endif
 	dh_bugfiles -a -A
 	dh_link -a
 ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
-#	rm -rf debian/$(UNO_LIBS_DBG_ROOT) debian/$(URE_DBG_ROOT) debian/$(CORE_DBG_ROOT) \
-#		debian/$(WRITER_DBG_ROOT)
+	rm -rf debian/$(UNO_LIBS_DBG_ROOT) debian/$(URE_DBG_ROOT) debian/$(CORE_DBG_ROOT) \
+		debian/$(WRITER_DBG_ROOT)
   ifeq "$(USE_DWZ)" "y"
 	dh_dwz -a -- $(DWZ_ARGS)
   endif
@@ -2968,38 +3259,38 @@ ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 	dh_strip -puno-libs3 $(DH_STRIP_DBG_OPTION_UNO_LIBS)
 	# dh_strip --dbg-package= is not idempotent, force copying of the binaries
 	# again...
-#	rm -f $(STAMP_DIR)/install-common
-#	mkdir -p debian/$(CORE_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)
-#	mv $(CURDIR)/debian/tmp/usr/share/gdb/auto-load/$(OODIR)/program \
-#		debian/$(CORE_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)
-#	# I think a -dbg-common is overkill. Although this means that this all only
-#	# will work if libreoffice-dbg is installed..
-#	mkdir -p debian/$(CORE_DBG_ROOT)/usr/share/libreoffice/gdb
-#	mv $(CURDIR)/debian/tmp/usr/share/libreoffice/gdb/libreoffice \
-#		debian/$(CORE_DBG_ROOT)/usr/share/libreoffice/gdb
-#	mkdir -p debian/$(WRITER_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program
-#	mkdir -p debian/$(WRITER_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice/
-#	for i in sw writerfilter; do \
-#		if [ -f debian/$(CORE_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program/lib$${i}lo.so-gdb.py ]; then \
-#		mv debian/$(CORE_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program/lib$${i}lo.so-gdb.py \
-#				debian/$(WRITER_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program/; \
-#		fi; \
-#		mv debian/$(CORE_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice/$$i.py \
-#			debian/$(WRITER_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice; \
-#	done
-#
-#	# FIXME: or better ure-dbg (ure/lib?). Then again ure is a link which is in -common
-#	# anyways...
-#	mkdir -p debian/$(UNO_LIBS_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program
-#	mv debian/$(CORE_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program/libuno_cppu.so.3-gdb.py \
-#		debian/$(UNO_LIBS_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program
-#	mv debian/$(CORE_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program/libuno_sal.so.3-gdb.py \
-#		debian/$(UNO_LIBS_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program
-#	mkdir -p debian/$(UNO_LIBS_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice
-#	mv debian/$(CORE_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice/cppu.py \
-#		debian/$(UNO_LIBS_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice
-#	mv debian/$(CORE_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice/sal.py \
-#		debian/$(UNO_LIBS_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice
+	rm -f $(STAMP_DIR)/install-common
+	mkdir -p debian/$(CORE_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)
+	mv $(CURDIR)/debian/tmp/usr/share/gdb/auto-load/$(OODIR)/program \
+		debian/$(CORE_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)
+	# I think a -dbg-common is overkill. Although this means that this all only
+	# will work if libreoffice-dbg is installed..
+	mkdir -p debian/$(CORE_DBG_ROOT)/usr/share/libreoffice/gdb
+	mv $(CURDIR)/debian/tmp/usr/share/libreoffice/gdb/libreoffice \
+		debian/$(CORE_DBG_ROOT)/usr/share/libreoffice/gdb
+	mkdir -p debian/$(WRITER_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program
+	mkdir -p debian/$(WRITER_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice/
+	for i in sw writerfilter; do \
+		if [ -f debian/$(CORE_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program/lib$${i}lo.so-gdb.py ]; then \
+		mv debian/$(CORE_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program/lib$${i}lo.so-gdb.py \
+				debian/$(WRITER_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program/; \
+		fi; \
+		mv debian/$(CORE_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice/$$i.py \
+			debian/$(WRITER_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice; \
+	done
+
+	# FIXME: or better ure-dbg (ure/lib?). Then again ure is a link which is in -common
+	# anyways...
+	mkdir -p debian/$(UNO_LIBS_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program
+	mv debian/$(CORE_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program/libuno_cppu.so.3-gdb.py \
+		debian/$(UNO_LIBS_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program
+	mv debian/$(CORE_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program/libuno_sal.so.3-gdb.py \
+		debian/$(UNO_LIBS_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program
+	mkdir -p debian/$(UNO_LIBS_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice
+	mv debian/$(CORE_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice/cppu.py \
+		debian/$(UNO_LIBS_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice
+	mv debian/$(CORE_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice/sal.py \
+		debian/$(UNO_LIBS_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice
 else
 	dh_strip -a
 endif
@@ -3030,9 +3321,6 @@ endif
 	# no shlibs dependencies on internal libs (which are dynamic)
 ifeq (,$(filter icu, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.icu >> debian/shlibs.local
-endif
-ifeq (,$(filter libqxp, $(SYSTEM_STUFF)))
-	cat debian/shlibs.override.libqxp >> debian/shlibs.local
 endif
 ifeq (,$(filter libvisio, $(SYSTEM_STUFF)))
 	cat debian/shlibs.override.libvisio >> debian/shlibs.local
@@ -3149,16 +3437,16 @@ endif
 		-V"ure:Version=`echo $(BINARY_VERSION) | cut -d: -f2`" \
 		-v"`echo $(BINARY_VERSION) | cut -d: -f2`"
 ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
-#	for i in libreoffice-core libreoffice-writer uno-libs3; do \
-#		perl -pi -e 's/^(Depends:.*)/\1\nRecommends: gdb, python3-six/' \
-#		debian/.debhelper/$$i/dbgsym-root/DEBIAN/control; \
-#	done
-#	for i in $(filter-out uno-libs3,$(ARCH_DEP_PACKAGES)); do \
-#		perl -pi -e 's/^(Depends:.*)/\1, uno-libs3-dbgsym/' \
-#		debian/.debhelper/$$i/dbgsym-root/DEBIAN/control; \
-#	done
-#	perl -pi -e 's/Recommends: /Recommends: libreoffice-core-dbgsym, /' \
-#		debian/$(WRITER_DBG_ROOT)/DEBIAN/control
+	for i in libreoffice-core libreoffice-writer uno-libs3; do \
+		perl -pi -e 's/^(Depends:.*)/\1\nRecommends: gdb, python3-six/' \
+		debian/.debhelper/$$i/dbgsym-root/DEBIAN/control; \
+	done
+	for i in $(filter-out uno-libs3,$(ARCH_DEP_PACKAGES)); do \
+		perl -pi -e 's/^(Depends:.*)/\1, uno-libs3-dbgsym/' \
+		debian/.debhelper/$$i/dbgsym-root/DEBIAN/control; \
+	done
+	perl -pi -e 's/Recommends: /Recommends: libreoffice-core-dbgsym, /' \
+		debian/$(WRITER_DBG_ROOT)/DEBIAN/control
 endif
 
 	dh_md5sums -a
@@ -3167,7 +3455,7 @@ endif
 	touch $@
 
 binary-indep: $(GSI_EXPORT_STAMP) $(STAMP_DIR)/binary-indep
-$(STAMP_DIR)/binary-indep: $(STAMP_DIR)/install-indep debian/control $(STAMP_DIR)/maintscripts
+$(STAMP_DIR)/binary-indep: $(STAMP_DIR)/install-indep debian/control $(STAMP_DIR)/maintscripts $(STAMP_DIR)/langpacks
 ifneq ($(DEB_HOST_ARCH),$(filter $(DEB_HOST_ARCH),$(OOO_JAVA_ARCHS)))
 	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 	echo "For uploads with binary-all packages, please use arches where Java is enabled"
@@ -3186,6 +3474,25 @@ endif
 	  rm -f debian/$$pkg.*.debhelper;\
 	  rm -rf debian/$$pkg/DEBIAN;\
 	done
+
+ifeq "$(ENABLE_HELP)" "y"
+ifeq "$(ENABLE_HTML_HELP)" "y"
+	HELP_FILES_COMMON=`find $(CURDIR)/debian/libreoffice-help-common/usr/share -type f | sed -e 's,$(CURDIR)/debian/libreoffice-help-common,,g' | xargs`; \
+	for iso in $(HELPISOS); do \
+		pkgiso=`echo $$iso | tr A-Z a-z`; \
+		HELP_FILES_LANG=`find $(CURDIR)/debian/libreoffice-help-$$pkgiso/usr/share | sed -e "s,$(CURDIR)/debian/libreoffice-help-$$pkgiso,,g" | xargs`; \
+		TMP=`mktemp -q`; \
+		cp debian/libreoffice-help.doc-base.in $$TMP; \
+		echo "Files: $$HELP_FILES_COMMON $$HELP_FILES_LANG" >> $$TMP; \
+		cat $$TMP | perl -e 'while(<>) { if (/^Files/) {$$f=1;} if ($$f eq "1") { chomp(); } print $$_; }' > debian/libreoffice-help-$$pkgiso.doc-base; \
+		rm -f $$TMP; \
+		perl -pi -e 's,([a-z])\/usr/,$$1 \/usr/,g' debian/libreoffice-help-$$pkgiso.doc-base; \
+		perl -pi -e 's,([0-9])\/usr/,$$1 \/usr/,g' debian/libreoffice-help-$$pkgiso.doc-base; \
+		sed -i s/@LCODE@/$$pkgiso/ debian/libreoffice-help-$$pkgiso.doc-base; \
+		sed -i s/@HELPISO@/$$iso/ debian/libreoffice-help-$$pkgiso.doc-base; \
+	done
+endif
+endif
 
 ifeq "$(PACKAGE_SDK)" "y"
 	for i in idl cpp java; do \
@@ -3235,6 +3542,14 @@ ifeq "$(PACKAGE_SDK_DOCS)" "y"
 	dh_doxygen -plibreoffice-dev-doc
 endif
 	dh_installmime -i
+ifeq "$(ENABLE_HELP)" "y"
+  ifeq "$(ENABLE_HTML_HELP)" "y"
+	for iso in $(shell echo $(HELPISOS) | tr A-Z a-z); do \
+		sed -e s/@LCODE@/$$iso/ < debian/libreoffice-help.lintian-overrides.in \
+			> debian/libreoffice-help-$$iso.lintian-overrides; \
+	done
+  endif
+endif
 	dh_lintian -i
 	dh_bugfiles -i -A
 	dh_link -i
@@ -3277,6 +3592,7 @@ endif
 		-V'numbertext-data-recommends=$(NUMBERTEXT_DATA_RECOMMENDS)' \
 		-V'pyuno-depends=$(PYUNO_DEPENDS)' \
 		-V'help-depends=$(HELP_DEPENDS)' \
+		-V'help-common-depends=$(HELP_COMMON_DEPENDS)' \
 		-V'Binary-Version=$(BINARY_VERSION)' \
 		-v$(BINARY_VERSION)
 	dh_gencontrol -pfonts-opensymbol -- \
@@ -3356,7 +3672,7 @@ $(call get_orig_tarball,-tarballs): helpcontent2/makefile.pmk translations/makef
 	rm -rf tarballs
 	mkdir -p tarballs
 	quilt push -a
-	./autogen.sh $(filter-out --disable-fetch-external --with-system-lpsolve --with-system-libqxp,$(CONFIGURE_FLAGS)) --with-all-tarballs --disable-build-opensymbol
+	./autogen.sh $(filter-out --disable-fetch-external,$(CONFIGURE_FLAGS)) --with-all-tarballs --disable-build-opensymbol
 	$(MAKE) download gb_LO_VER=$(DEB_VERSION_UPSTREAM)
 	# removing the biggest internal tarballs to keep the source tree size
 	# reasonable -- we likely never want to use those internal anyway
@@ -3387,50 +3703,10 @@ get-orig-source:
 	PATH=$(CURDIR)/debian/scripts:$$PATH uscan --watchfile=$(CURDIR)/debian/watch --verbose --force
 endif
 
-COMMA:=,
-APOSTROPHE:='
-QUOTE:="
-define sed-escape
-$(subst $(QUOTE),\x22,$(subst $(APOSTROPHE),\x27,$(subst $(COMMA),\x2c,$(1))))
-endef
-
-update-l10n:
-	dh_testdir
-	sed -e 's,@BUILD_DEPS@,$(call sed-escape,$(BUILD_DEPS)),' \
-	    -e 's,@BUILD_DEPS_INDEP@,$(call sed-escape,$(BUILD_DEPS_INDEP)),' \
-	    -e 's,@CONFIGURE_FLAGS@,$(call sed-escape,$(filter-out --enable-mergelibs --with-branding%,$(CONFIGURE_FLAGS))),' \
-	    -e 's,@CONFIGURE_FLAGS_LANG@,$(call sed-escape,$(CONFIGURE_FLAGS_LANG)),' \
-	    -e 's,@LANGPACKISOS@,$(call sed-escape,$(LANGPACKISOS)),' \
-	    -e 's,@ISOS@,$(call sed-escape,$(ISOS)),' \
-	    -e 's,@HELPISOS@,$(call sed-escape,$(HELPISOS)),' \
-	    -e 's,@HELP_DEPENDS@,$(call sed-escape,$(HELP_DEPENDS)),' \
-	    -e 's,@JAVA_MAINVER@,$(call sed-escape,$(JAVA_MAINVER)),' \
-	    < debian/debian-l10n/config.in > debian/debian-l10n/config
-	sed -e 's,@BUILD_DEPS@,$(call sed-escape,$(BUILD_DEPS)),' \
-	    -e 's,@BUILD_DEPS_INDEP@,$(call sed-escape,$(BUILD_DEPS_INDEP)),' \
-	    < debian/debian-l10n/control.in > debian/debian-l10n/control
-	sed -e 's,^libreoffice,libreoffice-l10n,' \
-	    < debian/changelog > debian/debian-l10n/changelog
-	$(foreach LANGPACKISO,$(filter-out en-US ca-valencia kmr-Latn sr-Latn,$(LANGPACKISOS)),\
-		./debian/scripts/create-l10n-control \
-			$(LANGPACKISO) \
-			< debian/debian-l10n/control.lang.in \
-			>> debian/debian-l10n/control;)
-	$(foreach HELPISO,$(filter-out ca-valencia kmr-Latn sr-Latn,$(HELPISOS)),\
-		./debian/scripts/create-l10n-control \
-			$(HELPISO) \
-			< debian/debian-l10n/control.help.in \
-			>> debian/debian-l10n/control;)
-	$(foreach debdir,patches source templates,\
-        cp -a ./debian/$(debdir) ./debian/debian-l10n/$(debdir) && ) true
-	$(foreach debfile,compat copyright,\
-        mkdir -p $(dir ./debian/debian-l10n/$(debfile)) && \
-        cp -a ./debian/$(debfile) ./debian/debian-l10n/$(debfile) && ) true
-
 .PHONY: control
 .PHONY: clean-debdir clean-instsetoo clean-objectdirs clean default
 .PHONY: prepare build build-indep build-arch install-arch install-indep
-.PHONY: get-orig-source unpack patched l10n-config
+.PHONY: get-orig-source unpack patched
 .PHONY: $(stampdir_targets)
 
 # vim:set noet ai sts=8 sw=8 tw=0:
