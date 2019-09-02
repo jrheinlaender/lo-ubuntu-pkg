@@ -1404,6 +1404,41 @@ ifneq (debug,$(findstring debug,$(DEB_BUILD_OPTIONS)))
        CONFIGURE_FLAGS += --disable-ld
 endif
 endif
+ifneq (,$(findstring mips,$(DEB_HOST_ARCH)))
+#10:46 < _rene_> can anyone shed a light on /<<PKGBUILDDIR>>/workdir/LinkTarget/Executable/bestreversemap: error while loading shared libraries: 
+#                /<<PKGBUILDDIR>>/instdir/program/libuno_sal.so.3: ELF file ABI version invalid? both were built in the same LO build
+#10:47 < _rene_> mips64el, apparently since gcc9 or new(er) binutils?
+#10:47 < _rene_> on an other binary:
+#10:47 < _rene_> file /home/rene/libreoffice-6.3.1~rc2/instdir/program/libunoidllo.so                                                                          
+#                /home/rene/libreoffice-6.3.1~rc2/instdir/program/libunoidllo.so: ELF 64-bit LSB shared object, MIPS, MIPS64 rel2 version 1 (SYSV), 
+#                dynamically linked, BuildID[sha1]=82f15433db9000b9dfee24ed07e2082ffb439dfd, with debug_info, not stripped
+#10:47 < _rene_> (eller, mips64el chroot)
+#[...]
+#13:49 < aurel32> _rene_: the problem is the ABI version, ie those library have Version ABI: 5 instead of 0 for normal binaries
+#13:50 < aurel32> the ABI version 5 will be used for gnu hash support in mips
+#13:51 < aurel32> support has been added to binutils trunk recently, although the default is still sysv hash style
+#13:51 < aurel32> and glibc support is still being reviewed, it might land in 2.31
+#13:51 < aurel32> previous version of libreoffice used -Wl,--hash-style=sysv
+#13:52 < aurel32> now it seems it autodetect that binutils has gnu hash support and it passes -Wl,--hash-style=gnu
+#13:52 < aurel32> but there is no support for the full toolchain yet
+#13:54 < _rene_> so I need to force -Wl,--hash-style=sysv?
+#13:54 < aurel32>   --with-linker-hash-style
+#13:54 < aurel32>                           Use linker with --hash-style=<style> when linking
+#13:54 < aurel32>                           shared objects. Possible values: "sysv", "gnu",
+#13:54 < aurel32>                           "both". The default value is "gnu" if supported on
+#13:55 < aurel32>                           the build system, and "sysv" otherwise.
+#13:55 < aurel32> it looks like that the hash style detection is not perfect
+#13:55 < aurel32> _rene_: that should work indeed
+#13:55 < _rene_> ok, thanks
+#[...]
+#14:01 < _rene_> aurel32: only mips64el affected or also mipsel?
+#14:01 < _rene_> (mipsel is still building, though, so I assume it isn't)
+#14:02 < aurel32> afaiu both should be affected
+#14:03 < _rene_> ok, so I will make it $(findstring mips
+#14:04 < aurel32> on mipsel: checking for --hash-style gcc linker support... sysv
+#14:04 < aurel32> maybe the detection works better, anyway forcing it on both looks safer
+       CONFIGURE_FLAGS += --with-linker-hash-style=sysv
+endif
 
 ifeq "$(ENABLE_PCH)" "y"
 	CONFIGURE_FLAGS += --enable-pch
