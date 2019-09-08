@@ -1,0 +1,193 @@
+From 3d59261bfa6f02a36b20cd117ed25422c59fbe4f Mon Sep 17 00:00:00 2001
+From: Eike Rathke <erack@redhat.com>
+Date: Fri, 16 Aug 2019 15:36:15 +0200
+Subject: Resolves: tdf#126928 allow link updates in an intermediate linked
+ document
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+... if link updates are allowed in the current document and that
+intermediate document resides in a trusted location.
+
+This works with both, the "Always (from trusted locations)" and
+the "On request" settings under Tools -> Options -> Calc ->
+General. It can't work with documents residing in a non-trusted
+location as there is no way to allow updates on demand for a such
+loaded document (hidden via formulas).
+
+Reviewed-on: https://gerrit.libreoffice.org/77588
+Reviewed-by: Eike Rathke <erack@redhat.com>
+Tested-by: Jenkins
+(cherry picked from commit 54bf84746a2a9a2e2aaf0df9e429b0cfd538f640)
+
+ Conflicts:
+	sc/source/ui/docshell/docsh4.cxx
+	sc/source/ui/docshell/externalrefmgr.cxx
+
+Backported. Also includes
+
+    commit 1663b1e8233db6c6d1c2b35639ad984961084009
+    CommitDate: Tue Feb 26 21:15:57 2019 +0100
+
+        tdf#120736: For Calc shared documents also check the original document URL
+
+Change-Id: Ie483f7743db7c6d5cf947dc16a9c3660855f3423
+Reviewed-on: https://gerrit.libreoffice.org/77613
+Tested-by: Jenkins
+Reviewed-by: Caolán McNamara <caolanm@redhat.com>
+Tested-by: Caolán McNamara <caolanm@redhat.com>
+---
+ sc/source/ui/docshell/docsh.cxx          | 13 +++++--
+ sc/source/ui/docshell/docsh4.cxx         | 64 ++++++++++++++++++--------------
+ sc/source/ui/docshell/externalrefmgr.cxx |  1 +
+ sc/source/ui/inc/docsh.hxx               |  2 +
+ 4 files changed, 49 insertions(+), 31 deletions(-)
+
+diff --git a/sc/source/ui/docshell/docsh.cxx b/sc/source/ui/docshell/docsh.cxx
+index 59fe24a..3d20d85 100644
+--- a/sc/source/ui/docshell/docsh.cxx
++++ b/sc/source/ui/docshell/docsh.cxx
+@@ -601,15 +601,22 @@ bool ScDocShell::Load( SfxMedium& rMedium )
+     bool bRet = SfxObjectShell::Load(rMedium);
+     if (bRet)
+     {
+-        comphelper::EmbeddedObjectContainer& rEmbeddedObjectContainer = getEmbeddedObjectContainer();
+-        rEmbeddedObjectContainer.setUserAllowsLinkUpdate(false);
+-
+         if (GetMedium())
+         {
+             const SfxUInt16Item* pUpdateDocItem = SfxItemSet::GetItem<SfxUInt16Item>(rMedium.GetItemSet(), SID_UPDATEDOCMODE, false);
+             m_nCanUpdate = pUpdateDocItem ? pUpdateDocItem->GetValue() : css::document::UpdateDocMode::NO_UPDATE;
+         }
+ 
++        // GetLinkUpdateModeState() evaluates m_nCanUpdate so that must have
++        // been set first. Do not override an already forbidden LinkUpdate (the
++        // default is allow).
++        comphelper::EmbeddedObjectContainer& rEmbeddedObjectContainer = getEmbeddedObjectContainer();
++        if (rEmbeddedObjectContainer.getUserAllowsLinkUpdate())
++        {
++            // For anything else than LM_ALWAYS we need user confirmation.
++            rEmbeddedObjectContainer.setUserAllowsLinkUpdate( GetLinkUpdateModeState() == LM_ALWAYS);
++        }
++
+         {
+             //  prepare a valid document for XML filter
+             //  (for ConvertFrom, InitNew is called before)
+diff --git a/sc/source/ui/docshell/docsh4.cxx b/sc/source/ui/docshell/docsh4.cxx
+index e021414..ac2ebfb 100644
+--- a/sc/source/ui/docshell/docsh4.cxx
++++ b/sc/source/ui/docshell/docsh4.cxx
+@@ -154,6 +154,41 @@ IMPL_LINK_NOARG( ScDocShell, ReloadAllLinksHdl, Button*, void )
+     SAL_WARN_IF(!pViewFrame, "sc", "expected there to be a ViewFrame");
+ }
+ 
++ScLkUpdMode ScDocShell::GetLinkUpdateModeState() const
++{
++    const ScDocument& rDoc = GetDocument();
++
++    ScLkUpdMode nSet = rDoc.GetLinkMode();
++
++    if (nSet == LM_UNKNOWN)
++    {
++        ScAppOptions aAppOptions = SC_MOD()->GetAppOptions();
++        nSet = aAppOptions.GetLinkMode();
++    }
++
++    if (m_nCanUpdate == css::document::UpdateDocMode::NO_UPDATE)
++        nSet = LM_NEVER;
++    else if (m_nCanUpdate == css::document::UpdateDocMode::FULL_UPDATE)
++        nSet = LM_ALWAYS;
++
++    if (nSet == LM_ALWAYS
++            && !(SvtSecurityOptions().isTrustedLocationUriForUpdatingLinks(
++                    GetMedium() == nullptr ? OUString() : GetMedium()->GetName())
++                || (IsDocShared()
++                    && SvtSecurityOptions().isTrustedLocationUriForUpdatingLinks(
++                        GetSharedFileURL()))))
++    {
++        nSet = LM_ON_DEMAND;
++    }
++    if (m_nCanUpdate == css::document::UpdateDocMode::QUIET_UPDATE
++            && nSet == LM_ON_DEMAND)
++    {
++        nSet = LM_NEVER;
++    }
++
++    return nSet;
++}
++
+ void ScDocShell::Execute( SfxRequest& rReq )
+ {
+     const SfxItemSet* pReqArgs = rReq.GetArgs();
+@@ -451,34 +486,7 @@ void ScDocShell::Execute( SfxRequest& rReq )
+             break;
+         case SID_UPDATETABLINKS:
+             {
+-                ScDocument& rDoc = GetDocument();
+-
+-                ScLkUpdMode nSet = rDoc.GetLinkMode();
+-
+-                if(nSet==LM_UNKNOWN)
+-                {
+-                    ScAppOptions aAppOptions=SC_MOD()->GetAppOptions();
+-                    nSet=aAppOptions.GetLinkMode();
+-                }
+-
+-                if (m_nCanUpdate == css::document::UpdateDocMode::NO_UPDATE)
+-                    nSet = LM_NEVER;
+-                else if (m_nCanUpdate == css::document::UpdateDocMode::FULL_UPDATE)
+-                    nSet = LM_ALWAYS;
+-
+-                if (nSet == LM_ALWAYS
+-                    && !(SvtSecurityOptions()
+-                         .isTrustedLocationUriForUpdatingLinks(
+-                             GetMedium() == nullptr
+-                             ? OUString() : GetMedium()->GetName())))
+-                {
+-                    nSet = LM_ON_DEMAND;
+-                }
+-                if (m_nCanUpdate == css::document::UpdateDocMode::QUIET_UPDATE
+-                    && nSet == LM_ON_DEMAND)
+-                {
+-                    nSet = LM_NEVER;
+-                }
++                ScLkUpdMode nSet = GetLinkUpdateModeState();
+ 
+                 if (nSet == LM_ALWAYS)
+                 {
+diff --git a/sc/source/ui/docshell/externalrefmgr.cxx b/sc/source/ui/docshell/externalrefmgr.cxx
+index 14b8363..940717d 100644
+--- a/sc/source/ui/docshell/externalrefmgr.cxx
++++ b/sc/source/ui/docshell/externalrefmgr.cxx
+@@ -62,6 +62,7 @@
+ #include <columnspanset.hxx>
+ #include <column.hxx>
+ #include <com/sun/star/document/MacroExecMode.hpp>
++#include <com/sun/star/document/UpdateDocMode.hpp>
+ 
+ #include <memory>
+ #include <algorithm>
+diff --git a/sc/source/ui/inc/docsh.hxx b/sc/source/ui/inc/docsh.hxx
+index 90b6840..be21efa 100644
+--- a/sc/source/ui/inc/docsh.hxx
++++ b/sc/source/ui/inc/docsh.hxx
+@@ -217,6 +217,7 @@ public:
+ 
+     void    GetDocStat( ScDocStat& rDocStat );
+ 
++    const ScDocument& GetDocument() const { return m_aDocument; }
+     ScDocument&     GetDocument()   { return m_aDocument; }
+     ScDocFunc&      GetDocFunc()    { return *m_pDocFunc; }
+ 
+@@ -299,6 +300,7 @@ public:
+     void            UpdateLinks() override;
+     void            ReloadAllLinks();
+     void            ReloadTabLinks();
++    ScLkUpdMode     GetLinkUpdateModeState() const;
+ 
+     void            SetFormulaOptions( const ScFormulaOptions& rOpt, bool bForLoading = false );
+     /**
+-- 
+cgit v1.1
+
