@@ -1,0 +1,227 @@
+commit 71ad51b81443681014662c61d486c510966c6510 (HEAD -> master)
+Author: Stephan Bergmann <sbergman@redhat.com>
+Date:   Mon Sep 2 10:20:24 2019 +0200
+
+    Add -latomic to the end of Linux C++ linker command lines
+    
+    b11763dbaa0c7f427ea47abe9b98995cb49a8595 "link with -latomic on mips(el),
+    armel, powerpc, m68k" had added -latomic to the linker command lines of just
+    some Linux platforms (which apparently happened to actually require it).  But
+    there were three issues with that:
+    
+    * The -latomic came too early on the command line, so that it wasn't used to
+      satisfy dependencies of .o files that came later.  See the discussion at
+      <https://gerrit.libreoffice.org/#/c/78319/> "set -Wl,--no-as-needed for
+      -latomic".
+    
+    * There is presumably no need to include -latomic on C linker command lines.
+    
+    * <https://gcc.gnu.org/onlinedocs/gcc-7.3.0/libstdc++/manual/manual/using.html
+      #manual.intro.using.flags> (matching our Linux libstdc++ 7.3.0 baseline as
+      per README.md) states:  "Linking to libatomic is required for some uses of
+      ISO C++11 <atomic>."  So we should better include -latomic on every Linux C++
+      linker command line that uses libstdc++.  (This patch assumes that we always
+      use libstdc++ on Linux.)
+    
+    Ideally we could rely on -latomic always being available with our baseline
+    libstdc++ 7.3.0, but when using Red Hat Developer Toolset 7 that appears not to
+    be the case, as reported by a Jenkins build for an older version of this change
+    (see below), so use ATOMIC_LIB from the preceding commit
+    <https://gerrit.libreoffice.org/#/c/78336/> "add -latomic configure check...".
+    
+    <https://ci.libreoffice.org/job/gerrit_linux_gcc_release/40298/console>:
+    > [build LNK] Executable/unoapploader
+    > /opt/rh/devtoolset-7/root/usr/libexec/gcc/x86_64-redhat-linux/7/ld: cannot find -latomic
+    > collect2: error: ld returned 1 exit status
+    > /home/tdf/lode/jenkins/workspace/lo_gerrit/Config/linux_gcc_release_64/solenv/gbuild/LinkTarget.mk:636: recipe for target '/home/tdf/lode/jenkins/workspace/lo_gerrit/Config/linux_gcc_release_64/workdir/LinkTarget/Executable/idxdict' failed
+    
+    This patch adds -latomic only on Linux.  Similar changes can be made for other
+    platforms if need be.
+    
+    Change-Id: I75df5410677f4c31c796d7ba85532bcdb47eb111
+
+commit 7bdac5b1567089b9ccb239c5031f03fa0d918fca
+Author: Rene Engelhard <rene@debian.org>
+Date:   Fri Aug 30 21:00:55 2019 +0200
+
+    add -latomic configure check...
+    
+    ...in preparation for <https://gerrit.libreoffice.org/#/c/78380/> "Add -latomic to the end of Linux C++ linker command lines"
+    
+    (copied from https://github.com/zelcash/zelcash/blob/master/build-aux/m4/l_atomic.m4)
+    
+    Change-Id: I8879a72d730cc08a72c2d8b132ff9f5d2efe7b9f
+
+diff --git a/config_host.mk.in b/config_host.mk.in
+index 8db0d6ddd779..5476dffa6191 100644
+--- a/config_host.mk.in
++++ b/config_host.mk.in
+@@ -30,6 +30,7 @@ export AR=@AR@
+ export ASSERT_ALWAYS_ABORT=@ASSERT_ALWAYS_ABORT@
+ export ATL_INCLUDE=@ATL_INCLUDE@
+ export ATL_LIB=@ATL_LIB@
++export ATOMIC_LIB=@ATOMIC_LIB@
+ export AVAHI_CFLAGS=$(gb_SPACE)@AVAHI_CFLAGS@
+ export AVAHI_LIBS=$(gb_SPACE)@AVAHI_LIBS@
+ export LIBATOMIC_OPS_CFLAGS=$(gb_SPACE)@LIBATOMIC_OPS_CFLAGS@
+diff --git a/configure.ac b/configure.ac
+index 41d64890d01c..658abe24081a 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -6537,6 +6537,14 @@ else
+ fi
+ AC_SUBST(CXXFLAGS_CXX11)
+ 
++if test "$GCC" = "yes"; then
++    save_CXXFLAGS=$CXXFLAGS
++    CXXFLAGS="$CXXFLAGS $CXXFLAGS_CXX11"
++    CHECK_L_ATOMIC
++    CXXFLAGS=$save_CXXFLAGS
++    AC_SUBST(ATOMIC_LIB)
++fi
++
+ dnl Test for temporarily incompatible libstdc++ 4.7.{0,1}, where
+ dnl <https://gcc.gnu.org/viewcvs/gcc?view=revision&revision=179528> introduced
+ dnl an additional member _M_size into C++11 std::list towards 4.7.0 and
+diff --git a/m4/l_atomic.m4 b/m4/l_atomic.m4
+new file mode 100644
+index 000000000000..6e011ebabe3d
+--- /dev/null
++++ b/m4/l_atomic.m4
+@@ -0,0 +1,41 @@
++# Some versions of gcc/libstdc++ require linking with -latomic if
++# using the C++ atomic library.
++#
++# Sourced from http://bugs.debian.org/797228
++
++m4_define([_CHECK_L_ATOMIC_testbody], [[
++  #include <atomic>
++  #include <cstdint>
++
++  int main() {
++    std::atomic<int64_t> a{};
++
++    int64_t v = 5;
++    int64_t r = a.fetch_add(v);
++    return static_cast<int>(r);
++  }
++]])
++
++AC_DEFUN([CHECK_L_ATOMIC], [
++
++  AC_LANG_PUSH(C++)
++
++  AC_MSG_CHECKING([whether std::atomic can be used without link library])
++
++  AC_LINK_IFELSE([AC_LANG_SOURCE([_CHECK_L_ATOMIC_testbody])],[
++      AC_MSG_RESULT([yes])
++    ],[
++      AC_MSG_RESULT([no])
++      LIBS="$LIBS -latomic"
++      AC_MSG_CHECKING([whether std::atomic needs -latomic])
++      AC_LINK_IFELSE([AC_LANG_SOURCE([_CHECK_L_ATOMIC_testbody])],[
++          AC_MSG_RESULT([yes])
++          ATOMIC_LIB=-latomic
++        ],[
++          AC_MSG_RESULT([no])
++          AC_MSG_FAILURE([cannot figure our how to use std::atomic])
++        ])
++    ])
++
++  AC_LANG_POP
++])
+diff --git a/solenv/gbuild/LinkTarget.mk b/solenv/gbuild/LinkTarget.mk
+index e1c55969a257..476ee429da33 100644
+--- a/solenv/gbuild/LinkTarget.mk
++++ b/solenv/gbuild/LinkTarget.mk
+@@ -775,6 +775,7 @@ $(call gb_LinkTarget_get_target,$(1)) : T_LDFLAGS := $$(gb_LinkTarget_LDFLAGS) $
+ $(call gb_LinkTarget_get_target,$(1)) : LINKED_LIBS :=
+ $(call gb_LinkTarget_get_target,$(1)) : LINKED_STATIC_LIBS :=
+ $(call gb_LinkTarget_get_target,$(1)) : T_LIBS :=
++$(call gb_LinkTarget_get_target,$(1)) : T_STDLIBS_CXX := $(gb_STDLIBS_CXX)
+ $(call gb_LinkTarget_get_target,$(1)) : TARGETTYPE :=
+ $(call gb_LinkTarget_get_target,$(1)) : LIBRARY_X64 :=
+ $(call gb_LinkTarget_get_target,$(1)) : PCH_NAME :=
+@@ -911,6 +912,7 @@ endef
+ # call gb_LinkTarget_disable_standard_system_libs,linktarget
+ define gb_LinkTarget_disable_standard_system_libs
+ $(call gb_LinkTarget_get_target,$(1)) : T_LIBS := $$(filter-out $$(gb_STDLIBS),$$(T_LIBS))
++$(call gb_LinkTarget_get_target,$(1)) : T_STDLIBS_CXX :=
+ 
+ endef
+ 
+diff --git a/solenv/gbuild/platform/LINUX_ARM_GCC.mk b/solenv/gbuild/platform/LINUX_ARM_GCC.mk
+index e52cf2bb8950..cccf5772b3b4 100644
+--- a/solenv/gbuild/platform/LINUX_ARM_GCC.mk
++++ b/solenv/gbuild/platform/LINUX_ARM_GCC.mk
+@@ -13,6 +13,4 @@ gb_COMPILEROPTFLAGS := -Os
+ 
+ include $(GBUILDDIR)/platform/linux.mk
+ 
+-gb_LinkTarget_LDFLAGS += -latomic
+-
+ # vim: set noet sw=4:
+diff --git a/solenv/gbuild/platform/LINUX_GODSON_GCC.mk b/solenv/gbuild/platform/LINUX_GODSON_GCC.mk
+index f16f98530e2b..976aaedf97fe 100644
+--- a/solenv/gbuild/platform/LINUX_GODSON_GCC.mk
++++ b/solenv/gbuild/platform/LINUX_GODSON_GCC.mk
+@@ -13,6 +13,4 @@ gb_COMPILEROPTFLAGS := -Os
+ 
+ include $(GBUILDDIR)/platform/linux.mk
+ 
+-gb_LinkTarget_LDFLAGS += -latomic
+-
+ # vim: set noet sw=4:
+diff --git a/solenv/gbuild/platform/LINUX_M68K_GCC.mk b/solenv/gbuild/platform/LINUX_M68K_GCC.mk
+index 942696f80231..9e007101d8ac 100644
+--- a/solenv/gbuild/platform/LINUX_M68K_GCC.mk
++++ b/solenv/gbuild/platform/LINUX_M68K_GCC.mk
+@@ -12,6 +12,4 @@ gb_COMPILEROPTFLAGS := -Os
+ 
+ include $(GBUILDDIR)/platform/linux.mk
+ 
+-gb_LinkTarget_LDFLAGS += -latomic
+-
+ # vim: set noet sw=4:
+diff --git a/solenv/gbuild/platform/LINUX_POWERPC_GCC.mk b/solenv/gbuild/platform/LINUX_POWERPC_GCC.mk
+index 48fa395cfada..1880b3bad1e4 100644
+--- a/solenv/gbuild/platform/LINUX_POWERPC_GCC.mk
++++ b/solenv/gbuild/platform/LINUX_POWERPC_GCC.mk
+@@ -12,6 +12,4 @@ gb_CPUDEFS += -DPPC
+ 
+ include $(GBUILDDIR)/platform/linux.mk
+ 
+-gb_LinkTarget_LDFLAGS += -latomic
+-
+ # vim: set noet sw=4:
+diff --git a/solenv/gbuild/platform/linux.mk b/solenv/gbuild/platform/linux.mk
+index 77d4dbe679e8..ece7a88bd71f 100644
+--- a/solenv/gbuild/platform/linux.mk
++++ b/solenv/gbuild/platform/linux.mk
+@@ -21,4 +21,8 @@ ifeq ($(DISABLE_DYNLOADING),TRUE)
+ gb_STDLIBS := -ldl
+ endif
+ 
++ifneq ($(ATOMIC_LIB),)
++gb_STDLIBS_CXX := $(ATOMIC_LIB)
++endif
++
+ # vim: set noet sw=4 ts=4:
+diff --git a/solenv/gbuild/platform/unxgcc.mk b/solenv/gbuild/platform/unxgcc.mk
+index 1d6b38cdf8ce..df5eb7ca94c6 100644
+--- a/solenv/gbuild/platform/unxgcc.mk
++++ b/solenv/gbuild/platform/unxgcc.mk
+@@ -136,11 +136,13 @@ $(call gb_Helper_abbreviate_dirs,\
+ 		    $(patsubst lib%.a,-l%,$(patsubst lib%.so,-l%,$(patsubst %.$(gb_Library_UDK_MAJORVER),%,$(foreach lib,$(LINKED_LIBS),$(call gb_Library_get_filename,$(lib)))))) \
+ 		    $(foreach lib,$(LINKED_STATIC_LIBS),$(call gb_StaticLibrary_get_target,$(lib))) \
+ 		    $(T_LIBS) \
++		    $(if $(CXXOBJECTS)$(GENCXXOBJECTS)$(EXTRAOBJECTLISTS)$(filter-out XTRUE,X$(ENABLE_RUNTIME_OPTIMIZATIONS)),$(T_STDLIBS_CXX)) \
+ 		    -Wl$(COMMA)--end-group \
+ 		    , \
+ 		    -Wl$(COMMA)--start-group \
+ 		    $(foreach lib,$(LINKED_STATIC_LIBS),$(call gb_StaticLibrary_get_target,$(lib))) \
+ 		    $(T_LIBS) \
++		    $(if $(CXXOBJECTS)$(GENCXXOBJECTS)$(EXTRAOBJECTLISTS)$(filter-out XTRUE,X$(ENABLE_RUNTIME_OPTIMIZATIONS)),$(T_STDLIBS_CXX)) \
+ 		    -Wl$(COMMA)--end-group \
+ 		    -Wl$(COMMA)--no-as-needed \
+ 		    $(patsubst lib%.a,-l%,$(patsubst lib%.so,-l%,$(patsubst %.$(gb_Library_UDK_MAJORVER),%,$(foreach lib,$(LINKED_LIBS),$(call gb_Library_get_filename,$(lib)))))) \
