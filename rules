@@ -91,23 +91,10 @@ BUILD_DEPS=\
     fontforge-nox | fontforge, \
     gperf (>= 3.1),\
     libc0.1 (>= 2.10.2-7) [kfreebsd-any],\
-    libcups2-dev,\
     libfontconfig1-dev,\
     libfreetype6-dev (>= 2.2.0),\
-    libgl1-mesa-dev,\
-    libice-dev,\
-    libsm-dev,\
-    libx11-dev,\
-    libxaw7-dev,\
-    libxext-dev,\
-    libxinerama-dev,\
-    libxkbfile-dev,\
-    libxrender-dev,\
-    libxt-dev,\
-    libxtst-dev,\
     pkg-config,\
     unzip,\
-    x11proto-render-dev,\
     xsltproc,\
     zip,\
     zlib1g-dev\
@@ -118,10 +105,17 @@ BUILD_DEPS_INDEP += rdfind, symlinks
 # distribution. See configure --help for valid values (--with-system-<value>).
 SYSTEM_STUFF = dicts
 
+ENABLE_GUI=y
+ifneq "$(ENABLE_GUI)" "y"
+CONFIGURE_FLAGS += --disable-gui
+# transitional package..
+DEBHELPER_OPTIONS += -Nlibreoffice-kde5
+endif
+
 ifeq ($(filter nopython,$(DEB_BUILD_PROFILES)),)
 ENABLE_PYTHON=y
 ifeq "$(ENABLE_PYTHON)" "y"
-  CONFIGURE_FLAGS += --with-python=system
+  CONFIGURE_FLAGS += --enable-python=system
   ENABLE_SCRIPT_PROVIDER_PYTHON=y
   PACKAGE_LIBRELOGO=y
 endif
@@ -186,9 +180,11 @@ SYSTEM_STUFF += libqxp
 SYSTEM_STUFF += qrcodegen
 BUILD_CAIROCANVAS=y
 SYSTEM_STUFF += cairo
+ifeq "$(ENABLE_GUI)" "y"
 BUILD_PLASMA=y
 ENABLE_QT5=n
 QT5_MINVER= (>= 5.6)
+endif
 ifeq "$(BUILD_PLASMA)" "y"
   ENABLE_KF5=y
   # KF5 depends on Qt5
@@ -240,7 +236,9 @@ ifeq "$(USE_DBUS)" "y"
     ENABLE_PACKAGEKIT=n
 endif
 ENABLE_AVAHI=y
+ifeq "$(ENABLE_GUI)" "y"
 USE_GSTREAMER=y
+endif
 ENABLE_WEBDAV=y
 ifeq "$(ENABLE_WEBDAV)" "y"
 WEBDAV_LIB=neon
@@ -290,11 +288,11 @@ else
   ENABLE_NLPSOLVER=n
 endif
 ENABLE_SDBC_POSTGRESQL=y
+ifeq "$(ENABLE_GUI)" "y"
 BUILD_GTK3=y
-ENABLE_INTROSPECTION=y
-ifeq "$(ENABLE_INTROSPECTION)" "n"
-  ifneq "$(BUILD_GTK3)" "y"
-  $(error Introspecttion needs GTK3!)
+  # introspection needs GTK3
+  ifeq "$(BUILD_GTK3)" "y"
+    ENABLE_INTROSPECTION=y
   endif
 endif
 ENABLE_EVO2=y
@@ -414,7 +412,7 @@ ENABLE_LIBNUMBERTEXT=y
 SYSTEM_STUFF += libnumbertext
 
 # Default flags to pass to configure
-CONFIGURE_FLAGS= \
+CONFIGURE_FLAGS+= \
 		--with-vendor='$(OOO_VENDOR)' \
 		--with-build-version='$(DEB_VERSION)' \
                 --prefix=/usr --mandir=/usr/share/man \
@@ -427,6 +425,22 @@ CONFIGURE_FLAGS= \
 		--without-fonts --enable-build-opensymbol \
 		--without-myspell-dicts \
 		--with-branding=$(CURDIR)/debian/branding
+
+ifeq "$(ENABLE_GUI)" "y"
+BUILD_DEPS += ,\
+    libcups2-dev,\
+    libice-dev,\
+    libsm-dev,\
+    libx11-dev,\
+    libxaw7-dev,\
+    libxext-dev,\
+    libxinerama-dev,\
+    libxkbfile-dev,\
+    libxrender-dev,\
+    libxt-dev,\
+    libxtst-dev,\
+    x11proto-render-dev
+endif
 
 ifeq "$(ENABLE_HELP)" "y"
 CONFIGURE_FLAGS_INDEP+= --with-help
@@ -1370,10 +1384,12 @@ ifneq (,$(filter redland, $(SYSTEM_STUFF)))
 	SHLIBS_OVERRIDE += -Xunordf
 endif
 
-ifneq (,$(filter epoxy, $(SYSTEM_STUFF)))
+ifeq "$(ENABLE_GUI)" "y"
+  ifneq (,$(filter epoxy, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libepoxy-dev (>= 1.2)
-else
+  else
 	BUILD_DEPS += , libegl1-mesa-dev
+  endif
 endif
 ifneq (,$(filter glm, $(SYSTEM_STUFF)))
   ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) ge 7.3 && echo true)" "true"
@@ -2172,6 +2188,10 @@ ifeq "$(ENABLE_INTROSPECTION)" "y"
 	echo "../../../workdir/CustomTarget/sysui/share/libreoffice/LOKDocView-0.1.typelib /usr/lib/$(DEB_HOST_MULTIARCH)/girepository-1.0" >> debian/gir1.2-lokdocview-0.1.install
 endif
 
+ifneq "$(ENABLE_GUI)" "y"
+	rm -rf debian/tmp/pkg/libreofficekit-data
+endif
+
 	dh_installdirs -A
 	if [ -x /usr/bin/dh_missing ]; then \
 		dh_install -A --sourcedir=debian/tmp/pkg && \
@@ -2622,12 +2642,15 @@ ifeq "$(ENABLE_EVO2)" "y"
 		$(PKGDIR)-evolution/$(OODIR)/share/registry
 endif
 
+ifeq "$(ENABLE_GUI)" "y"
+  ifeq "$(BUILD_GTK3)" "y"
 	# split out gtk stuff
 	mkdir -p $(PKGDIR)-gtk3/$(OODIR)/program/
 	mkdir -p debian/liblibreofficekitgtk/$(OODIR)/program
 	mv $(PKGDIR)-gnome/$(OODIR)/program/* $(PKGDIR)-gtk3/$(OODIR)/program/
 	mv $(PKGDIR)-core/$(OODIR)/program/liblibreofficekitgtk.so \
 		debian/liblibreofficekitgtk/$(OODIR)/program
+  endif
   ifeq "$(ENABLE_GIO)" "y"
 	mv $(PKGDIR)-gtk3/$(OODIR)/program/libucpgio1lo.so \
 		$(PKGDIR)-gnome/$(OODIR)/program/
@@ -2636,6 +2659,7 @@ endif
 	mv $(PKGDIR)-gtk3/$(OODIR)/program/liblosessioninstalllo.so \
 		$(PKGDIR)-gnome/$(OODIR)/program/
   endif
+endif
 
 ifeq "$(PACKAGE_BASE)" "y"
 	mkdir -p $(PKGDIR)-base-core/$(OODIR)/program
@@ -2744,10 +2768,12 @@ ifeq "$(ENABLE_PRESENTER_CONSOLE)" "y"
 endif
 
 ifeq "$(PACKAGE_SDK)" "y"
+  ifeq "$(ENABLE_GUI)" "y"
 	# move ui-previewer into -dev
 	mkdir -p $(PKGDIR)-dev/$(OODIR)/program
 	mv $(PKGDIR)-core/$(OODIR)/program/ui-previewer \
 		$(PKGDIR)-dev/$(OODIR)/program
+  endif
 else
 	rm -f $(PKGDIR)-core/$(OODIR)/program/ui-previewer
 endif
@@ -2965,16 +2991,25 @@ endif
 		fi; \
 	done
 
-	# move psprint.conf into /etc
+	# move psprint.conf into /etc. for non-GUI it somehow is not installed
+	# do do it manually. FIXME: is psprint.conf still a thing?
+ifeq "$(ENABLE_GUI)" "y"
 	mkdir -p $(PKGDIR)-common/etc/$(OODIRNAME)
 	mv $(PKGDIR)-common/$(OODIR)/share/psprint/psprint.conf \
 		$(PKGDIR)-common/etc/$(OODIRNAME)
+else
+	mkdir -p $(PKGDIR)-common/etc/$(OODIRNAME)
+	mkdir -p $(PKGDIR)-common/$(OODIR)/share/psprint
+	install -m644 vcl/unx/generic/printer/configuration/psprint.conf \
+		$(PKGDIR)-common/etc/$(OODIRNAME)
+endif
 	ln -s /etc/$(OODIRNAME)/psprint.conf \
 		$(PKGDIR)-common/$(OODIR)/share/psprint/psprint.conf
 
 	# prepare a fake sofficerc in the place where OOo expects it
 	# which does nothing except reference the "normal" one
 	# which we put into /etc
+	mkdir -p $(PKGDIR)-common/etc/$(OODIRNAME)
 	mv $(PKGDIR)-common/$(OODIR)/program/sofficerc \
 		$(PKGDIR)-common/etc/$(OODIRNAME)/sofficerc
 	( \
