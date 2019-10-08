@@ -108,6 +108,7 @@ SYSTEM_STUFF = dicts
 ENABLE_GUI=y
 ifneq "$(ENABLE_GUI)" "y"
 CONFIGURE_FLAGS += --disable-gui
+DEBHELPER_OPTIONS += -Nlibreoffice-core
 # transitional package..
 DEBHELPER_OPTIONS += -Nlibreoffice-kde5
 endif
@@ -1573,6 +1574,7 @@ clean:
 		$(MAKE) distclean; \
 		rm -f config.status; \
 	fi
+	rm -rf instdir-nogui
 	find $(SOURCE_TREE) -name "*.pyc" -exec rm {} \;
 	rm -rf */*.pro.obsolete
 
@@ -1897,10 +1899,34 @@ $(STAMP_DIR)/build-arch:
 		--disable-ext-wiki-publisher \
 		--disable-scripting-javascript --disable-scripting-beanshell \
 		--without-doxygen --without-javadoc \
-		--with-galleries=no --with-theme="$(DEFAULT_IMAGE)"
+		--with-galleries=no --with-theme="$(DEFAULT_IMAGE)" \
+		--disable-gui --disable-introspection --disable-qt5 --disable-kf5
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build-non-l10n-only
 
+ifeq "$(ENABLE_GUI)" "y"
+	rm -rf instdir-nogui
+	cp -r instdir instdir-nogui
+
+	# clean (modules: git grep HAVE_FEATURE_UI)
+	for i in canvas desktop framework sw vcl; do \
+		$(MAKE) $$i.clean; \
+	done
+
+	# build with GUI again
+	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
+	CLANGDIR=$(CLANGDIR) \
+	MARIADBCONFIG=$(MARIADBCONFIG) \
+	FIREBIRD_CFLAGS=$(FIREBIRD_CFLAGS) FIREBIRD_LIBS=$(FIREBIRD_LIBS) \
+	./autogen.sh $(CONFIGURE_FLAGS) \
+		--without-junit --without-cppunit \
+		--disable-ext-wiki-publisher \
+		--disable-scripting-javascript --disable-scripting-beanshell \
+		--without-doxygen --without-javadoc \
+		--with-galleries=no --with-theme="$(DEFAULT_IMAGE)"
+
+	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build-non-l10n-only
+endif
 #ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 #	$(CURDIR)/debian/rules check
 #endif
@@ -2839,6 +2865,18 @@ ifeq "$(ENABLE_JAVA)" "y"
 	mh_installpoms -plibreoffice-officebean
 	mh_installjar -plibreoffice-officebean -l debian/pom.officebean.xml instdir/program/classes/officebean.jar
 endif
+
+	# create libreoffice-core-nogui
+	rm -rf $(PKGDIR)-core-nogui
+	cp -ra $(PKGDIR)-core $(PKGDIR)-core-nogui
+	for i in $(PKGDIR)-core-nogui/$(OODIR)/program/*; do \
+		if [ -e instdir-nogui/program/`basename $$i` ]; then \
+			cp -v instdir-nogui/program/`basename $$i` \
+				$(PKGDIR)-core-nogui/$(OODIR)/program; \
+		else \
+			rm -fv $(PKGDIR)-core-nogui/$(OODIR)/program/`basename $$i`; \
+		fi; \
+	done
 
 	for i in $(ARCH_DEP_PACKAGES); do \
 		if [ -e debian/$$i.bug-script.in ]; then \
