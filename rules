@@ -3280,10 +3280,14 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 	# python3-uno has additional examples...
 	dh_installdocs -a -A -Nure -Nuno-libs3 \
 		-Npython3-uno -Nlibreoffice -Nlibreofficekit-dev \
+		-Nlibreoffice-core-nogui \
 		--link-doc=libreoffice-core
-	dh_installdocs -pure -puno-libs3 -ppython3-uno -plibreoffice -plibreofficekit-dev
+	dh_installdocs -pure -puno-libs3 -ppython3-uno -plibreoffice -plibreofficekit-dev\
+		-plibreoffice-core-nogui
 	cp workdir/CustomTarget/readlicense_oo/readme/README_en-US \
 		$(PKGDIR)-core/usr/share/doc/libreoffice-core/README
+	cp workdir/CustomTarget/readlicense_oo/readme/README_en-US \
+		$(PKGDIR)-core-nogui/usr/share/doc/libreoffice-core-nogui/README
 	dh_installdebconf -a
 	dh_installman -a
 	for i in writer calc draw base math impress; do \
@@ -3420,12 +3424,24 @@ ifneq (,$(filter firebird, $(SYSTEM_STUFF)))
 	# force the values of .shlibs which  gives us a (wanted) (>= 3.0.0~)
 	# instead of .symbols which gives os only a (>= 2.5.0.25784~ReleaseCandidate1.ds2)...
 	cat /var/lib/dpkg/info/libfbclient2*.shlibs >> debian/shlibs.local
+
 endif
 endif
 
-		dh_shlibdeps -a \
+		dh_shlibdeps -a -Nlibreoffice-core-nogui -Nure -Nuno-libs3 \
 			-Lure -Luno-libs3 \
 			-l$(CURDIR)/debian/uno-libs3/$(OODIR)/program:$(CURDIR)/debian/ure/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-core/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-base-core/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-base/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-writer/$(OODIR)/program \
+			$(SHLIBS_OVERRIDE)
+		dh_shlibdeps -puno-libs3 \
+			-l$(CURDIR)/debian/uno-libs3/$(OODIR)/program \
+			-- -xure
+		dh_shlibdeps -pure \
+			-Luno-libs3 \
+			-l$(CURDIR)/debian/uno-libs3/$(OODIR)/program:$(CURDIR)/debian/ure/$(OODIR)/program \
+			-- -xure
+		dh_shlibdeps -plibreoffice-core-nogui \
+			-Lure -Luno-libs3 \
+			-l$(CURDIR)/debian/uno-libs3/$(OODIR)/program:$(CURDIR)/debian/ure/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-core-nogui/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-base-core/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-base/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-writer/$(OODIR)/program \
 			$(SHLIBS_OVERRIDE)
 ifneq (,$(filter redland, $(SYSTEM_STUFF)))
 	# dpkg-shlibdeps "in practice" always will look for this in
@@ -3435,11 +3451,6 @@ ifneq (,$(filter redland, $(SYSTEM_STUFF)))
 	# which quickly can get outdated
 	perl -pi -e 's/(shlibs.*$$)/$$1, $(shell cat /var/lib/dpkg/info/$(shell dpkg -S /usr/lib/$(DEB_HOST_MULTIARCH)/`objdump -p $(PKGDIR)-core/$(OODIR)/program/libunordf*.so | grep NEEDED | grep librdf | awk '{ print $$2 }'` | cut -d: -f1)\:$(DEB_HOST_ARCH).shlibs | awk '{ print $$3,$$4,$$5 }')/' $(PKGDIR)-core.substvars
 endif
-	# Clean up .substvars values added by uno-libs3.symbols (adds uno-libs3, ure):
-	# 1) don't make uno-libs3 depend on ure...
-	perl -pi -e 's/, ure$$//' debian/uno-libs3.substvars
-	# 2) and prevent ure to depend on itself..
-	perl -pi -e 's/, ure \(.*\)$$//' debian/ure.substvars
   ifneq (,$(filter coinmp, $(SYSTEM_STUFF)))
 	perl -pi -e "s/coinor-libcoinutils3v5/coinor-libcoinutils3v5 $(COINUTILS_MINVER)/" \
 		debian/libreoffice-calc.substvars
