@@ -47,10 +47,6 @@ done
 create_package_directory gid_Module_Root_Ure_Hidden             pkg/ure
 create_package_directory gid_Module_Root                        pkg/libreoffice-common
 create_package_directory gid_Module_Root_Brand                  pkg/libreoffice-common
-# FIXME: This is added to gid_Module_Root_Brand but doesn't get installed....
-mkdir -p pkg/libreoffice-common/usr/share/mimelnk/application
-mv ./usr/share/mimelnk/application/* \
-	pkg/libreoffice-common/usr/share/mimelnk/application
 # done by dh_installman
 #mkdir -p pkg/libreoffice-common/usr/share/man/man1
 #mv usr/share/man/man1/libreoffice$BINSUFFIX.1.gz \
