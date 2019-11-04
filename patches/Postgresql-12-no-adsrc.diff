@@ -1,0 +1,128 @@
+From 0872f7dc87445f81afd56b5a096d026df75d3a05 Mon Sep 17 00:00:00 2001
+From: Julien Nabet <serval2412@yahoo.fr>
+Date: Sun, 13 Oct 2019 00:26:10 +0200
+Subject: tdf#128111: "adsrc" doesn't exist from Postgresql 12
+
+Before Postgresql 8.0, there was only "adsrc"
+then it's been deprecated
+"The adsrc field is historical, and is best not used, because it does not track outside changes
+ that might affect the representation of the default value.
+ Reverse-compiling the adbin field (with pg_get_expr for example) is a better way to display the default value
+"
+and finally it's been removed with version 12
+
+See evolution with:
+- https://www.postgresql.org/docs/8/catalog-pg-attrdef.html
+- https://www.postgresql.org/docs/11/catalog-pg-attrdef.html
+- https://www.postgresql.org/docs/12/catalog-pg-attrdef.html
+
+Merge with https://cgit.freedesktop.org/libreoffice/core/commit/?id=1ec93ef100bb5f6ccef91f12e28ed09feb3eb38b
+
+Change-Id: I57e9da423a23b5a96bbb64b0e026b160e9643ab9
+Reviewed-on: https://gerrit.libreoffice.org/80722
+(cherry picked from commit 0c46c81e04530e8f6ce4f34195d8f0443ed8bfc3)
+Reviewed-on: https://gerrit.libreoffice.org/80736
+Tested-by: Jenkins
+Reviewed-by: Julien Nabet <serval2412@yahoo.fr>
+---
+ connectivity/source/drivers/postgresql/pq_databasemetadata.cxx |  6 +++---
+ connectivity/source/drivers/postgresql/pq_statement.cxx        | 10 ++++++----
+ connectivity/source/drivers/postgresql/pq_tools.cxx            |  7 +++++++
+ connectivity/source/drivers/postgresql/pq_tools.hxx            |  2 ++
+ 4 files changed, 18 insertions(+), 7 deletions(-)
+
+diff --git a/connectivity/source/drivers/postgresql/pq_databasemetadata.cxx b/connectivity/source/drivers/postgresql/pq_databasemetadata.cxx
+index 10c8546..8af02f9 100644
+--- a/connectivity/source/drivers/postgresql/pq_databasemetadata.cxx
++++ b/connectivity/source/drivers/postgresql/pq_databasemetadata.cxx
+@@ -1514,7 +1514,7 @@ css::uno::Reference< XResultSet > DatabaseMetaData::getColumns(
+     //                            allow NULL values. An empty string means
+     //                            nobody knows.
+     //               => pg_attribute.attnotnull
+-
++    OUString strDefaultValue = getColExprForDefaultSettingVal(m_pSettings);
+     Reference< XPreparedStatement > statement = m_origin->prepareStatement(
+             "SELECT pg_namespace.nspname, "  // 1
+             "pg_class.relname, "             // 2
+@@ -1524,8 +1524,8 @@ css::uno::Reference< XResultSet > DatabaseMetaData::getColumns(
+             "pg_attribute.attnotnull, "      // 6
+             "pg_type.typdefault, "           // 7
+             "pg_type.typtype, "              // 8
+-            "pg_attrdef.adsrc, "             // 9
+-            "pg_description.description, "   // 10
++            + strDefaultValue +              // 9
++            ",pg_description.description, "   // 10
+             "pg_type.typbasetype, "          // 11
+             "pg_attribute.attnum "           // 12
+             "FROM pg_class, "
+diff --git a/connectivity/source/drivers/postgresql/pq_statement.cxx b/connectivity/source/drivers/postgresql/pq_statement.cxx
+index 7796cac..79930e2 100644
+--- a/connectivity/source/drivers/postgresql/pq_statement.cxx
++++ b/connectivity/source/drivers/postgresql/pq_statement.cxx
+@@ -631,10 +631,12 @@ static void getAutoValues(
+     String2StringMap & result,
+     const Reference< XConnection > & connection,
+     const OUString &schemaName,
+-    const OUString & tableName )
++    const OUString & tableName,
++    ConnectionSettings *pConnectionSettings )
+ {
++    OUString strDefaultValue = getColExprForDefaultSettingVal(pConnectionSettings);
+     Reference< XPreparedStatement > stmt = connection->prepareStatement(
+-                  "SELECT   pg_attribute.attname, pg_attrdef.adsrc "
++                  "SELECT   pg_attribute.attname, " + strDefaultValue +
+                   "FROM pg_class, pg_namespace, pg_attribute "
+                   "LEFT JOIN pg_attrdef ON pg_attribute.attrelid = pg_attrdef.adrelid AND "
+                                         "pg_attribute.attnum = pg_attrdef.adnum "
+@@ -644,7 +646,7 @@ static void getAutoValues(
+                   // LEM TODO: this is weird; why "LIKE" and not "="?
+                   // Most probably gives problems if tableName contains '%'
+                         "pg_class.relname LIKE ? AND "
+-                        "pg_attrdef.adsrc != ''"
++                        + strDefaultValue + " != ''"
+             );
+     DisposeGuard guard( stmt );
+     Reference< XParameters > paras( stmt, UNO_QUERY );
+@@ -738,7 +740,7 @@ Reference< XResultSet > getGeneratedValuesFromLastInsert(
+                 {
+                     if( autoValues.empty() )
+                     {
+-                        getAutoValues( autoValues, connection, schemaName, tableName );
++                        getAutoValues( autoValues, connection, schemaName, tableName, pConnectionSettings );
+                     }
+                     // this could mean, that the column is a default or auto value, check this ...
+                     bool bColumnMatchAutoValue = false;
+diff --git a/connectivity/source/drivers/postgresql/pq_tools.cxx b/connectivity/source/drivers/postgresql/pq_tools.cxx
+index fd691f2..63ed515 100644
+--- a/connectivity/source/drivers/postgresql/pq_tools.cxx
++++ b/connectivity/source/drivers/postgresql/pq_tools.cxx
+@@ -836,6 +836,13 @@ OString extractSingleTableFromSelect( const std::vector< OString > &vec )
+ 
+ }
+ 
++OUString getColExprForDefaultSettingVal(ConnectionSettings const *settings)
++{
++    return (PQserverVersion( settings->pConnection ) < 80000)?
++               OUString("pg_attrdef.adsrc"):
++               OUString("pg_get_expr(pg_attrdef.adbin, pg_attrdef.adrelid, true)");
++}
++
+ css::uno::Sequence< sal_Int32 > string2intarray( const OUString & str )
+ {
+     css::uno::Sequence< sal_Int32 > ret;
+diff --git a/connectivity/source/drivers/postgresql/pq_tools.hxx b/connectivity/source/drivers/postgresql/pq_tools.hxx
+index 9d4e234..af751f8 100644
+--- a/connectivity/source/drivers/postgresql/pq_tools.hxx
++++ b/connectivity/source/drivers/postgresql/pq_tools.hxx
+@@ -100,6 +100,8 @@ void disposeObject( const css::uno::Reference< css::uno::XInterface > & r );
+ OUString extractTableFromInsert( const OUString & sql );
+ OString extractSingleTableFromSelect( const std::vector< OString > &vec );
+ 
++OUString getColExprForDefaultSettingVal(ConnectionSettings const *settings);
++
+ void tokenizeSQL( const OString & sql, std::vector< OString > &vec  );
+ void splitSQL( const OString & sql, std::vector< OString > &vec  );
+ std::vector< sal_Int32 > parseIntArray( const OUString & str );
+-- 
+cgit v1.1
+
