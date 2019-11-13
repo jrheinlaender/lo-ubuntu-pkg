@@ -601,17 +601,6 @@ ifeq "$(DEB_DISTRIBUTION)" "buster-backports"
   BUSTER_BACKPORT=y
 endif
 
-ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
-UNO_LIBS_DBG=uno-libs3-dbgsym
-URE_DBG=ure-dbgsym
-CORE_DBG=libreoffice-core-dbgsym
-WRITER_DBG=libreoffice-writer-dbgsym
-URE_DBG_ROOT=.debhelper/ure/dbgsym-root
-UNO_LIBS_DBG_ROOT=.debhelper/uno-libs3/dbgsym-root
-CORE_DBG_ROOT=.debhelper/libreoffice-core/dbgsym-root
-WRITER_DBG_ROOT=.debhelper/libreoffice-writer/dbgsym-root
-endif
-
 CONFIGURE_FLAGS += $(foreach i, $(SYSTEM_STUFF),--with-system-$(i))
 
 CC_PREFIX:=$(shell gcc -dumpmachine)-
@@ -2301,15 +2290,6 @@ endif
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
-	# move officebean.jar into -officebean via -core (They will be moved out of -core
-	# in the install-arch target). Do the /usr/share move here already
-	mkdir -p $(PKGDIR)-core/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes; \
-	mv $(PKGDIR)-common/$(OODIR)/program/classes/officebean.jar \
-		$(PKGDIR)-core/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes
-	# fix the classpath
-	jh_classpath --classpath="ridl.jar unoil.jar jurt.jar juh.jar" \
-		$(PKGDIR)-core/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes/officebean.jar
-	
   ifeq "$(PACKAGE_BASE)" "y"
 	# move sdbc_hsqldb.jar into -base (do the move
 	# to /usr/share/java here directly, we do it for the "rest"
@@ -2427,7 +2407,6 @@ ifeq "$(ENABLE_EVO2)" "y"
 		$(PKGDIR)-evolution/$(OODIR)/presets/database
 endif
 
-	# Access2Base IMHO clearly is -base specific :-)
 ifeq "$(PACKAGE_BASE)" "y"
 	mkdir -p $(PKGDIR)-base/$(OODIR)/share/basic
 	mv $(PKGDIR)-common/$(OODIR)/share/basic/Access2Base \
@@ -2436,14 +2415,13 @@ ifeq "$(PACKAGE_BASE)" "y"
 		$(PKGDIR)-base/$(OODIR)/share/basic
 	cp $(PKGDIR)-common/$(OODIR)/share/basic/script.xlc \
 		$(PKGDIR)-base/$(OODIR)/share/basic
-	# FIXME. Does not scale. This has to be a diversion...
 	t=`mktemp -q`; grep -v Access2Base $(PKGDIR)-common/$(OODIR)/share/basic/dialog.xlc > \
 		$$t && mv $$t $(PKGDIR)-common/$(OODIR)/share/basic/dialog.xlc && rm -f $$t
 	t=`mktemp -q`; grep -v Access2Base $(PKGDIR)-common/$(OODIR)/share/basic/script.xlc > \
 		$$t && mv $$t $(PKGDIR)-common/$(OODIR)/share/basic/script.xlc && rm -f $$t
-	mkdir -p $(PKGDIR)-base/$(shell $(PYTHON) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
+	mkdir -p debian/python3-access2base/$(shell $(PYTHON) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
 	mv $(PKGDIR)-common/$(OODIR)/program/access2base.py \
-		$(PKGDIR)-base/$(shell $(PYTHON) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
+		debian/python3-access2base/$(shell $(PYTHON) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
 else
 	rm -rf $(PKGDIR)-common/$(OODIR)/share/basic/Access2Base
 	t=`mktemp -q`; grep -v Access2Base $(PKGDIR)-common/$(OODIR)/share/basic/dialog.xlc > \
@@ -2629,18 +2607,27 @@ ifeq "$(ENABLE_JAVA)" "y"
 	jh_classpath --classpath="ridl.jar unoloader.jar ../../lib /$(OODIR)/program ../bin/" \
 		$(CURDIR)/debian/ure/usr/share/java/jurt.jar
 endif
-	# and the public libs to uno-libs3
-	mkdir -p debian/uno-libs3/$(OODIR)/program
-	mkdir -p debian/uno-libs3/usr/lib/$(DEB_HOST_MULTIARCH)
-	for i in debian/ure/$(OODIR)/program/libuno_*so.3; do \
-		mv $$i debian/uno-libs3/$(OODIR)/program; \
-		ln -sf /$(OODIR)/program/`basename $$i` debian/uno-libs3/usr/lib/$(DEB_HOST_MULTIARCH)/`basename $$i`; \
+	# and the public libs to their respective packages
+	for i in sal cppu; do \
+		mkdir -p debian/libuno-$${i}3/$(OODIR)/program; \
+		mkdir -p debian/libuno-$${i}3/usr/lib/$(DEB_HOST_MULTIARCH); \
+		mv debian/ure/$(OODIR)/program/libuno_$${i}.so.3 \
+			debian/libuno-$${i}3/$(OODIR)/program; \
+		ln -sf /$(OODIR)/program/`basename libuno_$$i.so.3` debian/libuno-$${i}3/usr/lib/$(DEB_HOST_MULTIARCH)/`basename libuno_$$i.so.3`; \
+	done
+	for i in salhelpergcc3 cppuhelpergcc3 purpenvhelpergcc3; do \
+		mkdir -p debian/libuno-$${i}-3/$(OODIR)/program; \
+		mkdir -p debian/libuno-$${i}-3/usr/lib/$(DEB_HOST_MULTIARCH); \
+		mv debian/ure/$(OODIR)/program/libuno_$${i}.so.3 \
+			debian/libuno-$${i}-3/$(OODIR)/program; \
+		ln -sf /$(OODIR)/program/`basename libuno_$$i.so.3` debian/libuno-$${i}-3/usr/lib/$(DEB_HOST_MULTIARCH)/`basename libuno_$$i.so.3`; \
 	done
 	# we also need libxmlreaderlo.so, libreglo.so and libunoidllo.so (libuno_cppuhelpergcc3.so.3
         # needs it) and libstorelo.so (libreglo.so needs it)
+	mkdir -p debian/uno-libs-private/$(OODIR)/program
 	for i in libxmlreaderlo.so libreglo.so libstorelo.so libunoidllo.so; do \
 		mv debian/ure/$(OODIR)/program/$$i \
-			debian/uno-libs3/$(OODIR)/program; \
+			debian/uno-libs-private/$(OODIR)/program; \
 	done
 
 
@@ -2716,15 +2703,19 @@ ifeq "$(ENABLE_JAVA)" "y"
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
-	rm -rf $(PKGDIR)-officebean
-	mkdir -p -m755 $(PKGDIR)-officebean/$(OODIR)/program/classes
-	mkdir -p -m755 $(PKGDIR)-officebean/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes
-	mv $(PKGDIR)-core/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes/officebean.jar \
-		$(PKGDIR)-officebean/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes
+	rm -rf $(PKGDIR)-officebean debian/libofficebean-java
+	mkdir -p -m755 $(PKGDIR)-officebean/$(OODIR)/program
+	mkdir -p -m755 debian/libofficebean-java/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes
+	mkdir -p -m755 debian/libofficebean-java/$(OODIR)/program/classes
+	mv $(PKGDIR)-common/$(OODIR)/program/classes/officebean.jar \
+		debian/libofficebean-java/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes
 	ln -s $(shell echo /$(OODIR) | sed -e s/lib/share/)/program/classes/officebean.jar \
-		 $(PKGDIR)-officebean/$(OODIR)/program/classes/officebean.jar
+		 debian/libofficebean-java/$(OODIR)/program/classes/officebean.jar
 	mv $(PKGDIR)-core/$(OODIR)/program/libofficebean.so \
 		$(PKGDIR)-officebean/$(OODIR)/program
+	# fix the classpath
+	jh_classpath --classpath="ridl.jar unoil.jar jurt.jar juh.jar" \
+		debian/libofficebean-java/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes/officebean.jar
 endif
 
 	mkdir -p -m755 $(PKGDIR)-base/usr/share/applications \
@@ -2852,28 +2843,6 @@ endif
 			$(PKGDIR)-base-drivers/$(OODIR)/program; \
 	done
 
-ifeq "$(ENABLE_JAVA)" "y"
-	# somehow --has-package-version doesn't overwrite version and without <version>...</version>
-	# we get a NullPointerException when calling mh_installjar
-	for i in ridl unoloader; do \
-		sed -e s/@version@/$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d~ -f1)/ \
-			< $(SOURCE_TREE)/ridljar/pom.$$i.xml > debian/pom.$$i.xml; \
-	done
-		sed -e s/@version@/$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d~ -f1)/ \
-			< $(SOURCE_TREE)/jurt/pom.jurt.xml > debian/pom.jurt.xml
-		sed -e s/@version@/$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d~ -f1)/ \
-			< $(SOURCE_TREE)/javaunohelper/pom.juh.xml > debian/pom.juh.xml
-	
-	mh_installpoms -pure
-	for i in juh jurt ridl unoloader; do \
-		mh_installjar -pure -l debian/pom.$$i.xml instdir/program/classes/$$i.jar; \
-	done
-	sed -e s/@version@/$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d~ -f1)/ \
-		< $(SOURCE_TREE)/bean/pom.officebean.xml > debian/pom.officebean.xml
-	mh_installpoms -plibreoffice-officebean
-	mh_installjar -plibreoffice-officebean -l debian/pom.officebean.xml instdir/program/classes/officebean.jar
-endif
-
 	# create libreoffice-core-nogui
 	rm -rf $(PKGDIR)-core-nogui
 	cp -ra $(PKGDIR)-core $(PKGDIR)-core-nogui
@@ -2901,17 +2870,6 @@ endif
 	    sed -e "s#\@OODIR\@#$(OODIR)#g" \
 		< $$LINKS.in > $$LINKS ; \
 	  fi; \
-	done
-	for PKG in $(ARCH_DEP_PACKAGES); do \
-		case $$PKG in \
-		uno-libs*|ure*) \
-			;; \
-		*) \
-			cat debian/changelog \
-			| sed -e '/^openoffice/,$$d' \
-			> debian/$$PKG.changelog; \
-			;; \
-		esac; \
 	done
 
 	touch $@
@@ -3185,17 +3143,6 @@ endif
 		< $$LINKS.in > $$LINKS ; \
 	  fi; \
 	done
-	for PKG in $(ARCH_INDEP_PACKAGES); do \
-		case $$PKG in \
-		*-opensymbol) \
-			;; \
-		*) \
-			cat debian/changelog \
-			| sed -e '/^openoffice/,$$d' \
-			> debian/$$PKG.changelog; \
-			;; \
-		esac; \
-	done
 
 	# install extension shell lib for use by extensions not from here
 	install -D -m644 debian/shell-lib-extensions.sh \
@@ -3241,10 +3188,22 @@ endif
 ifeq "$(ENABLE_JAVA)" "y"
 	# somehow --has-package-version doesn't overwrite version and without <version>...</version>
 	# we get a NullPointerException when calling mh_installjar
+	for i in ridl unoloader; do \
+		sed -e s/@version@/$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d~ -f1)/ \
+			< $(SOURCE_TREE)/ridljar/pom.$$i.xml > debian/pom.$$i.xml; \
+	done
+	sed -e s/@version@/$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d~ -f1)/ \
+		< $(SOURCE_TREE)/jurt/pom.jurt.xml > debian/pom.jurt.xml
+	sed -e s/@version@/$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d~ -f1)/ \
+		< $(SOURCE_TREE)/javaunohelper/pom.juh.xml > debian/pom.juh.xml
 	sed -e s/@version@/$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d~ -f1)/ \
 		< $(SOURCE_TREE)/unoil/pom.unoil.xml > debian/pom.unoil.xml
-	mh_installpoms -plibreoffice-java-common
-	mh_installjar -plibreoffice-java-common -l debian/pom.unoil.xml instdir/program/classes/unoil.jar
+	sed -e s/@version@/$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d~ -f1)/ \
+		< $(SOURCE_TREE)/bean/pom.officebean.xml > debian/pom.officebean.xml
+	for i in juh jurt unoil ridl unoloader officebean; do \
+		mh_installpoms -plib$$i-java; \
+		mh_installjar -plib$$i-java -l debian/pom.$$i.xml instdir/program/classes/$$i.jar; \
+	done
 	# dedup. But why is this NOT a symlink from the start whereas the ure
 	# stuff is?
 	ln -sf /usr/share/java/unoil.jar $(PKGDIR)-java-common/usr/share/libreoffice/program/classes/unoil.jar
@@ -3308,48 +3267,43 @@ endif
 	dh_bugfiles -a -A
 	dh_link -a
 ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
-	rm -rf debian/$(UNO_LIBS_DBG_ROOT) debian/$(URE_DBG_ROOT) debian/$(CORE_DBG_ROOT) \
-		debian/$(WRITER_DBG_ROOT)
+	for i in libuno-cppu3 libuno-sal3 libreoffice-core libreoffice-writer; do \
+		rm -rf debian/.debhelper/$$i/dbgsym-root; \
+	done
   ifeq "$(USE_DWZ)" "y"
 	dh_dwz -a -- $(DWZ_ARGS)
   endif
-	dh_strip -a -Nure -Nuno-libs3 $(DH_STRIP_DBG_OPTION_LO)
-	dh_strip -pure $(DH_STRIP_DBG_OPTION_URE)
-	dh_strip -puno-libs3 $(DH_STRIP_DBG_OPTION_UNO_LIBS)
+	dh_strip -a
 	# dh_strip --dbg-package= is not idempotent, force copying of the binaries
 	# again...
 	rm -f $(STAMP_DIR)/install-common
-	mkdir -p debian/$(CORE_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)
+
+	mkdir -p debian/.debhelper/libreoffice-core/dbgsym-root/usr/share/gdb/auto-load/$(OODIR)
 	mv $(CURDIR)/debian/tmp/usr/share/gdb/auto-load/$(OODIR)/program \
-		debian/$(CORE_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)
-	# I think a -dbg-common is overkill. Although this means that this all only
-	# will work if libreoffice-dbg is installed..
-	mkdir -p debian/$(CORE_DBG_ROOT)/usr/share/libreoffice/gdb
+		debian/.debhelper/libreoffice-core/dbgsym-root/usr/share/gdb/auto-load/$(OODIR)
+	mkdir -p debian/.debhelper/libreoffice-core/dbgsym-root/usr/share/libreoffice/gdb
 	mv $(CURDIR)/debian/tmp/usr/share/libreoffice/gdb/libreoffice \
-		debian/$(CORE_DBG_ROOT)/usr/share/libreoffice/gdb
-	mkdir -p debian/$(WRITER_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program
-	mkdir -p debian/$(WRITER_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice/
-	for i in sw writerfilter; do \
-		if [ -f debian/$(CORE_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program/lib$${i}lo.so-gdb.py ]; then \
-		mv debian/$(CORE_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program/lib$${i}lo.so-gdb.py \
-				debian/$(WRITER_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program/; \
-		fi; \
-		mv debian/$(CORE_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice/$$i.py \
-			debian/$(WRITER_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice; \
+		debian/.debhelper/libreoffice-core/dbgsym-root/usr/share/libreoffice/gdb
+
+	for i in sal cppu; do \
+		mkdir -p debian/.debhelper/libuno-$${i}3/dbgsym-root/usr/share/gdb/auto-load/$(OODIR)/program; \
+		mkdir -p debian/.debhelper/libuno-$${i}3/dbgsym-root/usr/share/libreoffice/gdb/libreoffice; \
+		mv debian/.debhelper/libreoffice-core/dbgsym-root/usr/share/gdb/auto-load/$(OODIR)/program/libuno_$$i.so.3-gdb.py \
+			debian/.debhelper/libuno-$${i}3/dbgsym-root/usr/share/gdb/auto-load/$(OODIR)/program; \
+		mv debian/.debhelper/libreoffice-core/dbgsym-root/usr/share/libreoffice/gdb/libreoffice/$$i.py \
+			debian/.debhelper/libuno-$${i}3/dbgsym-root/usr/share/libreoffice/gdb/libreoffice; \
 	done
 
-	# FIXME: or better ure-dbg (ure/lib?). Then again ure is a link which is in -common
-	# anyways...
-	mkdir -p debian/$(UNO_LIBS_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program
-	mv debian/$(CORE_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program/libuno_cppu.so.3-gdb.py \
-		debian/$(UNO_LIBS_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program
-	mv debian/$(CORE_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program/libuno_sal.so.3-gdb.py \
-		debian/$(UNO_LIBS_DBG_ROOT)/usr/share/gdb/auto-load/$(OODIR)/program
-	mkdir -p debian/$(UNO_LIBS_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice
-	mv debian/$(CORE_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice/cppu.py \
-		debian/$(UNO_LIBS_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice
-	mv debian/$(CORE_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice/sal.py \
-		debian/$(UNO_LIBS_DBG_ROOT)/usr/share/libreoffice/gdb/libreoffice
+	mkdir -p debian/.debhelper/libreoffice-writer/dbgsym-root/usr/share/gdb/auto-load/$(OODIR)/program
+	mkdir -p debian/.debhelper/libreoffice-writer/dbgsym-root/usr/share/libreoffice/gdb/libreoffice/
+	for i in sw writerfilter; do \
+		if [ -f debian/.debhelper/libreoffice-core/dbgsym-root/usr/share/gdb/auto-load/$(OODIR)/program/lib$${i}lo.so-gdb.py ]; then \
+		mv debian/.debhelper/libreoffice-core/dbgsym-root/usr/share/gdb/auto-load/$(OODIR)/program/lib$${i}lo.so-gdb.py \
+				debian/.debhelper/libreoffice-writer/dbgsym-root/usr/share/gdb/auto-load/$(OODIR)/program/; \
+		fi; \
+		mv debian/.debhelper/libreoffice-core/dbgsym-root/usr/share/libreoffice/gdb/libreoffice/$$i.py \
+			debian/.debhelper/libreoffice-writer/dbgsym-root/usr/share/libreoffice/gdb/libreoffice; \
+	done
 else
 	dh_strip -a --no-automatic-dbgsym
 endif
@@ -3357,12 +3311,12 @@ endif
 ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 	# dh_fixperms is not run on -dbgsym. And we get 0775 directories. Fix it
 	# manually
-	#16:29 < nthykier> _rene_: I would recommend a "find debian/$(CORE_DBG_ROOT) 
-	#	debian/$(UNO_LIBS_DBG_ROOT) debian/$(WRITER_DBG_ROOT) -exec 
+	#16:29 < nthykier> _rene_: I would recommend a "find debian/.debhelper/libreoffice-core/dbgsym-root 
+	#	debian/$(UNO_LIBS_DBG_ROOT) debian/.debhelper/libreoffice-writer/dbgsym-root -exec 
 	#	chmod go=rX,u+rw,a-s {} +"
 	#16:29 < nthykier> Should be faster and is the same expression as used by 
 	#	dh_fixperms
-	find debian/$(CORE_DBG_ROOT) debian/$(UNO_LIBS_DBG_ROOT) debian/$(WRITER_DBG_ROOT) ! -type l -exec chmod go=rX,u+rw,a-s {} +
+	find debian/.debhelper/libreoffice-core/dbgsym-root debian/.debhelper/libuno*/dbgsym-root debian/.debhelper/libreoffice-writer/dbgsym-root ! -type l -exec chmod go=rX,u+rw,a-s {} +
 endif
 	dh_icons -a
 	dh_compress -a -X.py -X.mk -X.sxd
@@ -3370,7 +3324,9 @@ ifeq "$(ENABLE_INTROSPECTION)" "y"
 	dh_girepository -a debian/liblibreofficekitgtk/$(OODIR)/program
 endif
 	dh_strip_nondeterminism -a
-	dh_makeshlibs -puno-libs3 -V"uno-libs3 (>= $(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }' | cut -d. -f1-3)~), ure" -- -c0 -d -V -v`echo $(BINARY_VERSION) | cut -d: -f2`
+	for i in sal3 cppu3 salhelpergcc3-3 cppuhelpergcc3-3 purpenvhelpergcc3-3; do \
+		dh_makeshlibs -plibuno-$$i -V"libuno-$$i (>= $(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }' | cut -d. -f1-3)~), ure" -- -c0 -d -V -v`echo $(BINARY_VERSION) | cut -d: -f2`; \
+	done
 	dh_makeshlibs -n -pure -V"ure (>= $(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }' | cut -d. -f1-3)~)" -- -d -V -v`echo $(BINARY_VERSION) | cut -d: -f2`
 	dh_installdeb -a
 	rm -f debian/shlibs.local
@@ -3428,20 +3384,17 @@ ifneq (,$(filter firebird, $(SYSTEM_STUFF)))
 endif
 endif
 
-		dh_shlibdeps -a -Nlibreoffice-core-nogui -Nure -Nuno-libs3 \
-			-Lure -Luno-libs3 \
-			-l$(CURDIR)/debian/uno-libs3/$(OODIR)/program:$(CURDIR)/debian/ure/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-core/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-base-core/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-base/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-writer/$(OODIR)/program \
+		dh_shlibdeps -a -Nlibreoffice-core-nogui -Nure \
+			-Lure -Llibuno-sal3 -Llibpuno-cppu3 -Llibuno-salhelpergcc3-3 -Llibcppuhelpergcc3-3 -Llibuno-purpenvhelpergcc3-3 \
+			-l$(CURDIR)/debian/libuno-sal3/$(OODIR)/program:$(CURDIR)/debian/libuno-cppu3/$(OODIR)/program:$(CURDIR)/debian/libuno-salhelpergcc3-33/$(OODIR)/program:$(CURDIR)/debian/libuno-cppuhelpergcc3-3/$(OODIR)/program:$(CURDIR)/debian/libuno-purpenvhelpergcc3-3/$(OODIR)/program:$(CURDIR)/debian/ure/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-core/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-base-core/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-base/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-writer/$(OODIR)/program \
 			$(SHLIBS_OVERRIDE)
-		dh_shlibdeps -puno-libs3 \
-			-l$(CURDIR)/debian/uno-libs3/$(OODIR)/program \
-			-- -xure
 		dh_shlibdeps -pure \
-			-Luno-libs3 \
-			-l$(CURDIR)/debian/uno-libs3/$(OODIR)/program:$(CURDIR)/debian/ure/$(OODIR)/program \
+			-Llibuno-sal3 -Llibpuno-cppu3 -Llibuno-salhelpergcc3-3 -Llibcppuhelpergcc3-3 -Llibuno-purpenvhelpergcc3-3 \
+			-l$(CURDIR)/debian/libuno-sal3/$(OODIR)/program:$(CURDIR)/debian/libuno-cppu3/$(OODIR)/program:$(CURDIR)/debian/libuno-salhelpergcc3-33/$(OODIR)/program:$(CURDIR)/debian/libuno-cppuhelpergcc3-3/$(OODIR)/program:$(CURDIR)/debian/libuno-purpenvhelpergcc3-3/$(OODIR)/program:$(CURDIR)/debian/ure/$(OODIR)/program \
 			-- -xure
 		dh_shlibdeps -plibreoffice-core-nogui \
-			-Lure -Luno-libs3 \
-			-l$(CURDIR)/debian/uno-libs3/$(OODIR)/program:$(CURDIR)/debian/ure/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-core-nogui/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-base-core/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-base/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-writer/$(OODIR)/program \
+			-Lure -Llibuno-sal3 -Llibpuno-cppu3 -Llibuno-salhelpergcc3-3 -Llibcppuhelpergcc3-3 -Llibuno-purpenvhelpergcc3-3 \
+			-l$(CURDIR)/debian/libuno-sal3/$(OODIR)/program:$(CURDIR)/debian/libuno-cppu3/$(OODIR)/program:$(CURDIR)/debian/libuno-salhelpergcc3-33/$(OODIR)/program:$(CURDIR)/debian/libuno-cppuhelpergcc3-3/$(OODIR)/program:$(CURDIR)/debian/libuno-purpenvhelpergcc3-3/$(OODIR)/program:$(CURDIR)/debian/ure/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-core-nogui/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-base-core/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-base/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-writer/$(OODIR)/program \
 			$(SHLIBS_OVERRIDE)
 ifneq (,$(filter redland, $(SYSTEM_STUFF)))
 	# dpkg-shlibdeps "in practice" always will look for this in
@@ -3475,7 +3428,7 @@ endif
 # This switch to dh_shlibdeps reduces the 'libXXX not found' warnings but
 # causes ldd crashes sometimes when used with fakeroot:
 #          -l $(PKGDIR)-core/$(OPENOFFICEDIR)/program
-	dh_gencontrol -a $(DEBHELPER_OPTIONS) -Nure -Nuno-libs3 \
+	dh_gencontrol -a $(DEBHELPER_OPTIONS) -Nure -Nlibuno-sal3 -Nlibuno-cppu3 -Nlibuno-salhelpergcc3-3 -Nlibuno-cppuhelpergcc3-3 -Nlibuno-purpenvhelpergcc3-3 -Nuno-libs-private \
 		-- \
 		-V"ure:Version=$(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }')" \
 		-V'base-version=$(BASE_VERSION)' \
@@ -3499,20 +3452,17 @@ endif
 		-V'firebird-engine-depends=$(FIREBIRD_ENGINE_DEPENDS)' \
 		-V'libsane-suggests=$(shell dpkg -S /usr/lib/$(DEB_HOST_MULTIARCH)/libsane.so.1 | cut -d: -f1)' \
 		-v$(BINARY_VERSION)
-	dh_gencontrol -pure -puno-libs3 -- \
+	dh_gencontrol -pure -plibuno-sal3 -plibuno-cppu3 -plibuno-salhelpergcc3-3 -plibuno-cppuhelpergcc3-3 -plibuno-purpenvhelpergcc3-3 -puno-libs-private -- \
 		-V"ure:Version=`echo $(BINARY_VERSION) | cut -d: -f2`" \
 		-v"`echo $(BINARY_VERSION) | cut -d: -f2`"
 ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
-	for i in libreoffice-core libreoffice-writer uno-libs3; do \
+	for i in libuno-sal3 libuno-cppu3 libuno-salhelpergcc3-3 libuno-cppuhelpergcc3-3 libuno-purpenvhelpergcc3-3 \
+		libreoffice-core libreoffice-writer; do \
 		perl -pi -e 's/^(Depends:.*)/\1\nRecommends: gdb, python3-six/' \
 		debian/.debhelper/$$i/dbgsym-root/DEBIAN/control; \
 	done
-	for i in $(filter-out uno-libs3,$(ARCH_DEP_PACKAGES)); do \
-		perl -pi -e 's/^(Depends:.*)/\1, uno-libs3-dbgsym/' \
-		debian/.debhelper/$$i/dbgsym-root/DEBIAN/control; \
-	done
 	perl -pi -e 's/Recommends: /Recommends: libreoffice-core-dbgsym, /' \
-		debian/$(WRITER_DBG_ROOT)/DEBIAN/control
+		debian/.debhelper/libreoffice-writer/dbgsym-root/DEBIAN/control
 endif
 
 	dh_md5sums -a
@@ -3627,6 +3577,11 @@ ifeq "$(ENABLE_JAVA)" "y"
 			-Xlibreoffice-report-builder; \
         done
 endif
+	# fix base-files depends...
+	perl -pi -e "s/base-files,  //" \
+		debian/libjuh-java.substvars
+	perl -pi -e "s/base-files,  //" \
+		debian/libjurt-java.substvars
 	# and it adds a librhino-java Depends where we still use internal rhino
 	perl -pi -e "s/librhino-java//" \
 		debian/libreoffice-script-provider-js.substvars
