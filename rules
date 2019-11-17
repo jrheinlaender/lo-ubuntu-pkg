@@ -1527,8 +1527,6 @@ clean-debdir:
 
 	rm -f debian/shlibs.local
 
-	rm -f debian/libreoffice-dev-doc.doc-base.* \
-		debian/libreoffice-help-*.doc-base
 	rm -f debian/libreoffice-help-*.lintian-overrides
 	rm -f debian/*.install debian/*.dirs debian/*.changelog
 	rm -f debian/*.postinst debian/*.postrm debian/*.preinst debian/*.prerm debian/*.triggers
@@ -2508,6 +2506,9 @@ $(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*.sh) $(wildcard debian/*.
 	      fi; \
 	      if egrep -q "(validate_extension|sync_extension)" $$MAINTSCRIPT.in; then \
 		 cat debian/shell-lib-extensions.sh >> $$MAINTSCRIPT; \
+	      fi; \
+	      if egrep -q "(update_script_and_dialog_xlc)" $$MAINTSCRIPT.in; then \
+		 cat debian/shell-lib-basic.sh >> $$MAINTSCRIPT; \
 	      fi; \
 	      sed -n '/^#INCLUDE_SHELL_LIB#$$/,$$p' < $$MAINTSCRIPT.in | sed -e '/^#INCLUDE_SHELL_LIB#$$/d' >> $$MAINTSCRIPT; \
 	      perl -pi -e "s/\@LANGPACKISOS\@/$(LANGPACKISOS)/" $$MAINTSCRIPT; \
@@ -3491,46 +3492,6 @@ endif
 	  rm -rf debian/$$pkg/DEBIAN;\
 	done
 
-ifeq "$(ENABLE_HELP)" "y"
-ifeq "$(ENABLE_HTML_HELP)" "y"
-	HELP_FILES_COMMON=`find $(CURDIR)/debian/libreoffice-help-common/usr/share -type f | sed -e 's,$(CURDIR)/debian/libreoffice-help-common,,g' | xargs`; \
-	for iso in $(HELPISOS); do \
-		pkgiso=`echo $$iso | tr A-Z a-z`; \
-		HELP_FILES_LANG=`find $(CURDIR)/debian/libreoffice-help-$$pkgiso/usr/share | sed -e "s,$(CURDIR)/debian/libreoffice-help-$$pkgiso,,g" | xargs`; \
-		TMP=`mktemp -q`; \
-		cp debian/libreoffice-help.doc-base.in $$TMP; \
-		echo "Files: $$HELP_FILES_COMMON $$HELP_FILES_LANG" >> $$TMP; \
-		cat $$TMP | perl -e 'while(<>) { if (/^Files/) {$$f=1;} if ($$f eq "1") { chomp(); } print $$_; }' > debian/libreoffice-help-$$pkgiso.doc-base; \
-		rm -f $$TMP; \
-		perl -pi -e 's,([a-z])\/usr/,$$1 \/usr/,g' debian/libreoffice-help-$$pkgiso.doc-base; \
-		perl -pi -e 's,([0-9])\/usr/,$$1 \/usr/,g' debian/libreoffice-help-$$pkgiso.doc-base; \
-		sed -i s/@LCODE@/$$pkgiso/ debian/libreoffice-help-$$pkgiso.doc-base; \
-		sed -i s/@HELPISO@/$$iso/ debian/libreoffice-help-$$pkgiso.doc-base; \
-	done
-endif
-endif
-
-ifeq "$(PACKAGE_SDK)" "y"
-	for i in idl cpp java; do \
-		cat debian/lo-$$i-ref.in \
-			| sed -e "s/@lo_sources_ver@/$(lo_sources_ver)/" \
-			> debian/libreoffice-dev-doc.doc-base.lo-$$i-ref; \
-	done
-	for i in idl cpp; do \
-		UDK_FILES=`find $(CURDIR)/debian/libreoffice-dev-doc/usr/share/doc/libreoffice/sdk/docs/$$i/ref -type f ! -name "*.map" -a ! -name "*.md5" | sed -e 's,$(CURDIR)/debian/libreoffice-dev-doc,,g' | xargs`; \
-		TMP=`mktemp -q`; \
-		cp debian/libreoffice-dev-doc.doc-base.lo-$$i-ref $$TMP; \
-		echo "Files: $$UDK_FILES" >> $$TMP; \
-		cat $$TMP | perl -e 'while(<>) { if (/^Files/) {$$f=1;} if ($$f eq "1") { chomp(); } print $$_; }' > debian/libreoffice-dev-doc.doc-base.lo-$$i-ref; \
-		rm -f $$TMP; \
-		perl -pi -e 's,([a-z])\/usr/,$$1 \/usr/,g' debian/libreoffice-dev-doc.doc-base.lo-$$i-ref; \
-	done
-  ifeq "$(ENABLE_JAVA)" "y"
-	UDK_JAVA_FILES=`find $(CURDIR)/debian/libreoffice-dev-doc/usr/share/doc/libreoffice/sdk/docs/java/ref -type f ! -name "javadoc_log.txt" | sed -e 's,$(CURDIR)/debian/libreoffice-dev-doc,,g' | xargs`; \
-	echo "Files: $$UDK_JAVA_FILES" >> debian/libreoffice-dev-doc.doc-base.lo-java-ref
-	rm -f $(CURDIR)/debian/libreoffice-dev-doc/usr/share/doc/libreoffice-dev/sdk/docs/java/ref/javadoc_log.txt
-  endif
-endif
 	dh_installdocs -i -A
 	cp workdir/CustomTarget/readlicense_oo/readme/README_en-US \
 		$(PKGDIR)-common/usr/share/doc/libreoffice-common/README
