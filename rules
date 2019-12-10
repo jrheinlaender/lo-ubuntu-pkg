@@ -202,10 +202,10 @@ endif
 # be ignored, but dh_strip mentions (and honours) it, so...
 ifneq (noautodbgsym,$(findstring noautodbgsym,$(DEB_BUILD_OPTIONS)))
 BUILD_DBGSYM_PACKAGES=y
-#ifeq "$(DEB_HOST_ARCH)" "amd64"
-#USE_DWZ=n
-#DWZ_ARGS:=-L 100000000
-#endif
+ifeq "$(DEB_HOST_ARCH)" "amd64"
+USE_DWZ=y
+DWZ_ARGS:=-L 100000000
+endif
 endif
 SYSTEM_STUFF += xmlsec
 
@@ -297,7 +297,7 @@ ifeq "$(ENABLE_GUI)" "y"
 BUILD_GTK3=y
   # introspection needs GTK3
   ifeq "$(BUILD_GTK3)" "y"
-    ENABLE_INTROSPECTION=y
+    ENABLE_INTROSPECTION=n
   endif
 endif
 ENABLE_EVO2=y
@@ -413,7 +413,7 @@ BUILD_ARM64=y
 SYSTEM_STUFF += gpgmepp
 INSTALL_APPARMOR_PROFILES=y
 ENABLE_APPARMOR_PROFILES=y
-CHECK_APPARMOR_PROFILES=false
+CHECK_APPARMOR_PROFILES=true
 ENABLE_LIBNUMBERTEXT=y
 SYSTEM_STUFF += libnumbertext
 
@@ -798,7 +798,7 @@ ifeq "$(ENABLE_PYTHON)" "y"
   endif
 endif
 
-	BUILD_DEPS += , debhelper (>= 10)
+	BUILD_DEPS += , debhelper-compat (= 12)
 ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 	# from debhelper changelog
 	BUILD_DEPS += , dpkg-dev (>= 1.18.2~)
@@ -822,6 +822,7 @@ endif
 	BUILD_DEPS += , imagemagick$(OOO_NO_CHECK_ARCHS) <!nocheck>
 	BUILD_DEPS += , ghostscript$(OOO_NO_CHECK_ARCHS) <!nocheck>
 	BUILD_DEPS += , hunspell-en-us$(OOO_NO_CHECK_ARCHS) <!nocheck>
+	BUILD_DEPS += , hyphen-en-us$(OOO_NO_CHECK_ARCHS) <!nocheck>
   else
 	CONFIGURE_FLAGS += --without-cppunit
   endif
@@ -1124,9 +1125,9 @@ endif
 
 ifeq "$(INSTALL_APPARMOR_PROFILES)" "y"
   BUILD_DEPS += , dh-apparmor
-#  ifeq "$(CHECK_APPARMOR_PROFILES)" "true"
-#    BUILD_DEPS += , apparmor <!nocheck>
-#  endif
+  ifeq "$(CHECK_APPARMOR_PROFILES)" "true"
+    BUILD_DEPS += , apparmor <!nocheck>
+  endif
 endif
 
 ifeq "$(ENABLE_EOT)" "y"
@@ -2218,12 +2219,7 @@ ifneq "$(ENABLE_GUI)" "y"
 endif
 
 	dh_installdirs -A
-	if [ -x /usr/bin/dh_missing ]; then \
-		dh_install -A --sourcedir=debian/tmp/pkg && \
-		dh_missing -A --sourcedir=debian/tmp/pkg --fail-missing; \
-	else \
-		dh_install -A --sourcedir=debian/tmp/pkg --fail-missing; \
-	fi
+	dh_install -A --sourcedir=debian/tmp/pkg && dh_missing -A --sourcedir=debian/tmp/pkg --fail-missing
 
 	# somehow this isn't installed anymore on -B builds...
 	if [ ! -f debian/libreoffice-report-builder/$(OODIR)/program/librptlo.so ]; then \
