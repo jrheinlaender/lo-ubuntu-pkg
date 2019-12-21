@@ -598,12 +598,12 @@ ifeq "$(ENABLE_GUI)" "y"
   endif
 else
 CONFIGURE_FLAGS += --disable-gui
-DEBHELPER_OPTIONS += -Nlibreoffice-core -Nlibreoffice-calc
+DEBHELPER_OPTIONS += -Nlibreoffice-core -Nlibreoffice-calc -Nlibreoffice-writer -Nlibreoffice-draw -Nlibreoffice-report-builder-bin -Nlibreoffice-base -Nlibreoffice-impress -Nlibreoffice-math
 # transitional package..
 DEBHELPER_OPTIONS += -Nlibreoffice-kde5
 endif
 ifneq "$(BUILD_NOGUI_PACKAGES)" "y"
-DEBHELPER_OPTIONS += -Nlibreoffice-core-nogui -Nlibreoffice-calc-nogui
+DEBHELPER_OPTIONS += -Nlibreoffice-core-nogui -Nlibreoffice-calc-nogui -Nlibreoffice-writer-nogui -Nlibreoffice-draw-nogui -Nlibreoffice-report-builder-bin-nogui -Nlibreoffice-base-nogui -Nlibreoffice-impress-nogui -Nlibreoffice-math-nogui
 endif
 
 #############
@@ -2852,20 +2852,22 @@ endif
 
 ifeq "$(BUILD_NOGUI_PACKAGES)" "y"
 	# create no-GUI packages
-	rm -rf $(PKGDIR)-core-nogui
-	cp -ra $(PKGDIR)-core $(PKGDIR)-core-nogui
-	for i in $(PKGDIR)-core-nogui/$(OODIR)/program/*; do \
-		if [ -e instdir-nogui/program/`basename $$i` ]; then \
-			cp -v instdir-nogui/program/`basename $$i` \
-				$(PKGDIR)-core-nogui/$(OODIR)/program; \
-		else \
-			rm -fv $(PKGDIR)-core-nogui/$(OODIR)/program/`basename $$i`; \
-		fi; \
+	for p in $(shell dh_listpackages -a | grep nogui | cut -d- -f2- | sed -e s/-nogui// | xargs); do \
+		rm -rf $(PKGDIR)-$$p-nogui; \
+		cp -ra $(PKGDIR)-$$p $(PKGDIR)-$$p-nogui; \
+		for i in $(PKGDIR)-$$p-nogui/$(OODIR)/program/*; do \
+			if [ -e instdir-nogui/program/`basename $$i` ]; then \
+				cp -v instdir-nogui/program/`basename $$i` \
+					$(PKGDIR)-$$p-nogui/$(OODIR)/program; \
+			else \
+				rm -fv $(PKGDIR)-$$p-nogui/$(OODIR)/program/`basename $$i`; \
+			fi; \
+		done; \
 	done
-	rm -rf $(PKGDIR)-calc-nogui
-	cp -ra $(PKGDIR)-calc $(PKGDIR)-calc-nogui
-	cp -v instdir-nogui/program/libsclo.so \
-		$(PKGDIR)-calc-nogui/$(OODIR)/program
+	# remove lib*uilo.so in --nogui
+	find debian/libreoffice-*-nogui/$(OODIR)/program/lib*uilo.so -exec rm {} \;
+	# and (no UI, so not needed) not needed .desktop files
+	find debian/libreoffice-*-nogui/usr/share/applications/*.desktop -exec rm {} \;
 endif
 
 	for i in $(ARCH_DEP_PACKAGES); do \
