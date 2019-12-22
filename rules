@@ -106,12 +106,6 @@ BUILD_DEPS_INDEP += rdfind, symlinks
 SYSTEM_STUFF = dicts
 
 ENABLE_GUI=y
-ifneq "$(ENABLE_GUI)" "y"
-CONFIGURE_FLAGS += --disable-gui
-DEBHELPER_OPTIONS += -Nlibreoffice-core
-# transitional package..
-DEBHELPER_OPTIONS += -Nlibreoffice-kde5
-endif
 
 ifeq ($(filter nopython,$(DEB_BUILD_PROFILES)),)
 ENABLE_PYTHON=y
@@ -213,12 +207,16 @@ SYSTEM_STUFF += xmlsec
 # This is not exactly allowed in https://wiki.debian.org/BuildProfileSpec#Registered_profile_names
 # but it doesn't have real practical difference, does it?
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
-  BUILD_TEST_PACKAGES=n
+  BUILD_TEST_PACKAGES=y
 endif
 
 ifneq ($(MAKECMDGOALS),build-indep)
 ENABLE_SYMBOLS=y
 SMALL_SYMBOLS=y
+endif
+ifeq ($(MAKECMDGOALS),build-indep)
+# no need to do a double build...
+BUILD_NOGUI_PACKAGES=n
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
@@ -297,7 +295,7 @@ ifeq "$(ENABLE_GUI)" "y"
 BUILD_GTK3=y
   # introspection needs GTK3
   ifeq "$(BUILD_GTK3)" "y"
-    ENABLE_INTROSPECTION=n
+    ENABLE_INTROSPECTION=y
   endif
 endif
 ENABLE_EVO2=y
@@ -435,6 +433,7 @@ CONFIGURE_FLAGS+= \
 ifeq "$(ENABLE_GUI)" "y"
 BUILD_DEPS += ,\
     libcups2-dev,\
+    libgl-dev,\
     libice-dev,\
     libsm-dev,\
     libx11-dev,\
@@ -537,6 +536,8 @@ OOO_REPORTBUILDER_ARCHS := $(OOO_BASE_ARCHS)
 $(eval $(call gen_no_archs,OOO_REPORTBUILDER_ARCHS))
 OOO_FIREBIRD_ARCHS := $(OOO_BASE_ARCHS)
 $(eval $(call gen_no_archs,OOO_FIREBIRD_ARCHS))
+OOO_NOGUI_ARCHS := amd64 i386 arm64 s390x ppc64el
+$(eval $(call gen_no_archs,OOO_NOGUI_ARCHS))
 
 ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
   ifneq ($(DEB_HOST_ARCH),$(filter $(DEB_HOST_ARCH),$(OOO_BASE_ARCHS)))
@@ -590,6 +591,20 @@ endif
 
 ifeq "$(BUILD_TEST_PACKAGES)" "n"
 	DEBHELPER_OPTIONS += -Nlibreoffice-subsequentcheckbase -Nlibreoffice-smoketest-data
+endif
+
+ifeq "$(ENABLE_GUI)" "y"
+  ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NOGUI_ARCHS)))
+    BUILD_NOGUI_PACKAGES=y
+  endif
+else
+CONFIGURE_FLAGS += --disable-gui
+DEBHELPER_OPTIONS += -Nlibreoffice-core -Nlibreoffice-calc -Nlibreoffice-writer -Nlibreoffice-draw -Nlibreoffice-report-builder-bin -Nlibreoffice-base -Nlibreoffice-impress -Nlibreoffice-math
+# transitional package..
+DEBHELPER_OPTIONS += -Nlibreoffice-kde5
+endif
+ifneq "$(BUILD_NOGUI_PACKAGES)" "y"
+DEBHELPER_OPTIONS += -Nlibreoffice-core-nogui -Nlibreoffice-calc-nogui -Nlibreoffice-writer-nogui -Nlibreoffice-draw-nogui -Nlibreoffice-report-builder-bin-nogui -Nlibreoffice-base-nogui -Nlibreoffice-impress-nogui -Nlibreoffice-math-nogui
 endif
 
 #############
@@ -1735,6 +1750,7 @@ endif
 	cat debian/control.transitionals.in >> debian/control
 
 	perl -pi -e "s,%OOO_ARCHS%,$(OOO_ARCHS),g" debian/control
+	perl -pi -e "s,%OOO_NOGUI_ARCHS%,$(OOO_NOGUI_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_64BIT_ARCHS%,$(OOO_64BIT_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_BE_ARCHS%,$(OOO_BE_ARCHS),g" debian/control
 	perl -pi -e "s,%OOO_LE_ARCHS%,$(OOO_LE_ARCHS),g" debian/control
@@ -1869,9 +1885,8 @@ $(STAMP_DIR)/build-arch:
 #build-arch: ENABLE_HELP = n PACKAGE_SDK_DOCS = n ENABLE_MEDIAWIKI = n ENABLE_SCRIPT_PROVIDER_BSH = n ENABLE_SCRIPT_PROVIDER_JS = n
 	dh_testdir
 
-	# Theoretically this should call ./configure instead of
-	# it exists but that causes the configure flags NOT to be hnoured
-	# somehow...
+ifeq "$(BUILD_NOGUI_PACKAGES)" "y"
+	# build with --disable-gui first
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
 	CLANGDIR=$(CLANGDIR) \
 	MARIADBCONFIG=$(MARIADBCONFIG) \
@@ -1886,7 +1901,6 @@ $(STAMP_DIR)/build-arch:
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build-non-l10n-only
 
-ifeq "$(ENABLE_GUI)" "y"
 	rm -rf instdir-nogui
 	cp -r instdir instdir-nogui
 
@@ -1908,8 +1922,12 @@ ifeq "$(ENABLE_GUI)" "y"
 		-o -name "*libfwe*" \
 		-o -name "*libvcl*" \
 		-exec rm {} \;
+	# more cleanup. global.cxx of libsc.o wants
+	# OpenGLWrapper::isVCLOpenGLEnabled()
+	find workdir -name "global.o" -exec rm {} \;
+	find workdir instdir -name "*libsc*" -exec rm {} \;
+endif
 
-	# build with GUI again
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
 	CLANGDIR=$(CLANGDIR) \
 	MARIADBCONFIG=$(MARIADBCONFIG) \
@@ -1922,7 +1940,6 @@ ifeq "$(ENABLE_GUI)" "y"
 		--with-galleries=no --with-theme="$(DEFAULT_IMAGE)"
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build-non-l10n-only
-endif
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 	$(CURDIR)/debian/rules check
 endif
@@ -1946,6 +1963,7 @@ endif
 
 	rm -f config.status autogen.lastrun
 
+	# now build with the indep stuff (javadoc, languages, ....)
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
 	MARIADBCONFIG=$(MARIADBCONFIG) \
 	FIREBIRD_CFLAGS=$(FIREBIRD_CFLAGS) FIREBIRD_LIBS=$(FIREBIRD_LIBS) \
@@ -1985,6 +2003,7 @@ ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
 		patch -p1 < $(CURDIR)/debian/tests/patches/smoketest-disable-extension-tests.diff
 endif
 
+	# enable cppunit etc.
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
 	CLANGDIR=$(CLANGDIR) \
 	MARIADBCONFIG=$(MARIADBCONFIG) \
@@ -2828,17 +2847,27 @@ endif
 			$(PKGDIR)-base-drivers/$(OODIR)/program; \
 	done
 
-	# create libreoffice-core-nogui
-	rm -rf $(PKGDIR)-core-nogui
-	cp -ra $(PKGDIR)-core $(PKGDIR)-core-nogui
-	for i in $(PKGDIR)-core-nogui/$(OODIR)/program/*; do \
-		if [ -e instdir-nogui/program/`basename $$i` ]; then \
-			cp -v instdir-nogui/program/`basename $$i` \
-				$(PKGDIR)-core-nogui/$(OODIR)/program; \
-		else \
-			rm -fv $(PKGDIR)-core-nogui/$(OODIR)/program/`basename $$i`; \
-		fi; \
+ifeq "$(BUILD_NOGUI_PACKAGES)" "y"
+	# create no-GUI packages
+	for p in $(shell dh_listpackages -a | grep nogui | cut -d- -f2- | sed -e s/-nogui// | xargs); do \
+		rm -rf $(PKGDIR)-$$p-nogui; \
+		cp -ra $(PKGDIR)-$$p $(PKGDIR)-$$p-nogui; \
+		for i in $(PKGDIR)-$$p-nogui/$(OODIR)/program/*; do \
+			if [ -e instdir-nogui/program/`basename $$i` ]; then \
+				cp -v instdir-nogui/program/`basename $$i` \
+					$(PKGDIR)-$$p-nogui/$(OODIR)/program; \
+			else \
+				rm -fv $(PKGDIR)-$$p-nogui/$(OODIR)/program/`basename $$i`; \
+			fi; \
+		done; \
 	done
+	# remove lib*uilo.so in --nogui
+	find debian/libreoffice-*-nogui/$(OODIR)/program/lib*uilo.so -exec rm {} \;
+	# and (no UI, so not needed) not needed .desktop files
+	find debian/libreoffice-*-nogui/usr/share/applications/*.desktop -exec rm {} \;
+	# unneeded launchers
+	find debian/libreoffice-*-nogui/usr/bin/lo* exec rm {} \;
+endif
 
 	for i in $(ARCH_DEP_PACKAGES); do \
 		if [ -e debian/$$i.bug-script.in ]; then \
@@ -3233,8 +3262,10 @@ $(STAMP_DIR)/binary-arch: $(STAMP_DIR)/install-arch debian/control $(STAMP_DIR)/
 	dh_installdocs -a -A
 	cp workdir/CustomTarget/readlicense_oo/readme/README_en-US \
 		$(PKGDIR)-core/usr/share/doc/libreoffice-core/README
+ifeq "$(BUILD_NOGUI_PACKAGES)" "y"
 	cp workdir/CustomTarget/readlicense_oo/readme/README_en-US \
 		$(PKGDIR)-core-nogui/usr/share/doc/libreoffice-core-nogui/README
+endif
 	dh_installdebconf -a
 	dh_installman -a
 	for i in writer calc draw base math impress; do \
@@ -3380,10 +3411,12 @@ endif
 			-Llibuno-sal3 -Llibpuno-cppu3 -Llibuno-salhelpergcc3-3 -Llibcppuhelpergcc3-3 -Llibuno-purpenvhelpergcc3-3 \
 			-l$(CURDIR)/debian/libuno-sal3/$(OODIR)/program:$(CURDIR)/debian/libuno-cppu3/$(OODIR)/program:$(CURDIR)/debian/libuno-salhelpergcc3-33/$(OODIR)/program:$(CURDIR)/debian/libuno-cppuhelpergcc3-3/$(OODIR)/program:$(CURDIR)/debian/libuno-purpenvhelpergcc3-3/$(OODIR)/program:$(CURDIR)/debian/ure/$(OODIR)/program \
 			-- -xure
+ifeq "$(BUILD_NOGUI_PACKAGES)" "y"
 		dh_shlibdeps -plibreoffice-core-nogui \
 			-Lure -Llibuno-sal3 -Llibpuno-cppu3 -Llibuno-salhelpergcc3-3 -Llibcppuhelpergcc3-3 -Llibuno-purpenvhelpergcc3-3 \
 			-l$(CURDIR)/debian/libuno-sal3/$(OODIR)/program:$(CURDIR)/debian/libuno-cppu3/$(OODIR)/program:$(CURDIR)/debian/libuno-salhelpergcc3-33/$(OODIR)/program:$(CURDIR)/debian/libuno-cppuhelpergcc3-3/$(OODIR)/program:$(CURDIR)/debian/libuno-purpenvhelpergcc3-3/$(OODIR)/program:$(CURDIR)/debian/ure/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-core-nogui/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-base-core/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-base/$(OODIR)/program:$(CURDIR)/$(PKGDIR)-writer/$(OODIR)/program \
 			$(SHLIBS_OVERRIDE)
+endif
 ifneq (,$(filter redland, $(SYSTEM_STUFF)))
 	# dpkg-shlibdeps "in practice" always will look for this in
         # /usr/lib/openoffice/basisX.Y/program due to the RPATH and the
