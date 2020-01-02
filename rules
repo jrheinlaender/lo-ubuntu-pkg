@@ -2601,19 +2601,17 @@ $(STAMP_DIR)/install-arch: $(STAMP_DIR)/build-arch $(STAMP_DIR)/install-common
 	dh_testroot
 	umask 022
 
-	# move URE Java stuff to /usr/share/java
-	mkdir -p debian/ure/usr/share/java
 ifeq "$(ENABLE_JAVA)" "y"
-	mv debian/ure/$(OODIR)/program/classes/* \
+	mkdir -p debian/ure/usr/share/java
+	mv debian/ure/$(OODIR)/program/classes/java_uno.jar \
 		debian/ure/usr/share/java
 	cd debian/ure/$(OODIR)/program/classes && \
-		for i in $(CURDIR)/debian/ure/usr/share/java/*.jar; do \
-			ln -sf `echo $$i | sed -e 's,$(CURDIR)/debian/ure,,'` `basename $$i`; \
-		done
-	# fix up Class-Path of jurt.jar to be able to find libjpipe.so.
-	# See http://markmail.org/message/yacqa7oowugxwmn2
-	jh_classpath --classpath="ridl.jar unoloader.jar ../../lib /$(OODIR)/program ../bin/" \
-		$(CURDIR)/debian/ure/usr/share/java/jurt.jar
+		ln -sf /usr/share/java/java_uno.jar java_uno.jar
+	# remove libraries split out to extra packages
+	# will be installed using mh_* in install-indep
+	for i in juh jurt ridl unoloader; do \
+		rm debian/ure/$(OODIR)/program/classes/$$i.jar; \
+	done
 endif
 	# and the public libs to their respective packages
 	for i in sal cppu; do \
@@ -2711,19 +2709,13 @@ ifeq "$(ENABLE_JAVA)" "y"
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
-	rm -rf $(PKGDIR)-officebean debian/libofficebean-java
+	# move the officebean so into libreoffice-officebean
+	# the jar will be installed (into libofficebean-java)
+	# using mh_ in install-indep
+	rm -rf $(PKGDIR)-officebean
 	mkdir -p -m755 $(PKGDIR)-officebean/$(OODIR)/program
-	mkdir -p -m755 debian/libofficebean-java/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes
-	mkdir -p -m755 debian/libofficebean-java/$(OODIR)/program/classes
-	mv $(PKGDIR)-common/$(OODIR)/program/classes/officebean.jar \
-		debian/libofficebean-java/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes
-	ln -s $(shell echo /$(OODIR) | sed -e s/lib/share/)/program/classes/officebean.jar \
-		 debian/libofficebean-java/$(OODIR)/program/classes/officebean.jar
 	mv $(PKGDIR)-core/$(OODIR)/program/libofficebean.so \
 		$(PKGDIR)-officebean/$(OODIR)/program
-	# fix the classpath
-	jh_classpath --classpath="ridl.jar unoil.jar jurt.jar juh.jar" \
-		debian/libofficebean-java/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes/officebean.jar
 endif
 
 	mkdir -p -m755 $(PKGDIR)-base/usr/share/applications \
@@ -3206,7 +3198,12 @@ endif
 #		$(PKGDIR)-common/$(OODIR)/program/gengalrc
 #endif
 
+	# package the Java public libraries...
 ifeq "$(ENABLE_JAVA)" "y"
+	# remove. will get installed later by mh_* into "correct" packages
+	rm -f $(PKGDIR)-java-common/$(OODIR)/program/officebean.jar
+	rm -f $(PKGDIR)-java-common/$(OODIR)/program/unoil.jar
+
 	# somehow --has-package-version doesn't overwrite version and without <version>...</version>
 	# we get a NullPointerException when calling mh_installjar
 	for i in ridl unoloader; do \
@@ -3225,9 +3222,25 @@ ifeq "$(ENABLE_JAVA)" "y"
 		mh_installpoms -plib$$i-java; \
 		mh_installjar -plib$$i-java -l debian/pom.$$i.xml instdir/program/classes/$$i.jar; \
 	done
-	# dedup. But why is this NOT a symlink from the start whereas the ure
-	# stuff is?
-	ln -sf /usr/share/java/unoil.jar $(PKGDIR)-java-common/usr/share/libreoffice/program/classes/unoil.jar
+	# create symlinks where LO expects them
+	for i in juh jurt unoil ridl unoloader officebean; do \
+		mkdir -p $(CURDIR)/debian/lib$$i-java/$(OODIR)/program/classes; \
+		cd $(CURDIR)/debian/lib$$i-java/$(OODIR)/program/classes; \
+		ln -s /usr/share/java/$$i.jar $$i.jar; \
+	done
+
+	# fix up Class-Paths
+	jh_classpath --classpath="ridl.jar unoil.jar jurt.jar juh.jar" \
+		debian/libofficebean-java/usr/share/java/officebean.jar
+	# javaunohelper/com/sun/star/comp/helper/Bootstrap.java:                NativeLibraryLoader.loadLibrary( Bootstrap.class.getClassLoader(), "juh" );
+	# seems to work nevertheless (if called from program/classes?) but fix it
+ 	# nevertheless
+	jh_classpath --classpath="jurt.jar ridl.jar ../ /$(OODIR)/program" \
+		debian/libjuh-java/usr/share/java/juh.jar
+	# make jurt.jar to be able to find libjpipe.so.
+	# See http://markmail.org/message/yacqa7oowugxwmn2
+	jh_classpath --classpath="ridl.jar unoloader.jar ../../lib /$(OODIR)/program ../bin/" \
+		$(CURDIR)/debian/libjurt-java/usr/share/java/jurt.jar
 endif
 
 ifeq "$(INSTALL_APPARMOR_PROFILES)" "y"
@@ -3498,6 +3511,7 @@ endif
 		-V'firebird-engine-depends=$(FIREBIRD_ENGINE_DEPENDS)' \
 		-V'libsane-suggests=$(shell dpkg -S /usr/lib/$(DEB_HOST_MULTIARCH)/libsane.so.1 | cut -d: -f1)' \
 		-v$(BINARY_VERSION)
+	# FIXME. Get rid of this and use the epoch as all the other packages? This is confusing since we missed lib*-java here...
 	dh_gencontrol -pure -plibuno-sal3 -plibuno-cppu3 -plibuno-salhelpergcc3-3 -plibuno-cppuhelpergcc3-3 -plibuno-purpenvhelpergcc3-3 -puno-libs-private -- \
 		-V"ure:Version=`echo $(BINARY_VERSION) | cut -d: -f2`" \
 		-v"`echo $(BINARY_VERSION) | cut -d: -f2`"
@@ -3632,9 +3646,9 @@ ifeq "$(ENABLE_JAVA)" "y"
         done
 endif
 	# fix base-files depends...
-	perl -pi -e "s/base-files,  //" \
+	perl -pi -e "s/base-files//" \
 		debian/libjuh-java.substvars
-	perl -pi -e "s/base-files,  //" \
+	perl -pi -e "s/base-files//" \
 		debian/libjurt-java.substvars
 	# and it adds a librhino-java Depends where we still use internal rhino
 	perl -pi -e "s/librhino-java//" \
