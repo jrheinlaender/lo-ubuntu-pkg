@@ -226,7 +226,7 @@ endif
 SYSTEM_STUFF += lpsolve
 USE_SHARED_LPSOLVE=y
 LPSOLVE_MIN_VERSION= (>= 5.5.0.13-5+b1)
-ENABLE_COINMP=y
+ENABLE_COINMP=n
 SYSTEM_STUFF += coinmp
 USE_DBUS=y
 ifeq "$(USE_DBUS)" "y"
@@ -536,7 +536,7 @@ OOO_REPORTBUILDER_ARCHS := $(OOO_BASE_ARCHS)
 $(eval $(call gen_no_archs,OOO_REPORTBUILDER_ARCHS))
 OOO_FIREBIRD_ARCHS := $(OOO_BASE_ARCHS)
 $(eval $(call gen_no_archs,OOO_FIREBIRD_ARCHS))
-OOO_NOGUI_ARCHS := amd64 i386 arm64 s390x ppc64el
+OOO_NOGUI_ARCHS := amd64 i386 arm64 s390x ppc64 ppc64el
 $(eval $(call gen_no_archs,OOO_NOGUI_ARCHS))
 
 ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
@@ -555,12 +555,8 @@ ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
   endif
 endif
 
-ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_ARCH_DEP_EXTENSIONS_ARCHS)))
-	DEBHELPER_OPTIONS += -Nlibreoffice-presentation-minimizer
-endif
 ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
 	ENABLE_MEDIAWIKI=n
-	ENABLE_REPORTBUILDER=n
 	ENABLE_NLPSOLVER=n
 	DEBHELPER_OPTIONS += -Nlibreoffice-wiki-publisher -Nlibreoffice-script-provider-python -Nlibreoffice-nlpsolver
 	CONFIGURE_FLAGS += --disable-extension-integration --disable-extensions
@@ -578,23 +574,12 @@ ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_JAVA_ARCHS)))
 	DEBHELPER_OPTIONS += -Nlibreoffice-nlpsolver
 endif
 
-# disable SRB on ia64 when building with internal jfreereport.
-# fails to build. ("The system is out of resources."). FIXME.
-ifeq (ia64,$(findstring ia64,$(OOO_OPENJDK_ARCHS)))
-  ifeq (,$(findstring jfreereport,$(SYSTEM_STUFF))) 
-    OOO_REPORTBUILDER_ARCHS := $(filter-out ia64,$(OOO_REPORTBUILDER_ARCHS))
-    ifeq "$(DEB_HOST_ARCH)" "ia64"
-	ENABLE_REPORTBUILDER=n
-    endif
-  endif
-endif
-
 ifeq "$(BUILD_TEST_PACKAGES)" "n"
 	DEBHELPER_OPTIONS += -Nlibreoffice-subsequentcheckbase -Nlibreoffice-smoketest-data
 endif
 
 ifeq "$(ENABLE_GUI)" "y"
-  ifneq (,$(findstring $(DEB_HOST_ARCH),$(OOO_NOGUI_ARCHS)))
+  ifeq ($(DEB_HOST_ARCH),$(filter $(DEB_HOST_ARCH),$(OOO_NOGUI_ARCHS)))
     BUILD_NOGUI_PACKAGES=y
   endif
 else
@@ -801,7 +786,7 @@ endif
 
 	BUILD_DEPS += , $(PYTHON)
 ifeq "$(ENABLE_PYTHON)" "y"
-	BUILD_DEPS += , $(PYTHON)-dev (>= 3.3) <!nopython>
+	BUILD_DEPS += , $(PYTHON)-dev (>= 3.7) <!nopython>
 	BUILD_DEPS += , $(PYTHON)-distutils <!nopython>
 	BUILD_DEPS += , dh-python <!nopython>
   ifeq "$(RUN_MAKE_CHECK)" "y"
@@ -938,9 +923,6 @@ ifeq "$(ENABLE_JAVA)" "y"
     endif
   endif
 	JAVA_RUNTIME_DEPENDS = default-jre (>= 2:1.8)
-  ifneq (,$(filter $(DEB_HOST_ARCH), $(OOO_OPENJDK_ARCHS)))
-	JAVA_RUNTIME_DEPENDS += | openjdk-11-jre | openjdk-8-jre
-  endif
 	JAVA_RUNTIME_DEPENDS += | java8-runtime
 	# Suns Java "packages"
 	JAVA_RUNTIME_DEPENDS += | jre
@@ -979,11 +961,11 @@ export JAVA_HOME
   ifeq "$(ENABLE_NLPSOLVER)" "y"
 	CONFIGURE_FLAGS_INDEP += --enable-ext-nlpsolver
   endif
-	OOO_OFFICEBEAN_DEP = libreoffice-officebean
+	OOO_OFFICEBEAN_DEP = libofficebean-java
 	BUILD_DEPS += , javahelper $(JAVAHELPER_MIN_VERSION) <!nojava>
 else
 	CONFIGURE_FLAGS += --without-java
-	DEBHELPER_OPTIONS += -Nlibreoffice-officebean -Nlibreoffice-java-common -Nlibreoffice-script-provider-bsh -Nlibreoffice-script-provider-js
+	DEBHELPER_OPTIONS += -Nlibreoffice-officebean -Nlibofficebean-java -Nlibreoffice-java-common -Nlibreoffice-script-provider-bsh -Nlibreoffice-script-provider-js -Nlibreoffice-subsequentcheckbase -Nlibunoil-java -Nlibofficebean-java -Nlibjuh-java -Nlibridl-java -Nlibunoloader-java -Nlibjurt-java -Nlibreoffice-nlpsolver -Nlibreoffice-wiki-publisher -Nlibreoffice-report-builder -Nlibreoffice-sdbc-hsqldb
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
@@ -2032,8 +2014,9 @@ endif
 		export LANG=en_US.UTF-8; \
 		export LC_ALL=en_US.UTF-8; \
 		unset DISPLAY; \
+		export PARALLELISM=1; \
 		if [ -x /usr/bin/gdb ]; then ulimit -c unlimited; fi && \
-		$(MAKE) -k check || PARALLELISM=1 $(MAKE) check && \
+		$(MAKE) -k check || $(MAKE) check && \
 	rm -rf $$t
 ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
 	patch -p1 -R < $(CURDIR)/debian/tests/patches/disable-db-tests.diff
@@ -2597,19 +2580,17 @@ $(STAMP_DIR)/install-arch: $(STAMP_DIR)/build-arch $(STAMP_DIR)/install-common
 	dh_testroot
 	umask 022
 
-	# move URE Java stuff to /usr/share/java
-	mkdir -p debian/ure/usr/share/java
 ifeq "$(ENABLE_JAVA)" "y"
-	mv debian/ure/$(OODIR)/program/classes/* \
+	mkdir -p debian/ure/usr/share/java
+	mv debian/ure/$(OODIR)/program/classes/java_uno.jar \
 		debian/ure/usr/share/java
 	cd debian/ure/$(OODIR)/program/classes && \
-		for i in $(CURDIR)/debian/ure/usr/share/java/*.jar; do \
-			ln -sf `echo $$i | sed -e 's,$(CURDIR)/debian/ure,,'` `basename $$i`; \
-		done
-	# fix up Class-Path of jurt.jar to be able to find libjpipe.so.
-	# See http://markmail.org/message/yacqa7oowugxwmn2
-	jh_classpath --classpath="ridl.jar unoloader.jar ../../lib /$(OODIR)/program ../bin/" \
-		$(CURDIR)/debian/ure/usr/share/java/jurt.jar
+		ln -sf /usr/share/java/java_uno.jar java_uno.jar
+	# remove libraries split out to extra packages
+	# will be installed using mh_* in install-indep
+	for i in juh jurt ridl unoloader; do \
+		rm debian/ure/$(OODIR)/program/classes/$$i.jar; \
+	done
 endif
 	# and the public libs to their respective packages
 	for i in sal cppu; do \
@@ -2707,19 +2688,27 @@ ifeq "$(ENABLE_JAVA)" "y"
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
-	rm -rf $(PKGDIR)-officebean debian/libofficebean-java
-	mkdir -p -m755 $(PKGDIR)-officebean/$(OODIR)/program
-	mkdir -p -m755 debian/libofficebean-java/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes
-	mkdir -p -m755 debian/libofficebean-java/$(OODIR)/program/classes
-	mv $(PKGDIR)-common/$(OODIR)/program/classes/officebean.jar \
-		debian/libofficebean-java/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes
-	ln -s $(shell echo /$(OODIR) | sed -e s/lib/share/)/program/classes/officebean.jar \
-		 debian/libofficebean-java/$(OODIR)/program/classes/officebean.jar
+	# move the officebean so into libreoffice-officebean
+	# the jar will be installed (into libofficebean-java)
+	# using mh_ in install-indep
+	rm -rf debian/libofficebean-java
+	mkdir -p -m755 debian/libofficebean-java/usr/lib/jni
+	mkdir -p -m755 debian/libofficebean-java/$(OODIR)/program
 	mv $(PKGDIR)-core/$(OODIR)/program/libofficebean.so \
-		$(PKGDIR)-officebean/$(OODIR)/program
-	# fix the classpath
+		debian/libofficebean-java/usr/lib/jni
+	cd debian/libofficebean-java/$(OODIR)/program && \
+		ln -s /usr/lib/jni/libofficebean.so libofficebean.so
+	sed -e s/@version@/$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d~ -f1)/ \
+		< $(SOURCE_TREE)/bean/pom.officebean.xml > debian/pom.officebean.xml
+	mh_installpoms -plibofficebean-java
+	mh_installjar -plibofficebean-java -l debian/pom.officebean.xml instdir/program/classes/officebean.jar
+	# create symlink where LO expects it
+	mkdir -p $(CURDIR)/debian/libofficebean-java/$(OODIR)/program/classes
+	cd $(CURDIR)/debian/libofficebean-java/$(OODIR)/program/classes && \
+		ln -s /usr/share/java/officebean.jar officebean.jar
+	# fix up Class-Path
 	jh_classpath --classpath="ridl.jar unoil.jar jurt.jar juh.jar" \
-		debian/libofficebean-java/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes/officebean.jar
+		debian/libofficebean-java/usr/share/java/officebean.jar
 endif
 
 	mkdir -p -m755 $(PKGDIR)-base/usr/share/applications \
@@ -2790,14 +2779,6 @@ endif
 	for i in draw base writer impress calc math; do \
 		rm -rf $(PKGDIR)-$$i/$(OODIR)/program/resource; \
 	done
-
-ifeq "$(ENABLE_MINIMIZER)" "y"
-	rm -f $(PKGDIR)-presentation-minimizer/$(OODIR)/share/extensions/presentation-minimizer/registration/LICENSE
-endif
-
-ifeq "$(ENABLE_PRESENTER_CONSOLE)" "y"
-	rm -f usr/lib/libreoffice/share/extensions/presenter-screen/registration/LICENSE
-endif
 
 ifeq "$(PACKAGE_SDK)" "y"
   ifeq "$(ENABLE_GUI)" "y"
@@ -2938,6 +2919,10 @@ ifeq "$(ENABLE_JAVA)" "y"
 	mkdir -p $(PKGDIR)-java-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes
 	mv $(PKGDIR)-common/$(OODIR)/share/Scripts/java \
 		$(PKGDIR)-java-common/$(OODIR)/share/Scripts
+	# remove unoil and officebean; installed later/in install-arch by mh_* and in extra packages anyway
+	rm -f $(PKGDIR)-common/$(OODIR)/program/classes/unoil.jar
+	rm -f $(PKGDIR)-common/$(OODIR)/program/classes/officebean.jar
+	# and move the rest 
 	mv $(PKGDIR)-common/$(OODIR)/program/classes/* \
 		$(PKGDIR)-java-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes
 	cd $(PKGDIR)-java-common/$(OODIR)/program/classes && \
@@ -2960,7 +2945,10 @@ ifeq "$(BUILD_TEST_PACKAGES)" "y"
 
   ifeq "$(RUN_MAKE_CHECK)" "y"
 	rm -rf $(PKGDIR)-smoketest-data
+	mkdir -p $(PKGDIR)-smoketest-data/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes
 	mkdir -p $(PKGDIR)-smoketest-data/$(OODIR)/program/classes
+	mv $(PKGDIR)-java-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes/smoketest.jar \
+		$(PKGDIR)-smoketest-data/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes
 	mv $(PKGDIR)-java-common/$(OODIR)/program/classes/smoketest.jar \
 		$(PKGDIR)-smoketest-data/$(OODIR)/program/classes
 	mkdir -p $(PKGDIR)-smoketest-data/usr/share/libreoffice
@@ -3202,6 +3190,7 @@ endif
 #		$(PKGDIR)-common/$(OODIR)/program/gengalrc
 #endif
 
+	# package the Java public libraries...
 ifeq "$(ENABLE_JAVA)" "y"
 	# somehow --has-package-version doesn't overwrite version and without <version>...</version>
 	# we get a NullPointerException when calling mh_installjar
@@ -3215,15 +3204,27 @@ ifeq "$(ENABLE_JAVA)" "y"
 		< $(SOURCE_TREE)/javaunohelper/pom.juh.xml > debian/pom.juh.xml
 	sed -e s/@version@/$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d~ -f1)/ \
 		< $(SOURCE_TREE)/unoil/pom.unoil.xml > debian/pom.unoil.xml
-	sed -e s/@version@/$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d~ -f1)/ \
-		< $(SOURCE_TREE)/bean/pom.officebean.xml > debian/pom.officebean.xml
-	for i in juh jurt unoil ridl unoloader officebean; do \
+	for i in juh jurt unoil ridl unoloader; do \
 		mh_installpoms -plib$$i-java; \
 		mh_installjar -plib$$i-java -l debian/pom.$$i.xml instdir/program/classes/$$i.jar; \
 	done
-	# dedup. But why is this NOT a symlink from the start whereas the ure
-	# stuff is?
-	ln -sf /usr/share/java/unoil.jar $(PKGDIR)-java-common/usr/share/libreoffice/program/classes/unoil.jar
+	# create symlinks where LO expects them
+	for i in juh jurt unoil ridl unoloader; do \
+		mkdir -p $(CURDIR)/debian/lib$$i-java/$(OODIR)/program/classes; \
+		cd $(CURDIR)/debian/lib$$i-java/$(OODIR)/program/classes; \
+		ln -s /usr/share/java/$$i.jar $$i.jar; \
+	done
+
+	# fix up Class-Paths
+	# javaunohelper/com/sun/star/comp/helper/Bootstrap.java:                NativeLibraryLoader.loadLibrary( Bootstrap.class.getClassLoader(), "juh" );
+	# seems to work nevertheless (if called from program/classes?) but fix it
+ 	# nevertheless
+	jh_classpath --classpath="jurt.jar ridl.jar ../ /$(OODIR)/program" \
+		debian/libjuh-java/usr/share/java/juh.jar
+	# make jurt.jar to be able to find libjpipe.so.
+	# See http://markmail.org/message/yacqa7oowugxwmn2
+	jh_classpath --classpath="ridl.jar unoloader.jar ../../lib /$(OODIR)/program ../bin/" \
+		$(CURDIR)/debian/libjurt-java/usr/share/java/jurt.jar
 endif
 
 ifeq "$(INSTALL_APPARMOR_PROFILES)" "y"
@@ -3365,9 +3366,9 @@ ifeq "$(ENABLE_INTROSPECTION)" "y"
 endif
 	dh_strip_nondeterminism -a
 	for i in sal3 cppu3 salhelpergcc3-3 cppuhelpergcc3-3 purpenvhelpergcc3-3; do \
-		dh_makeshlibs -plibuno-$$i -V"libuno-$$i (>= $(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }' | cut -d. -f1-3)~), ure" -- -c0 -d -V -v`echo $(BINARY_VERSION) | cut -d: -f2`; \
+		dh_makeshlibs -plibuno-$$i -V"libuno-$$i (>= 1:$(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }' | cut -d. -f1-3)~), ure" -- -c0 -d -V -v$(BINARY_VERSION); \
 	done
-	dh_makeshlibs -n -pure -V"ure (>= $(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }' | cut -d. -f1-3)~)" -- -d -V -v`echo $(BINARY_VERSION) | cut -d: -f2`
+	dh_makeshlibs -n -pure -V"ure (>= 1:$(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }' | cut -d. -f1-3)~)" -- -d -V -v$(BINARY_VERSION)
 	dh_installdeb -a
 	rm -f debian/shlibs.local
 ifeq "$(BUILD_KFREEBSD)" "y"
@@ -3454,25 +3455,19 @@ endif
   endif
 ifeq "$(ENABLE_JAVA)" "y"
 	for p in $(ARCH_DEP_PACKAGES); do \
-		if [ "$$p" = "libreoffice-presentation-console" ]; then continue; fi; \
-		jh_depends -p$$p -Xure; \
+		jh_depends -p$$p -Xure -Xbase-files; \
 	done
-  ifeq "$(PACKAGE_BASE)" "y"
-	perl -pi -e "s/base-files,//" \
-		debian/libreoffice-sdbc-hsqldb.substvars
-  endif
 	# jh_depends adds ure (${source:Version}) entries. They are overly strict
 	# and do not fit anyway given ure has a different versioning scheme. Excluded
 	# above, readd here  unversioned
 	perl -pi -e 's/^(java:Depends.*$$)/\1, ure/' \
-		debian/libreoffice-officebean.substvars
+		debian/libofficebean-java.substvars
 endif
 # This switch to dh_shlibdeps reduces the 'libXXX not found' warnings but
 # causes ldd crashes sometimes when used with fakeroot:
 #          -l $(PKGDIR)-core/$(OPENOFFICEDIR)/program
-	dh_gencontrol -a $(DEBHELPER_OPTIONS) -Nure -Nlibuno-sal3 -Nlibuno-cppu3 -Nlibuno-salhelpergcc3-3 -Nlibuno-cppuhelpergcc3-3 -Nlibuno-purpenvhelpergcc3-3 -Nuno-libs-private \
+	dh_gencontrol -a $(DEBHELPER_OPTIONS) \
 		-- \
-		-V"ure:Version=$(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }')" \
 		-V'base-version=$(BASE_VERSION)' \
 		-V'oover=$(OOVER)' \
 		-V'next-oover=$(NEXT_OOVER)' \
@@ -3494,9 +3489,6 @@ endif
 		-V'firebird-engine-depends=$(FIREBIRD_ENGINE_DEPENDS)' \
 		-V'libsane-suggests=$(shell dpkg -S /usr/lib/$(DEB_HOST_MULTIARCH)/libsane.so.1 | cut -d: -f1)' \
 		-v$(BINARY_VERSION)
-	dh_gencontrol -pure -plibuno-sal3 -plibuno-cppu3 -plibuno-salhelpergcc3-3 -plibuno-cppuhelpergcc3-3 -plibuno-purpenvhelpergcc3-3 -puno-libs-private -- \
-		-V"ure:Version=`echo $(BINARY_VERSION) | cut -d: -f2`" \
-		-v"`echo $(BINARY_VERSION) | cut -d: -f2`"
 ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 	for i in libuno-sal3 libuno-cppu3 libuno-salhelpergcc3-3 libuno-cppuhelpergcc3-3 libuno-purpenvhelpergcc3-3 \
 		libreoffice-core libreoffice-writer; do \
@@ -3559,6 +3551,8 @@ ifeq "$(PACKAGE_SDK_DOCS)" "y"
 	dh_doxygen -plibreoffice-dev-doc
 endif
 	dh_installmime -i
+	dh_python3 -ppython3-access2base
+	dh_python3 -plibreoffice-script-provider-python
 ifeq "$(ENABLE_HELP)" "y"
   ifeq "$(ENABLE_HTML_HELP)" "y"
 	for iso in $(shell echo $(HELPISOS) | tr A-Z a-z); do \
@@ -3584,15 +3578,10 @@ ifeq "$(ENABLE_JAVA)" "y"
 	for p in $(ARCH_INDEP_PACKAGES); do \
                 if echo "$$p" | grep -q help; then continue; fi; \
                 jh_depends -p$$p \
-			-Xlibreoffice-report-builder; \
+			-Xlibreoffice-report-builder -Xbase-files; \
         done
 endif
-	# fix base-files depends...
-	perl -pi -e "s/base-files,  //" \
-		debian/libjuh-java.substvars
-	perl -pi -e "s/base-files,  //" \
-		debian/libjurt-java.substvars
-	# and it adds a librhino-java Depends where we still use internal rhino
+	# jh_depends adds a librhino-java Depends where we still use internal rhino
 	perl -pi -e "s/librhino-java//" \
 		debian/libreoffice-script-provider-js.substvars
 ifeq "$(BUILD_TEST_PACKAGES)" "y"
@@ -3618,7 +3607,7 @@ endif
 		-V'Binary-Version=$(BINARY_VERSION)' \
 		-v$(BINARY_VERSION)
 	dh_gencontrol -pfonts-opensymbol -- \
-		-v$(shell echo `echo $(BINARY_VERSION) | cut -d: -f1` + 1 | bc):$(shell fontforge -lang=ff -c 'Open($$1); Print ($$fontversion); Quit(0);' debian/fonts-opensymbol/usr/share/fonts/truetype/openoffice/opens___.ttf)+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
+		-v2:$(shell fontforge -lang=ff -c 'Open($$1); Print ($$fontversion); Quit(0);' debian/fonts-opensymbol/usr/share/fonts/truetype/openoffice/opens___.ttf)+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
 ifeq "$(ENABLE_MEDIAWIKI)" "y"
 	dh_gencontrol -plibreoffice-wiki-publisher -- \
 		-V'java-common-depends=$(JAVA_COMMON_DEPENDS)' \
