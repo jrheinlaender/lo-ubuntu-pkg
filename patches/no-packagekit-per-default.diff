@@ -88,9 +88,9 @@ diff --git a/Repository.mk b/Repository.mk
 index 858be89..901085e 100644
 --- a/Repository.mk
 +++ b/Repository.mk
-@@ -289,7 +289,7 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,gnome, \
+@@ -283,7 +283,7 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,onlineupdate, \
+ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,gnome, \
  	$(if $(ENABLE_EVOAB2),evoab) \
- 	$(if $(ENABLE_GTK),vclplug_gtk) \
  	$(if $(ENABLE_GTK3),vclplug_gtk3) \
 -	$(if $(ENABLE_GIO),losessioninstall) \
 +	$(if $(ENABLE_PACKAGEKIT),losessioninstall) \
@@ -98,10 +98,10 @@ index 858be89..901085e 100644
  ))
  
 diff --git a/sfx2/source/appl/appserv.cxx b/sfx2/source/appl/appserv.cxx
-index f467783..b48e763 100644
+index 90f584c3cf7e..e409925fc8a1 100644
 --- a/sfx2/source/appl/appserv.cxx
 +++ b/sfx2/source/appl/appserv.cxx
-@@ -159,6 +159,7 @@ namespace
+@@ -202,6 +202,7 @@ namespace
          // make sure we actually can instantiate services from base first
          if(!lcl_isBaseAvailable())
          {
@@ -109,15 +109,12 @@ index f467783..b48e763 100644
              try
              {
                  using namespace org::freedesktop::PackageKit;
-@@ -176,8 +177,16 @@ namespace
-                 SAL_INFO(
-                     "sfx.appl",
-                     "trying to install LibreOffice Base, caught " << e);
+@@ -216,8 +217,13 @@ namespace
+             catch (const Exception &)
+             {
+                 TOOLS_INFO_EXCEPTION("sfx.appl", "trying to install LibreOffice Base");
 +#else
-+                SAL_INFO(
-+                    "sfx.appl",
-+                    "missing LibreOffice Base");
-+
++		TOOLS_INFO_EXCEPTION("sfx.appl", "missing LibreOffice Base");
 +#endif
 +#if defined (ENABLE_PACKAGEKIT)
              }
@@ -145,10 +142,10 @@ index 17661e9..99becfd 100644
  ifeq ($(OS),SOLARIS)
  ifeq ($(ENABLE_GIO),TRUE)
 diff --git a/sw/source/uibase/app/apphdl.cxx b/sw/source/uibase/app/apphdl.cxx
-index 9269f46dc5a0..3657702dcd01 100644
+index a48505ac998d..27192eed28e1 100644
 --- a/sw/source/uibase/app/apphdl.cxx
 +++ b/sw/source/uibase/app/apphdl.cxx
-@@ -405,6 +405,7 @@ void SwMailMergeWizardExecutor::ExecuteMailMergeWizard( const SfxItemSet * pArgs
+@@ -407,6 +408,7 @@ void SwMailMergeWizardExecutor::ExecuteMailMergeWizard( const SfxItemSet * pArgs
  {
      if(!lcl_hasAllComponentsAvailable())
      {
@@ -156,20 +153,14 @@ index 9269f46dc5a0..3657702dcd01 100644
          try
          {
              using namespace org::freedesktop::PackageKit;
-@@ -420,19 +421,28 @@ void SwMailMergeWizardExecutor::ExecuteMailMergeWizard( const SfxItemSet * pArgs
-             SAL_INFO(
-                 "sw.core",
-                 "trying to install LibreOffice Base, caught " << e);
-+#else
-+            SAL_INFO(
-+                "sw.core", 
-+                "missing LibreOffice Base");
-+#endif
-+#if defined (ENABLE_PACKAGEKIT)
-             auto xRestartManager
+@@ -426,15 +428,22 @@ void SwMailMergeWizardExecutor::ExecuteMailMergeWizard( const SfxItemSet * pArgs
                  = css::task::OfficeRestartManager::get(comphelper::getProcessComponentContext());
              if (!xRestartManager->isRestartRequested(false))
              {
++#else
++            TOOLS_INFO_EXCEPTION(
++                "sw.core",
++                "missing LibreOffice Base, caught");
 +#endif
                  // Base is absent, and could not initiate its install - ask user to do that manually
                  // Only show the dialog if restart is not initiated yet
