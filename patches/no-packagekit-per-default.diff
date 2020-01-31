@@ -142,10 +142,10 @@ index 17661e9..99becfd 100644
  ifeq ($(OS),SOLARIS)
  ifeq ($(ENABLE_GIO),TRUE)
 diff --git a/sw/source/uibase/app/apphdl.cxx b/sw/source/uibase/app/apphdl.cxx
-index a48505ac998d..27192eed28e1 100644
+index a2a2ff35b455..1c276a4c63fe 100644
 --- a/sw/source/uibase/app/apphdl.cxx
 +++ b/sw/source/uibase/app/apphdl.cxx
-@@ -407,6 +408,7 @@ void SwMailMergeWizardExecutor::ExecuteMailMergeWizard( const SfxItemSet * pArgs
+@@ -415,6 +415,7 @@ void SwMailMergeWizardExecutor::ExecuteMailMergeWizard( const SfxItemSet * pArgs
  {
      if(!lcl_hasAllComponentsAvailable())
      {
@@ -153,29 +153,33 @@ index a48505ac998d..27192eed28e1 100644
          try
          {
              using namespace org::freedesktop::PackageKit;
-@@ -426,15 +428,22 @@ void SwMailMergeWizardExecutor::ExecuteMailMergeWizard( const SfxItemSet * pArgs
-                 = css::task::OfficeRestartManager::get(comphelper::getProcessComponentContext());
-             if (!xRestartManager->isRestartRequested(false))
-             {
+@@ -427,9 +428,16 @@ void SwMailMergeWizardExecutor::ExecuteMailMergeWizard( const SfxItemSet * pArgs
+         }
+         catch (const css::uno::Exception &)
+         {
++#endif
++#if defined (ENABLE_PACKAGEKIT)
+             TOOLS_INFO_EXCEPTION(
+                 "sw.core",
+                 "trying to install LibreOffice Base, caught");
 +#else
 +            TOOLS_INFO_EXCEPTION(
 +                "sw.core",
 +                "missing LibreOffice Base, caught");
 +#endif
-                 // Base is absent, and could not initiate its install - ask user to do that manually
-                 // Only show the dialog if restart is not initiated yet
-                 std::unique_ptr<weld::MessageDialog> xWarnBox(Application::CreateMessageDialog(
-                     nullptr, VclMessageType::Info, VclButtonsType::Ok,
+             auto xRestartManager
+                 = css::task::OfficeRestartManager::get(comphelper::getProcessComponentContext());
+             if (!xRestartManager->isRestartRequested(false))
+@@ -441,7 +449,9 @@ void SwMailMergeWizardExecutor::ExecuteMailMergeWizard( const SfxItemSet * pArgs
                      SwResId(STR_NO_BASE_FOR_MERGE)));
                  xWarnBox->run();
-+#if defined (ENABLE_PACKAGEKIT)
              }
++#if defined (ENABLE_PACKAGEKIT)
          }
-         return;
 +#endif
+         return;
      }
      if ( m_pView )
-     {
 diff --git a/postprocess/Rdb_services.mk b/postprocess/Rdb_services.mk
 index c411fc1..d540983 100644
 --- a/postprocess/Rdb_services.mk
