@@ -47,10 +47,6 @@ done
 create_package_directory gid_Module_Root_Ure_Hidden             pkg/ure
 create_package_directory gid_Module_Root                        pkg/libreoffice-common
 create_package_directory gid_Module_Root_Brand                  pkg/libreoffice-common
-# FIXME: This is added to gid_Module_Root_Brand but doesn't get installed....
-mkdir -p pkg/libreoffice-common/usr/share/mimelnk/application
-mv ./usr/share/mimelnk/application/* \
-	pkg/libreoffice-common/usr/share/mimelnk/application
 # done by dh_installman
 #mkdir -p pkg/libreoffice-common/usr/share/man/man1
 #mv usr/share/man/man1/libreoffice$BINSUFFIX.1.gz \
@@ -110,11 +106,8 @@ mv usr/lib/libreoffice/sdk/lib \
 create_package_directory gid_Module_Optional_Extensions_Script_Provider_For_BS	pkg/libreoffice-script-provider-bsh
 create_package_directory gid_Module_Optional_Extensions_Script_Provider_For_JS  pkg/libreoffice-script-provider-js
 create_package_directory gid_Module_Optional_Extensions_MEDIAWIKI	pkg/libreoffice-wiki-publisher
-create_package_directory gid_Module_Optional_Extensions_MINIMIZER	pkg/libreoffice-presentation-minimizer
-create_package_directory gid_Module_Optional_Extensions_MySQLConnector  pkg/libreoffice-mysql-connector
 create_package_directory gid_Module_Optional_Extensions_NLPSolver	pkg/libreoffice-nlpsolver
 create_package_directory gid_Module_Pdfimport     pkg/libreoffice-common
-create_package_directory gid_Module_Optional_Extensions_PRESENTER_SCREEN	pkg/libreoffice-presenter-console
 create_package_directory gid_Module_Reportbuilder	pkg/libreoffice-report-builder
 create_package_directory gid_Module_Optional_PostgresqlSdbc     pkg/libreoffice-sdbc-postgresql
 create_package_directory gid_Module_Libreofficekit	pkg/libreofficekit-data
