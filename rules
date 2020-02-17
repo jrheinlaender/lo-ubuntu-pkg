@@ -1527,6 +1527,7 @@ clean-debdir:
 		! -name "liblibreofficekitgtk.links" \
 		! -name "libreoffice-help-common.links" \
 		! -name "python3-access2base.links" -exec rm {} \;
+	rm -f debian/libreoffice-l10n-*.ucf
 	if [ -d "$(STAMP_DIR)" ]; then rm -rf "$(STAMP_DIR)"; fi
 	rm -f debian/*.bug-script
 
@@ -2110,6 +2111,7 @@ endif
 		(cd debian/tmp/pkg/$$i; find . -type d | sed -e "s,\./,,") \
 			> debian/$$i.dirs; \
 	done
+	echo "/etc/libreoffice/registry/res" >> debian/libreoffice-common.dirs
 
 	# the english resources should be in -common
 	cat debian/libreoffice-l10n-en-US.dirs >> debian/libreoffice-common.dirs
@@ -2501,6 +2503,20 @@ $(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*.sh) $(wildcard debian/*.
 	    fi; \
 	  done; \
 	done
+	# create .ucf files for libreoffice-l10n-*. First generic ones
+	# libreoffice-l10n.ucf.in, but there also are CJK/CTL specific
+	# files, too...
+	for i in $(filter-out en-US,$(LANGPACKISOS)); do \
+	    cat debian/libreoffice-l10n.ucf.in \
+		| perl -pi -e "s/\@ISO\@/$$i/" \
+		> debian/libreoffice-l10n-$$i.ucf; \
+	    for j in cjk ctl ctlseqcheck; do \
+		if [ -f instdir/registry/$$j_$$i.xcd ]; then \
+			echo "/usr/lib/libreoffice/share/.registry/$$j_$$i.xcd /etc/libreoffice/registry/$$j_$$i.xcd" \
+				>> debian/libreoffice-l10n-$$i.ucf; \
+		fi; \
+	    done; \
+	done
 
 	touch $@
 
@@ -2859,6 +2875,12 @@ endif
 				| sed -e "s/@OOVER@/$(OOVER)/" \
 				> debian/$$i.bug-script; \
 		fi ;\
+		if [ -e debian/$$i.ucf ]; then \
+			if [ ! -e debian/$$i.bug-script.in ]; then \
+				printf "#!/bin/sh\n\n" > debian/$$i.bug-script; \
+			fi ;\
+			echo "ucfq $$i" >>  debian/$$i.bug-script; \
+		fi ;\
 	done
 	# generate .links files from *.in	
 	for PKG in $(ARCH_DEP_PACKAGES); do \
@@ -2867,6 +2889,23 @@ endif
 	    sed -e "s#\@OODIR\@#$(OODIR)#g" \
 		< $$LINKS.in > $$LINKS ; \
 	  fi; \
+	done
+
+	# make config xml "pretty" to make ucf --three-way work.
+	for p in $(ARCH_DEP_PACKAGES); do \
+		for i in `find debian/$$p/$(OODIR)/share/registry -name "*.xcd"`; do \
+			t=`mktemp -q`; \
+			xmllint --pretty 1 $$i > $$t; \
+			mv $$t $$i; \
+		done; \
+	done
+	# and "hide" the ucf source registry; makes it less confusing for
+        # people who do know /usr/lib/libreoffice/share/registry. Said path
+	# is a symlink set by libreoffice-common.links
+	for p in $(ARCH_DEP_PACKAGES); do \
+		for i in `find debian/$$p -type d -wholename "*$(OODIR)/share/registry"`; do \
+			mv $$i `echo $$i | sed -e s/registry/.registry/`; \
+		done; \
 	done
 
 	touch $@
@@ -3143,6 +3182,12 @@ endif
 				| sed -e "s/@PLATFORMID@/$(PLATFORMID)/" \
 				> debian/$$i.bug-script; \
 		fi ;\
+		if [ -e debian/$$i.ucf ]; then \
+			if [ ! -e debian/$$i.bug-script.in ]; then \
+				printf "#!/bin/sh\n\n" > debian/$$i.bug-script; \
+			fi ;\
+			echo "ucfq $$i" >>  debian/$$i.bug-script; \
+		fi ;\
 	done
 	# generate .links files from *.in	
 	for PKG in $(ARCH_INDEP_PACKAGES); do \
@@ -3252,6 +3297,28 @@ endif
 	sed -i "s,^BRAND_BASE_DIR=.*,BRAND_BASE_DIR=file:///$(OODIR)," \
 		$(PKGDIR)-common/$(OODIR)/program/fundamentalrc
 
+	# make LO look for its "registry" in /etc (ucf-managed)
+	sed -i "s,^CONFIGURATION_LAYERS=.*\(dconf.*\)$$,CONFIGURATION_LAYERS=xcsxcu:file:///etc/libreoffice/registry res:file:///etc/libreoffice/registry \1," \
+		$(PKGDIR)-common/$(OODIR)/program/fundamentalrc
+	echo "The configuration is in /etc/libreoffice/registry" > $(PKGDIR)-common/$(OODIR)/share/registry
+	
+	# make config xml "pretty" to make ucf --three-way work
+	for p in $(ARCH_INDEP_PACKAGES); do \
+		for i in `find debian/$$p/$(OODIR)/share/registry -name "*.xcd"`; do \
+			t=`mktemp -q`; \
+			xmllint --pretty 1 $$i > $$t; \
+			mv $$t $$i; \
+		done; \
+	done
+	# and "hide" the ucf source registry; makes it less confusing for
+        # people who do know /usr/lib/libreoffice/share/registry. Said path
+	# is a symlink set by libreoffice-common.links
+	for p in $(ARCH_INDEP_PACKAGES); do \
+		for i in `find debian/$$p -type d -wholename "*$(OODIR)/share/registry"`; do \
+			mv $$i `echo $$i | sed -e s/registry/.registry/`; \
+		done; \
+	done
+
 	touch $@
 
 binary-arch: $(STAMP_DIR)/binary-arch
@@ -3271,6 +3338,14 @@ ifeq "$(BUILD_NOGUI_PACKAGES)" "y"
 	cp workdir/CustomTarget/readlicense_oo/readme/README_en-US \
 		$(PKGDIR)-core-nogui/usr/share/doc/libreoffice-core-nogui/README
 endif
+	dh_ucf -a
+	# add --three-way...
+	for i in $(ARCH_DEP_PACKAGES); do \
+		if [ -e debian/$$i.postinst.debhelper ] && grep -q ucf debian/$$i.postinst.debhelper; then \
+			sed -i "s/ucf\ /ucf --three-way /" debian/$$i.postinst.debhelper; \
+			sed -i "s/ucf/ucf (>= 0.8)/" debian/$$i.substvars; \
+		fi ; \
+	done
 	dh_installdebconf -a
 	dh_installman -a
 	for i in writer calc draw base math impress; do \
@@ -3540,6 +3615,14 @@ endif
 	dh_installdocs -i -A
 	cp workdir/CustomTarget/readlicense_oo/readme/README_en-US \
 		$(PKGDIR)-common/usr/share/doc/libreoffice-common/README
+	dh_ucf -i
+	# add --three-way...
+	for i in $(ARCH_INDEP_PACKAGES); do \
+		if [ -e debian/$$i.postinst.debhelper ] && grep -q ucf debian/$$i.postinst.debhelper; then \
+			sed -i "s/ucf\ /ucf --three-way /" debian/$$i.postinst.debhelper; \
+			sed -i "s/ucf/ucf (>= 0.8)/" debian/$$i.substvars; \
+		fi ; \
+	done
 	dh_installman -i
 	for i in `find $(PKGDIR)-common -type l -name "lo*.1"`; do \
 		mv $$i $$i.gz; \
