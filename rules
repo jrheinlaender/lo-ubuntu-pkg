@@ -2473,6 +2473,33 @@ ifeq "$(ENABLE_FIREBIRD)" "y"
   endif
 endif
 
+	# move soffice.cfg files into the "correct" packages
+	for i in base calc draw impress math writer; do \
+		mkdir -p $(PKGDIR)-$$i/$(OODIR)/share/config/soffice.cfg/modules; \
+		mv $(PKGDIR)-common/$(OODIR)/share/config/soffice.cfg/modules/s$$i \
+			$(PKGDIR)-$$i/$(OODIR)/share/config/soffice.cfg/modules; \
+		if [ $$i = writer ]; then \
+			for i in sweb swform swreport swxform; do \
+			mv $(PKGDIR)-common/$(OODIR)/share/config/soffice.cfg/modules/$$i \
+				$(PKGDIR)-writer/$(OODIR)/share/config/soffice.cfg/modules; \
+			done; \
+		fi; \
+		if [ $$i = base ]; then \
+			for i in dbapp dbbrowser dbquery dbrelation dbtable dbtdata \
+				sabpilot sbibliography; do \
+				mv $(PKGDIR)-common/$(OODIR)/share/config/soffice.cfg/modules/$$i \
+					$(PKGDIR)-base/$(OODIR)/share/config/soffice.cfg/modules; \
+			done; \
+		fi; \
+	done
+	mv $(PKGDIR)-common/$(OODIR)/share/config/soffice.cfg/dbaccess \
+		$(PKGDIR)-base/$(OODIR)/share/config/soffice.cfg
+	mv $(PKGDIR)-common/$(OODIR)/share/config/soffice.cfg/writerperfect \
+		$(PKGDIR)-writer/$(OODIR)/share/config/soffice.cfg
+	mkdir -p $(PKGDIR)-report-builder/$(OODIR)/share/config/soffice.cfg/modules
+	mv $(PKGDIR)-common/$(OODIR)/share/config/soffice.cfg/modules/dbreport \
+		$(PKGDIR)-report-builder/$(OODIR)/share/config/soffice.cfg/modules
+
 	find debian/tmp ! -perm -200 | xargs -r chmod u+w
 
 	touch $@
@@ -2845,12 +2872,13 @@ ifeq "$(BUILD_NOGUI_PACKAGES)" "y"
 	done
 	# remove lib*uilo.so in --nogui
 	find debian/libreoffice-*-nogui/$(OODIR)/program/lib*uilo.so -exec rm {} \;
-	find debian/libreoffice-base-nogui/$(OODIR)/program/libdbulo.so -exec rm {} \;
-	# and (no UI, so not needed) not needed .desktop files
+	rm -f debian/libreoffice-base-nogui/$(OODIR)/program/libdbulo.so
+	# and (no UI, so not needed) not needed .desktop and .ui files
 	find debian/libreoffice-*-nogui/usr/share/applications/*.desktop -exec rm {} \;
+	find debian/libreoffice-*-nogui/$(OODIR)/share/config/soffice.cfg -name "*.ui" -exec rm {} \;
 	# unneeded launchers
 	find debian/libreoffice-*-nogui/usr/bin/lo* -exec rm {} \;
-	# otherwise we get errors
+	# otherwise we get errors since the launchers are missing
 	find debian/libreoffice-*-nogui/usr/share/metainfo/libreoffice-*.appdata.xml -exec rm {} \;
 endif
 
