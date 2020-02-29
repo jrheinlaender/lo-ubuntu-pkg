@@ -1,0 +1,91 @@
+From 5cf1574f62e98067b61eae94aaad58f31c096f23 Mon Sep 17 00:00:00 2001
+From: Rene Engelhard <rene@debian.org>
+Date: Fri, 28 Feb 2020 16:46:50 +0100
+Subject: [PATCH] Revert "tdf130839: Corrects second level left margin in
+ Smartart"
+
+This reverts commit eeaa7aba6e7ace8b69d7056645b15be2f996d8fb.
+---
+ .../drawingml/diagram/diagramlayoutatoms.cxx  | 12 +++---------
+ sd/qa/unit/import-tests-smartart.cxx          | 19 ++++---------------
+ 2 files changed, 7 insertions(+), 24 deletions(-)
+
+diff --git a/oox/source/drawingml/diagram/diagramlayoutatoms.cxx b/oox/source/drawingml/diagram/diagramlayoutatoms.cxx
+index 1b6a821f3a0a..14af84da6ac4 100644
+--- a/oox/source/drawingml/diagram/diagramlayoutatoms.cxx
++++ b/oox/source/drawingml/diagram/diagramlayoutatoms.cxx
+@@ -1224,16 +1224,10 @@ void AlgAtom::layoutShape( const ShapePtr& rShape,
+                 aParagraph->getProperties().setLevel(nLevel);
+                 if (nLevel >= nStartBulletsAtLevel)
+                 {
+-                    if (!aParagraph->getProperties().getParaLeftMargin().has_value())
+-                    {
+-                        sal_Int32 nLeftMargin = 285750 * (nLevel - nStartBulletsAtLevel + 1) / EMU_PER_HMM;
+-                        aParagraph->getProperties().getParaLeftMargin() = nLeftMargin;
+-                    }
+-
+-                    if (!aParagraph->getProperties().getFirstLineIndentation().has_value())
+-                        aParagraph->getProperties().getFirstLineIndentation() = -285750 / EMU_PER_HMM;
+-
+                     // It is not possible to change the bullet style for text.
++                    sal_Int32 nLeftMargin = 285750 * (nLevel - nStartBulletsAtLevel + 1) / EMU_PER_HMM;
++                    aParagraph->getProperties().getParaLeftMargin() = nLeftMargin;
++                    aParagraph->getProperties().getFirstLineIndentation() = -285750 / EMU_PER_HMM;
+                     OUString aBulletChar = OUString::fromUtf8(u8"•");
+                     aParagraph->getProperties().getBulletList().setBulletChar(aBulletChar);
+                     aParagraph->getProperties().getBulletList().setSuffixNone();
+diff --git a/sd/qa/unit/import-tests-smartart.cxx b/sd/qa/unit/import-tests-smartart.cxx
+index d14c4bc6950a..2d47381c4e67 100644
+--- a/sd/qa/unit/import-tests-smartart.cxx
++++ b/sd/qa/unit/import-tests-smartart.cxx
+@@ -101,7 +101,7 @@ public:
+     void testFontSize();
+     void testVerticalBlockList();
+     void testBulletList();
+-    void testMissingBulletAndIndent();
++    void testMissingBullet();
+     void testRecursion();
+     void testDataFollow();
+     void testOrgChart2();
+@@ -145,7 +145,7 @@ public:
+     CPPUNIT_TEST(testFontSize);
+     CPPUNIT_TEST(testVerticalBlockList);
+     CPPUNIT_TEST(testBulletList);
+-    CPPUNIT_TEST(testMissingBulletAndIndent);
++    CPPUNIT_TEST(testMissingBullet);
+     CPPUNIT_TEST(testRecursion);
+     CPPUNIT_TEST(testDataFollow);
+     CPPUNIT_TEST(testOrgChart2);
+@@ -1277,7 +1277,7 @@ void SdImportTestSmartArt::testVerticalBlockList()
+     xDocShRef->DoClose();
+ }
+ 
+-void SdImportTestSmartArt::testMissingBulletAndIndent()
++void SdImportTestSmartArt::testMissingBullet()
+ {
+     sd::DrawDocShellRef xDocShRef = loadURL(
+         m_directories.getURLFromSrc("/sd/qa/unit/data/pptx/smartart-missing-bullet.pptx"),
+@@ -1297,19 +1297,8 @@ void SdImportTestSmartArt::testMissingBulletAndIndent()
+ 
+     sal_Int16 nNumberingLevel = -1;
+     xPara1->getPropertyValue("NumberingLevel")>>= nNumberingLevel;
+-    CPPUNIT_ASSERT_EQUAL(sal_Int16(1), nNumberingLevel);
+-
+-    uno::Reference< container::XIndexAccess > xNumRule;
+-    xPara1->getPropertyValue("NumberingRules") >>= xNumRule;
+-    uno::Sequence<beans::PropertyValue> aBulletProps;
+-    xNumRule->getByIndex(1) >>= aBulletProps;
+ 
+-    for (int i = 0; i < aBulletProps.getLength(); ++i)
+-    {
+-        const beans::PropertyValue& rProp = aBulletProps[i];
+-        if(rProp.Name == "LeftMargin")
+-            CPPUNIT_ASSERT_EQUAL(sal_Int32(309), rProp.Value.get<sal_Int32>());
+-    }
++    CPPUNIT_ASSERT_EQUAL(sal_Int16(1), nNumberingLevel);
+ }
+ 
+ void SdImportTestSmartArt::testBulletList()
+-- 
+2.20.1
+
