@@ -71,7 +71,7 @@ lo_sources_ver=$(shell grep AC_INIT $(SOURCE_TREE)/configure.ac | grep documentf
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
 GIT_TAG=libreoffice-$(lo_sources_ver)
-GIT_BRANCH=libreoffice-6-4-1
+GIT_BRANCH=libreoffice-6-4-2
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
 lo_sources_ver=$(shell cat $(CURDIR)/sources.ver | cut -d= -f2)
@@ -154,7 +154,11 @@ BOOST_VERSION=default
 ifeq "$(BOOST_VERSION)" "default"
   BOOST_MINVER= (>= 1.58)
 endif
+# libmdds-dev depends on libboost-dev, which will be removed
+# when you install a non-default libboostX.Y-dev
+ifeq "$(BOOST_VERSION)" "default"
 SYSTEM_STUFF += mdds
+endif
 USE_EXTERNAL_CXXLIBS=y
 SYSTEM_STUFF += mythes
 SYSTEM_STUFF += icu
@@ -309,9 +313,9 @@ SYSTEM_STUFF += harfbuzz
 SYSTEM_STUFF += libexttextcat
 SYSTEM_STUFF += cppunit
 DEFAULT_IMAGE=tango
-IMAGES:=$(DEFAULT_IMAGE) colibre sifr sifr_dark breeze breeze_dark breeze_svg elementary elementary_svg karasa_jaga
+IMAGES:=$(DEFAULT_IMAGE) colibre sifr sifr_dark sifr_dark_svg breeze breeze_dark breeze_dark_svg breeze_svg elementary elementary_svg karasa_jaga
 # FIXME
-IMAGES_PACKAGES=$(subst _,-,$(filter-out sifr_dark,$(filter-out breeze_dark,$(filter-out breeze_svg,$(filter-out elementary_svg,$(IMAGES))))))
+IMAGES_PACKAGES=$(subst _,-,$(filter-out sifr_dark_svg,$(filter-out breeze_dark_svg,$(filter-out sifr_dark,$(filter-out breeze_dark,$(filter-out breeze_svg,$(filter-out elementary_svg,$(IMAGES))))))))
 CONFIGURE_FLAGS_INDEP += --with-theme="$(IMAGES)"
 MYSQL_FLAVOUR=default
 # set this also to y for system-mysql..
@@ -536,7 +540,7 @@ OOO_REPORTBUILDER_ARCHS := $(OOO_BASE_ARCHS)
 $(eval $(call gen_no_archs,OOO_REPORTBUILDER_ARCHS))
 OOO_FIREBIRD_ARCHS := $(OOO_BASE_ARCHS)
 $(eval $(call gen_no_archs,OOO_FIREBIRD_ARCHS))
-OOO_NOGUI_ARCHS := amd64 i386 arm64 s390x ppc64 ppc64el
+OOO_NOGUI_ARCHS := amd64 i386 arm64 armhf s390x ppc64 ppc64el
 $(eval $(call gen_no_archs,OOO_NOGUI_ARCHS))
 
 ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
@@ -1619,7 +1623,7 @@ debian/control: $(wildcard debian/control*in) $(SOURCE_TREE)/bin/lo-xlate-lang  
 			FONT_RECOMMENDS=", fonts-deva"; \
 			;; \
 		he) \
-			FONT_RECOMMENDS=", fonts-alef, culmus"; \
+			FONT_RECOMMENDS=", culmus"; \
 			;; \
 		km) \
 			FONT_RECOMMENDS=", fonts-khmeros"; \
@@ -2473,6 +2477,33 @@ ifeq "$(ENABLE_FIREBIRD)" "y"
   endif
 endif
 
+	# move soffice.cfg files into the "correct" packages
+	for i in base calc draw impress math writer; do \
+		mkdir -p $(PKGDIR)-$$i/$(OODIR)/share/config/soffice.cfg/modules; \
+		mv $(PKGDIR)-common/$(OODIR)/share/config/soffice.cfg/modules/s$$i \
+			$(PKGDIR)-$$i/$(OODIR)/share/config/soffice.cfg/modules; \
+		if [ $$i = writer ]; then \
+			for i in sweb swform swreport swxform; do \
+			mv $(PKGDIR)-common/$(OODIR)/share/config/soffice.cfg/modules/$$i \
+				$(PKGDIR)-writer/$(OODIR)/share/config/soffice.cfg/modules; \
+			done; \
+		fi; \
+		if [ $$i = base ]; then \
+			for i in dbapp dbbrowser dbquery dbrelation dbtable dbtdata \
+				sabpilot sbibliography; do \
+				mv $(PKGDIR)-common/$(OODIR)/share/config/soffice.cfg/modules/$$i \
+					$(PKGDIR)-base/$(OODIR)/share/config/soffice.cfg/modules; \
+			done; \
+		fi; \
+	done
+	mv $(PKGDIR)-common/$(OODIR)/share/config/soffice.cfg/dbaccess \
+		$(PKGDIR)-base/$(OODIR)/share/config/soffice.cfg
+	mv $(PKGDIR)-common/$(OODIR)/share/config/soffice.cfg/writerperfect \
+		$(PKGDIR)-writer/$(OODIR)/share/config/soffice.cfg
+	mkdir -p $(PKGDIR)-report-builder/$(OODIR)/share/config/soffice.cfg/modules
+	mv $(PKGDIR)-common/$(OODIR)/share/config/soffice.cfg/modules/dbreport \
+		$(PKGDIR)-report-builder/$(OODIR)/share/config/soffice.cfg/modules
+
 	find debian/tmp ! -perm -200 | xargs -r chmod u+w
 
 	touch $@
@@ -2821,6 +2852,13 @@ endif
 	mkdir -p $(PKGDIR)-sdbc-mysql/$(OODIR)/program
 	mv $(PKGDIR)-base/$(OODIR)/program/libmysqlclo.so \
 		$(PKGDIR)-sdbc-mysql/$(OODIR)/program
+
+	# move postgresql-sdbc.ini to /etc
+	mkdir -p $(PKGDIR)-sdbc-postgresql/etc/libreoffice
+	mv $(PKGDIR)-sdbc-postgresql/$(OODIR)/program/postgresql-sdbc.ini \
+		$(PKGDIR)-sdbc-postgresql/etc/libreoffice
+	ln -s /etc/libreoffice/postgresql-sdbc.ini \
+		$(PKGDIR)-sdbc-postgresql/$(OODIR)/program/postgresql-sdbc.ini
 	
 	mkdir -p $(PKGDIR)-base-drivers/$(OODIR)/program
 	for i in `find $(PKGDIR)-base/$(OODIR)/program/ -name "*.so" \
@@ -2845,12 +2883,13 @@ ifeq "$(BUILD_NOGUI_PACKAGES)" "y"
 	done
 	# remove lib*uilo.so in --nogui
 	find debian/libreoffice-*-nogui/$(OODIR)/program/lib*uilo.so -exec rm {} \;
-	find debian/libreoffice-base-nogui/$(OODIR)/program/libdbulo.so -exec rm {} \;
-	# and (no UI, so not needed) not needed .desktop files
+	rm -f debian/libreoffice-base-nogui/$(OODIR)/program/libdbulo.so
+	# and (no UI, so not needed) not needed .desktop and .ui files
 	find debian/libreoffice-*-nogui/usr/share/applications/*.desktop -exec rm {} \;
+	find debian/libreoffice-*-nogui/$(OODIR)/share/config/soffice.cfg -name "*.ui" -exec rm {} \;
 	# unneeded launchers
 	find debian/libreoffice-*-nogui/usr/bin/lo* -exec rm {} \;
-	# otherwise we get errors
+	# otherwise we get errors since the launchers are missing
 	find debian/libreoffice-*-nogui/usr/share/metainfo/libreoffice-*.appdata.xml -exec rm {} \;
 endif
 
@@ -3053,9 +3092,11 @@ endif
 	for i in $(IMAGES); do \
 		z=images_$$i.zip; p=$$i; \
 		if [ "$$i" = "breeze_dark" ]; then p=breeze; fi; \
+		if [ "$$i" = "breeze_dark_svg" ]; then p=breeze; fi; \
 		if [ "$$i" = "breeze_svg" ]; then p=breeze; fi; \
 		if [ "$$i" = "elementary_svg" ]; then p=elementary; fi; \
 		if [ "$$i" = "sifr_dark" ]; then p=sifr; fi; \
+		if [ "$$i" = "sifr_dark_svg" ]; then p=sifr; fi; \
 		if [ "$$i" = "karasa_jaga" ]; then p=karasa-jaga; fi; \
 		mkdir -p $(PKGDIR)-style-$$p/$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config; \
 		mv $(PKGDIR)-common/$(OODIR)/share/config/$$z \
