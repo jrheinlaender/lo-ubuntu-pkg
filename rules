@@ -3354,21 +3354,15 @@ ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 	# again...
 	rm -f $(STAMP_DIR)/install-common
 
+	# install gdb helpers
 	mkdir -p debian/.debhelper/libreoffice-core/dbgsym-root/usr/share/gdb/auto-load/$(OODIR)
 	mv $(CURDIR)/debian/tmp/usr/share/gdb/auto-load/$(OODIR)/program \
 		debian/.debhelper/libreoffice-core/dbgsym-root/usr/share/gdb/auto-load/$(OODIR)
 	mkdir -p debian/.debhelper/libreoffice-core/dbgsym-root/usr/share/libreoffice/gdb
 	mv $(CURDIR)/debian/tmp/usr/share/libreoffice/gdb/libreoffice \
 		debian/.debhelper/libreoffice-core/dbgsym-root/usr/share/libreoffice/gdb
-ifeq "$(BUILD_NOGUI_PACKAGES)" "y"
-	mkdir -p debian/.debhelper/libreoffice-core-nogui/dbgsym-root/usr/share/gdb/auto-load/
-	cp -ra debian/.debhelper/libreoffice-core/dbgsym-root/usr/share/gdb/auto-load/$(OODIR) \
-		debian/.debhelper/libreoffice-core-nogui/dbgsym-root/usr/share/gdb/auto-load/
-	mkdir -p debian/.debhelper/libreoffice-core-nogui/dbgsym-root/usr/share/libreoffice/
-	cp -ra debian/.debhelper/libreoffice-core/dbgsym-root/usr/share/libreoffice/gdb \
-		debian/.debhelper/libreoffice-core-nogui/dbgsym-root/usr/share/libreoffice
-endif
 
+	# move sal and cppu gdb helpers into their respective packages
 	for i in sal cppu; do \
 		mkdir -p debian/.debhelper/libuno-$${i}3/dbgsym-root/usr/share/gdb/auto-load/$(OODIR)/program; \
 		mkdir -p debian/.debhelper/libuno-$${i}3/dbgsym-root/usr/share/libreoffice/gdb/libreoffice; \
@@ -3378,6 +3372,7 @@ endif
 			debian/.debhelper/libuno-$${i}3/dbgsym-root/usr/share/libreoffice/gdb/libreoffice; \
 	done
 
+	# move sw and writerfilter gdb helpers to writer-dbgsym
 	mkdir -p debian/.debhelper/libreoffice-writer/dbgsym-root/usr/share/gdb/auto-load/$(OODIR)/program
 	mkdir -p debian/.debhelper/libreoffice-writer/dbgsym-root/usr/share/libreoffice/gdb/libreoffice/
 	for i in sw writerfilter; do \
@@ -3388,7 +3383,15 @@ endif
 		mv debian/.debhelper/libreoffice-core/dbgsym-root/usr/share/libreoffice/gdb/libreoffice/$$i.py \
 			debian/.debhelper/libreoffice-writer/dbgsym-root/usr/share/libreoffice/gdb/libreoffice; \
 	done
+
+	# populate -nogui-dbgsym from the gui counterparts
 ifeq "$(BUILD_NOGUI_PACKAGES)" "y"
+	mkdir -p debian/.debhelper/libreoffice-core-nogui/dbgsym-root/usr/share/gdb/auto-load/
+	mkdir -p debian/.debhelper/libreoffice-core-nogui/dbgsym-root/usr/share/libreoffice/
+	cp -ra debian/.debhelper/libreoffice-core/dbgsym-root/usr/share/gdb/auto-load/$(OODIR) \
+		debian/.debhelper/libreoffice-core-nogui/dbgsym-root/usr/share/gdb/auto-load/
+	cp -ra debian/.debhelper/libreoffice-core/dbgsym-root/usr/share/libreoffice/gdb \
+		debian/.debhelper/libreoffice-core-nogui/dbgsym-root/usr/share/libreoffice
 	mkdir -p debian/.debhelper/libreoffice-writer-nogui/dbgsym-root/usr/share/gdb
 	mkdir -p debian/.debhelper/libreoffice-writer-nogui/dbgsym-root/usr/share/libreoffice/
 	cp -ra debian/.debhelper/libreoffice-writer/dbgsym-root/usr/share/gdb/auto-load/ \
@@ -3557,6 +3560,10 @@ ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 			debian/.debhelper/$$i-nogui/dbgsym-root/DEBIAN/control; \
 	done
 	perl -pi -e 's/Recommends: /Recommends: libreoffice-core-nogui-dbgsym, /' \
+		debian/.debhelper/libreoffice-writer-nogui/dbgsym-root/DEBIAN/control
+	perl -pi -e 's/^(Recommends:.*)/Replaces: libreoffice-core-nogui-dbgsym (<< 1:6.4.3~rc1-3)\n\1/' \
+		debian/.debhelper/libreoffice-writer-nogui/dbgsym-root/DEBIAN/control
+	perl -pi -e 's/^(Replaces:.*)/Breaks: libreoffice-core-nogui-dbgsym (<< 1:6.4.3~rc1-3)\n\1/' \
 		debian/.debhelper/libreoffice-writer-nogui/dbgsym-root/DEBIAN/control
   endif
 endif
