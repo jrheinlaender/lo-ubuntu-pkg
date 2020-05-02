@@ -618,8 +618,8 @@ CONFIGURE_FLAGS += $(foreach i, $(SYSTEM_STUFF),--with-system-$(i))
 CC_PREFIX:=$(shell gcc -dumpmachine)-
 
 USE_CLANG=n
+CLANG_VERSION=default
 ifeq "$(USE_CLANG)" "y"
-  CLANG_VERSION=default
   ENABLE_COMPILER_PLUGINS=n
 endif
 
@@ -633,6 +633,18 @@ ifneq "$(USE_CLANG)" "y"
     endif
   endif
 	BUILD_DEPS += , gcc (>= 4:7), g++ (>= 4:7)
+  # skia build picks up clang if present (for performance reasons,
+  # at least on Windows...). Make explicit so we don't have builds
+  # "randomly" using an other compiler
+  ifeq "$(ENABLE_SKIA)" "y"
+    ifeq "$(CLANG_VERSION)" "default"
+	CLANG=clang
+	BUILD_DEPS += , clang (>= 1:5.0.2)
+    else
+	CLANG=clang-$(CLANG_VERSION)
+	BUILD_DEPS += , clang-$(CLANG_VERSION) 
+    endif
+  endif
 else
   ifeq "$(CLANG_VERSION)" "default"
 	CLANG=clang
