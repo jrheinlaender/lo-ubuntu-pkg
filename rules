@@ -596,7 +596,11 @@ CONFIGURE_FLAGS += $(foreach i, $(SYSTEM_STUFF),--with-system-$(i))
 
 CC_PREFIX:=$(shell gcc -dumpmachine)-
 
+# generally use clang
 USE_CLANG=n
+# allow clang for skia?
+ALLOW_CLANG=y
+
 CLANG_VERSION=default
 ifeq "$(USE_CLANG)" "y"
   ENABLE_COMPILER_PLUGINS=n
@@ -619,12 +623,14 @@ ifneq "$(USE_CLANG)" "y"
   # "randomly" using gcc or clang depending on whether clang is installed
   # or not
   ifeq "$(ENABLE_SKIA)" "y"
-    ifeq "$(CLANG_VERSION)" "default"
+    ifeq "$(ALLOW_CLANG)" "y"
+      ifeq "$(CLANG_VERSION)" "default"
 	CLANG=clang
 	BUILD_DEPS += , clang (>= 1:5.0.2) [$(OOO_LE_ARCHS)]
-    else
+      else
 	CLANG=clang-$(CLANG_VERSION)
 	BUILD_DEPS += , clang-$(CLANG_VERSION) [$(OOO_LE_ARCHS)]
+      endif
     endif
   endif
 else
@@ -1772,6 +1778,9 @@ ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 	perl -pi -e "s/(Build-Conflicts: .*)/\1,fonts-opensymbol <!nocheck>,/" debian/control
 endif
 
+ifneq "$(ALLOW_CLANG)" "y"
+	perl -pi -e "s/(Build-Conflicts: .*)/\1,clang,/" debian/control
+endif
 	$(PYTHON) debian/scripts/joinctrl.py < debian/control > debian/control.tmp
 	mv debian/control.tmp debian/control
 
