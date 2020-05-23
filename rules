@@ -37,6 +37,9 @@ SHELL:=/bin/bash
 #SYSTEM_GCC_VERSION = $(shell gcc --version | sed -n '/^gcc/s/.*\(.\..\)\..$$/\1/p')
 #FIXME
 SYSTEM_GCC_VERSION = $(shell gcc --version | sed -n '/^gcc/s/.*\(.\..\)\../\1/p' | cut -d" " -f1)
+ifeq "$(SYSTEM_GCC_VERSION)" "0.0" # gcc 10+
+SYSTEM_GCC_VERSION = $(shell gcc --version | sed -n '/^gcc/s/.*\(..\..\)\../\1/p' | cut -d" " -f1)
+endif
 
 PKGDIR:=debian/libreoffice
 OODIRNAME=libreoffice
@@ -71,7 +74,7 @@ lo_sources_ver=$(shell grep AC_INIT $(SOURCE_TREE)/configure.ac | grep documentf
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
 GIT_TAG=libreoffice-$(lo_sources_ver)
-GIT_BRANCH=libreoffice-6-4-3
+GIT_BRANCH=libreoffice-6-4-4
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
 lo_sources_ver=$(shell cat $(CURDIR)/sources.ver | cut -d= -f2)
@@ -150,7 +153,11 @@ JAVAHELPER_MIN_VERSION= (>= 0.37~)
 SYSTEM_STUFF += hunspell
 SYSTEM_STUFF += altlinuxhyph
 SYSTEM_STUFF += boost
-BOOST_VERSION=default
+ifeq "$(SYSTEM_GCC_VERSION)" "10.0"
+  BOOST_VERSION=1.71
+else
+  BOOST_VERSION=default
+endif
 ifeq "$(BOOST_VERSION)" "default"
   BOOST_MINVER= (>= 1.58)
 endif
@@ -373,30 +380,6 @@ endif
   ENABLE_LTO=n
 #endif
 USE_OPENCL=y
-#10:15 <@_rene_> ahunt: I remember you wanted to do some endian things? did it 
-#                ever get done?
-#10:15 -!- xrmx [~rm@2-228-255-178.ip194.fastwebnet.it] has joined 
-#          #libreoffice-dev
-#10:15 <@_rene_> ahunt: for firebird sdbc that is
-#10:15 -!- xrmx [~rm@2-228-255-178.ip194.fastwebnet.it] has quit [Changing host]
-#10:15 -!- xrmx [~rm@unaffiliated/xrmx] has joined #libreoffice-dev
-#10:15 <@_rene_> because I just remember I still have 
-#https://buildd.debian.org/status/fetch.php?pkg=libreoffice&arch=powerpc&ver=1%3
-#
-#10:16 < ahunt> _rene_: Not yet -- I still need to get round to actually 
-#               debugging within firebird itself to make it work.
-#10:16 < ahunt> _rene_: Yup, basically we're not endian portable yet.
-#10:16 <@_rene_> An uncaught exception of type com.sun.star.sdbc.SQLException
-#10:16 <@_rene_> - firebird_sdbc error:
-#10:16 <@_rene_> *unsupported on-disk structure for file 
-#                /tmp/lu4va82l.tmp/firebird.fdb; found 2
-#10:16 <@_rene_> 944.512, support 11.2
-#10:16 < xrmx> morning
-#10:16 <@_rene_> aha, so disable firebird on be?
-#10:16 <@_rene_> (for now)
-#10:16 < Safa_[A_boy]> Hello. About converting dialogs to .ui files, What about 
-#                      wizards?
-#10:17 < ahunt> _rene_: yes, unfortunately.
 ENABLE_FIREBIRD=y
 ifeq "$(ENABLE_FIREBIRD)" "y"
   SYSTEM_STUFF += firebird
@@ -1913,6 +1896,8 @@ ifeq "$(BUILD_NOGUI_PACKAGES)" "y"
 	# OpenGLWrapper::isVCLOpenGLEnabled()
 	find workdir -name "global.o" -exec rm {} \;
 	find workdir instdir -name "*libsc*" -exec rm {} \;
+	# it is required to regenerate main.xcd without --disable-gui
+	find workdir -name "main.xcd" -o -name "main.list" -exec rm {} \;
 endif
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
@@ -3727,7 +3712,6 @@ endif
 binary: binary-arch binary-indep
 
 ifeq "$(USE_GIT_TARBALLS)" "y"
-
 # $(1) is the upstream name of the repo
 # $(2) is the name of the tarball
 # $(3) is the path to archive (empty for everything)
@@ -3799,9 +3783,12 @@ get-orig-source: $(call get_orig_tarball,-tarballs) tarballs/fetch.log
 unpack: tarballs/fetch.log
 	dh_testdir
 endif
-else
+endif
+
+ifeq "$(USE_SOURCE_TARBALLS)" "y"
 get-orig-source:
 	PATH=$(CURDIR)/debian/scripts:$$PATH uscan --watchfile=$(CURDIR)/debian/watch --verbose --force
+	debian/scripts/fix_component_tarballs.sh
 endif
 
 .PHONY: control
