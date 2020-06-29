@@ -620,17 +620,22 @@ ifneq "$(USE_CLANG)" "y"
   # Make it a explicit build-dependency so we don't have builds
   # "randomly" using gcc or clang depending on whether clang is installed
   # or not
+  # not on armel, though for now since it fails to build with clang
+  # (see #963162, #963167)
+  ifeq (armel,$(findstring armel,$(DEB_HOST_ARCH)))
+	ALLOW_CLANG=n
+  endif
   ifeq "$(ENABLE_SKIA)" "y"
     ifeq "$(ALLOW_CLANG)" "y"
       ifeq (ccache,$(findstring ccache,$(DEB_BUILD_OPTIONS)))
         export CCACHE_CPP2=1
       endif
       ifeq "$(CLANG_VERSION)" "default"
-	BUILD_DEPS += , clang (>= 1:5.0.2) [$(OOO_LE_ARCHS)]
+	BUILD_DEPS += , clang (>= 1:5.0.2) [$(filter-out armel,$(OOO_LE_ARCHS))]
       else
 	export CLANG_CC=clang-$(CLANG_VERSION)
 	export CLANG_CXX=clang++-$(CLANG_VERSION)
-	BUILD_DEPS += , clang-$(CLANG_VERSION) [$(OOO_LE_ARCHS)]
+	BUILD_DEPS += , clang-$(CLANG_VERSION) [$(filter-out armel,$(OOO_LE_ARCHS))]
       endif
     endif
   endif
@@ -1786,6 +1791,9 @@ endif
 
 ifneq "$(ALLOW_CLANG)" "y"
 	perl -pi -e "s/(Build-Conflicts: .*)/\1,clang,/" debian/control
+else
+	# go safe and build-conflict against clang, as it doesn't work (see above)
+	perl -pi -e "s/(Build-Conflicts: .*)/\1,clang [armel],/" debian/control
 endif
 	$(PYTHON) debian/scripts/joinctrl.py < debian/control > debian/control.tmp
 	mv debian/control.tmp debian/control
