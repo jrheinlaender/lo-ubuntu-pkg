@@ -17,14 +17,16 @@ Forwarded: partially, where there is generic use for it
  7 files changed, 27 insertions(+), 5 deletions(-)
  create mode 100644 solenv/gbuild/extensions/post_SkipBuild.mk
 
---- a/jurt/Module_jurt.mk
-+++ b/jurt/Module_jurt.mk
-@@ -22,7 +22,7 @@ $(eval $(call gb_Module_add_targets,jurt
+diff --git a/ridljar/Module_ridljar.mk b/ridljar/Module_ridljar.mk
+index daa0f1835be7..c4186e900a87 100644
+--- a/ridljar/Module_ridljar.mk
++++ b/ridljar/Module_ridljar.mk
+@@ -16,7 +16,7 @@ $(eval $(call gb_Module_add_targets,ridljar,\
+     Jar_unoloader \
  ))
- endif
  
--$(eval $(call gb_Module_add_subsequentcheck_targets,jurt,\
-+#$(eval $(call gb_Module_add_subsequentcheck_targets,jurt,\
+-$(eval $(call gb_Module_add_check_targets,ridljar,\
++#$(eval $(call gb_Module_add_check_targets,ridljar,\
      CustomTarget_test_urp \
      InternalUnoApi_test_urp \
      JunitTest_bridgefactory \
@@ -46,25 +48,36 @@ Forwarded: partially, where there is generic use for it
  	Package_registry \
  ))
  
+diff --git a/solenv/gbuild/JavaClassSet.mk b/solenv/gbuild/JavaClassSet.mk
+index cff4299bf06e..76765351abdd 100644
 --- a/solenv/gbuild/JavaClassSet.mk
 +++ b/solenv/gbuild/JavaClassSet.mk
-@@ -39,7 +39,7 @@ $(call gb_Helper_abbreviate_dirs,\
- 			$(filter-out $(JARDEPS),$(4))) && \
- 		$(if $(3),$(gb_JavaClassSet_JAVACCOMMAND) \
+@@ -46,7 +46,7 @@ $(call gb_Helper_abbreviate_dirs,\
+ 			$(filter-out $(JARDEPS) $(T_JAVA9FILES),$(4))) && \
+ 		$(if $(3),$(call gb_JavaClassSet_JAVACCOMMAND,$(JAVA_TARGET_VER)) \
  			$(gb_JavaClassSet_JAVACDEBUG) \
 -			-classpath "$(T_CP)$(gb_CLASSPATHSEP)$(call gb_JavaClassSet_get_classdir,$(2))" \
-+			-classpath "$(T_CP)$(gb_CLASSPATHSEP)$(call gb_JavaClassSet_get_classdir,$(2)):$(subst $(gb_SPACE),:,$(wildcard /usr/lib/ure/share/java/*.jar)):$(subst $(gb_SPACE),:,$(wildcard /usr/lib/libreoffice/program/classes/*.jar))" \
++			-classpath "$(T_CP)$(gb_CLASSPATHSEP)$(call gb_JavaClassSet_get_classdir,$(2))$(gb_CLASSPATHSEP)$(shell echo $(wildcard /usr/lib/libreoffice/program/classes/*.jar) | sed -e s/\ /:/g)" \
  			-d $(call gb_JavaClassSet_get_classdir,$(2)) \
  			@$$RESPONSEFILE &&) \
  		rm -f $$RESPONSEFILE &&) \
+@@ -55,7 +55,7 @@ $(call gb_Helper_abbreviate_dirs,\
+ 				$(T_JAVA9FILES)) && \
+ 			$(if $(3),$(call gb_JavaClassSet_JAVACCOMMAND,9) \
+ 				$(gb_JavaClassSet_JAVACDEBUG) \
+-				-classpath "$(T_CP)$(gb_CLASSPATHSEP)$(call gb_JavaClassSet_get_classdir,$(2))" \
++				-classpath "$(T_CP)$(gb_CLASSPATHSEP)$(call gb_JavaClassSet_get_classdir,$(2))$(gb_CLASSPATHSEP)$(shell echo $(wildcard /usr/lib/libreoffice/program/classes/*.jar) | sed -e s/\ /:/g)" \
+ 				--module-path "$(T_CP)$(gb_CLASSPATHSEP)$(call gb_JavaClassSet_get_classdir,$(2))" \
+ 				$(if $(T_MODULENAME),--patch-module $(T_MODULENAME)="$(subst $(WHITESPACE),$(gb_CLASSPATHSEP),$(strip $(dir $(PACKAGEDIRS))))") \
+ 				-d $(call gb_JavaClassSet_get_classdir,$(2)) \
 --- a/solenv/gbuild/JunitTest.mk
 +++ b/solenv/gbuild/JunitTest.mk
 @@ -55,7 +55,7 @@ $(call gb_JunitTest_get_target,%) :
- 	$(CLEAN_CMD)
+ endif
  
  define gb_JunitTest_JunitTest
 -$(call gb_JunitTest_get_target,$(1)) : T_CP := $(call gb_JavaClassSet_get_classdir,$(call gb_JunitTest_get_classsetname,$(1)))$$(gb_CLASSPATHSEP)$(OOO_JUNIT_JAR)$(if $(HAMCREST_JAR),$$(gb_CLASSPATHSEP)$(HAMCREST_JAR))$$(gb_CLASSPATHSEP)$(INSTROOT)/$(LIBO_URE_LIB_FOLDER)
-+$(call gb_JunitTest_get_target,$(1)) : T_CP := $(call gb_JavaClassSet_get_classdir,$(call gb_JunitTest_get_classsetname,$(1)))$$(gb_CLASSPATHSEP)$(OOO_JUNIT_JAR)$(if $(HAMCREST_JAR),$$(gb_CLASSPATHSEP)$(HAMCREST_JAR))$$(gb_CLASSPATHSEP)$(OUTDIR)/lib:$(subst $(gb_SPACE),:,$(wildcard /usr/lib/ure/share/java/*.jar)):$(subst $(gb_SPACE),:,$(wildcard /usr/lib/libreoffice/program/classes/*.jar))
++$(call gb_JunitTest_get_target,$(1)) : T_CP := $(call gb_JavaClassSet_get_classdir,$(call gb_JunitTest_get_classsetname,$(1)))$$(gb_CLASSPATHSEP)$(OOO_JUNIT_JAR)$(if $(HAMCREST_JAR),$$(gb_CLASSPATHSEP)$(HAMCREST_JAR))$$(gb_CLASSPATHSEP)$(INSTROOT)/$(LIBO_URE_LIB_FOLDER)$(gb_CLASSPATHSEP)$(shell echo $(wildcard /usr/lib/libreoffice/program/classes/*.jar) | sed -e s/\ /:/g)
  $(call gb_JunitTest_get_target,$(1)) : CLASSES :=
  $(eval $(call gb_JunitTest_JunitTest_platform,$(1)))
  
