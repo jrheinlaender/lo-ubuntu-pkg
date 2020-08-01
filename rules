@@ -74,7 +74,7 @@ lo_sources_ver=$(shell grep AC_INIT $(SOURCE_TREE)/configure.ac | grep documentf
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
 GIT_TAG=libreoffice-$(lo_sources_ver)
-GIT_BRANCH=libreoffice-7-0
+GIT_BRANCH=libreoffice-7-0-0
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
 lo_sources_ver=$(shell cat $(CURDIR)/sources.ver | cut -d= -f2)
@@ -1174,9 +1174,11 @@ ifeq "$(ENABLE_QT5)" "y"
 	BUILD_DEPS += , libglib2.0-dev (>= 2.4)
 	BUILD_DEPS += , libxcb1-dev
 	BUILD_DEPS += , libxcb-icccm4-dev
-#        # for correct qmake/moc
-#	BUILD_DEPS += , qtchooser
-#	export QT_SELECT=5
+  ifeq "$(BUSTER_BACKPORTS)" "y"
+        # for correct qmake/moc
+	BUILD_DEPS += , qtchooser
+	export QT_SELECT=5
+  endif
 endif
 
 ifeq "$(MYSQL_FLAVOUR)" "default"
@@ -1383,11 +1385,7 @@ ifeq "$(ENABLE_GUI)" "y"
   endif
 endif
 ifneq (,$(filter glm, $(SYSTEM_STUFF)))
-  ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) ge 7.3 && echo true)" "true"
 	BUILD_DEPS += , libglm-dev (>= 0.9.9~a2)
-  else
-	BUILD_DEPS += , libglm-dev (>= 0.9.6.3)
-  endif
 endif
 
 ifneq (,$(filter gpgmepp, $(SYSTEM_STUFF)))
@@ -2553,21 +2551,22 @@ $(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*.sh) $(wildcard debian/*.
 	# create .ucf files for libreoffice-l10n-*. First generic ones
 	# libreoffice-l10n.ucf.in, but there also are CJK/CTL specific
 	# files, too...
-	for i in $(filter-out en-US,$(LANGPACKISOS)); do \
+	for iso in $(filter-out en-US,$(LANGPACKISOS)); do \
+	    pkgiso=`echo $$iso | tr \[:upper:\] \[:lower:\]`; \
 	    cat debian/libreoffice-l10n.ucf.in \
-		| sed -e "s/\@ISO\@/$$i/g" \
-		> debian/libreoffice-l10n-$$i.ucf; \
-	    if [ -f instdir/share/registry/ctl_$$i.xcd ]; then \
-		echo "/usr/lib/libreoffice/share/.registry/ctl_$$i.xcd /etc/libreoffice/registry/ctl_$$i.xcd" \
-			>> debian/libreoffice-l10n-$$i.ucf; \
+		| sed -e "s/\@ISO\@/$$iso/g" \
+		> debian/libreoffice-l10n-$$pkgiso.ucf; \
+	    if [ -f instdir/share/registry/ctl_$$iso.xcd ]; then \
+		echo "/usr/lib/libreoffice/share/.registry/ctl_$$iso.xcd /etc/libreoffice/registry/ctl_$$iso.xcd" \
+			>> debian/libreoffice-l10n-$$pkgiso.ucf; \
 	    fi; \
-	    if [ -f instdir/share/registry/ctlseqcheck_$$i.xcd ]; then \
-		echo "/usr/lib/libreoffice/share/.registry/ctlseqcheck_$$i.xcd /etc/libreoffice/registry/ctlseqcheck_$$i.xcd" \
-			>> debian/libreoffice-l10n-$$i.ucf; \
+	    if [ -f instdir/share/registry/ctlseqcheck_$$iso.xcd ]; then \
+		echo "/usr/lib/libreoffice/share/.registry/ctlseqcheck_$$iso.xcd /etc/libreoffice/registry/ctlseqcheck_$$iso.xcd" \
+			>> debian/libreoffice-l10n-$$pkgiso.ucf; \
 	    fi; \
-	    if [ -f instdir/share/registry/cjk_$$i.xcd ]; then \
-		echo "/usr/lib/libreoffice/share/.registry/cjk_$$i.xcd /etc/libreoffice/registry/cjk_$$i.xcd" \
-			>> debian/libreoffice-l10n-$$i.ucf; \
+	    if [ -f instdir/share/registry/cjk_$$iso.xcd ]; then \
+		echo "/usr/lib/libreoffice/share/.registry/cjk_$$iso.xcd /etc/libreoffice/registry/cjk_$$iso.xcd" \
+			>> debian/libreoffice-l10n-$$pkgiso.ucf; \
 	    fi; \
 	done
 
@@ -2783,6 +2782,7 @@ endif
 	               $(PKGDIR)-core/usr/share/applications
 
 	sed -i -e 's/Office;/Office;Graphics;/' $(PKGDIR)-draw/usr/share/applications/libreoffice-draw.desktop
+	sed -i -e 's/Education;Science;//' $(PKGDIR)-math/usr/share/applications/libreoffice-math.desktop
 	# invalid, according to lintian. make it shut up.
 	for i in writer calc impress draw math base; do \
 		perl -pi -e 's/Application;//; s/X-Red-Hat-Base;//; s/X-SuSE-Core-Office;//; s/X-MandrivaLinux-.*;//;' $(PKGDIR)-$$i/usr/share/applications/libreoffice-$$i.desktop; \
@@ -3326,16 +3326,14 @@ ifeq "$(ENABLE_JAVA)" "y"
 		ln -s /usr/share/java/$$i.jar $$i.jar; \
 	done
 
-	# fix up Class-Paths
-	# javaunohelper/com/sun/star/comp/helper/Bootstrap.java:                NativeLibraryLoader.loadLibrary( Bootstrap.class.getClassLoader(), "juh" );
+	# fix up Class-Path
+	# make libreoffice.jar to be able to find libjpipe.so.
+	# See http://markmail.org/message/yacqa7oowugxwmn2 (for juh.jar back then...)
+	# also: javaunohelper/com/sun/star/comp/helper/Bootstrap.java:                NativeLibraryLoader.loadLibrary( Bootstrap.class.getClassLoader(), "juh" );
 	# seems to work nevertheless (if called from program/classes?) but fix it
  	# nevertheless
-	jh_classpath --classpath="ridl.jar ../ /$(OODIR)/program" \
-		debian/libjuh-java/usr/share/java/juh.jar
-	# make jurt.jar to be able to find libjpipe.so.
-	# See http://markmail.org/message/yacqa7oowugxwmn2
-	jh_classpath --classpath="ridl.jar unoloader.jar ../../lib /$(OODIR)/program ../bin/" \
-		$(CURDIR)/debian/libjurt-java/usr/share/java/jurt.jar
+	jh_classpath --classpath="unoloader.jar ../ /$(OODIR)/program" \
+		$(CURDIR)/debian/liblibreoffice-java/usr/share/java/libreoffice.jar
 endif
 
 ifeq "$(INSTALL_APPARMOR_PROFILES)" "y"
