@@ -82,6 +82,10 @@ ifeq "$(USE_SOURCE_TARBALLS)" "y"
 lo_sources_ver=$(shell cat $(CURDIR)/sources.ver | cut -d= -f2)
 endif
 
+ifeq "$(USE_SOURCE_TARBALLS)" "y"
+YARU_GIT_REV=7106feea4c8304272c5f6db01fff07d6687fa667
+endif
+
 #########
 # Default package configuration
 #
@@ -321,9 +325,9 @@ SYSTEM_STUFF += harfbuzz
 SYSTEM_STUFF += libexttextcat
 SYSTEM_STUFF += cppunit
 DEFAULT_IMAGE=colibre
-IMAGES:=$(DEFAULT_IMAGE) sifr sifr_dark sifr_dark_svg breeze breeze_dark breeze_dark_svg breeze_svg elementary elementary_svg karasa_jaga sukapura sukapura_svg
+IMAGES:=$(DEFAULT_IMAGE) sifr sifr_dark sifr_dark_svg breeze breeze_dark breeze_dark_svg breeze_svg elementary elementary_svg karasa_jaga sukapura sukapura_svg yaru yaru_svg
 # FIXME
-IMAGES_PACKAGES=$(subst _,-,$(filter-out sukapura_svg,$(filter-out sifr_dark_svg,$(filter-out breeze_dark_svg,$(filter-out sifr_dark,$(filter-out breeze_dark,$(filter-out breeze_svg,$(filter-out elementary_svg,$(IMAGES)))))))))
+IMAGES_PACKAGES=$(subst _,-,$(filter-out yaru_svg,$(filter-out sukapura_svg,$(filter-out sifr_dark_svg,$(filter-out breeze_dark_svg,$(filter-out sifr_dark,$(filter-out breeze_dark,$(filter-out breeze_svg,$(filter-out elementary_svg,$(IMAGES))))))))))
 CONFIGURE_FLAGS_INDEP += --with-theme="$(IMAGES)"
 MYSQL_FLAVOUR=default
 # set this also to y for system-mysql..
@@ -1620,6 +1624,10 @@ ifeq "$(HELPISOS)" ""
 	rm -rf images*
 endif
 
+	# Ubuntu yaru icon theme links
+	rm -f icon-themes/yaru
+	rm -f icon-themes/yaru_svg
+
 	rm -f download.list
 
 	rm -f extras/source/truetype/symbol/opens___.ttf
@@ -1901,6 +1909,10 @@ ifeq "$(ENABLE_PCH)" "y"
 	# regen PCHs to go sure...
 	bin/update_pch.sh
 endif
+
+	# Ubuntu yaru icon theme links
+	ln -srf yaru/build/png icon-themes/yaru
+	ln -srf yaru/build/svg icon-themes/yaru_svg
 
 	touch $@
 
@@ -3206,6 +3218,7 @@ endif
 		if [ "$$i" = "sifr_dark_svg" ]; then p=sifr; fi; \
 		if [ "$$i" = "karasa_jaga" ]; then p=karasa-jaga; fi; \
 		if [ "$$i" = "sukapura_svg" ]; then p=sukapura; fi; \
+		if [ "$$i" = "yaru_svg" ]; then p=yaru; fi; \
 		mkdir -p $(PKGDIR)-style-$$p/$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config; \
 		mv $(PKGDIR)-common/$(OODIR)/share/config/$$z \
 			$(PKGDIR)-style-$$p/$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config/; \
@@ -3855,6 +3868,19 @@ tar cvJf $(2) -C $${TMPD}/archive/$(3) --transform 's,./,,' . && \
 rm -rf $${TMPD}
 endef
 
+# Get ubuntu yaru icon theme sources
+define pack_yaru_gittarball
+$(if $(GIT_INSTALLED),,$(error You need git.))
+dh_testdir
+TMPD=`mktemp -d $(if $(TMP),-p $(TMP))` && \
+mkdir $${TMPD}/archive && \
+git clone --bare https://github.com/ubuntu/libreoffice-style-yaru-fullcolor.git $${TMPD}/repo -b master && \
+git --git-dir=$${TMPD}/repo tag -f UBUNTU_YARU_TAG $(YARU_GIT_REV) && \
+git archive --remote $${TMPD}/repo --format=tar --prefix libreoffice-$(DEB_VERSION_UPSTREAM)/ UBUNTU_YARU_TAG |tar x -C $${TMPD}/archive && \
+tar cvJf $(2) -C $${TMPD}/archive/$(3) --transform 's,./,,' . && \
+rm -rf $${TMPD}
+endef
+
 define unpack_gittarball
 dh_testdir
 mkdir -p $(CURDIR)/$(1)
@@ -3871,8 +3897,11 @@ $(call get_orig_tarball,-helpcontent2):
 $(call get_orig_tarball,-%):
 	$(call pack_gittarball,$*,$@,libreoffice-$(DEB_VERSION_UPSTREAM)/)
 
+$(call get_orig_tarball,-yaru):
+	$(call pack_yaru_gittarball,yaru,$@,libreoffice-$(DEB_VERSION_UPSTREAM)/)
+
 # Get upstream external sources
-$(call get_orig_tarball,-tarballs): helpcontent2/makefile.pmk translations/makefile.mk .gitignore
+$(call get_orig_tarball,-tarballs): yaru/CONTRIBUTING.md helpcontent2/makefile.pmk translations/makefile.mk .gitignore
 	dh_testdir
 	rm -rf tarballs
 	mkdir -p tarballs
@@ -3896,6 +3925,9 @@ helpcontent2/makefile.pmk:  $(call get_orig_tarball,-helpcontent2)
 
 tarballs/fetch.log: $(call get_orig_tarball,-tarballs) patched
 	$(call unpack_gittarball,tarballs,$<,)
+
+yaru/CONTRIBUTING.md:  $(call get_orig_tarball,-yaru)
+	$(call unpack_gittarball,yaru,$<,)
 
 get-orig-source: $(call get_orig_tarball,-tarballs) tarballs/fetch.log
 	dh_testdir
