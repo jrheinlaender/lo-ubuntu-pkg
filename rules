@@ -323,6 +323,7 @@ IMAGES:=$(DEFAULT_IMAGE) sifr sifr_dark sifr_dark_svg breeze breeze_dark breeze_
 # FIXME
 IMAGES_PACKAGES=$(subst _,-,$(filter-out sukapura_svg,$(filter-out sifr_dark_svg,$(filter-out breeze_dark_svg,$(filter-out sifr_dark,$(filter-out breeze_dark,$(filter-out breeze_svg,$(filter-out elementary_svg,$(IMAGES)))))))))
 CONFIGURE_FLAGS_INDEP += --with-theme="$(IMAGES)"
+ENABLE_MARIADB=y
 MYSQL_FLAVOUR=default
 # set this also to y for system-mysql..
 SYSTEM_STUFF += mariadb
@@ -1197,22 +1198,27 @@ ifeq "$(ENABLE_QT5)" "y"
   endif
 endif
 
-ifeq "$(MYSQL_FLAVOUR)" "default"
+ifeq "$(ENABLE_MARIADB)" "y"
+  ifeq "$(MYSQL_FLAVOUR)" "default"
 	BUILD_DEPS += , default-libmysqlclient-dev
-else
-  ifeq "$(MYSQL_FLAVOUR)" "mysql"
-      ifneq (,$(filter mariadb, $(SYSTEM_STUFF)))
+  else
+    ifeq "$(MYSQL_FLAVOUR)" "mysql"
+        ifneq (,$(filter mariadb, $(SYSTEM_STUFF)))
         BUILD_DEPS += , libmysqlclient-dev
-      endif
+        endif
       MARIADBCONFIG=/usr/bin/mysql_config
-  endif
-  ifeq "$(MYSQL_FLAVOUR)" "mariadb"
-    ifneq (,$(filter mariadb, $(SYSTEM_STUFF)))
+    endif
+    ifeq "$(MYSQL_FLAVOUR)" "mariadb"
+      ifneq (,$(filter mariadb, $(SYSTEM_STUFF)))
 	# deducted from default-libmysqlclient-dev Depends
 	BUILD_DEPS += , libmariadbclient-dev-compat
-    endif
+      endif
     MARIADBCONFIG=/usr/bin/mariadb_config
+    endif
   endif
+else
+  CONFIGURE_FLAGS += --disable-mariadb-sdbc
+  DEBHELPER_OPTIONS += -Nlibreoffice-sdbc-mysql
 endif
 
 ifeq "$(ENABLE_FIREBIRD)" "y"
