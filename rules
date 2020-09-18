@@ -614,7 +614,7 @@ ifneq "$(USE_CLANG)" "y"
     endif
   endif
 	BUILD_DEPS += , gcc (>= 4:7), g++ (>= 4:7)
-ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) gt 10 && echo true)" "true"
+
   # Use -O0 for gcc 10 on armhf to avoid build/test failure with gcc 10
   # https://bugs.launchpad.net/ubuntu/+bug/1891623
   # In Debian this never appeared to be an actual build failure but
@@ -623,10 +623,13 @@ ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) gt 10 && echo true)"
   # With g++-10 there also appear SIGSEGVs in/with openjdk-11 and it
   # hangs at RunMacros, which also tries to use Java "Macros".
   # A --without-java build passes.
-  ifeq ($(ENABLE_JAVA),y)
-    ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
-      ifneq (noopt,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
+ifeq "$(DEB_HOST_ARCH)" "armhf"
+  ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) gt 10 && echo true)" "true"
+    ifeq ($(ENABLE_JAVA),y)
+      ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
+        ifneq (noopt,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
 	DEB_BUILD_OPTIONS += noopt
+        endif
       endif
     endif
   endif
