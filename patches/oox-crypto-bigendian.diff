@@ -1,0 +1,115 @@
+From 646a69757b928aeaf6e0d0d41c4b30c02803a3a3 Mon Sep 17 00:00:00 2001
+From: Stephan Bergmann <sbergman@redhat.com>
+Date: Thu, 24 Sep 2020 14:51:16 +0200
+Subject: Fix endianness issues in OOX crypto routines
+
+...without which CppunitTest_sw_ooxmlencryption failed on (big-endian) s390x:
+
+* The 32-bit segment counter in AgileEngine::de-/encrypt apparently needs to be
+  stored in LSB format (at least, if it is, CppunitTest_sw_ooxmlencryption
+  ultimately succeeded, whereas otherwise it failed).
+
+* The UTF-16 string in Standard2007Engine::calculateEncryptionKey apparently
+  needs to be in LSB format (at least, if it is, CppunitTest_sw_ooxmlencryption
+  ultimately succeeded, whereas otherwise it failed).
+
+* The various 32-bit values in the EncryptionStandardHeader and
+  EncryptionVerifierAES data structures apparently need to be written out in LSB
+  format in Standard2007Engine::writeEncryptionInfo, given that they are always
+  read in LSB format in Standard2007Engine::readEncryptionInfo.
+
+Change-Id: I3a1efbfe324b1bbd539b88dc5d40bb44f9676ffa
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/103315
+Tested-by: Jenkins
+Reviewed-by: Stephan Bergmann <sbergman@redhat.com>
+---
+ oox/source/crypto/AgileEngine.cxx        | 16 ++++++++++------
+ oox/source/crypto/Standard2007Engine.cxx | 28 ++++++++++++++++++++--------
+ 2 files changed, 30 insertions(+), 14 deletions(-)
+
+diff --git a/oox/source/crypto/AgileEngine.cxx b/oox/source/crypto/AgileEngine.cxx
+index e1ce103c5d0c..ad01e31def83 100644
+--- a/oox/source/crypto/AgileEngine.cxx
++++ b/oox/source/crypto/AgileEngine.cxx
+@@ -461,9 +461,11 @@ bool AgileEngine::decrypt(BinaryXInputStream& aInputStream,
+ 
+     while ((inputLength = aInputStream.readMemory(inputBuffer.data(), inputBuffer.size())) > 0)
+     {
+-        sal_uInt8* segmentBegin = reinterpret_cast<sal_uInt8*>(&segment);
+-        sal_uInt8* segmentEnd   = segmentBegin + sizeof(segment);
+-        std::copy(segmentBegin, segmentEnd, saltWithBlockKey.begin() + saltSize);
++        auto p = saltWithBlockKey.begin() + saltSize;
++        p[0] = segment & 0xFF;
++        p[1] = (segment >> 8) & 0xFF;
++        p[2] = (segment >> 16) & 0xFF;
++        p[3] = segment >> 24;
+ 
+         hashCalc(hash, saltWithBlockKey, mInfo.hashAlgorithm);
+ 
+@@ -804,9 +806,11 @@ void AgileEngine::encrypt(const css::uno::Reference<css::io::XInputStream> &  rx
+                         inputLength : oox::crypto::roundUp(inputLength, sal_uInt32(mInfo.blockSize));
+ 
+         // Update Key
+-        sal_uInt8* segmentBegin = reinterpret_cast<sal_uInt8*>(&nSegment);
+-        sal_uInt8* segmentEnd   = segmentBegin + nSegmentByteSize;
+-        std::copy(segmentBegin, segmentEnd, saltWithBlockKey.begin() + saltSize);
++        auto p = saltWithBlockKey.begin() + saltSize;
++        p[0] = nSegment & 0xFF;
++        p[1] = (nSegment >> 8) & 0xFF;
++        p[2] = (nSegment >> 16) & 0xFF;
++        p[3] = nSegment >> 24;
+ 
+         hashCalc(hash, saltWithBlockKey, mInfo.hashAlgorithm);
+ 
+diff --git a/oox/source/crypto/Standard2007Engine.cxx b/oox/source/crypto/Standard2007Engine.cxx
+index ec9269e771fc..c3b0efad962e 100644
+--- a/oox/source/crypto/Standard2007Engine.cxx
++++ b/oox/source/crypto/Standard2007Engine.cxx
+@@ -77,12 +77,12 @@ bool Standard2007Engine::calculateEncryptionKey(const OUString& rPassword)
+     std::vector<sal_uInt8> initialData(saltSize + passwordByteLength);
+     std::copy(saltArray, saltArray + saltSize, initialData.begin());
+ 
+-    const sal_uInt8* passwordByteArray = reinterpret_cast<const sal_uInt8*>(rPassword.getStr());
+-
+-    std::copy(
+-        passwordByteArray,
+-        passwordByteArray + passwordByteLength,
+-        initialData.begin() + saltSize);
++    auto p = initialData.begin() + saltSize;
++    for (sal_Int32 i = 0; i != rPassword.getLength(); ++i) {
++        auto c = rPassword[i];
++        *p++ = c & 0xFF;
++        *p++ = c >> 8;
++    }
+ 
+     // use "hash" vector for result of sha1 hashing
+     // calculate SHA1 hash of initialData
+@@ -221,11 +221,23 @@ void Standard2007Engine::writeEncryptionInfo(BinaryXOutputStream& rStream)
+     sal_uInt32 headerSize = encryptionHeaderSize + cspNameSize;
+     rStream.WriteUInt32(headerSize);
+ 
+-    rStream.writeMemory(&mInfo.header, encryptionHeaderSize);
++    rStream.WriteUInt32(mInfo.header.flags);
++    rStream.WriteUInt32(mInfo.header.sizeExtra);
++    rStream.WriteUInt32(mInfo.header.algId);
++    rStream.WriteUInt32(mInfo.header.algIdHash);
++    rStream.WriteUInt32(mInfo.header.keyBits);
++    rStream.WriteUInt32(mInfo.header.providedType);
++    rStream.WriteUInt32(mInfo.header.reserved1);
++    rStream.WriteUInt32(mInfo.header.reserved2);
+     rStream.writeUnicodeArray(lclCspName);
+     rStream.WriteUInt16(0);
+ 
+-    rStream.writeMemory(&mInfo.verifier, sizeof(msfilter::EncryptionVerifierAES));
++    rStream.WriteUInt32(mInfo.verifier.saltSize);
++    rStream.writeMemory(&mInfo.verifier.salt, sizeof mInfo.verifier.salt);
++    rStream.writeMemory(&mInfo.verifier.encryptedVerifier, sizeof mInfo.verifier.encryptedVerifier);
++    rStream.WriteUInt32(mInfo.verifier.encryptedVerifierHashSize);
++    rStream.writeMemory(
++        &mInfo.verifier.encryptedVerifierHash, sizeof mInfo.verifier.encryptedVerifierHash);
+ }
+ 
+ void Standard2007Engine::encrypt(const css::uno::Reference<css::io::XInputStream> &  rxInputStream,
+-- 
+cgit v1.2.1
+
