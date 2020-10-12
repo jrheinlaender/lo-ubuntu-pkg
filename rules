@@ -37,7 +37,7 @@ SHELL:=/bin/bash
 #SYSTEM_GCC_VERSION = $(shell gcc --version | sed -n '/^gcc/s/.*\(.\..\)\..$$/\1/p')
 #FIXME
 SYSTEM_GCC_VERSION = $(shell gcc --version | sed -n '/^gcc/s/.*\(.\..\)\../\1/p' | cut -d" " -f1)
-ifeq "$(SYSTEM_GCC_VERSION)" "0.0" # gcc 10+
+ifeq "$(shell echo $(SYSTEM_GCC_VERSION) | cut -d. -f1)" "0" # gcc 10+ (0.0, 0.1, 0.2 etc.)
 SYSTEM_GCC_VERSION = $(shell gcc --version | sed -n '/^gcc/s/.*\(..\..\)\../\1/p' | cut -d" " -f1)
 endif
 
@@ -162,7 +162,7 @@ SYSTEM_STUFF += boost
 BOOST_VERSION=default
 ifeq "$(BOOST_VERSION)" "default"
   BOOST_MINVER= (>= 1.66)
-  ifeq "$(SYSTEM_GCC_VERSION)" "10.0"
+  ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) gt 10 && echo true)" "true"
 	BOOST_MINVER= (>= 1.71)
   endif
 endif
@@ -671,6 +671,10 @@ ifneq "$(USE_CLANG)" "y"
   # (see #963162, #963167)
   ifeq (armel,$(findstring armel,$(DEB_HOST_ARCH)))
 	ALLOW_CLANG=n
+    # even fails to build with gcc 7 in buster....
+    ifeq "$(BUSTER_BACKPORT)" "y"
+	ENABLE_SKIA=n
+    endif
   endif
   ifeq "$(ENABLE_SKIA)" "y"
     ifeq "$(ALLOW_CLANG)" "y"
@@ -3438,11 +3442,6 @@ endif
 			mv $$i `echo $$i | sed -e s/registry/.registry/`; \
 		done; \
 	done
-
-	# add README for people who search the (I don't know why people should so so given it's
-	# not really editable, but anyways...) registry here.
-	mkdir -p $(PKGDIR)-common/$(OODIR)/share/registry/
-	echo "The configuration is in /etc/libreoffice/registry" > $(PKGDIR)-common/$(OODIR)/share/registry/README
 
 	touch $@
 
