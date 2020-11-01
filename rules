@@ -1608,9 +1608,11 @@ endif
 	$(MAKE) -f debian/rules control
 
 
-# Generate control file, because we have so many different languages
+# Generate control files, because we have so many different languages
+# and need to run autopkgtests based on Architectures
+control: debian/control debian/tests/control
+
 # Based on script by Martin Quinson <Martin.Quinson@tuxfamily.org>
-control: debian/control
 debian/control: $(wildcard debian/control*in) $(SOURCE_TREE)/bin/lo-xlate-lang  debian/rules
 	chmod 755 $(SOURCE_TREE)/bin/lo-xlate-lang
 	sed -e "s#%$(DEB_VENDOR)=\([^%]*\)%#, \1#g#" \
@@ -1829,6 +1831,12 @@ ifeq "$(ENABLE_APPARMOR_PROFILES)" "y"
 endif
 
 .DELETE_ON_ERROR: debian/control
+
+debian/tests/control: debian/tests/control.in debian/rules
+	    sed -e "s|%OOO_JAVA_ARCHS%|$(OOO_JAVA_ARCHS)|g" \
+	        > debian/tests/control < debian/tests/control.in
+
+.DELETE_ON_ERROR: debian/tests/control
 
 # All 'important' targets have 2 lines.  The one that is run by
 # dpkg-buildpackage or the user, and the one that does the actual work.  This
