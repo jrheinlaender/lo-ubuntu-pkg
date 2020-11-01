@@ -53,9 +53,20 @@ export PARALLELISM=$CHECK_PARALLELISM
 export LOCPATH=$WORKDIR/debian/locales
 export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
-make -rk \
-    OOO_TEST_SOFFICE=${OOO_TEST_SOFFICE} \
-    sc.uicheck verbose=t
+case "`dpkg-architecture -qDEB_HOST_ARCH`" in
+	armhf)
+	timeout 150m make -rk \
+    		OOO_TEST_SOFFICE=${OOO_TEST_SOFFICE} \
+    		sc.uicheck verbose=t || \
+            		if test "$?" = "124"; then rm -f $TMP; exit 77; \
+                	else exit $?; fi
+	;;
+	*)
+		make -rk \
+    		OOO_TEST_SOFFICE=${OOO_TEST_SOFFICE} \
+    		sc.uicheck verbose=t
+	;;
+esac
 
 unapply
 
