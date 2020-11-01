@@ -283,3 +283,70 @@ index ec9269e771fc..c3b0efad962e 100644
 -- 
 cgit v1.2.1
 
+From 13251ea5da9a1761740cc65ce6c50c897f12c698 Mon Sep 17 00:00:00 2001
+From: Stephan Bergmann <sbergman@redhat.com>
+Date: Thu, 24 Sep 2020 09:44:46 +0200
+Subject: More fixes of PDFium-provided strings, in test code
+
+...similar to 08705b75ff8b5a10dc039a9aa1042e04a281729a "These PDFium-provided
+strings are always in UTF-16LE".
+
+Change-Id: Ic2945470db12a50e90b0feb3bbc6b63449fc39ab
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/103289
+Tested-by: Jenkins
+Reviewed-by: Stephan Bergmann <sbergman@redhat.com>
+---
+ vcl/qa/cppunit/pdfexport/pdfexport.cxx | 31 +++++++++++++++++++++++++++++--
+ 1 file changed, 29 insertions(+), 2 deletions(-)
+
+diff --git a/vcl/qa/cppunit/pdfexport/pdfexport.cxx b/vcl/qa/cppunit/pdfexport/pdfexport.cxx
+index 96dce4aff82a..94d583a0c52f 100644
+--- a/vcl/qa/cppunit/pdfexport/pdfexport.cxx
++++ b/vcl/qa/cppunit/pdfexport/pdfexport.cxx
+@@ -29,6 +29,7 @@
+ #include <comphelper/scopeguard.hxx>
+ #include <comphelper/processfactory.hxx>
+ #include <comphelper/propertysequence.hxx>
++#include <osl/endian.h>
+ #include <test/bootstrapfixture.hxx>
+ #include <unotest/macros_test.hxx>
+ #include <unotools/mediadescriptor.hxx>
+@@ -1700,6 +1701,12 @@ void PdfExportTest::testTdf115262()
+             unsigned long nTextSize = FPDFTextObj_GetText(pPageObject, pTextPage, nullptr, 0);
+             std::vector<sal_Unicode> aText(nTextSize);
+             FPDFTextObj_GetText(pPageObject, pTextPage, aText.data(), nTextSize);
++#if defined OSL_BIGENDIAN
++            // The data returned by FPDFTextObj_GetText is documented to always be UTF-16LE:
++            for (auto & j: aText) {
++                j = OSL_SWAPWORD(j);
++            }
++#endif
+             OUString sText(aText.data(), nTextSize / 2 - 1);
+             if (sText == "400")
+                 nRowTop = fTop;
+@@ -1735,6 +1742,12 @@ void PdfExportTest::testTdf121962()
+         unsigned long nTextSize = FPDFTextObj_GetText(pPageObject, pTextPage, nullptr, 0);
+         std::vector<sal_Unicode> aText(nTextSize);
+         FPDFTextObj_GetText(pPageObject, pTextPage, aText.data(), nTextSize);
++#if defined OSL_BIGENDIAN
++        // The data returned by FPDFTextObj_GetText is documented to always be UTF-16LE:
++        for (auto & j: aText) {
++            j = OSL_SWAPWORD(j);
++        }
++#endif
+         OUString sText(aText.data(), nTextSize / 2 - 1);
+         CPPUNIT_ASSERT(sText != "** Expression is faulty **");
+     }
+@@ -1767,6 +1780,12 @@ void PdfExportTest::testTdf115967()
+         unsigned long nTextSize = FPDFTextObj_GetText(pPageObject, pTextPage, nullptr, 2);
+         std::vector<sal_Unicode> aText(nTextSize);
+         FPDFTextObj_GetText(pPageObject, pTextPage, aText.data(), nTextSize);
++#if defined OSL_BIGENDIAN
++        // The data returned by FPDFTextObj_GetText is documented to always be UTF-16LE:
++        for (auto & j: aText) {
++            j = OSL_SWAPWORD(j);
++        }
++#endif
+         OUString sChar(aText.data(), nTextSize / 2 - 1);
+         sText += sChar.trim();
+     }
