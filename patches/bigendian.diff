@@ -1,0 +1,352 @@
+From fd9422febc384208558487bfe4a69ec89ab0ddca Mon Sep 17 00:00:00 2001
+From: Stephan Bergmann <sbergman@redhat.com>
+Date: Wed, 23 Sep 2020 11:41:05 +0200
+Subject: Convert attribute value to UTF-8 when passing it to libxml2
+
+Using toUtf8, requiring the OUString to actually contain well-formed data, but
+which is likely OK for this test-code--only function, and is also what similar
+dumpAsXml functions e.g. in editeng/source/items/textitem.cxx already use.
+
+This appears to have been broken ever since the code's introduction in
+553f10c71a2cc92f5f5890e24948f5277e3d2758 "add dumpAsXml() to more pool items",
+and it would typically only have written the leading zero or one
+(depending on the architecture's endianness) characters.  (I ran across it on
+big-endian s390x, where CppunitTest_sd_tiledrendering
+SdTiledRenderingTest::testTdf104405 failed because of
+
+> Entity: line 2: parser error : Input is not proper UTF-8, indicate encoding !
+> Bytes: 0xCF 0x22 0x2F 0x3E
+> ation=""/><SfxPoolItem whichId="4017" typeName="13SvxBulletItem" presentation="%
+>                                                                                ^
+
+apparently reported from within libxml2.)
+
+Change-Id: I4b116d3be84098bd8b8a13b6937da70a1ee02c7f
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/103236
+Reviewed-by: Noel Grandin <noel.grandin@collabora.co.uk>
+Reviewed-by: Stephan Bergmann <sbergman@redhat.com>
+Tested-by: Jenkins
+---
+ svl/source/items/poolitem.cxx | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/svl/source/items/poolitem.cxx b/svl/source/items/poolitem.cxx
+index c5e09ddf9048..25f2720b547c 100644
+--- a/svl/source/items/poolitem.cxx
++++ b/svl/source/items/poolitem.cxx
+@@ -549,7 +549,8 @@ void SfxPoolItem::dumpAsXml(xmlTextWriterPtr pWriter) const
+     OUString rText;
+     IntlWrapper aIntlWrapper(SvtSysLocale().GetUILanguageTag());
+     if (GetPresentation( SfxItemPresentation::Complete, MapUnit::Map100thMM, MapUnit::Map100thMM, rText, aIntlWrapper))
+-        xmlTextWriterWriteAttribute(pWriter, BAD_CAST("presentation"), BAD_CAST(rText.getStr()));
++        xmlTextWriterWriteAttribute(
++            pWriter, BAD_CAST("presentation"), BAD_CAST(rText.toUtf8().getStr()));
+     xmlTextWriterEndElement(pWriter);
+ }
+ 
+-- 
+cgit v1.2.1
+
+From 1b9fa11a0869246fe0433b79aab30dd216cf92b6 Mon Sep 17 00:00:00 2001
+From: Stephan Bergmann <sbergman@redhat.com>
+Date: Wed, 23 Sep 2020 11:53:11 +0200
+Subject: Read MOSDocumentLockFile UTF-16 string data with same endianness
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+...as MSODocumentLockFile::WriteEntryToStream has written it to (i.e.,
+always as UTF-16LE, assuming that is actually the right format to use).  The
+discrepancy between writing and reading the string data appears to be present
+ever since the code's introduction in 5db1e20b8b0942dac2d50f3cd34532bb61147020
+"Introduce new lockfile handler for MSO like lockfiles".
+
+This caused CppunitTest_svl_lockfiles to fail on (big-endian) s390x Linux with
+
+> svl/qa/unit/lockfiles/test_lockfiles.cxx:578:(anonymous namespace)::LockfileTest::testWordLockFileRT
+> equality assertion failed
+> - Expected: LockFile Test
+> - Actual  : 䰀漀挀欀䘀椀氀攀 吀攀猀琀
+
+etc.
+
+Change-Id: I97267aa14a3a926e7fd7bb1d2ce7d2de05d52a64
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/103238
+Tested-by: Jenkins
+Reviewed-by: Stephan Bergmann <sbergman@redhat.com>
+---
+ svl/source/misc/msodocumentlockfile.cxx | 12 ++++++++++--
+ 1 file changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/svl/source/misc/msodocumentlockfile.cxx b/svl/source/misc/msodocumentlockfile.cxx
+index 9650db03999f..0c857ffb53ec 100644
+--- a/svl/source/misc/msodocumentlockfile.cxx
++++ b/svl/source/misc/msodocumentlockfile.cxx
+@@ -228,8 +228,16 @@ LockFileEntry MSODocumentLockFile::GetLockData()
+                 nUTF16Len = *++pBuf; // use Excel/PowerPoint position
+ 
+             if (nUTF16Len > 0 && nUTF16Len <= 52) // skip wrong format
+-                aResult[LockFileComponent::OOOUSERNAME]
+-                    = OUString(reinterpret_cast<const sal_Unicode*>(pBuf + 2), nUTF16Len);
++            {
++                OUStringBuffer str(nUTF16Len);
++                sal_uInt8 const* p = reinterpret_cast<sal_uInt8 const*>(pBuf + 2);
++                for (int i = 0; i != nUTF16Len; ++i)
++                {
++                    str.append(sal_Unicode(p[0] | (sal_uInt32(p[1]) << 8)));
++                    p += 2;
++                }
++                aResult[LockFileComponent::OOOUSERNAME] = str.makeStringAndClear();
++            }
+         }
+     }
+     return aResult;
+-- 
+cgit v1.2.1
+
+From 0387077e6647d7a30fd36d4ec41dfc559afe45c3 Mon Sep 17 00:00:00 2001
+From: Stephan Bergmann <sbergman@redhat.com>
+Date: Wed, 23 Sep 2020 12:01:35 +0200
+Subject: Correctly read PNG into bitmaps N32BitTcA... formats (where alpha
+ comes first)
+
+This appears to be a regression introduced with
+86ea64f216819696cd86d1926aff0a138ace2baf "Support for native 32bit Bitmap in VCL
+and SVP (cairo) backend".  It caused CppunitTest_vcl_png_test to fail on
+(big-endian) Linux s390x with
+
+> vcl/qa/cppunit/png/PngFilterTest.cxx:176:PngFilterTest::testPng
+> equality assertion failed
+> - Expected: c[ff000040]
+> - Actual  : c[0000ff40]
+
+where eFormat happens to be ScanlineFormat::N32BitTcArgb, vs.
+ScanlineFormat::N32BitTcBgra on e.g. Linux x86-64 (and which thus didn't notice
+the lack of support for N32BitTcA... formats where alpha goes first instead of
+last).
+
+Change-Id: Id6030468718f6ef831b42f2b5ad7ba2c4c46a805
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/103240
+Tested-by: Jenkins
+Reviewed-by: Stephan Bergmann <sbergman@redhat.com>
+---
+ vcl/source/filter/png/PngImageReader.cxx | 11 ++++++++++-
+ 1 file changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/vcl/source/filter/png/PngImageReader.cxx b/vcl/source/filter/png/PngImageReader.cxx
+index fae4b29a339a..ab5097bfce2c 100644
+--- a/vcl/source/filter/png/PngImageReader.cxx
++++ b/vcl/source/filter/png/PngImageReader.cxx
+@@ -187,6 +187,8 @@ bool reader(SvStream& rStream, BitmapEx& rBitmapEx, bool bUseBitmap32)
+                     for (auto& rRow : aRows)
+                         rRow.resize(aRowSizeBytes, 0);
+ 
++                    auto const alphaFirst = (eFormat == ScanlineFormat::N32BitTcAbgr
++                                             || eFormat == ScanlineFormat::N32BitTcArgb);
+                     for (int pass = 0; pass < nNumberOfPasses; pass++)
+                     {
+                         for (png_uint_32 y = 0; y < height; y++)
+@@ -198,10 +200,17 @@ bool reader(SvStream& rStream, BitmapEx& rBitmapEx, bool bUseBitmap32)
+                             for (size_t i = 0; i < aRowSizeBytes; i += 4)
+                             {
+                                 sal_Int8 alpha = pRow[i + 3];
++                                if (alphaFirst)
++                                {
++                                    pScanline[iColor++] = alpha;
++                                }
+                                 pScanline[iColor++] = vcl::bitmap::premultiply(pRow[i + 0], alpha);
+                                 pScanline[iColor++] = vcl::bitmap::premultiply(pRow[i + 1], alpha);
+                                 pScanline[iColor++] = vcl::bitmap::premultiply(pRow[i + 2], alpha);
+-                                pScanline[iColor++] = alpha;
++                                if (!alphaFirst)
++                                {
++                                    pScanline[iColor++] = alpha;
++                                }
+                             }
+                         }
+                     }
+-- 
+cgit v1.2.1
+
+From 646a69757b928aeaf6e0d0d41c4b30c02803a3a3 Mon Sep 17 00:00:00 2001
+From: Stephan Bergmann <sbergman@redhat.com>
+Date: Thu, 24 Sep 2020 14:51:16 +0200
+Subject: Fix endianness issues in OOX crypto routines
+
+...without which CppunitTest_sw_ooxmlencryption failed on (big-endian) s390x:
+
+* The 32-bit segment counter in AgileEngine::de-/encrypt apparently needs to be
+  stored in LSB format (at least, if it is, CppunitTest_sw_ooxmlencryption
+  ultimately succeeded, whereas otherwise it failed).
+
+* The UTF-16 string in Standard2007Engine::calculateEncryptionKey apparently
+  needs to be in LSB format (at least, if it is, CppunitTest_sw_ooxmlencryption
+  ultimately succeeded, whereas otherwise it failed).
+
+* The various 32-bit values in the EncryptionStandardHeader and
+  EncryptionVerifierAES data structures apparently need to be written out in LSB
+  format in Standard2007Engine::writeEncryptionInfo, given that they are always
+  read in LSB format in Standard2007Engine::readEncryptionInfo.
+
+Change-Id: I3a1efbfe324b1bbd539b88dc5d40bb44f9676ffa
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/103315
+Tested-by: Jenkins
+Reviewed-by: Stephan Bergmann <sbergman@redhat.com>
+---
+ oox/source/crypto/AgileEngine.cxx        | 16 ++++++++++------
+ oox/source/crypto/Standard2007Engine.cxx | 28 ++++++++++++++++++++--------
+ 2 files changed, 30 insertions(+), 14 deletions(-)
+
+diff --git a/oox/source/crypto/AgileEngine.cxx b/oox/source/crypto/AgileEngine.cxx
+index e1ce103c5d0c..ad01e31def83 100644
+--- a/oox/source/crypto/AgileEngine.cxx
++++ b/oox/source/crypto/AgileEngine.cxx
+@@ -461,9 +461,11 @@ bool AgileEngine::decrypt(BinaryXInputStream& aInputStream,
+ 
+     while ((inputLength = aInputStream.readMemory(inputBuffer.data(), inputBuffer.size())) > 0)
+     {
+-        sal_uInt8* segmentBegin = reinterpret_cast<sal_uInt8*>(&segment);
+-        sal_uInt8* segmentEnd   = segmentBegin + sizeof(segment);
+-        std::copy(segmentBegin, segmentEnd, saltWithBlockKey.begin() + saltSize);
++        auto p = saltWithBlockKey.begin() + saltSize;
++        p[0] = segment & 0xFF;
++        p[1] = (segment >> 8) & 0xFF;
++        p[2] = (segment >> 16) & 0xFF;
++        p[3] = segment >> 24;
+ 
+         hashCalc(hash, saltWithBlockKey, mInfo.hashAlgorithm);
+ 
+@@ -804,9 +806,11 @@ void AgileEngine::encrypt(const css::uno::Reference<css::io::XInputStream> &  rx
+                         inputLength : oox::crypto::roundUp(inputLength, sal_uInt32(mInfo.blockSize));
+ 
+         // Update Key
+-        sal_uInt8* segmentBegin = reinterpret_cast<sal_uInt8*>(&nSegment);
+-        sal_uInt8* segmentEnd   = segmentBegin + nSegmentByteSize;
+-        std::copy(segmentBegin, segmentEnd, saltWithBlockKey.begin() + saltSize);
++        auto p = saltWithBlockKey.begin() + saltSize;
++        p[0] = nSegment & 0xFF;
++        p[1] = (nSegment >> 8) & 0xFF;
++        p[2] = (nSegment >> 16) & 0xFF;
++        p[3] = nSegment >> 24;
+ 
+         hashCalc(hash, saltWithBlockKey, mInfo.hashAlgorithm);
+ 
+diff --git a/oox/source/crypto/Standard2007Engine.cxx b/oox/source/crypto/Standard2007Engine.cxx
+index ec9269e771fc..c3b0efad962e 100644
+--- a/oox/source/crypto/Standard2007Engine.cxx
++++ b/oox/source/crypto/Standard2007Engine.cxx
+@@ -77,12 +77,12 @@ bool Standard2007Engine::calculateEncryptionKey(const OUString& rPassword)
+     std::vector<sal_uInt8> initialData(saltSize + passwordByteLength);
+     std::copy(saltArray, saltArray + saltSize, initialData.begin());
+ 
+-    const sal_uInt8* passwordByteArray = reinterpret_cast<const sal_uInt8*>(rPassword.getStr());
+-
+-    std::copy(
+-        passwordByteArray,
+-        passwordByteArray + passwordByteLength,
+-        initialData.begin() + saltSize);
++    auto p = initialData.begin() + saltSize;
++    for (sal_Int32 i = 0; i != rPassword.getLength(); ++i) {
++        auto c = rPassword[i];
++        *p++ = c & 0xFF;
++        *p++ = c >> 8;
++    }
+ 
+     // use "hash" vector for result of sha1 hashing
+     // calculate SHA1 hash of initialData
+@@ -221,11 +221,23 @@ void Standard2007Engine::writeEncryptionInfo(BinaryXOutputStream& rStream)
+     sal_uInt32 headerSize = encryptionHeaderSize + cspNameSize;
+     rStream.WriteUInt32(headerSize);
+ 
+-    rStream.writeMemory(&mInfo.header, encryptionHeaderSize);
++    rStream.WriteUInt32(mInfo.header.flags);
++    rStream.WriteUInt32(mInfo.header.sizeExtra);
++    rStream.WriteUInt32(mInfo.header.algId);
++    rStream.WriteUInt32(mInfo.header.algIdHash);
++    rStream.WriteUInt32(mInfo.header.keyBits);
++    rStream.WriteUInt32(mInfo.header.providedType);
++    rStream.WriteUInt32(mInfo.header.reserved1);
++    rStream.WriteUInt32(mInfo.header.reserved2);
+     rStream.writeUnicodeArray(lclCspName);
+     rStream.WriteUInt16(0);
+ 
+-    rStream.writeMemory(&mInfo.verifier, sizeof(msfilter::EncryptionVerifierAES));
++    rStream.WriteUInt32(mInfo.verifier.saltSize);
++    rStream.writeMemory(&mInfo.verifier.salt, sizeof mInfo.verifier.salt);
++    rStream.writeMemory(&mInfo.verifier.encryptedVerifier, sizeof mInfo.verifier.encryptedVerifier);
++    rStream.WriteUInt32(mInfo.verifier.encryptedVerifierHashSize);
++    rStream.writeMemory(
++        &mInfo.verifier.encryptedVerifierHash, sizeof mInfo.verifier.encryptedVerifierHash);
+ }
+ 
+ void Standard2007Engine::encrypt(const css::uno::Reference<css::io::XInputStream> &  rxInputStream,
+-- 
+cgit v1.2.1
+
+From 13251ea5da9a1761740cc65ce6c50c897f12c698 Mon Sep 17 00:00:00 2001
+From: Stephan Bergmann <sbergman@redhat.com>
+Date: Thu, 24 Sep 2020 09:44:46 +0200
+Subject: More fixes of PDFium-provided strings, in test code
+
+...similar to 08705b75ff8b5a10dc039a9aa1042e04a281729a "These PDFium-provided
+strings are always in UTF-16LE".
+
+Change-Id: Ic2945470db12a50e90b0feb3bbc6b63449fc39ab
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/103289
+Tested-by: Jenkins
+Reviewed-by: Stephan Bergmann <sbergman@redhat.com>
+---
+ vcl/qa/cppunit/pdfexport/pdfexport.cxx | 31 +++++++++++++++++++++++++++++--
+ 1 file changed, 29 insertions(+), 2 deletions(-)
+
+diff --git a/vcl/qa/cppunit/pdfexport/pdfexport.cxx b/vcl/qa/cppunit/pdfexport/pdfexport.cxx
+index 96dce4aff82a..94d583a0c52f 100644
+--- a/vcl/qa/cppunit/pdfexport/pdfexport.cxx
++++ b/vcl/qa/cppunit/pdfexport/pdfexport.cxx
+@@ -29,6 +29,7 @@
+ #include <comphelper/scopeguard.hxx>
+ #include <comphelper/processfactory.hxx>
+ #include <comphelper/propertysequence.hxx>
++#include <osl/endian.h>
+ #include <test/bootstrapfixture.hxx>
+ #include <unotest/macros_test.hxx>
+ #include <unotools/mediadescriptor.hxx>
+@@ -1700,6 +1701,12 @@ void PdfExportTest::testTdf115262()
+             unsigned long nTextSize = FPDFTextObj_GetText(pPageObject, pTextPage, nullptr, 0);
+             std::vector<sal_Unicode> aText(nTextSize);
+             FPDFTextObj_GetText(pPageObject, pTextPage, aText.data(), nTextSize);
++#if defined OSL_BIGENDIAN
++            // The data returned by FPDFTextObj_GetText is documented to always be UTF-16LE:
++            for (auto & j: aText) {
++                j = OSL_SWAPWORD(j);
++            }
++#endif
+             OUString sText(aText.data(), nTextSize / 2 - 1);
+             if (sText == "400")
+                 nRowTop = fTop;
+@@ -1735,6 +1742,12 @@ void PdfExportTest::testTdf121962()
+         unsigned long nTextSize = FPDFTextObj_GetText(pPageObject, pTextPage, nullptr, 0);
+         std::vector<sal_Unicode> aText(nTextSize);
+         FPDFTextObj_GetText(pPageObject, pTextPage, aText.data(), nTextSize);
++#if defined OSL_BIGENDIAN
++        // The data returned by FPDFTextObj_GetText is documented to always be UTF-16LE:
++        for (auto & j: aText) {
++            j = OSL_SWAPWORD(j);
++        }
++#endif
+         OUString sText(aText.data(), nTextSize / 2 - 1);
+         CPPUNIT_ASSERT(sText != "** Expression is faulty **");
+     }
+@@ -1767,6 +1780,12 @@ void PdfExportTest::testTdf115967()
+         unsigned long nTextSize = FPDFTextObj_GetText(pPageObject, pTextPage, nullptr, 2);
+         std::vector<sal_Unicode> aText(nTextSize);
+         FPDFTextObj_GetText(pPageObject, pTextPage, aText.data(), nTextSize);
++#if defined OSL_BIGENDIAN
++        // The data returned by FPDFTextObj_GetText is documented to always be UTF-16LE:
++        for (auto & j: aText) {
++            j = OSL_SWAPWORD(j);
++        }
++#endif
+         OUString sChar(aText.data(), nTextSize / 2 - 1);
+         sText += sChar.trim();
+     }
