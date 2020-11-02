@@ -347,6 +347,7 @@ SYSTEM_STUFF += sane
 ENABLE_PDFIMPORT=y
 ENABLE_POPPLER=y
 SYSTEM_STUFF += poppler
+ENABLE_PDFIUM=y
 ifneq (big,$(DEB_HOST_ARCH_ENDIAN))
 ENABLE_SKIA=y
 endif
@@ -475,15 +476,6 @@ endef
 
 PLATFORMID := $(shell grep PLATFORMID debian/vars.$(DEB_HOST_ARCH) | cut -d"=" -f2)
 
-
-# let's do this only on archs where we have chromium, which is supposedly even only the archs
-# where alsp pdfium is supported.
-OOO_PDFIUM_ARCHS := i386 amd64 armhf arm64
-ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_PDFIUM_ARCHS)))
-ENABLE_PDFIUM=y
-else
-ENABLE_PDFIUM=n
-endif
 
 OOO_64BIT_ARCHS = $(filter alpha amd64 arm64 ia64 kfreebsd-amd64 mips64 mips64el ppc64 ppc64el s390x sparc64, $(OOO_ARCHS))
 $(eval $(call gen_no_archs,OOO_64BIT_ARCHS))
@@ -1649,9 +1641,11 @@ endif
 	$(MAKE) -f debian/rules control
 
 
-# Generate control file, because we have so many different languages
+# Generate control files, because we have so many different languages
+# and need to run autopkgtests based on Architectures
+control: debian/control debian/tests/control
+
 # Based on script by Martin Quinson <Martin.Quinson@tuxfamily.org>
-control: debian/control
 debian/control: $(wildcard debian/control*in) $(SOURCE_TREE)/bin/lo-xlate-lang  debian/rules
 	chmod 755 $(SOURCE_TREE)/bin/lo-xlate-lang
 	sed -e "s#%$(DEB_VENDOR)=\([^%]*\)%#, \1#g#" \
@@ -1867,6 +1861,13 @@ ifeq "$(ENABLE_APPARMOR_PROFILES)" "y"
 endif
 
 .DELETE_ON_ERROR: debian/control
+
+debian/tests/control: debian/tests/control.in debian/rules
+	    sed -e "s|%OOO_JAVA_ARCHS%|$(OOO_JAVA_ARCHS)|g" \
+		    -e "s|%OOO_NOGUI_ARCHS%|$(OOO_NOGUI_ARCHS)|g" \
+	        > debian/tests/control < debian/tests/control.in
+
+.DELETE_ON_ERROR: debian/tests/control
 
 # All 'important' targets have 2 lines.  The one that is run by
 # dpkg-buildpackage or the user, and the one that does the actual work.  This
