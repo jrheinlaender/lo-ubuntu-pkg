@@ -361,10 +361,6 @@ ifeq "$(ENABLE_HELP)" "y"
   SYSTEM_STUFF += clucene
 endif
 SYSTEM_STUFF += lcms2
-PACKAGE_UNOWINREG_DLL=y
-ifeq "$(DEB_VENDOR)" "Debian"
-BUILD_UNOWINREG_DLL=y
-endif
 SYSTEM_STUFF += liblangtag
 SYSTEM_STUFF += orcus
 USE_UCPP=y
@@ -948,15 +944,6 @@ export JAVA_HOME
 	CONFIGURE_FLAGS += --with-jdk-home=$(JAVA_HOME)
 	JAVA_COMMON_DEPENDS= , libreoffice-java-common
 	JAVA_COMMON_DEPENDS_VERSION:= (>= $(BASE_VERSION)~)
-  ifeq "$(PACKAGE_SDK)" "y"
-    ifeq "$(PACKAGE_UNOWINREG_DLL)" "y"
-      ifeq "$(BUILD_UNOWINREG_DLL)" "y"
-	CONFIGURE_FLAGS_INDEP += --enable-build-unowinreg
-	BUILD_DEPS_INDEP += , g++-mingw-w64-i686
-	CONFIGURE_FLAGS_INDEP += --with-mingw-cross-compiler=i686-w64-mingw32-g++
-      endif
-    endif
-  endif
   ifeq "$(ENABLE_MEDIAWIKI)" "y"
 	CONFIGURE_FLAGS_INDEP += --enable-ext-wiki-publisher
   endif
@@ -1864,11 +1851,6 @@ $(STAMP_DIR)/prepare:
 	# Make sure we have /proc mounted - otherwise idlc will fail later.
 	test -r /proc/version
 
-	# create fake file if file not there; we don't use it anyways.
-	if [ ! -f $(TARFILE_LOCATION)/185d60944ea767075d27247c3162b3bc-unowinreg.dll ]; then \
-		touch $(TARFILE_LOCATION)/185d60944ea767075d27247c3162b3bc-unowinreg.dll; \
-	fi
-
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 ifeq (terse,$(findstring terse,$(DEB_BUILD_OPTIONS)))
 	if [ -d .pc/do-not-hide-test-output.diff ]; then \
@@ -2424,14 +2406,6 @@ ifeq "$(PACKAGE_SDK)" "y"
 		for i in $(CURDIR)/$(PKGDIR)-dev-common/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/com/sun/star/lib/loader/*.class; do \
 			ln -s `echo $$i | sed -e 's,$(CURDIR)/$(PKGDIR)-dev-common,,'` `basename $$i`; \
 		done
-    ifeq "$(PACKAGE_UNOWINREG_DLL)" "y"
-	mkdir -p $(PKGDIR)-dev-common/$(OOSDKDIR)/classes/win
-	chmod 644 $(PKGDIR)-dev-common/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/win/unowinreg.dll
-	ln -s /$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/win/unowinreg.dll \
-		$(PKGDIR)-dev-common/$(OOSDKDIR)/classes/win/unowinreg.dll
-    else
-	rm -rf $(PKGDIR)-dev-common/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/win 
-    endif
   endif
 	chmod 644 $(PKGDIR)-dev-common/$(OOSDKDIR)/configure.pl
 	chmod 755 $(PKGDIR)-dev-common/$(OOSDKDIR)/setsdkenv_unix
