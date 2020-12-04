@@ -216,7 +216,12 @@ endif
 SYSTEM_STUFF += xmlsec
 
 ifeq ($(filter noinsttests,$(DEB_BUILD_PROFILES)),)
-  BUILD_TEST_PACKAGES=y
+ # this changes the packages built/contents of packages (-subsequentcheckbase)
+ # This is not exactly allowed in https://wiki.debian.org/BuildProfileSpec#Registered_profile_names
+ # but it doesn't have real practical difference, does it?
+  ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
+    BUILD_TEST_PACKAGES=y
+  endif
 endif
 
 ifneq ($(MAKECMDGOALS),build-indep)
@@ -2008,13 +2013,14 @@ ifeq "$(BUILD_TEST_PACKAGES)" "y"
 endif
 
 ifeq "$(BUILD_TEST_PACKAGES)" "y"
-  ifeq "$(RUN_MAKE_CHECK)" "y"
-	find workdir/Zip -name "smoketestdoc*" | xargs rm
-	patch -p0 < $(CURDIR)/debian/tests/patches/smoketest-disable-extension-tests.diff
-	cd smoketest && $(MAKE) Zip_smoketestdoc
-	patch -p0 -R < $(CURDIR)/debian/tests/patches/smoketest-disable-extension-tests.diff
-	cp workdir/Zip/smoketestdoc.zip workdir/Zip/smoketestdoc.sxw
-  endif
+	# doesn't necessarily exist unless you also ran check...
+	if [ -d workdir/Zip ]; then \
+		find workdir/Zip -name "smoketestdoc*" | xargs rm; \
+		patch -p0 < $(CURDIR)/debian/tests/patches/smoketest-disable-extension-tests.diff; \
+		cd smoketest && $(MAKE) Zip_smoketestdoc; \
+		patch -p0 -R < $(CURDIR)/debian/tests/patches/smoketest-disable-extension-tests.diff; \
+		cp workdir/Zip/smoketestdoc.zip workdir/Zip/smoketestdoc.sxw; \
+	fi
 endif
 
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
@@ -3078,7 +3084,6 @@ ifeq "$(BUILD_TEST_PACKAGES)" "y"
                 $(PKGDIR)-subsequentcheckbase/$(OODIR)/program/classes/test.jar
   endif
 
-  ifeq "$(RUN_MAKE_CHECK)" "y"
 	rm -rf $(PKGDIR)-smoketest-data
 	mkdir -p $(PKGDIR)-smoketest-data/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes
 	mkdir -p $(PKGDIR)-smoketest-data/$(OODIR)/program/classes
@@ -3091,7 +3096,6 @@ ifeq "$(BUILD_TEST_PACKAGES)" "y"
 		$(PKGDIR)-smoketest-data/usr/share/libreoffice
 	cp workdir/Zip/smoketestdoc.sxw \
 		$(PKGDIR)-smoketest-data/usr/share/libreoffice
-  endif
 endif
 endif
 
