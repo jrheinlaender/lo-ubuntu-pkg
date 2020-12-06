@@ -363,9 +363,15 @@ ifeq "$(ENABLE_HELP)" "y"
   SYSTEM_STUFF += clucene
 endif
 SYSTEM_STUFF += lcms2
-PACKAGE_UNOWINREG_DLL=y
-ifeq "$(DEB_VENDOR)" "Debian"
-BUILD_UNOWINREG_DLL=y
+# this violates the requirement that nowindows should not change the
+# package contents (-dev-common here) but a extra package for this
+# is too much overhead (especially since this .dll will be gone
+# in LO 7.2 anyway.)
+ifeq ($(filter nowindows,$(DEB_BUILD_PROFILES)),)
+  PACKAGE_UNOWINREG_DLL=y
+  ifeq "$(DEB_VENDOR)" "Debian"
+    BUILD_UNOWINREG_DLL=y
+  endif
 endif
 SYSTEM_STUFF += liblangtag
 SYSTEM_STUFF += orcus
@@ -639,13 +645,13 @@ endif
       endif
       ifeq "$(CLANG_VERSION)" "default"
 	BUILD_DEPS += , clang (>= 1:5.0.2) [$(filter-out armel,$(OOO_LE_ARCHS))]
+	# see #963162, #963167 which apparently don't exist on 11
+	BUILD_DEPS += , clang (>= 1:11) [armel]
       else
 	export LO_CLANG_CC=clang-$(CLANG_VERSION)
 	export LO_CLANG_CXX=clang++-$(CLANG_VERSION)
-	BUILD_DEPS += , clang-$(CLANG_VERSION) [$(filter-out armel,$(OOO_LE_ARCHS))]
+	BUILD_DEPS += , clang-$(CLANG_VERSION) [$(OOO_LE_ARCHS)]
       endif
-	# force clang 11 on armel - see #963162, #963167 which apparently don't exist on 11
-	BUILD_DEPS += , clang (>= 1:11) [armel]
     endif
   endif
 else
@@ -948,7 +954,7 @@ export JAVA_HOME
     ifeq "$(PACKAGE_UNOWINREG_DLL)" "y"
       ifeq "$(BUILD_UNOWINREG_DLL)" "y"
 	CONFIGURE_FLAGS_INDEP += --enable-build-unowinreg
-	BUILD_DEPS_INDEP += , g++-mingw-w64-i686
+	BUILD_DEPS_INDEP += , g++-mingw-w64-i686 <!nowindows>
 	WIN_TRIPLET := i686-w64-mingw32
 	CONFIGURE_FLAGS_INDEP += --with-mingw-cross-compiler=$(WIN_TRIPLET)-g++
       endif
@@ -1997,7 +2003,7 @@ ifeq "$(BUILD_TEST_PACKAGES)" "y"
 	if [ -d workdir/Zip ]; then \
 		find workdir/Zip -name "smoketestdoc*" | xargs rm; \
 		patch -p0 < $(CURDIR)/debian/tests/patches/smoketest-disable-extension-tests.diff; \
-		cd smoketest && $(MAKE) Zip_smoketestdoc; \
+		cd smoketest && $(MAKE) Zip_smoketestdoc; cd ..; \
 		patch -p0 -R < $(CURDIR)/debian/tests/patches/smoketest-disable-extension-tests.diff; \
 		cp workdir/Zip/smoketestdoc.zip workdir/Zip/smoketestdoc.sxw; \
 	fi
