@@ -553,7 +553,7 @@ ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_JAVA_ARCHS)))
 	ENABLE_NLPSOLVER=n
 endif
 
-ifeq "$(BUILD_TEST_PACKAGES)" "n"
+ifneq "$(BUILD_TEST_PACKAGES)" "y"
 	DEBHELPER_OPTIONS += -Nlibreoffice-subsequentcheckbase -Nlibreoffice-smoketest-data
 endif
 
@@ -635,13 +635,13 @@ endif
       endif
       ifeq "$(CLANG_VERSION)" "default"
 	BUILD_DEPS += , clang (>= 1:5.0.2) [$(filter-out armel,$(OOO_LE_ARCHS))]
+	# see #963162, #963167 which apparently don't exist on 11
+	BUILD_DEPS += , clang (>= 1:11) [armel]
       else
 	export LO_CLANG_CC=clang-$(CLANG_VERSION)
 	export LO_CLANG_CXX=clang++-$(CLANG_VERSION)
-	BUILD_DEPS += , clang-$(CLANG_VERSION) [$(filter-out armel,$(OOO_LE_ARCHS))]
+	BUILD_DEPS += , clang-$(CLANG_VERSION) [$(OOO_LE_ARCHS)]
       endif
-	# force clang 11 on armel - see #963162, #963167 which apparently don't exist on 11
-	BUILD_DEPS += , clang (>= 1:11) [armel]
     endif
   endif
 else
@@ -1978,7 +1978,7 @@ ifeq "$(BUILD_TEST_PACKAGES)" "y"
 	if [ -d workdir/Zip ]; then \
 		find workdir/Zip -name "smoketestdoc*" | xargs rm; \
 		patch -p0 < $(CURDIR)/debian/tests/patches/smoketest-disable-extension-tests.diff; \
-		cd smoketest && $(MAKE) Zip_smoketestdoc; \
+		cd smoketest && $(MAKE) Zip_smoketestdoc; cd ..; \
 		patch -p0 -R < $(CURDIR)/debian/tests/patches/smoketest-disable-extension-tests.diff; \
 		cp workdir/Zip/smoketestdoc.zip workdir/Zip/smoketestdoc.sxw; \
 	fi
