@@ -645,8 +645,10 @@ endif
       endif
       ifeq "$(CLANG_VERSION)" "default"
 	BUILD_DEPS += , clang (>= 1:5.0.2) [$(filter-out armel,$(OOO_LE_ARCHS))]
-	# see #963162, #963167 which apparently don't exist on 11
-	BUILD_DEPS += , clang (>= 1:11) [armel]
+        ifneq "$(BUSTER_BACKPORT)" "y"
+	  # see #963162, #963167 which apparently don't exist on 11
+	  BUILD_DEPS += , clang (>= 1:11) [armel]
+	endif
       else
 	export LO_CLANG_CC=clang-$(CLANG_VERSION)
 	export LO_CLANG_CXX=clang++-$(CLANG_VERSION)
@@ -1799,6 +1801,11 @@ endif
 
 ifneq "$(ALLOW_CLANG)" "y"
 	perl -pi -e "s/(Build-Conflicts: .*)/\1,clang,/" debian/control
+else
+  ifeq "$(BUSTER_BACKPORT)" "y"
+	# go safe and build-conflict against clang, as it doesn't work (see above)
+	perl -pi -e "s/(Build-Conflicts: .*)/\1,clang [armel],/" debian/control
+  endif
 endif
 	$(PYTHON) debian/scripts/joinctrl.py < debian/control > debian/control.tmp
 	mv debian/control.tmp debian/control
@@ -3099,7 +3106,6 @@ endif
 	chmod 644 $(PKGDIR)-common/$(OODIR)/CREDITS.fodt
 	# Do we really need this (ALV2 mandating it) or can this go?
 	chmod 644 $(PKGDIR)-common/$(OODIR)/NOTICE
-	rm -rf $(PKGDIR)-common/$(OODIR)/LICENSE
 
 	# set PYTHONPATH in unopkg
 	perl -pi -e 's,unset XENVIRONMENT,unset XENVIRONMENT\n\nexport PYTHONPATH=\"/$(OODIR)/program\"\n\n,' \
@@ -3124,7 +3130,7 @@ endif
 	rm -rf $(PKGDIR)-common/$(OODIR)/licenses
 	rm -f $(PKGDIR)-common/$(OODIR)/share/readme/LICENSE*
 	rm -f $(PKGDIR)-common/$(OODIR)/THIRDPARTYLICENSEREADME.html
-	rm -f $(PKGDIR)-common/$(OODIR)/LICENSE.html
+	rm -f $(PKGDIR)-common/$(OODIR)/LICENSE
 
 	# remove extra readme files
 	rm -rf $(PKGDIR)-common/$(OODIR)/readmes
