@@ -1,34 +1,16 @@
-From f52c5bea7775ac07cfacc232f0979a03bbdf9aa7 Mon Sep 17 00:00:00 2001
-From: =?UTF-8?q?Lubo=C5=A1=20Lu=C5=88=C3=A1k?= <l.lunak@collabora.com>
-Date: Thu, 11 Feb 2021 16:24:18 +0100
-Subject: fix test for tdf#137413
-
-The test tested for the topleft corner to be transparent and not black,
-but the bitmap has a black outline, so the corner actually should be
-black, unlike the rest of the bitmap. I have no idea how the test
-could have possibly passed (and those #if tests indicate that it
-correctly failed with most drawing backends). What apparently enabled
-this to pass was commit 828504974d70111e, which made the drawing
-use DrawTransformedBitmap() implementation in the VCL backends,
-and the Cairo one apparently mishandles it. Reverting 828504974d70111e
-made the test fail.
-This commit fixes (and simplifies) the test.
-
-Change-Id: I1560849d683558abbe0cde816c4505b9824a0692
-Reviewed-on: https://gerrit.libreoffice.org/c/core/+/110769
-Tested-by: Jenkins
-Reviewed-by: Miklos Vajna <vmiklos@collabora.com>
----
- emfio/qa/cppunit/emf/EmfImportTest.cxx | 19 ++++++-------------
- 1 file changed, 6 insertions(+), 13 deletions(-)
-
-(limited to 'emfio/qa/cppunit/emf/EmfImportTest.cxx')
-
 diff --git a/emfio/qa/cppunit/emf/EmfImportTest.cxx b/emfio/qa/cppunit/emf/EmfImportTest.cxx
-index 20e84ca86c4a..85450a2e67a3 100644
+index e8d4833..e81a37d 100644
 --- a/emfio/qa/cppunit/emf/EmfImportTest.cxx
 +++ b/emfio/qa/cppunit/emf/EmfImportTest.cxx
-@@ -384,19 +383,13 @@ void Test::TestPdfInEmf()
+@@ -26,7 +26,6 @@
+ 
+ #include <drawinglayer/primitive2d/Primitive2DContainer.hxx>
+ #include <drawinglayer/tools/primitive2dxmldump.hxx>
+-#include <vcl/bitmapaccess.hxx>
+ 
+ #include <memory>
+ 
+@@ -383,19 +382,13 @@
      // height was only 5cm, so it looked blurry.
      CPPUNIT_ASSERT_EQUAL(14321.0, pVectorGraphicData->getSizeHint().getY());
  
@@ -40,20 +22,16 @@ index 20e84ca86c4a..85450a2e67a3 100644
 -    Color aColor(pAccess->GetPixel(0, 0));
      // Without the accompanying fix in place, this test would have failed with:
 -    // - Expected: 220
--    // - Actual  : 0
++    // - Expected: 255
+     // - Actual  : 0
 -    // i.e. the pixel at the top left corner was entirely opaque, while it should be mostly
 -    // transparent.
 -    CPPUNIT_ASSERT_EQUAL(static_cast<sal_uInt8>(220), aColor.GetBlue());
 -#endif
-+    // - Expected: 0
-+    // - Actual  : 255
 +    // i.e. the pixel in the center was entirely opaque, while it should be transparent.
 +    BitmapEx aBitmapEx = aGraphic.GetBitmapEx();
 +    Size size = aBitmapEx.GetSizePixel();
-+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_uInt8>(0), aBitmapEx.GetAlpha(size.Width() / 2, size.Height() / 2));
++    CPPUNIT_ASSERT_EQUAL(static_cast<sal_uInt8>(255), aBitmapEx.GetTransparency(size.Width() / 2, size.Height() / 2));
  }
  
  CPPUNIT_TEST_SUITE_REGISTRATION(Test);
--- 
-cgit v1.2.1
-
