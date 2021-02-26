@@ -502,8 +502,10 @@ ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 endif
 
 # Java...
+# upstream says --source=1.8 / --target=1.8 so 1.8 is fine in runtime
+JAVA_RUNTIME_BASELINE=8
 ifeq "$(JDK)" "default"
-OOO_JAVA_ARCHS = $(filter $(OOO_ARCHS),$(java6_architectures))
+OOO_JAVA_ARCHS = $(filter $(OOO_ARCHS),$(java$(JAVA_RUNTIME_BASELINE)_architectures))
 else
 OOO_JAVA_ARCHS = $(OOO_ARCHS)
 endif
@@ -933,9 +935,8 @@ ifeq "$(ENABLE_JAVA)" "y"
 	BUILD_DEPS_INDEP += , ant (>= 1.6.5)$(OOO_NO_JAVA_ARCHS) <!nojava>
     endif
   endif
-        # but upstream also says --target=1.8 so 1.8 is fine in runtime
-	JAVA_RUNTIME_DEPENDS = default-jre (>= 2:1.8)
-	JAVA_RUNTIME_DEPENDS += | java8-runtime
+	JAVA_RUNTIME_DEPENDS = default-jre (>= 2:1.$(JAVA_RUNTIME_BASELINE))
+	JAVA_RUNTIME_DEPENDS += | java$(JAVA_RUNTIME_BASELINE)-runtime
 	# Suns Java "packages"
 	JAVA_RUNTIME_DEPENDS += | jre
 export JAVA_HOME
@@ -1369,6 +1370,14 @@ ifeq "$(ENABLE_WEBDAV)" "y"
   CONFIGURE_FLAGS += --with-webdav=$(WEBDAV_LIB)
 else
   CONFIGURE_FLAGS += --with-webdav=no
+endif
+
+ifneq "$(NEON_SECTYPE)" "openssl"
+    ifneq (,$(filter mariadb, $(SYSTEM_STUFF)))
+      ifneq (,$(filter postgresql, $(SYSTEM_STUFF)))
+	CONFIGURE_FLAGS += --disable-openssl
+      endif
+   endif
 endif
 
 ifeq "$(ENABLE_HELP)" "n"
@@ -2646,8 +2655,8 @@ ifeq "$(ENABLE_JAVA)" "y"
 	for i in juh jurt ridl unoloader libreoffice; do \
 		rm debian/ure/$(OODIR)/program/classes/$$i.jar; \
 	done
-	for i in libjuh.so javaldx libjvmfwklo.so libjpipe.so libjuhx.so \
-		javavendors.xml JREProperties.class libjvmaccesslo.so \
+	for i in libjuh.so javaldx libjpipe.so libjuhx.so \
+		javavendors.xml JREProperties.class \
 		jvmfwk3rc libjava_uno.so; do \
 		mv debian/ure/$(OODIR)/program/$$i \
 			debian/ure-java/$(OODIR)/program; \
