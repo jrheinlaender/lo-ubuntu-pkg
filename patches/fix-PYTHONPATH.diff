@@ -1,0 +1,66 @@
+From f463cbd6ea2fd8ab80b812425eb05ae83fa6a426 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Caol=C3=A1n=20McNamara?= <caolanm@redhat.com>
+Date: Fri, 19 Jun 2020 11:32:00 +0100
+Subject: tdf#121384 don't leave a bare trailing : in PYTHONPATH
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+and don't insert any empty path entries if that situation
+was to arise
+
+Change-Id: I8d8183485f457c3e4385181fee07390c4bfef603
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/96707
+Reviewed-by: Tomáš Chvátal <tchvatal@suse.com>
+Reviewed-by: Adolfo Jayme Barrientos <fitojb@ubuntu.com>
+Tested-by: Jenkins
+(cherry picked from commit b72705d5391b849fc70a0a4cac33523c0ea5d054)
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/96803
+Tested-by: Stephan Bergmann <sbergman@redhat.com>
+Reviewed-by: Stephan Bergmann <sbergman@redhat.com>
+---
+ pyuno/source/loader/pyuno_loader.cxx | 14 ++++++++++++--
+ 1 file changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/pyuno/source/loader/pyuno_loader.cxx b/pyuno/source/loader/pyuno_loader.cxx
+index ffdb81143961..e35148f8ddbc 100644
+--- a/pyuno/source/loader/pyuno_loader.cxx
++++ b/pyuno/source/loader/pyuno_loader.cxx
+@@ -145,6 +145,7 @@ static void setPythonHome ( const OUString & pythonHome )
+ static void prependPythonPath( const OUString & pythonPathBootstrap )
+ {
+     OUStringBuffer bufPYTHONPATH( 256 );
++    bool bAppendSep = false;
+     sal_Int32 nIndex = 0;
+     while( true )
+     {
+@@ -160,15 +161,24 @@ static void prependPythonPath( const OUString & pythonPathBootstrap )
+         }
+         OUString systemPath;
+         osl_getSystemPathFromFileURL( fileUrl.pData, &(systemPath.pData) );
+-        bufPYTHONPATH.append( systemPath );
+-        bufPYTHONPATH.append( static_cast<sal_Unicode>(SAL_PATHSEPARATOR) );
++        if (!systemPath.isEmpty())
++        {
++            if (bAppendSep)
++                bufPYTHONPATH.append(static_cast<sal_Unicode>(SAL_PATHSEPARATOR));
++            bufPYTHONPATH.append(systemPath);
++            bAppendSep = true;
++        }
+         if( nNew == -1 )
+             break;
+         nIndex = nNew + 1;
+     }
+     const char * oldEnv = getenv( "PYTHONPATH");
+     if( oldEnv )
++    {
++        if (bAppendSep)
++            bufPYTHONPATH.append( static_cast<sal_Unicode>(SAL_PATHSEPARATOR) );
+         bufPYTHONPATH.append( OUString(oldEnv, strlen(oldEnv), osl_getThreadTextEncoding()) );
++    }
+ 
+     OUString envVar("PYTHONPATH");
+     OUString envValue(bufPYTHONPATH.makeStringAndClear());
+-- 
+cgit v1.2.1
+
