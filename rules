@@ -335,12 +335,18 @@ SYSTEM_STUFF += postgresql
 DICT_DIR=/usr/share/hunspell
 HYPH_DIR=/usr/share/hyphen
 THES_DIR=/usr/share/mythes
+ENABLE_CMIS=y
+ifeq "$(ENABLE_CMIS)" "y"
 SYSTEM_STUFF += libcmis
+endif
 SYSTEM_STUFF += jpeg
 SYSTEM_STUFF += libxml
 SYSTEM_STUFF += expat
 SYSTEM_STUFF += odbc
+ENABLE_CURL=y
+ifeq "$(ENABLE_CURL)" "y"
 SYSTEM_STUFF += curl
+endif
 SYSTEM_STUFF += sane
 ENABLE_PDFIMPORT=y
 ENABLE_POPPLER=y
@@ -350,7 +356,10 @@ ifneq (big,$(DEB_HOST_ARCH_ENDIAN))
 ENABLE_SKIA=y
 endif
 SYSTEM_STUFF += libpng
+ENABLE_NSS=y
+ifeq "$(ENABLE_NSS)" "y"
 SYSTEM_STUFF += nss
+endif
 ENABLE_HELP=y
 ifeq "$(ENABLE_HELP)" "y"
   ENABLE_HTML_HELP=y
@@ -752,8 +761,12 @@ ifneq (,$(filter libpng, $(SYSTEM_STUFF)))
        BUILD_DEPS += , libpng-dev
 endif
 
-ifneq (,$(filter curl, $(SYSTEM_STUFF)))
+ifeq "$(ENABLE_CURL)" "y"
+  ifneq (,$(filter curl, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libcurl4-$(CURL_SECTYPE)-dev
+  endif
+else
+	CONFIGURE_FLAGS += --disable-curl
 endif
 
 ifneq (,$(filter box2d, $(SYSTEM_STUFF)))
@@ -986,9 +999,13 @@ ifeq "$(ENABLE_JAVA)" "y"
 	endif
 endif
 
-ifneq (,$(filter nss, $(SYSTEM_STUFF)))
+ifeq "$(ENABLE_NSS)" "y"
+  ifneq (,$(filter nss, $(SYSTEM_STUFF)))
 	BUILD_DEPS+= , libnss3-dev (>= 3.12.3)
 	BUILD_DEPS+= , libnspr4-dev
+  endif
+else
+	CONFIGURE_FLAGS += --disable-nss
 endif
 
 ifeq "$(USE_UCPP)" "y"
@@ -1122,8 +1139,12 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
 	BUILD_DEPS += , libe-book-dev (>= 0.1.2) <!nocheck>
     endif
   endif
-  ifneq (,$(filter libcmis, $(SYSTEM_STUFF)))
+  ifeq "$(ENABLE_CMIS)" "y"
+    ifneq (,$(filter libcmis, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libcmis-dev (>= 0.5.2~), libcmis-dev (<< 0.6~)
+    endif
+  else
+	CONFIGURE_FLAGS += --disable-cmis
   endif
   ifeq "$(ENABLE_ZXING)" "y"
     ifneq (,$(filter zxing, $(SYSTEM_STUFF)))
