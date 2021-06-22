@@ -22,8 +22,8 @@ CURDIR ?= $(realpath $(dir $(firstword $(MAKEFILE_LIST)))/..)
 BASE_VERSION:=$(shell echo $(DEB_VERSION) | cut -d: -f1):$(DEB_VERSION_UPSTREAM)
 BINARY_VERSION=$(DEB_VERSION)
 #HELP_L10N_VIRTUAL_VERSION:=$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d: -f2 | tr [~] [\\-])
-HELP_L10N_VIRTUAL_VERSION:=7.1
-OOVER:=7.1
+HELP_L10N_VIRTUAL_VERSION:=7.2
+OOVER:=7.2
 NEXT_OOVER:=$(shell echo "$(OOVER) + 0.1" | bc)
 
 ARCH_INDEP_PACKAGES := $(shell dh_listpackages -i)
@@ -34,12 +34,7 @@ include /usr/share/dpkg/architecture.mk
 include /usr/share/dpkg/vendor.mk
 SHELL:=/bin/bash
 
-#SYSTEM_GCC_VERSION = $(shell gcc --version | sed -n '/^gcc/s/.*\(.\..\)\..$$/\1/p')
-#FIXME
-SYSTEM_GCC_VERSION = $(shell gcc --version | sed -n '/^gcc/s/.*\(.\..\)\../\1/p' | cut -d" " -f1)
-ifeq "$(shell echo $(SYSTEM_GCC_VERSION) | cut -d. -f1)" "0" # gcc 10+ (0.0, 0.1, 0.2 etc.)
 SYSTEM_GCC_VERSION = $(shell gcc --version | sed -n '/^gcc/s/.*\(..\..\)\../\1/p' | cut -d" " -f1)
-endif
 
 PKGDIR:=debian/libreoffice
 OODIRNAME=libreoffice
@@ -72,11 +67,11 @@ ifeq "$(USE_GIT_TARBALLS)" "y"
 GIT_BASEURL:=git://anongit.freedesktop.org/libreoffice
 # bootstraping this from the source tree is breaking get-orig-source
 #lo_sources_ver=$(shell grep AC_INIT $(SOURCE_TREE)/configure.ac | grep documentfoundation | cut -d, -f2 | sed -e 's,\[,,' -e 's,\],,')
-lo_sources_ver=7.1.4.2
+lo_sources_ver=7.2.0.0.beta1
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
 GIT_TAG=libreoffice-$(lo_sources_ver)
-GIT_BRANCH=libreoffice-7-1-4
+GIT_BRANCH=libreoffice-7-2
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
 lo_sources_ver=$(shell cat $(CURDIR)/sources.ver | cut -d= -f2)
@@ -161,10 +156,7 @@ SYSTEM_STUFF += altlinuxhyph
 SYSTEM_STUFF += boost
 BOOST_VERSION=default
 ifeq "$(BOOST_VERSION)" "default"
-  BOOST_MINVER= (>= 1.66)
-  ifeq "$(shell dpkg --compare-versions $(SYSTEM_GCC_VERSION) gt 10 && echo true)" "true"
-	BOOST_MINVER= (>= 1.71)
-  endif
+  BOOST_MINVER= (>= 1.71)
 endif
 # libmdds-dev depends on libboost-dev, which will be removed
 # when you install a non-default libboostX.Y-dev
@@ -193,8 +185,8 @@ SYSTEM_STUFF += libpagemaker
 SYSTEM_STUFF += libzmf
 SYSTEM_STUFF += libstaroffice
 SYSTEM_STUFF += libqxp
-ENABLE_QRCODEGEN=y
-SYSTEM_STUFF += qrcodegen
+ENABLE_ZXING=y
+SYSTEM_STUFF += zxing
 BUILD_CAIROCANVAS=y
 SYSTEM_STUFF += cairo
 ifeq "$(ENABLE_GUI)" "y"
@@ -299,7 +291,6 @@ ifeq "$(ENABLE_JAVA)" "y"
   ENABLE_REPORTBUILDER=y
   SYSTEM_STUFF += jfreereport
   ENABLE_MEDIAWIKI=y
-  SYSTEM_STUFF += apache-commons
   ENABLE_SCRIPT_PROVIDER_BSH=y
   ENABLE_SCRIPT_PROVIDER_JS=y
   ENABLE_NLPSOLVER=y
@@ -318,6 +309,8 @@ BUILD_GTK3=y
     ENABLE_INTROSPECTION=y
   endif
 endif
+# DO NOT ENABLE. WILL NOT WORK.
+BUILD_GTK4=n
 ENABLE_EVO2=y
 ENABLE_GIO=y
 ENABLE_DCONF=y
@@ -340,12 +333,18 @@ SYSTEM_STUFF += postgresql
 DICT_DIR=/usr/share/hunspell
 HYPH_DIR=/usr/share/hyphen
 THES_DIR=/usr/share/mythes
+ENABLE_CMIS=y
+ifeq "$(ENABLE_CMIS)" "y"
 SYSTEM_STUFF += libcmis
+endif
 SYSTEM_STUFF += jpeg
 SYSTEM_STUFF += libxml
 SYSTEM_STUFF += expat
 SYSTEM_STUFF += odbc
+ENABLE_CURL=y
+ifeq "$(ENABLE_CURL)" "y"
 SYSTEM_STUFF += curl
+endif
 SYSTEM_STUFF += sane
 ENABLE_PDFIMPORT=y
 ENABLE_POPPLER=y
@@ -355,7 +354,10 @@ ifneq (big,$(DEB_HOST_ARCH_ENDIAN))
 ENABLE_SKIA=y
 endif
 SYSTEM_STUFF += libpng
+ENABLE_NSS=y
+ifeq "$(ENABLE_NSS)" "y"
 SYSTEM_STUFF += nss
+endif
 ENABLE_HELP=y
 ifeq "$(ENABLE_HELP)" "y"
   ENABLE_HTML_HELP=y
@@ -368,16 +370,6 @@ ifeq "$(ENABLE_HELP)" "y"
   SYSTEM_STUFF += clucene
 endif
 SYSTEM_STUFF += lcms2
-# this violates the requirement that nowindows should not change the
-# package contents (-dev-common here) but a extra package for this
-# is too much overhead (especially since this .dll will be gone
-# in LO 7.2 anyway.)
-ifeq ($(filter nowindows,$(DEB_BUILD_PROFILES)),)
-  PACKAGE_UNOWINREG_DLL=y
-  ifeq "$(DEB_VENDOR)" "Debian"
-    BUILD_UNOWINREG_DLL=y
-  endif
-endif
 SYSTEM_STUFF += liblangtag
 SYSTEM_STUFF += orcus
 USE_UCPP=y
@@ -659,20 +651,19 @@ ifneq "$(USE_CLANG)" "y"
     endif
   endif
 	BUILD_DEPS += , gcc (>= 4:7), g++ (>= 4:7)
-  # Use -O0 for gcc 9 on armhf to avoid build/test failure with gcc 9/10
-  # https://bugs.launchpad.net/ubuntu/+bug/1891623
-  # https://bugs.launchpad.net/ubuntu/+bug/1931701
-  BUILD_DEPS += , gcc-9 [armhf], g++-9 [armhf]
-  ifneq (,$(filter $(DEB_HOST_ARCH),armhf))
-   ifeq ($(ENABLE_JAVA),y)
+  # In Debian this never appeared to be an actual build failure but
+  # this also helps for the test timeout on armv8 machines/buildds.
+  # (armv7 "works"). So make it conditional on whether we run checks.
+  # With g++-10 there also appear SIGSEGVs in/with openjdk-11 and it
+  # hangs at RunMacros, which also tries to use Java "Macros".
+  # A --without-java build passes.
+ifeq "$(DEB_HOST_ARCH)" "armhf"
+  ifeq ($(ENABLE_JAVA),y)
     ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
       ifneq (noopt,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
-       DEB_BUILD_OPTIONS += noopt
+	DEB_BUILD_OPTIONS += noopt
       endif
     endif
-    CONFIGURE_FLAGS+= \
-      CC=$(CC_PREFIX)gcc-9 \
-      CXX=$(CC_PREFIX)g++-9
    endif
   endif
   # skia build picks up clang if present (for performance reasons,
@@ -729,12 +720,8 @@ ifeq "$(USE_DWZ)" "y"
 	BUILD_DEPS += , dwz (>> 0.12-3)
 endif
 
-ifneq "$(PACKAGE_SDK)" "y"
-	CONFIGURE_FLAGS += --disable-odk
- ifneq "$(PACKAGE_SDK_DOCS)" "y"
-	CONFIGURE_FLAGS += --without-doxygen --without-javadoc
- endif
-else
+ifeq "$(PACKAGE_SDK)" "y"
+	CONFIGURE_FLAGS += --enable-odk
   ifeq "$(PACKAGE_SDK_DOCS)" "y"
 	BUILD_DEPS_INDEP += , doxygen (>= 1.8.4) <!nodoc>, graphviz <!nodoc>
   else
@@ -802,8 +789,12 @@ ifneq (,$(filter libpng, $(SYSTEM_STUFF)))
        BUILD_DEPS += , libpng-dev
 endif
 
-ifneq (,$(filter curl, $(SYSTEM_STUFF)))
+ifeq "$(ENABLE_CURL)" "y"
+  ifneq (,$(filter curl, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libcurl4-$(CURL_SECTYPE)-dev
+  endif
+else
+	CONFIGURE_FLAGS += --disable-curl
 endif
 
 ifneq (,$(filter box2d, $(SYSTEM_STUFF)))
@@ -1006,16 +997,6 @@ export JAVA_HOME
 	CONFIGURE_FLAGS += --with-jdk-home=$(JAVA_HOME)
 	JAVA_COMMON_DEPENDS= , libreoffice-java-common
 	JAVA_COMMON_DEPENDS_VERSION:= (>= $(BASE_VERSION)~)
-  ifeq "$(PACKAGE_SDK)" "y"
-    ifeq "$(PACKAGE_UNOWINREG_DLL)" "y"
-      ifeq "$(BUILD_UNOWINREG_DLL)" "y"
-	CONFIGURE_FLAGS_INDEP += --enable-build-unowinreg
-	BUILD_DEPS_INDEP += , g++-mingw-w64-i686 <!nowindows>
-	WIN_TRIPLET := i686-w64-mingw32
-	CONFIGURE_FLAGS_INDEP += --with-mingw-cross-compiler=$(WIN_TRIPLET)-g++
-      endif
-    endif
-  endif
   ifeq "$(ENABLE_MEDIAWIKI)" "y"
 	CONFIGURE_FLAGS_INDEP += --enable-ext-wiki-publisher
   endif
@@ -1025,11 +1006,6 @@ export JAVA_HOME
 	REPORT_BUILDER_BUILD_DEPS += , libbase-java$(OOO_NO_REPORTBUILDER_ARCHS) <!nojava>, libsac-java$(OOO_NO_REPORTBUILDER_ARCHS) <!nojava>, libxml-java (>= 1.1.6)$(OOO_NO_REPORTBUILDER_ARCHS) <!nojava>, libflute-java (>= 1.1.6)$(OOO_NO_REPORTBUILDER_ARCHS) <!nojava>, libpentaho-reporting-flow-engine-java (>= 0.9.4)$(OOO_NO_REPORTBUILDER_ARCHS) <!nojava>, liblayout-java (>= 0.2.10)$(OOO_NO_REPORTBUILDER_ARCHS) <!nojava>, libloader-java (>= 1.1.6)$(OOO_NO_REPORTBUILDER_ARCHS) <!nojava>, libformula-java (>= 1.1.7)$(OOO_NO_REPORTBUILDER_ARCHS) <!nojava>, librepository-java (>= 1.1.6)$(OOO_NO_REPORTBUILDER_ARCHS) <!nojava>, libfonts-java (>= 1.1.6)$(OOO_NO_REPORTBUILDER_ARCHS) <!nojava>, libserializer-java (>= 1.1.6)$(OOO_NO_REPORTBUILDER_ARCHS) <!nojava>
 	REPORT_BUILDER_JAR_DEPENDS := , libbase-java, libsac-java, libxml-java (>= 1.1.6), libflute-java (>= 1.1.6), libpentaho-reporting-flow-engine-java (>= 0.9.4), liblayout-java (>= 0.2.10), libloader-java (>= 1.1.6), libformula-java (>= 1.1.7), librepository-java (>= 1.1.6), libfonts-java (>= 1.1.6), libserializer-java (>= 1.1.6)
 	CONFIGURE_FLAGS += --with-libbase-jar=/usr/share/java/libbase.jar --with-libxml-jar=/usr/share/java/libxml.jar --with-flute-jar=/usr/share/java/flute.jar --with-jfreereport-jar=/usr/share/java/flow-engine.jar --with-liblayout-jar=/usr/share/java/liblayout.jar --with-libloader-jar=/usr/share/java/libloader.jar --with-libformula-jar=/usr/share/java/libformula.jar --with-librepository-jar=/usr/share/java/librepository.jar --with-libfonts-jar=/usr/share/java/libfonts.jar --with-libserializer-jar=/usr/share/java/libserializer.jar
-    endif
-    ifneq (,$(filter apache-commons, $(SYSTEM_STUFF)))
-	REPORT_BUILDER_BUILD_DEPS += , libcommons-logging-java$(OOO_NO_JAVA_ARCHS) <!nojava>
-	REPORT_BUILDER_JAR_DEPENDS += , libcommons-logging-java
-	CONFIGURE_FLAGS += --with-commons-logging-jar=/usr/share/java/commons-logging.jar
     endif
 	BUILD_DEPS += $(REPORT_BUILDER_BUILD_DEPS)
   else
@@ -1052,9 +1028,13 @@ ifeq "$(ENABLE_JAVA)" "y"
 	endif
 endif
 
-ifneq (,$(filter nss, $(SYSTEM_STUFF)))
+ifeq "$(ENABLE_NSS)" "y"
+  ifneq (,$(filter nss, $(SYSTEM_STUFF)))
 	BUILD_DEPS+= , libnss3-dev (>= 3.12.3)
 	BUILD_DEPS+= , libnspr4-dev
+  endif
+else
+	CONFIGURE_FLAGS += --disable-nss
 endif
 
 ifeq "$(USE_UCPP)" "y"
@@ -1188,15 +1168,19 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
 	BUILD_DEPS += , libe-book-dev (>= 0.1.2) <!nocheck>
     endif
   endif
-  ifneq (,$(filter libcmis, $(SYSTEM_STUFF)))
+  ifeq "$(ENABLE_CMIS)" "y"
+    ifneq (,$(filter libcmis, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libcmis-dev (>= 0.5.2~), libcmis-dev (<< 0.6~)
-  endif
-  ifeq "$(ENABLE_QRCODEGEN)" "y"
-    ifneq (,$(filter qrcodegen, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libqrcodegencpp-dev
     endif
   else
-	CONFIGURE_FLAGS += --disable-qrcodegen
+	CONFIGURE_FLAGS += --disable-cmis
+  endif
+  ifeq "$(ENABLE_ZXING)" "y"
+    ifneq (,$(filter zxing, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libzxingcore-dev
+    endif
+  else
+	CONFIGURE_FLAGS += --disable-zxing
   endif
 endif
 	CONFIGURE_FLAGS += --with-external-thes-dir=$(THES_DIR)
@@ -1314,6 +1298,11 @@ ifeq "$(BUILD_GTK3)" "y"
   endif
 endif
 
+ifeq "$(BUILD_GTK4)" "y"
+	BUILD_DEPS += , libgtk-4-dev, libglib2.0-dev (>= 2.38.0), libcairo2-dev, libatk1.0-dev
+	CONFIGURE_FLAGS += --enable-gtk4
+endif
+
 ifeq "$(ENABLE_EVO2)" "n"
 	CONFIGURE_FLAGS += --disable-evolution2
 	DEBHELPER_OPTIONS += -Nlibreoffice-evolution
@@ -1350,6 +1339,7 @@ endif
 
 ifneq "$(PACKAGE_LIBRELOGO)" "y"
 	DEBHELPER_OPTIONS+= -Nlibreoffice-librelogo
+	CONFIGURE_FLAGS += --disable-librelogo
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
@@ -1802,6 +1792,9 @@ endif
 ifeq "$(BUILD_GTK3)" "y"
 	cat debian/control.gtk3.in >> debian/control
 endif
+ifeq "$(BUILD_GTK4)" "y"
+	cat debian/control.gtk4.in >> debian/control
+endif
 ifeq "$(ENABLE_KF5)" "y"
 	cat debian/control.kf5.in >> debian/control
 endif
@@ -1927,11 +1920,6 @@ $(STAMP_DIR)/prepare:
 	# Make sure we have /proc mounted - otherwise idlc will fail later.
 	test -r /proc/version
 
-	# create fake file if file not there; we don't use it anyways.
-	if [ ! -f $(TARFILE_LOCATION)/185d60944ea767075d27247c3162b3bc-unowinreg.dll ]; then \
-		touch $(TARFILE_LOCATION)/185d60944ea767075d27247c3162b3bc-unowinreg.dll; \
-	fi
-
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 ifeq (terse,$(findstring terse,$(DEB_BUILD_OPTIONS)))
 	if [ -d .pc/do-not-hide-test-output.diff ]; then \
@@ -1998,7 +1986,7 @@ ifeq "$(BUILD_NOGUI_PACKAGES)" "y"
 		--disable-scripting-javascript --disable-scripting-beanshell \
 		--without-doxygen --without-javadoc \
 		--with-galleries=no --with-theme="$(DEFAULT_IMAGE)" \
-		--disable-gui --disable-skia --disable-introspection --disable-qt5 --disable-kf5
+		--disable-gui --disable-introspection --disable-qt5 --disable-kf5
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build-non-l10n-only
 
@@ -2506,18 +2494,6 @@ ifeq "$(PACKAGE_SDK)" "y"
 		for i in $(CURDIR)/$(PKGDIR)-dev-common/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/com/sun/star/lib/loader/*.class; do \
 			ln -s `echo $$i | sed -e 's,$(CURDIR)/$(PKGDIR)-dev-common,,'` `basename $$i`; \
 		done
-    ifeq "$(PACKAGE_UNOWINREG_DLL)" "y"
-	mkdir -p $(PKGDIR)-dev-common/$(OOSDKDIR)/classes/win
-	mkdir -p $(PKGDIR)-dev-common/usr/lib/$(WIN_TRIPLET)
-	mv $(PKGDIR)-dev-common/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/win/unowinreg.dll \
-		$(PKGDIR)-dev-common/usr/lib/$(WIN_TRIPLET)
-	rmdir $(PKGDIR)-dev-common/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/win
-	chmod 644 $(PKGDIR)-dev-common/usr/lib/$(WIN_TRIPLET)/unowinreg.dll
-	ln -s /usr/lib/$(WIN_TRIPLET)/unowinreg.dll \
-		$(PKGDIR)-dev-common/$(OOSDKDIR)/classes/win/unowinreg.dll
-    else
-	rm -rf $(PKGDIR)-dev-common/$(shell echo $(OOSDKDIR) | sed -e s/lib/share/)/classes/win 
-    endif
   endif
 	chmod 644 $(PKGDIR)-dev-common/$(OOSDKDIR)/configure.pl
 	chmod 755 $(PKGDIR)-dev-common/$(OOSDKDIR)/setsdkenv_unix
@@ -2839,17 +2815,18 @@ ifeq "$(ENABLE_GUI)" "y"
 	# split out gtk stuff
 	mkdir -p $(PKGDIR)-gtk3/$(OODIR)/program/
 	mkdir -p debian/liblibreofficekitgtk/$(OODIR)/program
-	mv $(PKGDIR)-gnome/$(OODIR)/program/* $(PKGDIR)-gtk3/$(OODIR)/program/
+	mv $(PKGDIR)-gnome/$(OODIR)/program/*gtk3* $(PKGDIR)-gtk3/$(OODIR)/program/
+  ifeq "$(ENABLE_PACKAGEKIT)" "y"
+	# FIXME: ended up in -gtk3 due to a bug. should it stay there or be in -gnome?
+	mv $(PKGDIR)-gnome/$(OODIR)/program/liblosessioninstalllo.so \
+               $(PKGDIR)-gtk3/$(OODIR)/program/
+  endif
 	mv $(PKGDIR)-core/$(OODIR)/program/liblibreofficekitgtk.so \
 		debian/liblibreofficekitgtk/$(OODIR)/program
   endif
-  ifeq "$(ENABLE_GIO)" "y"
-	mv $(PKGDIR)-gtk3/$(OODIR)/program/libucpgio1lo.so \
-		$(PKGDIR)-gnome/$(OODIR)/program/
-  endif
-  ifeq "$(ENABLE_PACKAGEKIT)" "y"
-	mv $(PKGDIR)-gtk3/$(OODIR)/program/liblosessioninstalllo.so \
-		$(PKGDIR)-gnome/$(OODIR)/program/
+  ifeq "$(BUILD_GTK4)" "y"
+	mkdir -p $(PKGDIR)-gtk4/$(OODIR)/program/
+	mv $(PKGDIR)-gnome/$(OODIR)/program/*gtk4* $(PKGDIR)-gtk4/$(OODIR)/program
   endif
 endif
 
