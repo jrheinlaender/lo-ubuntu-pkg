@@ -1,0 +1,922 @@
+revert 32bit arm bridges back to 7.1.5 to revert all the "Fix some warnings for Raspberry pi 4" (sic!) commits
+which break armhf on runtime miserably; see e.g.
+https://ci.debian.net/data/autopkgtest/unstable/armhf/libr/libreoffice/14360805/log.gz
+
+diff --git a/bridges/source/cpp_uno/gcc3_linux_arm/call.hxx b/bridges/source/cpp_uno/gcc3_linux_arm/call.hxx
+deleted file mode 100644
+index dde56f6f59f0..000000000000
+--- a/bridges/source/cpp_uno/gcc3_linux_arm/call.hxx
++++ /dev/null
+@@ -1,28 +0,0 @@
+-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+-/*
+- * This file is part of the LibreOffice project.
+- *
+- * This Source Code Form is subject to the terms of the Mozilla Public
+- * License, v. 2.0. If a copy of the MPL was not distributed with this
+- * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+- *
+- * This file incorporates work covered by the following license notice:
+- *
+- *   Licensed to the Apache Software Foundation (ASF) under one or more
+- *   contributor license agreements. See the NOTICE file distributed
+- *   with this work for additional information regarding copyright
+- *   ownership. The ASF licenses this file to you under the Apache
+- *   License, Version 2.0 (the "License"); you may not use this file
+- *   except in compliance with the License. You may obtain a copy of
+- *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
+- */
+-
+-#pragma once
+-
+-#include <sal/config.h>
+-
+-#include <sal/types.h>
+-
+-extern "C" sal_Int64 cpp_vtable_call(long* pFunctionAndOffset, void** pCallStack);
+-
+-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/bridges/source/cpp_uno/gcc3_linux_arm/cpp2uno.cxx b/bridges/source/cpp_uno/gcc3_linux_arm/cpp2uno.cxx
+index 103f2b492e3a..4ef17b8542e1 100644
+--- a/bridges/source/cpp_uno/gcc3_linux_arm/cpp2uno.cxx
++++ b/bridges/source/cpp_uno/gcc3_linux_arm/cpp2uno.cxx
+@@ -23,17 +23,16 @@
+ #include <sal/log.hxx>
+ 
+ #include <com/sun/star/uno/genfunc.hxx>
+-#include <com/sun/star/uno/RuntimeException.hpp>
++#include "com/sun/star/uno/RuntimeException.hpp"
+ #include <uno/data.h>
+ #include <typelib/typedescription.hxx>
+ 
+-#include <bridge.hxx>
+-#include <cppinterfaceproxy.hxx>
+-#include <types.hxx>
+-#include <vtablefactory.hxx>
++#include "bridge.hxx"
++#include "cppinterfaceproxy.hxx"
++#include "types.hxx"
++#include "vtablefactory.hxx"
+ 
+ #include "share.hxx"
+-#include "call.hxx"
+ 
+ #include <dlfcn.h>
+ 
+@@ -47,7 +46,7 @@ using namespace ::com::sun::star::uno;
+ namespace
+ {
+ 
+-    typelib_TypeClass cpp2uno_call(
++    static typelib_TypeClass cpp2uno_call(
+         bridges::cpp_uno::shared::CppInterfaceProxy* pThis,
+         const typelib_TypeDescription * pMemberTypeDescr,
+         typelib_TypeDescriptionReference * pReturnTypeRef,
+@@ -56,21 +55,21 @@ namespace
+         sal_Int64 * pRegisterReturn /* space for register return */ )
+     {
+         // pCallStack: ret, [return ptr], this, params
+-        char * pTopStack = reinterpret_cast<char *>(pCallStack + 0);
++        char * pTopStack = (char *)(pCallStack + 0);
+         char * pCppStack = pTopStack;
+ 
+ #ifdef __ARM_PCS_VFP
+         int dc = 0;
+-        char * pFloatArgs = reinterpret_cast<char *>(pCppStack - 64);
++        char * pFloatArgs = (char *)(pCppStack - 64);
+ #endif
+         // return
+-        typelib_TypeDescription * pReturnTypeDescr = nullptr;
++        typelib_TypeDescription * pReturnTypeDescr = 0;
+         if (pReturnTypeRef)
+             TYPELIB_DANGER_GET( &pReturnTypeDescr, pReturnTypeRef );
+ 
+-        void * pUnoReturn = nullptr;
++        void * pUnoReturn = 0;
+         // complex return ptr: if != 0 && != pUnoReturn, reconversion need
+-        void * pCppReturn = nullptr;
++        void * pCppReturn = 0;
+ 
+         if (pReturnTypeDescr)
+         {
+@@ -78,7 +77,7 @@ namespace
+                 pUnoReturn = pRegisterReturn; // direct way for simple types
+             else // complex return via ptr (pCppReturn)
+             {
+-                pCppReturn = *reinterpret_cast<void **>(pCppStack);
++                pCppReturn = *(void **)pCppStack;
+                 pCppStack += sizeof(void *);
+ 
+                 pUnoReturn = (bridges::cpp_uno::shared::relatesToInterfaceType(
+@@ -94,21 +93,21 @@ namespace
+         static_assert(sizeof(void *) == sizeof(sal_Int32),
+             "### unexpected size!");
+         // parameters
+-        void ** pUnoArgs = static_cast<void **>(alloca( 4 * sizeof(void *) * nParams ));
++        void ** pUnoArgs = (void **)alloca( 4 * sizeof(void *) * nParams );
+         void ** pCppArgs = pUnoArgs + nParams;
+         // indices of values this have to be converted (interface conversion
+         // cpp<=>uno)
+-        sal_Int32 * pTempIndices = reinterpret_cast<sal_Int32 *>(pUnoArgs + (2 * nParams));
++        sal_Int32 * pTempIndices = (sal_Int32 *)(pUnoArgs + (2 * nParams));
+         // type descriptions for reconversions
+         typelib_TypeDescription ** ppTempParamTypeDescr =
+-            reinterpret_cast<typelib_TypeDescription **>(pUnoArgs + (3 * nParams));
++            (typelib_TypeDescription **)(pUnoArgs + (3 * nParams));
+ 
+         sal_Int32 nTempIndices   = 0;
+ 
+         for ( sal_Int32 nPos = 0; nPos < nParams; ++nPos )
+         {
+             const typelib_MethodParameter & rParam = pParams[nPos];
+-            typelib_TypeDescription * pParamTypeDescr = nullptr;
++            typelib_TypeDescription * pParamTypeDescr = 0;
+             TYPELIB_DANGER_GET( &pParamTypeDescr, rParam.pTypeRef );
+ 
+             if (!rParam.bOut &&
+@@ -167,7 +166,7 @@ namespace
+             }
+             else // ptr to complex value | ref
+             {
+-                pCppArgs[nPos] = *reinterpret_cast<void **>(pCppStack);
++                pCppArgs[nPos] = *(void **)pCppStack;
+ 
+                 if (! rParam.bIn) // is pure out
+                 {
+@@ -183,7 +182,7 @@ namespace
+                 {
+                     uno_copyAndConvertData( pUnoArgs[nPos] =
+                         alloca( pParamTypeDescr->nSize ),
+-                        *reinterpret_cast<void **>(pCppStack), pParamTypeDescr,
++                        *(void **)pCppStack, pParamTypeDescr,
+                         pThis->getBridge()->getCpp2Uno() );
+                     pTempIndices[nTempIndices] = nPos; // has to be reconverted
+                     // will be released at reconversion
+@@ -191,7 +190,7 @@ namespace
+                 }
+                 else // direct way
+                 {
+-                    pUnoArgs[nPos] = *reinterpret_cast<void **>(pCppStack);
++                    pUnoArgs[nPos] = *(void **)pCppStack;
+                     // no longer needed
+                     TYPELIB_DANGER_RELEASE( pParamTypeDescr );
+                 }
+@@ -224,7 +223,7 @@ namespace
+ 
+                 if (pParams[nIndex].bIn) // is in/inout => was constructed
+                     uno_destructData( pUnoArgs[nIndex],
+-                        ppTempParamTypeDescr[nTempIndices], nullptr );
++                        ppTempParamTypeDescr[nTempIndices], 0 );
+                 TYPELIB_DANGER_RELEASE( ppTempParamTypeDescr[nTempIndices] );
+             }
+             if (pReturnTypeDescr)
+@@ -253,7 +252,7 @@ namespace
+                         pParamTypeDescr, pThis->getBridge()->getUno2Cpp() );
+                 }
+                 // destroy temp uno param
+-                uno_destructData( pUnoArgs[nIndex], pParamTypeDescr, nullptr );
++                uno_destructData( pUnoArgs[nIndex], pParamTypeDescr, 0 );
+ 
+                 TYPELIB_DANGER_RELEASE( pParamTypeDescr );
+             }
+@@ -265,14 +264,15 @@ namespace
+                     uno_copyAndConvertData( pCppReturn, pUnoReturn,
+                         pReturnTypeDescr, pThis->getBridge()->getUno2Cpp() );
+                     // destroy temp uno return
+-                    uno_destructData( pUnoReturn, pReturnTypeDescr, nullptr );
++                    uno_destructData( pUnoReturn, pReturnTypeDescr, 0 );
+                 }
+                 // complex return ptr is set to eax
+-                *reinterpret_cast<void **>(pRegisterReturn) = pCppReturn;
++                *(void **)pRegisterReturn = pCppReturn;
+             }
+             if (pReturnTypeDescr)
+             {
+-                typelib_TypeClass eRet = pReturnTypeDescr->eTypeClass;
++                typelib_TypeClass eRet =
++                    (typelib_TypeClass)pReturnTypeDescr->eTypeClass;
+                 TYPELIB_DANGER_RELEASE( pReturnTypeDescr );
+                 return eRet;
+             }
+@@ -282,7 +282,7 @@ namespace
+     }
+ 
+ 
+-    typelib_TypeClass cpp_mediate(
++    static typelib_TypeClass cpp_mediate(
+         sal_Int32 nFunctionIndex, sal_Int32 nVtableOffset,
+         void ** pCallStack,
+         sal_Int64 * pRegisterReturn /* space for register return */ )
+@@ -320,7 +320,7 @@ namespace
+                 ("illegal " + OUString::unacquired(&pTypeDescr->aBase.pTypeName)
+                  + " vtable index " + OUString::number(nFunctionIndex) + "/"
+                  + OUString::number(pTypeDescr->nMapFunctionIndexToMemberIndex)),
+-                reinterpret_cast<XInterface *>(pCppI));
++                (XInterface *)pCppI);
+         }
+ 
+         // determine called method
+@@ -342,8 +342,8 @@ namespace
+                 // is GET method
+                 eRet = cpp2uno_call(
+                     pCppI, aMemberDescr.get(),
+-                    reinterpret_cast<typelib_InterfaceAttributeTypeDescription *>(aMemberDescr.get())->pAttributeTypeRef,
+-                    0, nullptr, // no params
++                    ((typelib_InterfaceAttributeTypeDescription *)aMemberDescr.get())->pAttributeTypeRef,
++                    0, 0, // no params
+                     pCallStack, pRegisterReturn );
+             }
+             else
+@@ -351,13 +351,13 @@ namespace
+                 // is SET method
+                 typelib_MethodParameter aParam;
+                 aParam.pTypeRef =
+-                    reinterpret_cast<typelib_InterfaceAttributeTypeDescription *>(aMemberDescr.get())->pAttributeTypeRef;
+-                aParam.bIn      = true;
+-                aParam.bOut     = false;
++                    ((typelib_InterfaceAttributeTypeDescription *)aMemberDescr.get())->pAttributeTypeRef;
++                aParam.bIn      = sal_True;
++                aParam.bOut     = sal_False;
+ 
+                 eRet = cpp2uno_call(
+                     pCppI, aMemberDescr.get(),
+-                    nullptr, // indicates void return
++                    0, // indicates void return
+                     1, &aParam,
+                     pCallStack, pRegisterReturn );
+             }
+@@ -378,25 +378,25 @@ namespace
+                 break;
+             case 0: // queryInterface() opt
+             {
+-                typelib_TypeDescription * pTD = nullptr;
++                typelib_TypeDescription * pTD = 0;
+                 TYPELIB_DANGER_GET(&pTD,
+-                    static_cast<Type *>(pCallStack[2])->getTypeLibType());
++                    reinterpret_cast<Type *>(pCallStack[2])->getTypeLibType());
+                 if (pTD)
+                 {
+-                    XInterface * pInterface = nullptr;
++                    XInterface * pInterface = 0;
+                     (*pCppI->getBridge()->getCppEnv()->getRegisteredInterface)(
+                         pCppI->getBridge()->getCppEnv(),
+-                        reinterpret_cast<void **>(&pInterface), pCppI->getOid().pData,
+-                        reinterpret_cast<typelib_InterfaceTypeDescription *>(pTD) );
++                        (void **)&pInterface, pCppI->getOid().pData,
++                        (typelib_InterfaceTypeDescription *)pTD );
+ 
+                     if (pInterface)
+                     {
+                         ::uno_any_construct(
+-                            static_cast< uno_Any * >( pCallStack[0] ),
++                            reinterpret_cast< uno_Any * >( pCallStack[0] ),
+                             &pInterface, pTD, cpp_acquire );
+                         pInterface->release();
+                         TYPELIB_DANGER_RELEASE( pTD );
+-                        *reinterpret_cast<void **>(pRegisterReturn) = pCallStack[0];
++                        *(void **)pRegisterReturn = pCallStack[0];
+                         eRet = typelib_TypeClass_ANY;
+                         break;
+                     }
+@@ -406,16 +406,16 @@ namespace
+             default:
+                 eRet = cpp2uno_call(
+                     pCppI, aMemberDescr.get(),
+-                    reinterpret_cast<typelib_InterfaceMethodTypeDescription *>(aMemberDescr.get())->pReturnTypeRef,
+-                    reinterpret_cast<typelib_InterfaceMethodTypeDescription *>(aMemberDescr.get())->nParams,
+-                    reinterpret_cast<typelib_InterfaceMethodTypeDescription *>(aMemberDescr.get())->pParams,
++                    ((typelib_InterfaceMethodTypeDescription *)aMemberDescr.get())->pReturnTypeRef,
++                    ((typelib_InterfaceMethodTypeDescription *)aMemberDescr.get())->nParams,
++                    ((typelib_InterfaceMethodTypeDescription *)aMemberDescr.get())->pParams,
+                     pCallStack, pRegisterReturn );
+             }
+             break;
+         }
+         default:
+         {
+-            throw RuntimeException( "no member description found!", reinterpret_cast<XInterface *>(pCppI) );
++            throw RuntimeException( "no member description found!", (XInterface *)pCppI );
+         }
+         }
+ 
+@@ -428,7 +428,7 @@ namespace
+  * (called by asm snippets)
+  */
+ 
+-sal_Int64 cpp_vtable_call( long *pFunctionAndOffset,
++extern "C" sal_Int64 cpp_vtable_call( long *pFunctionAndOffset,
+     void **pCallStack )
+ {
+     sal_Int64 nRegReturn;
+@@ -439,17 +439,17 @@ sal_Int64 cpp_vtable_call( long *pFunctionAndOffset,
+     {
+         case typelib_TypeClass_BOOLEAN:
+         case typelib_TypeClass_BYTE:
+-            nRegReturn = static_cast<unsigned long>(*reinterpret_cast<unsigned char *>(&nRegReturn));
++            nRegReturn = (unsigned long)(*(unsigned char *)&nRegReturn);
+             break;
+         case typelib_TypeClass_CHAR:
+         case typelib_TypeClass_UNSIGNED_SHORT:
+         case typelib_TypeClass_SHORT:
+-            nRegReturn = static_cast<unsigned long>(*reinterpret_cast<unsigned short *>(&nRegReturn));
++            nRegReturn = (unsigned long)(*(unsigned short *)&nRegReturn);
+             break;
+         case typelib_TypeClass_ENUM:
+         case typelib_TypeClass_UNSIGNED_LONG:
+         case typelib_TypeClass_LONG:
+-            nRegReturn = static_cast<unsigned long>(*reinterpret_cast<unsigned int *>(&nRegReturn));
++            nRegReturn = (unsigned long)(*(unsigned int *)&nRegReturn);
+             break;
+         case typelib_TypeClass_VOID:
+         default:
+@@ -469,16 +469,16 @@ namespace
+         if (bHasHiddenParam)
+             functionIndex |= 0x80000000;
+ 
+-        unsigned long * p = reinterpret_cast<unsigned long *>(code);
++        unsigned long * p = (unsigned long *)code;
+ 
+         // ARM (not thumb) mode instructions
+         // mov ip, pc
+         *p++ = 0xE1A0C00F;
+         // ldr pc, [pc, #4]
+         *p++ = 0xE59FF004;
+-        *p++ = static_cast<unsigned long>(functionIndex);
+-        *p++ = static_cast<unsigned long>(vtableOffset);
+-        *p++ = reinterpret_cast<unsigned long>(privateSnippetExecutor);
++        *p++ = (unsigned long)functionIndex;
++        *p++ = (unsigned long)vtableOffset;
++        *p++ = (unsigned long)privateSnippetExecutor;
+ 
+         return code + codeSnippetSize;
+     }
+@@ -504,8 +504,8 @@ bridges::cpp_uno::shared::VtableFactory::initializeBlock(
+     typelib_InterfaceTypeDescription *)
+ {
+     Slot * slots = mapBlockToVtable(block);
+-    slots[-2].fn = nullptr;
+-    slots[-1].fn = nullptr;
++    slots[-2].fn = 0;
++    slots[-1].fn = 0;
+     return slots + slotCount;
+ }
+ 
+@@ -524,7 +524,7 @@ unsigned char * bridges::cpp_uno::shared::VtableFactory::addLocalFunctions(
+     Slot * s = *slots;
+     for (sal_Int32 i = 0; i < type->nMembers; ++i)
+     {
+-        typelib_TypeDescription * member = nullptr;
++        typelib_TypeDescription * member = 0;
+         TYPELIB_DANGER_GET(&member, type->ppMembers[i]);
+         assert(member != 0);
+         switch (member->eTypeClass)
+@@ -575,8 +575,8 @@ void bridges::cpp_uno::shared::VtableFactory::flushCode(
+ {
+ #ifndef ANDROID
+    static void (*clear_cache)(unsigned char const*, unsigned char const*)
+-       = reinterpret_cast<void (*)(unsigned char const*, unsigned char const*)>
+-           (dlsym(RTLD_DEFAULT, "__clear_cache"));
++       = (void (*)(unsigned char const*, unsigned char const*))
++           dlsym(RTLD_DEFAULT, "__clear_cache");
+    (*clear_cache)(beg, end);
+ #else
+    cacheflush((long) beg, (long) end, 0);
+diff --git a/bridges/source/cpp_uno/gcc3_linux_arm/except.cxx b/bridges/source/cpp_uno/gcc3_linux_arm/except.cxx
+index 14bffa75ad7f..251fbe09857f 100644
+--- a/bridges/source/cpp_uno/gcc3_linux_arm/except.cxx
++++ b/bridges/source/cpp_uno/gcc3_linux_arm/except.cxx
+@@ -27,7 +27,7 @@
+ #include <sal/log.hxx>
+ 
+ #include <com/sun/star/uno/genfunc.hxx>
+-#include <com/sun/star/uno/RuntimeException.hpp>
++#include "com/sun/star/uno/RuntimeException.hpp"
+ #include <typelib/typedescription.hxx>
+ #include <uno/any2.h>
+ #include <unordered_map>
+@@ -63,7 +63,7 @@ namespace CPPU_CURRENT_NAMESPACE
+         while ('E' != *p)
+         {
+             // read chars count
+-            long n = *p++ - '0';
++            long n = (*p++ - '0');
+             while ('0' <= *p && '9' >= *p)
+             {
+                 n *= 10;
+@@ -85,7 +85,6 @@ namespace CPPU_CURRENT_NAMESPACE
+ #endif
+     }
+ 
+-namespace {
+     class RTTI
+     {
+         typedef std::unordered_map< OUString, type_info * > t_rtti_map;
+@@ -104,11 +103,10 @@ namespace {
+ 
+         type_info * getRTTI(typelib_CompoundTypeDescription *);
+     };
+-}
+ 
+     RTTI::RTTI()
+ #ifndef ANDROID
+-        : m_hApp( dlopen( nullptr, RTLD_LAZY ) )
++        : m_hApp( dlopen( 0, RTLD_LAZY ) )
+ #endif
+     {
+     }
+@@ -125,7 +123,7 @@ namespace {
+     {
+         type_info * rtti;
+ 
+-        OUString const & unoName = *reinterpret_cast<OUString const *>(&pTypeDescr->aBase.pTypeName);
++        OUString const & unoName = *(OUString const *)&pTypeDescr->aBase.pTypeName;
+ 
+         MutexGuard guard( m_mutex );
+         t_rtti_map::const_iterator iFind( m_rttis.find( unoName ) );
+@@ -147,7 +145,7 @@ namespace {
+ 
+             OString symName( buf.makeStringAndClear() );
+ #ifndef ANDROID
+-            rtti = static_cast<type_info *>(dlsym( m_hApp, symName.getStr() ));
++            rtti = (type_info *)dlsym( m_hApp, symName.getStr() );
+ #else
+             rtti = (type_info *)dlsym( RTLD_DEFAULT, symName.getStr() );
+ #endif
+@@ -186,9 +184,10 @@ namespace {
+                     if (pTypeDescr->pBaseTypeDescription)
+                     {
+                         // ensure availability of base
+-                        type_info * base_rtti = getRTTI( pTypeDescr->pBaseTypeDescription );
++                        type_info * base_rtti = getRTTI(
++                            (typelib_CompoundTypeDescription *)pTypeDescr->pBaseTypeDescription );
+                         rtti = new __si_class_type_info(
+-                            strdup( rttiName ), static_cast<__class_type_info *>(base_rtti) );
++                            strdup( rttiName ), (__class_type_info *)base_rtti );
+                     }
+                     else
+                     {
+@@ -218,8 +217,8 @@ namespace {
+ 
+     static void deleteException( void * pExc )
+     {
+-        __cxa_exception const * header = static_cast<__cxa_exception const *>(pExc) - 1;
+-        typelib_TypeDescription * pTD = nullptr;
++        __cxa_exception const * header = ((__cxa_exception const *)pExc - 1);
++        typelib_TypeDescription * pTD = 0;
+         OUString unoName( toUNOname( header->exceptionType->name() ) );
+         ::typelib_typedescription_getByName( &pTD, unoName.pData );
+         assert(pTD && "### unknown exception type! leaving out destruction => leaking!!!");
+@@ -244,13 +243,13 @@ namespace {
+ 
+         {
+             // construct cpp exception object
+-            typelib_TypeDescription * pTypeDescr = nullptr;
++            typelib_TypeDescription * pTypeDescr = 0;
+             TYPELIB_DANGER_GET( &pTypeDescr, pUnoExc->pType );
+             assert(pTypeDescr);
+             if (! pTypeDescr)
+             {
+                 throw RuntimeException(
+-                    "cannot get typedescription for type " +
++                    OUString("cannot get typedescription for type ") +
+                     OUString::unacquired( &pUnoExc->pType->pTypeName ) );
+             }
+ 
+@@ -258,18 +257,18 @@ namespace {
+             ::uno_copyAndConvertData( pCppExc, pUnoExc->pData, pTypeDescr, pUno2Cpp );
+ 
+             // destruct uno exception
+-            ::uno_any_destruct( pUnoExc, nullptr );
+-            // avoiding locked counts
+-            static RTTI rtti_data;
+-            rtti = rtti_data.getRTTI(reinterpret_cast<typelib_CompoundTypeDescription*>(pTypeDescr));
+-            TYPELIB_DANGER_RELEASE( pTypeDescr );
+-            assert(rtti && "### no rtti for throwing exception!");
+-            if (! rtti)
+-            {
+-                throw RuntimeException(
+-                    "no rtti for type " +
+-                    OUString::unacquired( &pUnoExc->pType->pTypeName ) );
+-            }
++           ::uno_any_destruct( pUnoExc, 0 );
++           // avoiding locked counts
++           static RTTI rtti_data;
++           rtti = (type_info*)rtti_data.getRTTI((typelib_CompoundTypeDescription*)pTypeDescr);
++           TYPELIB_DANGER_RELEASE( pTypeDescr );
++           assert(rtti && "### no rtti for throwing exception!");
++           if (! rtti)
++           {
++               throw RuntimeException(
++                   OUString("no rtti for type ") +
++                   OUString::unacquired( &pUnoExc->pType->pTypeName ) );
++           }
+         }
+ 
+         __cxa_throw( pCppExc, rtti, deleteException );
+@@ -278,7 +277,7 @@ namespace {
+ #ifdef __ARM_EABI__
+     static void* getAdjustedPtr(__cxa_exception* header)
+     {
+-        return reinterpret_cast<void*>(header->unwindHeader.barrier_cache.bitpattern[0]);
++        return (void*)header->unwindHeader.barrier_cache.bitpattern[0];
+     }
+ #else
+     static void* getAdjustedPtr(__cxa_exception* header)
+@@ -308,7 +307,7 @@ namespace {
+         fprintf( stderr, "> c++ exception occurred: %s\n", cstr_unoName.getStr() );
+ #endif
+         typelib_typedescription_getByName( &pExcTypeDescr, unoName.pData );
+-        if (nullptr == pExcTypeDescr)
++        if (0 == pExcTypeDescr)
+         {
+             RuntimeException aRE( "exception type not found: " + unoName );
+             Type const & rType = cppu::UnoType<decltype(aRE)>::get();
+diff --git a/bridges/source/cpp_uno/gcc3_linux_arm/share.hxx b/bridges/source/cpp_uno/gcc3_linux_arm/share.hxx
+index 040ce60b9251..284d2b6ffbee 100644
+--- a/bridges/source/cpp_uno/gcc3_linux_arm/share.hxx
++++ b/bridges/source/cpp_uno/gcc3_linux_arm/share.hxx
+@@ -17,7 +17,7 @@
+  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
+  */
+ #pragma once
+-#include <sal/config.h>
++#include "sal/config.h"
+ 
+ #include <typeinfo>
+ #include <exception>
+@@ -29,8 +29,8 @@
+ #define _GLIBCXX_CDTOR_CALLABI
+ #endif
+ 
+-#include <config_cxxabi.h>
+-#include <uno/mapping.h>
++#include "config_cxxabi.h"
++#include "uno/mapping.h"
+ 
+ #if !HAVE_CXXABI_H_CLASS_TYPE_INFO
+ // <https://mentorembedded.github.io/cxx-abi/abi.html>,
+diff --git a/bridges/source/cpp_uno/gcc3_linux_arm/uno2cpp.cxx b/bridges/source/cpp_uno/gcc3_linux_arm/uno2cpp.cxx
+index 8533415ed087..b71ab2acbb0b 100644
+--- a/bridges/source/cpp_uno/gcc3_linux_arm/uno2cpp.cxx
++++ b/bridges/source/cpp_uno/gcc3_linux_arm/uno2cpp.cxx
+@@ -22,7 +22,7 @@
+ 
+ #include <com/sun/star/uno/genfunc.hxx>
+ #include <com/sun/star/uno/Exception.hpp>
+-#include <com/sun/star/uno/RuntimeException.hpp>
++#include "com/sun/star/uno/RuntimeException.hpp"
+ #include <o3tl/runtimetooustring.hxx>
+ #include <uno/data.h>
+ 
+@@ -100,7 +100,7 @@ using namespace ::com::sun::star::uno;
+ 
+ namespace arm
+ {
+-    static bool is_complex_struct(const typelib_TypeDescription * type)
++    bool is_complex_struct(const typelib_TypeDescription * type)
+     {
+         const typelib_CompoundTypeDescription * p
+             = reinterpret_cast< const typelib_CompoundTypeDescription * >(type);
+@@ -109,7 +109,7 @@ namespace arm
+             if (p->ppTypeRefs[i]->eTypeClass == typelib_TypeClass_STRUCT ||
+                 p->ppTypeRefs[i]->eTypeClass == typelib_TypeClass_EXCEPTION)
+             {
+-                typelib_TypeDescription * t = nullptr;
++                typelib_TypeDescription * t = 0;
+                 TYPELIB_DANGER_GET(&t, p->ppTypeRefs[i]);
+                 bool b = is_complex_struct(t);
+                 TYPELIB_DANGER_RELEASE(t);
+@@ -120,13 +120,13 @@ namespace arm
+             else if (!bridges::cpp_uno::shared::isSimpleType(p->ppTypeRefs[i]->eTypeClass))
+                 return true;
+         }
+-        if (p->pBaseTypeDescription != nullptr)
++        if (p->pBaseTypeDescription != 0)
+             return is_complex_struct(&p->pBaseTypeDescription->aBase);
+         return false;
+     }
+ 
+ #ifdef __ARM_PCS_VFP
+-    static bool is_float_only_struct(const typelib_TypeDescription * type)
++    bool is_float_only_struct(const typelib_TypeDescription * type)
+     {
+         const typelib_CompoundTypeDescription * p
+             = reinterpret_cast< const typelib_CompoundTypeDescription * >(type);
+@@ -145,7 +145,7 @@ namespace arm
+             return false;
+         else if (pTypeRef->eTypeClass == typelib_TypeClass_STRUCT || pTypeRef->eTypeClass == typelib_TypeClass_EXCEPTION)
+         {
+-            typelib_TypeDescription * pTypeDescr = nullptr;
++            typelib_TypeDescription * pTypeDescr = 0;
+             TYPELIB_DANGER_GET( &pTypeDescr, pTypeRef );
+ 
+             //A Composite Type not larger than 4 bytes is returned in r0
+@@ -165,7 +165,7 @@ namespace arm
+     }
+ }
+ 
+-static void MapReturn(sal_uInt32 r0, sal_uInt32 r1, typelib_TypeDescriptionReference * pReturnType, sal_uInt32* pRegisterReturn)
++void MapReturn(sal_uInt32 r0, sal_uInt32 r1, typelib_TypeDescriptionReference * pReturnType, sal_uInt32* pRegisterReturn)
+ {
+     switch( pReturnType->eTypeClass )
+     {
+@@ -187,11 +187,8 @@ static void MapReturn(sal_uInt32 r0, sal_uInt32 r1, typelib_TypeDescriptionRefer
+ #if !defined(__ARM_PCS_VFP) && (defined(__ARM_EABI__) || defined(__SOFTFP__))
+             pRegisterReturn[0] = r0;
+ #else
+-#pragma clang diagnostic push
+-#pragma clang diagnostic ignored "-Wuninitialized"
+             register float fret asm("s0");
+-            *reinterpret_cast<float *>(pRegisterReturn) = fret;
+-#pragma clang diagnostic pop
++            *(float*)pRegisterReturn = fret;
+ #endif
+         break;
+         case typelib_TypeClass_DOUBLE:
+@@ -199,11 +196,8 @@ static void MapReturn(sal_uInt32 r0, sal_uInt32 r1, typelib_TypeDescriptionRefer
+             pRegisterReturn[1] = r1;
+             pRegisterReturn[0] = r0;
+ #else
+-#pragma clang diagnostic push
+-#pragma clang diagnostic ignored "-Wuninitialized"
+             register double dret asm("d0");
+-            *reinterpret_cast<double *>(pRegisterReturn) = dret;
+-#pragma clang diagnostic pop
++            *(double*)pRegisterReturn = dret;
+ #endif
+             break;
+         case typelib_TypeClass_STRUCT:
+@@ -251,7 +245,7 @@ void callVirtualMethod(
+     {
+         // 8-bytes aligned
+         sal_uInt32 nStackBytes = ( ( nStack + 1 ) >> 1 ) * 8;
+-        sal_uInt32 *stack = static_cast<sal_uInt32 *>(__builtin_alloca( nStackBytes * sizeof(sal_uInt32)));
++        sal_uInt32 *stack = (sal_uInt32 *) __builtin_alloca( nStackBytes );
+         memcpy( stack, pStack, nStackBytes );
+     }
+ 
+@@ -259,9 +253,9 @@ void callVirtualMethod(
+     if ( nGPR > arm::MAX_GPR_REGS )
+         nGPR = arm::MAX_GPR_REGS;
+ 
+-    sal_uInt32 pMethod = *static_cast<sal_uInt32 *>(pThis);
++    sal_uInt32 pMethod = *((sal_uInt32*)pThis);
+     pMethod += 4 * nVtableIndex;
+-    pMethod = *reinterpret_cast<sal_uInt32 *>(pMethod);
++    pMethod = *((sal_uInt32 *)pMethod);
+ 
+     //Return registers
+     sal_uInt32 r0;
+@@ -292,15 +286,15 @@ void callVirtualMethod(
+         : [pmethod]"m" (pMethod), [pgpr]"m" (pGPR), [pfpr]"m" (pFPR)
+         : "r0", "r1", "r2", "r3", "r4", "r5");
+ 
+-    MapReturn(r0, r1, pReturnType, static_cast<sal_uInt32*>(pRegisterReturn));
++    MapReturn(r0, r1, pReturnType, (sal_uInt32*)pRegisterReturn);
+ }
+ }
+ 
+ #define INSERT_INT32( pSV, nr, pGPR, pDS ) \
+         if ( nr < arm::MAX_GPR_REGS ) \
+-                pGPR[nr++] = reinterpret_cast<sal_uInt32>( pSV ); \
++                pGPR[nr++] = *reinterpret_cast<sal_uInt32 *>( pSV ); \
+         else \
+-                *pDS++ = reinterpret_cast<sal_uInt32>( pSV );
++                *pDS++ = *reinterpret_cast<sal_uInt32 *>( pSV );
+ 
+ #ifdef __ARM_EABI__
+ #define INSERT_INT64( pSV, nr, pGPR, pDS, pStart ) \
+@@ -310,8 +304,8 @@ void callVirtualMethod(
+         } \
+         if ( nr < arm::MAX_GPR_REGS ) \
+         { \
+-                *reinterpret_cast<sal_uInt32 *>(pGPR[nr++]) = *static_cast<sal_uInt32 *>( pSV ); \
+-                *reinterpret_cast<sal_uInt32 *>(pGPR[nr++]) = *(static_cast<sal_uInt32 *>( pSV ) + 1); \
++                pGPR[nr++] = *reinterpret_cast<sal_uInt32 *>( pSV ); \
++                pGPR[nr++] = *(reinterpret_cast<sal_uInt32 *>( pSV ) + 1); \
+         } \
+         else \
+     { \
+@@ -319,8 +313,8 @@ void callVirtualMethod(
+                 { \
+                     ++pDS; \
+                 } \
+-                *reinterpret_cast<sal_uInt32 *>(*pDS++) = static_cast<sal_uInt32 *>( pSV )[0]; \
+-                *reinterpret_cast<sal_uInt32 *>(*pDS++) = static_cast<sal_uInt32 *>( pSV )[1]; \
++                *pDS++ = reinterpret_cast<sal_uInt32 *>( pSV )[0]; \
++                *pDS++ = reinterpret_cast<sal_uInt32 *>( pSV )[1]; \
+     }
+ #else
+ #define INSERT_INT64( pSV, nr, pGPR, pDS, pStart ) \
+@@ -343,18 +337,18 @@ void callVirtualMethod(
+             nSR = 2*nDR; \
+         }\
+         if ( nSR < arm::MAX_FPR_REGS*2 ) {\
+-                pSPR[nSR++] = *static_cast<float const *>( pSV ); \
++                pSPR[nSR++] = *reinterpret_cast<float *>( pSV ); \
+                 if ((nSR % 2 == 1) && (nSR > 2*nDR)) {\
+                     nDR++; \
+                 }\
+         }\
+         else \
+         {\
+-                *pDS++ = *static_cast<float const *>( pSV );\
++                *pDS++ = *reinterpret_cast<float *>( pSV );\
+         }
+ #define INSERT_DOUBLE( pSV, nr, pGPR, pDS, pStart ) \
+         if ( nDR < arm::MAX_FPR_REGS ) { \
+-                pFPR[nDR++] = *static_cast<double const *>( pSV ); \
++                pFPR[nDR++] = *reinterpret_cast<double *>( pSV ); \
+         }\
+         else\
+         {\
+@@ -362,7 +356,7 @@ void callVirtualMethod(
+                 { \
+                     ++pDS; \
+                 } \
+-            *reinterpret_cast<double *>(pDS) = *static_cast<double const *>( pSV );\
++            *(double *)pDS = *reinterpret_cast<double *>( pSV );\
+             pDS += 2;\
+         }
+ #else
+@@ -375,19 +369,19 @@ void callVirtualMethod(
+ 
+ #define INSERT_INT16( pSV, nr, pGPR, pDS ) \
+         if ( nr < arm::MAX_GPR_REGS ) \
+-                pGPR[nr++] = *static_cast<sal_uInt16 const *>( pSV ); \
++                pGPR[nr++] = *reinterpret_cast<sal_uInt16 *>( pSV ); \
+         else \
+-                *pDS++ = *static_cast<sal_uInt16 const *>( pSV );
++                *pDS++ = *reinterpret_cast<sal_uInt16 *>( pSV );
+ 
+ #define INSERT_INT8( pSV, nr, pGPR, pDS ) \
+         if ( nr < arm::MAX_GPR_REGS ) \
+-                pGPR[nr++] = *static_cast<sal_uInt8 const *>( pSV ); \
++                pGPR[nr++] = *reinterpret_cast<sal_uInt8 *>( pSV ); \
+         else \
+-                *pDS++ = *static_cast<sal_uInt8 const *>( pSV );
++                *pDS++ = *reinterpret_cast<sal_uInt8 *>( pSV );
+ 
+ namespace {
+ 
+-void cpp_call(
++static void cpp_call(
+     bridges::cpp_uno::shared::UnoInterfaceProxy * pThis,
+     bridges::cpp_uno::shared::VtableSlot aVtableSlot,
+     typelib_TypeDescriptionReference * pReturnTypeRef,
+@@ -395,8 +389,8 @@ void cpp_call(
+     void * pUnoReturn, void * pUnoArgs[], uno_Any ** ppUnoExc )
+ {
+     // max space for: [complex ret ptr], values|ptr ...
+-    sal_uInt32 * pStack = static_cast<sal_uInt32 *>(__builtin_alloca(
+-        sizeof(sal_Int32) + ((nParams+2) * sizeof(sal_Int64)) ));
++    sal_uInt32 * pStack = (sal_uInt32 *)__builtin_alloca(
++        sizeof(sal_Int32) + ((nParams+2) * sizeof(sal_Int64)) );
+     sal_uInt32 * pStackStart = pStack;
+ 
+     sal_uInt32 pGPR[arm::MAX_GPR_REGS];
+@@ -411,11 +405,11 @@ void cpp_call(
+ #endif
+ 
+     // return
+-    typelib_TypeDescription * pReturnTypeDescr = nullptr;
++    typelib_TypeDescription * pReturnTypeDescr = 0;
+     TYPELIB_DANGER_GET( &pReturnTypeDescr, pReturnTypeRef );
+     assert(pReturnTypeDescr);
+ 
+-    void * pCppReturn = nullptr; // if != 0 && != pUnoReturn, needs reconversion
++    void * pCppReturn = 0; // if != 0 && != pUnoReturn, needs reconversion
+ 
+     if (pReturnTypeDescr)
+     {
+@@ -441,18 +435,18 @@ void cpp_call(
+     // stack space
+     static_assert(sizeof(void *) == sizeof(sal_Int32), "### unexpected size!");
+     // args
+-    void ** pCppArgs  = static_cast<void **>(alloca( 3 * sizeof(void *) * nParams ));
++    void ** pCppArgs  = (void **)alloca( 3 * sizeof(void *) * nParams );
+     // indices of values this have to be converted (interface conversion cpp<=>uno)
+-    sal_Int32 * pTempIndices = reinterpret_cast<sal_Int32 *>(pCppArgs + nParams);
++    sal_Int32 * pTempIndices = (sal_Int32 *)(pCppArgs + nParams);
+     // type descriptions for reconversions
+-    typelib_TypeDescription ** ppTempParamTypeDescr = reinterpret_cast<typelib_TypeDescription **>(pCppArgs + (2 * nParams));
++    typelib_TypeDescription ** ppTempParamTypeDescr = (typelib_TypeDescription **)(pCppArgs + (2 * nParams));
+ 
+     sal_Int32 nTempIndices   = 0;
+ 
+     for ( sal_Int32 nPos = 0; nPos < nParams; ++nPos )
+     {
+         const typelib_MethodParameter & rParam = pParams[nPos];
+-        typelib_TypeDescription * pParamTypeDescr = nullptr;
++        typelib_TypeDescription * pParamTypeDescr = 0;
+         TYPELIB_DANGER_GET( &pParamTypeDescr, rParam.pTypeRef );
+ 
+         if (!rParam.bOut && bridges::cpp_uno::shared::isSimpleType( pParamTypeDescr ))
+@@ -553,7 +547,7 @@ void cpp_call(
+         }
+ 
+         // NO exception occurred...
+-        *ppUnoExc = nullptr;
++        *ppUnoExc = 0;
+ 
+         // reconvert temporary params
+         for ( ; nTempIndices--; )
+@@ -565,7 +559,7 @@ void cpp_call(
+             {
+                 if (pParams[nIndex].bOut) // inout
+                 {
+-                    uno_destructData( pUnoArgs[nIndex], pParamTypeDescr, nullptr ); // destroy uno value
++                    uno_destructData( pUnoArgs[nIndex], pParamTypeDescr, 0 ); // destroy uno value
+                     uno_copyAndConvertData( pUnoArgs[nIndex], pCppArgs[nIndex], pParamTypeDescr,
+                                             pThis->getBridge()->getCpp2Uno() );
+                 }
+@@ -642,8 +636,8 @@ void unoInterfaceProxyDispatch(
+             // dependent dispatch
+             cpp_call(
+                 pThis, aVtableSlot,
+-                reinterpret_cast<typelib_InterfaceAttributeTypeDescription const *>(pMemberDescr)->pAttributeTypeRef,
+-                0, nullptr, // no params
++                ((typelib_InterfaceAttributeTypeDescription *)pMemberDescr)->pAttributeTypeRef,
++                0, 0, // no params
+                 pReturn, pArgs, ppException );
+         }
+         else
+@@ -651,11 +645,11 @@ void unoInterfaceProxyDispatch(
+             // is SET
+             typelib_MethodParameter aParam;
+             aParam.pTypeRef =
+-                reinterpret_cast<typelib_InterfaceAttributeTypeDescription const *>(pMemberDescr)->pAttributeTypeRef;
+-            aParam.bIn      = true;
+-            aParam.bOut     = false;
++                ((typelib_InterfaceAttributeTypeDescription *)pMemberDescr)->pAttributeTypeRef;
++            aParam.bIn      = sal_True;
++            aParam.bOut     = sal_False;
+ 
+-            typelib_TypeDescriptionReference * pReturnTypeRef = nullptr;
++            typelib_TypeDescriptionReference * pReturnTypeRef = 0;
+             OUString aVoidName("void");
+             typelib_typedescriptionreference_new(
+                 &pReturnTypeRef, typelib_TypeClass_VOID, aVoidName.pData );
+@@ -691,31 +685,31 @@ void unoInterfaceProxyDispatch(
+             // standard calls
+         case 1: // acquire uno interface
+             (*pUnoI->acquire)( pUnoI );
+-            *ppException = nullptr;
++            *ppException = 0;
+             break;
+         case 2: // release uno interface
+             (*pUnoI->release)( pUnoI );
+-            *ppException = nullptr;
++            *ppException = 0;
+             break;
+         case 0: // queryInterface() opt
+         {
+-            typelib_TypeDescription * pTD = nullptr;
+-            TYPELIB_DANGER_GET( &pTD, static_cast< Type * >( pArgs[0] )->getTypeLibType() );
++            typelib_TypeDescription * pTD = 0;
++            TYPELIB_DANGER_GET( &pTD, reinterpret_cast< Type * >( pArgs[0] )->getTypeLibType() );
+             if (pTD)
+             {
+-                uno_Interface * pInterface = nullptr;
++                uno_Interface * pInterface = 0;
+                 (*pThis->getBridge()->getUnoEnv()->getRegisteredInterface)(
+                     pThis->getBridge()->getUnoEnv(),
+-                    reinterpret_cast<void **>(&pInterface), pThis->oid.pData, reinterpret_cast<typelib_InterfaceTypeDescription *>(pTD) );
++                    (void **)&pInterface, pThis->oid.pData, (typelib_InterfaceTypeDescription *)pTD );
+ 
+                 if (pInterface)
+                 {
+                     ::uno_any_construct(
+-                        static_cast< uno_Any * >( pReturn ),
+-                        &pInterface, pTD, nullptr );
++                        reinterpret_cast< uno_Any * >( pReturn ),
++                        &pInterface, pTD, 0 );
+                     (*pInterface->release)( pInterface );
+                     TYPELIB_DANGER_RELEASE( pTD );
+-                    *ppException = nullptr;
++                    *ppException = 0;
+                     break;
+                 }
+                 TYPELIB_DANGER_RELEASE( pTD );
+@@ -725,9 +719,9 @@ void unoInterfaceProxyDispatch(
+             // dependent dispatch
+             cpp_call(
+                 pThis, aVtableSlot,
+-                reinterpret_cast<typelib_InterfaceMethodTypeDescription const *>(pMemberDescr)->pReturnTypeRef,
+-                reinterpret_cast<typelib_InterfaceMethodTypeDescription const *>(pMemberDescr)->nParams,
+-                reinterpret_cast<typelib_InterfaceMethodTypeDescription const *>(pMemberDescr)->pParams,
++                ((typelib_InterfaceMethodTypeDescription *)pMemberDescr)->pReturnTypeRef,
++                ((typelib_InterfaceMethodTypeDescription *)pMemberDescr)->nParams,
++                ((typelib_InterfaceMethodTypeDescription *)pMemberDescr)->pParams,
+                 pReturn, pArgs, ppException );
+         }
+         break;
+@@ -740,7 +734,7 @@ void unoInterfaceProxyDispatch(
+ 
+         Type const & rExcType = cppu::UnoType<decltype(aExc)>::get();
+         // binary identical null reference
+-        ::uno_type_any_construct( *ppException, &aExc, rExcType.getTypeLibType(), nullptr );
++        ::uno_type_any_construct( *ppException, &aExc, rExcType.getTypeLibType(), 0 );
+     }
+     }
+ }
