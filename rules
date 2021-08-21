@@ -355,6 +355,7 @@ endif
 ENABLE_HELP=y
 ifeq "$(ENABLE_HELP)" "y"
   ENABLE_HTML_HELP=y
+  ENABLE_XMLHELP=y
   ifeq "$(ENABLE_HTML_HELP)" "y"
   HELP_DEPENDS := libreoffice-help-common (= $${binary:Version}), firefox-esr | epiphany-browser | konqueror | chromium | firefox
   HELP_COMMON_DEPENDS := libjs-normalize.css
@@ -362,14 +363,18 @@ ifeq "$(ENABLE_HELP)" "y"
   HELP_DEPENDS := libreoffice-writer
   DEBHELPER_OPTIONS += -Nlibreoffice-help-common
   endif
-  SYSTEM_STUFF += clucene
+  ifeq "$(ENABLE_XMLHELP)" "y"
+    SYSTEM_STUFF += clucene
+  endif
 endif
 SYSTEM_STUFF += lcms2
 SYSTEM_STUFF += liblangtag
 SYSTEM_STUFF += orcus
-USE_UCPP=y
+USE_UCPP=n
 ifeq "$(USE_UCPP)" "y"
   SYSTEM_STUFF += ucpp
+else
+  CONFIGURE_FLAGS += --with-idlc-cpp=cpp
 endif
 # kfreebsd runs into SIZE_MAX problems, and the rest might
 # get OOM (mips(el)...) so enable mergelibs only for 64bit
@@ -445,7 +450,13 @@ CONFIGURE_FLAGS_INDEP+= --with-help
   ifeq "$(ENABLE_HTML_HELP)" "y"
 	CONFIGURE_FLAGS_INDEP+= --with-help=html
   endif
+  ifneq "$(ENABLE_XMLHELP)" "y"
+	CONFIGURE_FLAGS += --disable-xmlhelp
+  endif
+else
+	CONFIGURE_FLAGS += --without-helppack-integration --without-help
 endif
+
 
 ifeq "$(shell echo $(DEB_VERSION_UPSTREAM) | grep -E '(alpha|beta)'; echo $$?)" "1"
 CONFIGURE_FLAGS += --enable-release-build
@@ -1003,11 +1014,8 @@ ifeq "$(USE_UCPP)" "y"
 	IDLC_CPP_DEPENDS := ucpp
   endif
 else
-# hardcode 4.7 as 4.8 fails:
-# 14:17 <@caolan> ah, "build fails with cpp 4.8.0, this is fixable by passing 
-#                -P, but then idlc produces empty urd files"
-	IDLC_CPP_DEPENDS := cpp-4.7
-	CONFIGURE_FLAGS += --with-idlc-cpp=cpp-4.7
+	IDLC_CPP_DEPENDS := cpp
+	CONFIGURE_FLAGS += --with-idlc-cpp=cpp
 endif
 	BUILD_DEPS += , $(IDLC_CPP_DEPENDS)
 
@@ -1052,8 +1060,10 @@ ifneq (,$(filter orcus, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , liborcus-dev (>= 0.16), liborcus-dev (<< 0.17~)
 endif
 
-ifneq (,$(filter clucene, $(SYSTEM_STUFF)))
+ifeq "$(ENABLE_XMLHELP)" "y"
+  ifneq (,$(filter clucene, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libclucene-dev (>= 2.3.3.4-4.1)
+  endif
 endif
 
 ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
@@ -1402,10 +1412,6 @@ ifneq "$(NEON_SECTYPE)" "openssl"
 	CONFIGURE_FLAGS += --disable-openssl
       endif
    endif
-endif
-
-ifeq "$(ENABLE_HELP)" "n"
-	CONFIGURE_FLAGS += --without-helppack-integration --without-help
 endif
 
 ifneq (,$(filter redland, $(SYSTEM_STUFF)))
