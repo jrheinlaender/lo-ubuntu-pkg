@@ -1,0 +1,92 @@
+From 142e236c6dedc03915d2b3fe2cb6122ad714ac09 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Caol=C3=A1n=20McNamara?= <caolanm@redhat.com>
+Date: Thu, 19 Aug 2021 16:15:13 +0100
+Subject: [PATCH] arm: fix bridge
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+which went a little wrong in
+
+commit dd91d3389c26645459d3b80649941d65efa4f63f
+Date:   Sat Jan 2 14:36:44 2021 +0100
+
+    Fix some warnings for Raspberry pi 4 (part3)
+
+Change-Id: Ief7e1146b7480a1c16ec0810f991296710214332
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/120830
+Tested-by: Caolán McNamara <caolanm@redhat.com>
+Reviewed-by: Caolán McNamara <caolanm@redhat.com>
+
+and...
+
+arm: nStackBytes was already the right amount of bytes
+
+regression from...
+
+commit 6e3424ca1131fe371f63e456267de476b5eb0eae
+Date:   Sat Jan 2 11:03:12 2021 +0100
+
+    Fix some warnings for Raspberry pi 4 (part2)
+
+which changed that
+
+Change-Id: I9a19d7d6bc1e4115ffffbe32d8d62be5d275d500
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/120747
+Tested-by: Caolán McNamara <caolanm@redhat.com>
+Reviewed-by: René Engelhard <rene@debian.org>
+Reviewed-by: Caolán McNamara <caolanm@redhat.com>
+---
+ bridges/source/cpp_uno/gcc3_linux_arm/uno2cpp.cxx | 14 +++++++-------
+ 1 file changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/bridges/source/cpp_uno/gcc3_linux_arm/uno2cpp.cxx b/bridges/source/cpp_uno/gcc3_linux_arm/uno2cpp.cxx
+index 8533415ed087..a22ac393b5f7 100644
+--- a/bridges/source/cpp_uno/gcc3_linux_arm/uno2cpp.cxx
++++ b/bridges/source/cpp_uno/gcc3_linux_arm/uno2cpp.cxx
+@@ -251,7 +251,7 @@ void callVirtualMethod(
+     {
+         // 8-bytes aligned
+         sal_uInt32 nStackBytes = ( ( nStack + 1 ) >> 1 ) * 8;
+-        sal_uInt32 *stack = static_cast<sal_uInt32 *>(__builtin_alloca( nStackBytes * sizeof(sal_uInt32)));
++        sal_uInt32 *stack = static_cast<sal_uInt32 *>(__builtin_alloca( nStackBytes ));
+         memcpy( stack, pStack, nStackBytes );
+     }
+ 
+@@ -298,9 +298,9 @@ void callVirtualMethod(
+ 
+ #define INSERT_INT32( pSV, nr, pGPR, pDS ) \
+         if ( nr < arm::MAX_GPR_REGS ) \
+-                pGPR[nr++] = reinterpret_cast<sal_uInt32>( pSV ); \
++                pGPR[nr++] = *reinterpret_cast<const sal_uInt32*>( pSV ); \
+         else \
+-                *pDS++ = reinterpret_cast<sal_uInt32>( pSV );
++                *pDS++ = *reinterpret_cast<const sal_uInt32*>( pSV );
+ 
+ #ifdef __ARM_EABI__
+ #define INSERT_INT64( pSV, nr, pGPR, pDS, pStart ) \
+@@ -310,8 +310,8 @@ void callVirtualMethod(
+         } \
+         if ( nr < arm::MAX_GPR_REGS ) \
+         { \
+-                *reinterpret_cast<sal_uInt32 *>(pGPR[nr++]) = *static_cast<sal_uInt32 *>( pSV ); \
+-                *reinterpret_cast<sal_uInt32 *>(pGPR[nr++]) = *(static_cast<sal_uInt32 *>( pSV ) + 1); \
++                pGPR[nr++] = *static_cast<const sal_uInt32 *>( pSV ); \
++                pGPR[nr++] = *(static_cast<const sal_uInt32 *>( pSV ) + 1); \
+         } \
+         else \
+     { \
+@@ -319,8 +319,8 @@ void callVirtualMethod(
+                 { \
+                     ++pDS; \
+                 } \
+-                *reinterpret_cast<sal_uInt32 *>(*pDS++) = static_cast<sal_uInt32 *>( pSV )[0]; \
+-                *reinterpret_cast<sal_uInt32 *>(*pDS++) = static_cast<sal_uInt32 *>( pSV )[1]; \
++                *pDS++ = static_cast<sal_uInt32 *>( pSV )[0]; \
++                *pDS++ = static_cast<sal_uInt32 *>( pSV )[1]; \
+     }
+ #else
+ #define INSERT_INT64( pSV, nr, pGPR, pDS, pStart ) \
+-- 
+2.30.2
+
