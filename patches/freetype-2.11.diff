@@ -1,0 +1,56 @@
+commit 51e000965aea7b48fa22d1087d95559fa1fed159 (HEAD -> libreoffice-7-2)
+Author: Rene Engelhard <rene@debian.org>
+Date:   Tue Sep 14 21:17:11 2021 +0200
+
+    fix skia build with newer freetypes
+    
+    extracted (and adapted for 7.2.x) from masters catch-all-commit
+    a0edcc68f94915a78fcc08e70d2cdd752abd9ebb:
+    
+    Additionally
+    patch out Skia's use of TT_SUPPORT_COLRV1, which seems to be
+    an unstable freetype API from the git version and it doesn't even
+    compile with the latest stable 2.9.11 release
+    
+    Change-Id: Iba22fbc74dcd75bc6d1d91e2f537caf9d179e885
+
+diff --git a/external/skia/UnpackedTarball_skia.mk b/external/skia/UnpackedTarball_skia.mk
+index e1ea21b3cd35..104b307f2d64 100644
+--- a/external/skia/UnpackedTarball_skia.mk
++++ b/external/skia/UnpackedTarball_skia.mk
+@@ -39,6 +39,7 @@ skia_patches := \
+     fast-png-write.patch.1 \
+     skia_sk_cpu_sse_level_0_by_default.patch.1 \
+     fix-warnings.patch.1 \
++    disable-freetype-colrv1.1 \
+ 
+ $(eval $(call gb_UnpackedTarball_set_patchlevel,skia,1))
+ 
+diff --git a/external/skia/disable-freetype-colrv1.1 b/external/skia/disable-freetype-colrv1.1
+new file mode 100644
+index 000000000000..7d38a4d40c2a
+--- /dev/null
++++ b/external/skia/disable-freetype-colrv1.1
+@@ -0,0 +1,22 @@
++diff -urN skia-old/src/ports/SkFontHost_FreeType_common.cpp skia/src/ports/SkFontHost_FreeType_common.cpp
++--- skia-old/src/ports/SkFontHost_FreeType_common.cpp	2021-03-01 15:53:09.178606791 +0100
+++++ skia/src/ports/SkFontHost_FreeType_common.cpp	2021-09-14 21:58:59.996633457 +0200
++@@ -372,6 +372,7 @@
++ // Only build COLRv1 rendering code if FreeType is new enough to have COLRv1
++ // additions. FreeType defines a macro in the ftoption header to tell us whether
++ // it does support these features.
+++#undef TT_SUPPORT_COLRV1 // Unstable API.
++ #ifdef TT_SUPPORT_COLRV1
++ 
++ bool generateFacePathCOLRv1(FT_Face face, SkGlyphID glyphID, SkPath* path);
++diff -urN skia-old/src/ports/SkFontHost_FreeType.cpp skia/src/ports/SkFontHost_FreeType.cpp
++--- skia-old/src/ports/SkFontHost_FreeType.cpp	2021-03-01 15:53:09.178606791 +0100
+++++ skia/src/ports/SkFontHost_FreeType.cpp	2021-09-14 21:59:08.916715446 +0200
++@@ -1299,6 +1299,7 @@
++         FT_UInt layerGlyphIndex;
++         FT_UInt layerColorIndex;
++ 
+++#undef TT_SUPPORT_COLRV1 // Unstable API.
++ #ifdef TT_SUPPORT_COLRV1
++         FT_OpaquePaint opaqueLayerPaint;
++         opaqueLayerPaint.p = nullptr;
