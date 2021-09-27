@@ -1,0 +1,65 @@
+From 8da3a97e715be1364fa8ba0bc5d73e231480e76c Mon Sep 17 00:00:00 2001
+From: Jan-Marek Glogowski <glogow@fbihome.de>
+Date: Fri, 10 Sep 2021 12:02:20 +0200
+Subject: [PATCH] tdf#144412 Qt5 reset m_nModKeyCode on key input
+
+Switching the input direction on Ctrl + L/R-Shift is actually no
+bug but a feature. It is triggered on key release, so it can be
+distinguished from / doesn't interfere with shortcut handling.
+That's what should happen.
+
+So trying to implement that behaviour correctly and seeing the
+appearingly wrong modifier events for gtk3, I found gtk3 resets
+the frames persistent mnModKeyCode for key input events, which
+also seems to fix the problem for qt5.
+
+Some additional discussion is also in tdf#103158.
+
+Regression from commit 862fdb98ca271b60a831cd5420fd16d5f9c1c747
+("tdf#143298 Qt5 send SalEvent::KeyModChange events").
+
+Change-Id: Iafcd1db7abcdf078001ca0602ae6e374f2a169ce
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/121858
+Tested-by: Jenkins
+Reviewed-by: Jan-Marek Glogowski <glogow@fbihome.de>
+(cherry picked from commit 61cb81d67ebf6b342a1cdb46bf6eb25a49eb5ff4)
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/121887
+Reviewed-by: Michael Weghorn <m.weghorn@posteo.de>
+---
+ vcl/qt5/Qt5Widget.cxx | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/vcl/qt5/Qt5Widget.cxx b/vcl/qt5/Qt5Widget.cxx
+index 64ad4f7539c4..ca23138b5739 100644
+--- a/vcl/qt5/Qt5Widget.cxx
++++ b/vcl/qt5/Qt5Widget.cxx
+@@ -514,6 +514,8 @@ bool Qt5Widget::handleKeyEvent(Qt5Frame& rFrame, const QWidget& rWidget, QKeyEve
+ 
+             if (eState == ButtonKeyState::Released)
+             {
++                // sending the old mnModKeyCode mask on release is needed to
++                // implement the writing direction switch with Ctrl + L/R-Shift
+                 aModEvt.mnModKeyCode = rFrame.m_nKeyModifiers;
+                 nModCode &= ~nModMask;
+                 rFrame.m_nKeyModifiers &= ~nExtModMask;
+@@ -532,6 +534,9 @@ bool Qt5Widget::handleKeyEvent(Qt5Frame& rFrame, const QWidget& rWidget, QKeyEve
+         return false;
+     }
+ 
++    // prevent interference of writing direction switch (Ctrl + L/R-Shift) with "normal" shortcuts
++    rFrame.m_nKeyModifiers = ModKeyFlags::NONE;
++
+     SalKeyEvent aEvent;
+     aEvent.mnCharCode = (pEvent->text().isEmpty() ? 0 : pEvent->text().at(0).unicode());
+     aEvent.mnRepeat = 0;
+@@ -605,6 +610,7 @@ void Qt5Widget::closePopup()
+ 
+ void Qt5Widget::focusOutEvent(QFocusEvent*)
+ {
++    m_rFrame.m_nKeyModifiers = ModKeyFlags::NONE;
+     endExtTextInput();
+     m_rFrame.CallCallback(SalEvent::LoseFocus, nullptr);
+     closePopup();
+-- 
+2.32.0
+
