@@ -1,0 +1,393 @@
+From abe77c4fcb9ea97d9fff07eaea6d8863bcba5b02 Mon Sep 17 00:00:00 2001
+From: Michael Stahl <michael.stahl@allotropia.de>
+Date: Thu, 18 Feb 2021 19:22:31 +0100
+Subject: xmlsecurity: XSecParser confused about multiple timestamps
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+LO writes timestamp both to dc:date and xades:SigningTime elements.
+
+The parser tries to avoid reading multiple dc:date, preferring the first
+one, but doesn't care about multiple xades:SigningTime, for undocumented
+reasons.
+
+Ideally something should check all read values for consistency.
+
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/111160
+Tested-by: Jenkins
+Reviewed-by: Michael Stahl <michael.stahl@allotropia.de>
+(cherry picked from commit 4ab8d9c09a5873ca0aea56dafa1ab34758d52ef7)
+
+xmlsecurity: remove XSecController::setPropertyId()
+
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/111252
+Tested-by: Jenkins
+Reviewed-by: Michael Stahl <michael.stahl@allotropia.de>
+(cherry picked from commit d2a345e1163616fe3201ef1d6c758e2e819214e0)
+
+Change-Id: Ic018ee89797a1c8a4f870ae102af48006de930ef
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/111908
+Tested-by: Jenkins
+Reviewed-by: Caolán McNamara <caolanm@redhat.com>
+---
+ include/svl/sigstruct.hxx                    |  7 ++-
+ xmlsecurity/inc/xsecctl.hxx                  |  5 +-
+ xmlsecurity/source/helper/ooxmlsecparser.cxx |  4 +-
+ xmlsecurity/source/helper/xsecctl.cxx        |  2 +-
+ xmlsecurity/source/helper/xsecparser.cxx     | 81 ++++++++++++++--------------
+ xmlsecurity/source/helper/xsecparser.hxx     |  6 ---
+ xmlsecurity/source/helper/xsecsign.cxx       |  4 +-
+ xmlsecurity/source/helper/xsecverify.cxx     | 39 ++++++--------
+ 8 files changed, 68 insertions(+), 80 deletions(-)
+
+diff --git a/include/svl/sigstruct.hxx b/include/svl/sigstruct.hxx
+index 38c1ee5ed142..d62ecb09634c 100644
+--- a/include/svl/sigstruct.hxx
++++ b/include/svl/sigstruct.hxx
+@@ -103,6 +103,9 @@ struct SignatureInformation
+     // XAdES EncapsulatedX509Certificate values
+     std::set<OUString> maEncapsulatedX509Certificates;
+ 
++    OUString ouSignatureId;
++    // signature may contain multiple time stamps - check they're consistent
++    bool hasInconsistentSigningTime = false;
+     //We also keep the date and time as string. This is done when this
+     //structure is created as a result of a XML signature being read.
+     //When then a signature is added or another removed, then the original
+@@ -115,8 +118,8 @@ struct SignatureInformation
+     //and the converted time is written back, then the string looks different
+     //and the signature is broken.
+     OUString ouDateTime;
+-    OUString ouSignatureId;
+-    OUString ouPropertyId;
++    /// The Id attribute of the <SignatureProperty> element that contains the <dc:date>.
++    OUString ouDateTimePropertyId;
+     /// Characters of the <dc:description> element inside the signature.
+     OUString ouDescription;
+     /// The Id attribute of the <SignatureProperty> element that contains the <dc:description>.
+diff --git a/xmlsecurity/inc/xsecctl.hxx b/xmlsecurity/inc/xsecctl.hxx
+index 324f1c43388b..759a660d90ad 100644
+--- a/xmlsecurity/inc/xsecctl.hxx
++++ b/xmlsecurity/inc/xsecctl.hxx
+@@ -271,8 +271,8 @@ private:
+     void setGpgCertificate( OUString const & ouGpgCert );
+     void setGpgOwner( OUString const & ouGpgOwner );
+ 
+-    void setDate( OUString const & ouDate );
+-    void setDescription(const OUString& rDescription);
++    void setDate(OUString const& rId, OUString const& ouDate);
++    void setDescription(OUString const& rId, OUString const& rDescription);
+     void setCertDigest(const OUString& rCertDigest);
+     void setValidSignatureImage(const OUString& rValidSigImg);
+     void setInvalidSignatureImage(const OUString& rInvalidSigImg);
+@@ -283,7 +283,6 @@ public:
+ 
+ private:
+     void setId( OUString const & ouId );
+-    void setPropertyId( OUString const & ouPropertyId );
+ 
+     css::uno::Reference< css::xml::crypto::sax::XReferenceResolvedListener > prepareSignatureToRead(
+         sal_Int32 nSecurityId );
+diff --git a/xmlsecurity/source/helper/ooxmlsecparser.cxx b/xmlsecurity/source/helper/ooxmlsecparser.cxx
+index c22e8c2261bf..a200de60c07a 100644
+--- a/xmlsecurity/source/helper/ooxmlsecparser.cxx
++++ b/xmlsecurity/source/helper/ooxmlsecparser.cxx
+@@ -192,12 +192,12 @@ void SAL_CALL OOXMLSecParser::endElement(const OUString& rName)
+     }
+     else if (rName == "mdssi:Value")
+     {
+-        m_pXSecController->setDate(m_aMdssiValue);
++        m_pXSecController->setDate("", m_aMdssiValue);
+         m_bInMdssiValue = false;
+     }
+     else if (rName == "SignatureComments")
+     {
+-        m_pXSecController->setDescription(m_aSignatureComments);
++        m_pXSecController->setDescription("", m_aSignatureComments);
+         m_bInSignatureComments = false;
+     }
+     else if (rName == "X509IssuerName")
+diff --git a/xmlsecurity/source/helper/xsecctl.cxx b/xmlsecurity/source/helper/xsecctl.cxx
+index cac30006b6a7..e3df9a85f6da 100644
+--- a/xmlsecurity/source/helper/xsecctl.cxx
++++ b/xmlsecurity/source/helper/xsecctl.cxx
+@@ -815,7 +815,7 @@ void XSecController::exportSignature(
+                 pAttributeList = new SvXMLAttributeList();
+                 pAttributeList->AddAttribute(
+                     "Id",
+-                    signatureInfo.ouPropertyId);
++                    signatureInfo.ouDateTimePropertyId);
+                 pAttributeList->AddAttribute(
+                     "Target",
+                     "#" + signatureInfo.ouSignatureId);
+diff --git a/xmlsecurity/source/helper/xsecparser.cxx b/xmlsecurity/source/helper/xsecparser.cxx
+index 0aecb1854f8c..1418b7b43b46 100644
+--- a/xmlsecurity/source/helper/xsecparser.cxx
++++ b/xmlsecurity/source/helper/xsecparser.cxx
+@@ -974,6 +974,9 @@ class XSecParser::XadesSigningCertificateContext
+ class XSecParser::XadesSigningTimeContext
+     : public XSecParser::Context
+ {
++    private:
++        OUString m_Value;
++
+     public:
+         XadesSigningTimeContext(XSecParser & rParser,
+                 std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
+@@ -981,20 +984,14 @@ class XSecParser::XadesSigningTimeContext
+         {
+         }
+ 
+-        virtual void StartElement(
+-            css::uno::Reference<css::xml::sax::XAttributeList> const& /*xAttrs*/) override
+-        {
+-            m_rParser.m_ouDate.clear();
+-        }
+-
+         virtual void EndElement() override
+         {
+-            m_rParser.m_pXSecController->setDate( m_rParser.m_ouDate );
++            m_rParser.m_pXSecController->setDate("", m_Value);
+         }
+ 
+         virtual void Characters(OUString const& rChars) override
+         {
+-            m_rParser.m_ouDate += rChars;
++            m_Value += rChars;
+         }
+ };
+ 
+@@ -1100,35 +1097,20 @@ class XSecParser::DcDateContext
+     : public XSecParser::Context
+ {
+     private:
+-        bool m_isIgnore = false;
++        OUString & m_rValue;
+ 
+     public:
+         DcDateContext(XSecParser & rParser,
+-                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++                OUString & rValue)
+             : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++            , m_rValue(rValue)
+         {
+         }
+ 
+-        virtual void StartElement(
+-            css::uno::Reference<css::xml::sax::XAttributeList> const& /*xAttrs*/) override
+-        {
+-            m_isIgnore = !m_rParser.m_ouDate.isEmpty();
+-        }
+-
+-        virtual void EndElement() override
+-        {
+-            if (!m_isIgnore)
+-            {
+-                m_rParser.m_pXSecController->setDate( m_rParser.m_ouDate );
+-            }
+-        }
+-
+         virtual void Characters(OUString const& rChars) override
+         {
+-            if (!m_isIgnore)
+-            {
+-                m_rParser.m_ouDate += rChars;
+-            }
++            m_rValue += rChars;
+         }
+ };
+ 
+@@ -1136,29 +1118,32 @@ class XSecParser::DcDescriptionContext
+     : public XSecParser::Context
+ {
+     private:
+-        OUString m_Value;
++        OUString & m_rValue;
+ 
+     public:
+         DcDescriptionContext(XSecParser & rParser,
+-                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++                OUString & rValue)
+             : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++            , m_rValue(rValue)
+         {
+         }
+ 
+-        virtual void EndElement() override
+-        {
+-            m_rParser.m_pXSecController->setDescription(m_Value);
+-        }
+-
+         virtual void Characters(OUString const& rChars) override
+         {
+-            m_Value += rChars;
++            m_rValue += rChars;
+         }
+ };
+ 
+ class XSecParser::DsSignaturePropertyContext
+     : public XSecParser::Context
+ {
++    private:
++        enum class SignatureProperty { Unknown, Date, Description };
++        SignatureProperty m_Property = SignatureProperty::Unknown;
++        OUString m_Id;
++        OUString m_Value;
++
+     public:
+         DsSignaturePropertyContext(XSecParser & rParser,
+                 std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
+@@ -1169,10 +1154,22 @@ class XSecParser::DsSignaturePropertyContext
+         virtual void StartElement(
+             css::uno::Reference<css::xml::sax::XAttributeList> const& xAttrs) override
+         {
+-            OUString const ouIdAttr(m_rParser.HandleIdAttr(xAttrs));
+-            if (!ouIdAttr.isEmpty())
++            m_Id = m_rParser.HandleIdAttr(xAttrs);
++        }
++
++        virtual void EndElement() override
++        {
++            switch (m_Property)
+             {
+-                m_rParser.m_pXSecController->setPropertyId( ouIdAttr );
++                case SignatureProperty::Unknown:
++                    SAL_INFO("xmlsecurity.helper", "Unknown property in ds:Object ignored");
++                    break;
++                case SignatureProperty::Date:
++                    m_rParser.m_pXSecController->setDate(m_Id, m_Value);
++                    break;
++                case SignatureProperty::Description:
++                    m_rParser.m_pXSecController->setDescription(m_Id, m_Value);
++                    break;
+             }
+         }
+ 
+@@ -1182,11 +1179,13 @@ class XSecParser::DsSignaturePropertyContext
+         {
+             if (nNamespace == XML_NAMESPACE_DC && rName == "date")
+             {
+-                return std::make_unique<DcDateContext>(m_rParser, std::move(pOldNamespaceMap));
++                m_Property = SignatureProperty::Date;
++                return std::make_unique<DcDateContext>(m_rParser, std::move(pOldNamespaceMap), m_Value);
+             }
+             if (nNamespace == XML_NAMESPACE_DC && rName == "description")
+             {
+-                return std::make_unique<DcDescriptionContext>(m_rParser, std::move(pOldNamespaceMap));
++                m_Property = SignatureProperty::Description;
++                return std::make_unique<DcDescriptionContext>(m_rParser, std::move(pOldNamespaceMap), m_Value);
+             }
+             return XSecParser::Context::CreateChildContext(std::move(pOldNamespaceMap), nNamespace, rName);
+         }
+diff --git a/xmlsecurity/source/helper/xsecparser.hxx b/xmlsecurity/source/helper/xsecparser.hxx
+index 93efcb766e3e..7a0eb08bca28 100644
+--- a/xmlsecurity/source/helper/xsecparser.hxx
++++ b/xmlsecurity/source/helper/xsecparser.hxx
+@@ -97,12 +97,6 @@ private:
+     class DsSignatureContext;
+     class DsigSignaturesContext;
+ 
+-    /*
+-     * the following members are used to reserve the signature information,
+-     * including X509IssuerName, X509SerialNumber, and X509Certificate,etc.
+-     */
+-    OUString m_ouDate;
+-
+     std::stack<std::unique_ptr<Context>> m_ContextStack;
+     std::unique_ptr<SvXMLNamespaceMap> m_pNamespaceMap;
+ 
+diff --git a/xmlsecurity/source/helper/xsecsign.cxx b/xmlsecurity/source/helper/xsecsign.cxx
+index b9648ed64397..1e1688767f00 100644
+--- a/xmlsecurity/source/helper/xsecsign.cxx
++++ b/xmlsecurity/source/helper/xsecsign.cxx
+@@ -128,8 +128,8 @@ css::uno::Reference< css::xml::crypto::sax::XReferenceResolvedListener > XSecCon
+     if (nStorageFormat != embed::StorageFormats::OFOPXML)
+     {
+         internalSignatureInfor.signatureInfor.ouSignatureId = createId();
+-        internalSignatureInfor.signatureInfor.ouPropertyId = createId();
+-        internalSignatureInfor.addReference(SignatureReferenceType::SAMEDOCUMENT, digestID, internalSignatureInfor.signatureInfor.ouPropertyId, -1, OUString() );
++        internalSignatureInfor.signatureInfor.ouDateTimePropertyId = createId();
++        internalSignatureInfor.addReference(SignatureReferenceType::SAMEDOCUMENT, digestID, internalSignatureInfor.signatureInfor.ouDateTimePropertyId, -1, OUString() );
+         size++;
+ 
+         if (bXAdESCompliantIfODF)
+diff --git a/xmlsecurity/source/helper/xsecverify.cxx b/xmlsecurity/source/helper/xsecverify.cxx
+index c826971b1c7d..cdca811cc2cb 100644
+--- a/xmlsecurity/source/helper/xsecverify.cxx
++++ b/xmlsecurity/source/helper/xsecverify.cxx
+@@ -317,7 +317,7 @@ void XSecController::setGpgOwner( OUString const & ouGpgOwner )
+     isi.signatureInfor.ouGpgOwner = ouGpgOwner;
+ }
+ 
+-void XSecController::setDate( OUString const & ouDate )
++void XSecController::setDate(OUString const& rId, OUString const& ouDate)
+ {
+     if (m_vInternalSignatureInformations.empty())
+     {
+@@ -325,17 +325,31 @@ void XSecController::setDate( OUString const & ouDate )
+         return;
+     }
+     InternalSignatureInformation &isi = m_vInternalSignatureInformations.back();
++    // there may be multiple timestamps in a signature - check them for consistency
++    if (!isi.signatureInfor.ouDateTime.isEmpty()
++        && isi.signatureInfor.ouDateTime != ouDate)
++    {
++        isi.signatureInfor.hasInconsistentSigningTime = true;
++    }
+     (void)utl::ISO8601parseDateTime( ouDate, isi.signatureInfor.stDateTime);
+     isi.signatureInfor.ouDateTime = ouDate;
++    if (!rId.isEmpty())
++    {
++        isi.signatureInfor.ouDateTimePropertyId = rId;
++    }
+ }
+ 
+-void XSecController::setDescription(const OUString& rDescription)
++void XSecController::setDescription(OUString const& rId, OUString const& rDescription)
+ {
+     if (m_vInternalSignatureInformations.empty())
+         return;
+ 
+     InternalSignatureInformation& rInformation = m_vInternalSignatureInformations.back();
+     rInformation.signatureInfor.ouDescription = rDescription;
++    if (!rId.isEmpty())
++    {
++        rInformation.signatureInfor.ouDescriptionPropertyId = rId;
++    }
+ }
+ 
+ void XSecController::setSignatureBytes(const uno::Sequence<sal_Int8>& rBytes)
+@@ -429,27 +443,6 @@ void XSecController::setId( OUString const & ouId )
+     isi.signatureInfor.ouSignatureId = ouId;
+ }
+ 
+-void XSecController::setPropertyId( OUString const & ouPropertyId )
+-{
+-    if (m_vInternalSignatureInformations.empty())
+-    {
+-        SAL_INFO("xmlsecurity.helper","XSecController::setPropertyId: no signature");
+-        return;
+-    }
+-    InternalSignatureInformation &isi = m_vInternalSignatureInformations.back();
+-
+-    if (isi.signatureInfor.ouPropertyId.isEmpty())
+-    {
+-        // <SignatureProperty> ID attribute is for the date.
+-        isi.signatureInfor.ouPropertyId = ouPropertyId;
+-    }
+-    else
+-    {
+-        // <SignatureProperty> ID attribute is for the description.
+-        isi.signatureInfor.ouDescriptionPropertyId = ouPropertyId;
+-    }
+-}
+-
+ /* public: for signature verify */
+ void XSecController::collectToVerify( const OUString& referenceId )
+ {
+-- 
+cgit v1.2.1
+

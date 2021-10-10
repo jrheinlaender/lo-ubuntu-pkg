@@ -1,0 +1,52 @@
+From edeb164c1d8ab64116afee4e2140403a362a1358 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Caol=C3=A1n=20McNamara?= <caolanm@redhat.com>
+Date: Mon, 8 Feb 2021 17:05:28 +0000
+Subject: default to CertificateValidity::INVALID
+
+so if CertGetCertificateChain fails we don't want validity to be
+css::security::CertificateValidity::VALID which is what the old default
+of 0 equates to
+
+notably
+
+commit 1e0bc66d16aee28ce8bd9582ea32178c63841902
+Date:   Thu Nov 5 16:55:26 2009 +0100
+
+    jl137:  #103420# better logging
+
+turned the nss equivalent of SecurityEnvironment_NssImpl::verifyCertificate
+from 0 to CertificateValidity::INVALID like this change does
+
+Change-Id: I5350dbc22d1b9b378da2976d3b0abd728f1f4c27
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/110561
+Tested-by: Jenkins
+Reviewed-by: Miklos Vajna <vmiklos@collabora.com>
+---
+ xmlsecurity/source/xmlsec/mscrypt/securityenvironment_mscryptimpl.cxx | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/xmlsecurity/source/xmlsec/mscrypt/securityenvironment_mscryptimpl.cxx b/xmlsecurity/source/xmlsec/mscrypt/securityenvironment_mscryptimpl.cxx
+index 01b27fb9756f..0ac0d6216c96 100644
+--- a/xmlsecurity/source/xmlsec/mscrypt/securityenvironment_mscryptimpl.cxx
++++ b/xmlsecurity/source/xmlsec/mscrypt/securityenvironment_mscryptimpl.cxx
+@@ -753,7 +753,7 @@ sal_Int32 SecurityEnvironment_MSCryptImpl::verifyCertificate(
+     const uno::Reference< css::security::XCertificate >& aCert,
+     const uno::Sequence< uno::Reference< css::security::XCertificate > >& seqCerts)
+ {
+-    sal_Int32 validity = 0;
++    sal_Int32 validity = css::security::CertificateValidity::INVALID;
+     PCCERT_CHAIN_CONTEXT pChainContext = nullptr;
+     PCCERT_CONTEXT pCertContext = nullptr;
+ 
+@@ -897,7 +897,7 @@ sal_Int32 SecurityEnvironment_MSCryptImpl::verifyCertificate(
+         }
+         else
+         {
+-            SAL_INFO("xmlsecurity.xmlsec", "CertGetCertificateChaine failed.");
++            SAL_INFO("xmlsecurity.xmlsec", "CertGetCertificateChain failed.");
+         }
+     }
+ 
+-- 
+cgit v1.2.1
+
