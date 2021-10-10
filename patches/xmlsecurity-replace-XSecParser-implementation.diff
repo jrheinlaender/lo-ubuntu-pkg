@@ -1,0 +1,2170 @@
+From ad5930e87e788780a255523f106deb1dde5d7b37 Mon Sep 17 00:00:00 2001
+From: Michael Stahl <michael.stahl@allotropia.de>
+Date: Fri, 12 Feb 2021 16:42:51 +0100
+Subject: xmlsecurity: replace XSecParser implementation
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Implement Namespaces in XML and follow xmldsig-core and XAdES schemas.
+
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/110833
+Tested-by: Jenkins
+Reviewed-by: Michael Stahl <michael.stahl@allotropia.de>
+(cherry picked from commit 12b15be8f4f930a04d8056b9219ac969b42a9784)
+
+xmlsecurity: move XSecParser state into contexts
+
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/111158
+Tested-by: Jenkins
+Reviewed-by: Michael Stahl <michael.stahl@allotropia.de>
+(cherry picked from commit 59df9e70ce1a7ec797b836bda7f9642912febc53)
+
+xmlsecurity: move XSecParser Reference state into contexts
+
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/111159
+Tested-by: Jenkins
+Reviewed-by: Michael Stahl <michael.stahl@allotropia.de>
+(cherry picked from commit cfeb89a758b5f0ec406f0d72444e52ed2f47b85e)
+
+Change-Id: I03537b51bb757ecbfa63a826b38de543c70ba032
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/111907
+Tested-by: Jenkins
+Reviewed-by: Caolán McNamara <caolanm@redhat.com>
+---
+ include/xmloff/xmlimp.hxx                |    6 +-
+ include/xmloff/xmlnmspe.hxx              |    7 +
+ include/xmloff/xmltoken.hxx              |   13 +
+ xmloff/source/core/xmlimp.cxx            |   26 +-
+ xmloff/source/core/xmltoken.cxx          |   13 +
+ xmloff/source/token/tokens.txt           |   10 +
+ xmlsecurity/source/helper/xsecparser.cxx | 1634 ++++++++++++++++++++++++------
+ xmlsecurity/source/helper/xsecparser.hxx |   99 +-
+ 8 files changed, 1427 insertions(+), 381 deletions(-)
+
+diff --git a/include/xmloff/xmlimp.hxx b/include/xmloff/xmlimp.hxx
+index 7f08609189ab..86871b7df445 100644
+--- a/include/xmloff/xmlimp.hxx
++++ b/include/xmloff/xmlimp.hxx
+@@ -240,8 +240,12 @@ class XMLOFF_DLLPUBLIC SvXMLImport : public cppu::WeakImplHelper<
+ 
+     static void initializeNamespaceMaps();
+     void registerNamespaces();
+-    std::unique_ptr<SvXMLNamespaceMap> processNSAttributes(
++public:
++    static std::unique_ptr<SvXMLNamespaceMap> processNSAttributes(
++        std::unique_ptr<SvXMLNamespaceMap> & rpNamespaceMap,
++        SvXMLImport *const pImport,
+         const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList);
++private:
+     void Characters(const OUString& aChars);
+ 
+     css::uno::Reference< css::task::XStatusIndicator > mxStatusIndicator;
+diff --git a/include/xmloff/xmlnmspe.hxx b/include/xmloff/xmlnmspe.hxx
+index d45832f02d81..cabdcc7578e2 100644
+--- a/include/xmloff/xmlnmspe.hxx
++++ b/include/xmloff/xmlnmspe.hxx
+@@ -69,6 +69,13 @@ constexpr sal_uInt16 XML_NAMESPACE_TCD =             34;   // text conversion di
+ constexpr sal_uInt16 XML_NAMESPACE_DLG =             35;
+ constexpr sal_uInt16 XML_NAMESPACE_REPORT =          36;
+ constexpr sal_uInt16 XML_NAMESPACE_VERSIONS_LIST =   37;
++// OOo extension digital signatures, used in ODF 1.1
++constexpr sal_uInt16 XML_NAMESPACE_DSIG_OOO =        38;
++// ODF 1.2 digital signature namespaces
++constexpr sal_uInt16 XML_NAMESPACE_DSIG =            39;
++constexpr sal_uInt16 XML_NAMESPACE_DS =              40;
++constexpr sal_uInt16 XML_NAMESPACE_XADES132 =        41;
++constexpr sal_uInt16 XML_NAMESPACE_XADES141 =        42;
+ 
+ // namespaces for ODF extended formats
+ constexpr sal_uInt16 XML_NAMESPACE_EXT_BASE   = 50;
+diff --git a/include/xmloff/xmltoken.hxx b/include/xmloff/xmltoken.hxx
+index 49178ebdc996..b6956245ed17 100644
+--- a/include/xmloff/xmltoken.hxx
++++ b/include/xmloff/xmltoken.hxx
+@@ -135,6 +135,19 @@ namespace xmloff::token {
+         XML_NP_GRDDL,
+         XML_N_GRDDL,
+ 
++        // OOo extension digital signatures, used in ODF 1.1
++        XML_NP_DSIG_OOO,
++        XML_N_DSIG_OOO,
++        // ODF 1.2 digital signatures
++        XML_NP_DSIG,
++        XML_N_DSIG,
++        XML_NP_DS,
++        XML_N_DS,
++        XML_NP_XADES132,
++        XML_N_XADES132,
++        XML_NP_XADES141,
++        XML_N_XADES141,
++
+         // ODF Enhanced namespaces
+         XML_NP_OFFICE_EXT,
+         XML_N_OFFICE_EXT,
+diff --git a/xmloff/source/core/xmlimp.cxx b/xmloff/source/core/xmlimp.cxx
+index 0c9e9d06cfd4..18429cc4860f 100644
+--- a/xmloff/source/core/xmlimp.cxx
++++ b/xmloff/source/core/xmlimp.cxx
+@@ -665,6 +665,8 @@ void SAL_CALL SvXMLImport::endDocument()
+ }
+ 
+ std::unique_ptr<SvXMLNamespaceMap> SvXMLImport::processNSAttributes(
++        std::unique_ptr<SvXMLNamespaceMap> & rpNamespaceMap,
++        SvXMLImport *const pImport, // TODO???
+         const uno::Reference< xml::sax::XAttributeList >& xAttrList)
+ {
+     std::unique_ptr<SvXMLNamespaceMap> pRewindMap;
+@@ -672,12 +674,13 @@ std::unique_ptr<SvXMLNamespaceMap> SvXMLImport::processNSAttributes(
+     for( sal_Int16 i=0; i < nAttrCount; i++ )
+     {
+         const OUString& rAttrName = xAttrList->getNameByIndex( i );
+-        if ( rAttrName == "office:version" )
++        if (pImport && rAttrName == "office:version")
+         {
+-            mpImpl->aODFVersion = xAttrList->getValueByIndex( i );
++            pImport->mpImpl->aODFVersion = xAttrList->getValueByIndex( i );
+ 
+             // the ODF version in content.xml and manifest.xml must be the same starting from ODF1.2
+-            if ( mpImpl->mStreamName == "content.xml" && !IsODFVersionConsistent( mpImpl->aODFVersion ) )
++            if (pImport->mpImpl->mStreamName == "content.xml"
++                && !pImport->IsODFVersionConsistent(pImport->mpImpl->aODFVersion))
+             {
+                 throw xml::sax::SAXException("Inconsistent ODF versions in content.xml and manifest.xml!",
+                         uno::Reference< uno::XInterface >(),
+@@ -691,8 +694,8 @@ std::unique_ptr<SvXMLNamespaceMap> SvXMLImport::processNSAttributes(
+         {
+             if( !pRewindMap )
+             {
+-                pRewindMap = std::move(mpNamespaceMap);
+-                mpNamespaceMap.reset(new SvXMLNamespaceMap(*pRewindMap));
++                pRewindMap = std::move(rpNamespaceMap);
++                rpNamespaceMap.reset(new SvXMLNamespaceMap(*pRewindMap));
+             }
+             const OUString& rAttrValue = xAttrList->getValueByIndex( i );
+ 
+@@ -700,18 +703,18 @@ std::unique_ptr<SvXMLNamespaceMap> SvXMLImport::processNSAttributes(
+                                  ? OUString()
+                                  : rAttrName.copy( 6 ) );
+             // Add namespace, but only if it is known.
+-            sal_uInt16 nKey = mpNamespaceMap->AddIfKnown( aPrefix, rAttrValue );
++            sal_uInt16 nKey = rpNamespaceMap->AddIfKnown( aPrefix, rAttrValue );
+             // If namespace is unknown, try to match a name with similar
+             // TC Id and version
+             if( XML_NAMESPACE_UNKNOWN == nKey  )
+             {
+                 OUString aTestName( rAttrValue );
+                 if( SvXMLNamespaceMap::NormalizeURI( aTestName ) )
+-                    nKey = mpNamespaceMap->AddIfKnown( aPrefix, aTestName );
++                    nKey = rpNamespaceMap->AddIfKnown( aPrefix, aTestName );
+             }
+             // If that namespace is not known, too, add it as unknown
+             if( XML_NAMESPACE_UNKNOWN == nKey  )
+-                mpNamespaceMap->Add( aPrefix, rAttrValue );
++                rpNamespaceMap->Add( aPrefix, rAttrValue );
+ 
+         }
+     }
+@@ -724,7 +727,8 @@ void SAL_CALL SvXMLImport::startElement( const OUString& rName,
+     //    SAL_INFO("svg", "startElement " << rName);
+     // Process namespace attributes. This must happen before creating the
+     // context, because namespace declaration apply to the element name itself.
+-    std::unique_ptr<SvXMLNamespaceMap> pRewindMap(processNSAttributes(xAttrList));
++    std::unique_ptr<SvXMLNamespaceMap> pRewindMap(
++        processNSAttributes(mpNamespaceMap, this, xAttrList));
+ 
+     // Get element's namespace and local name.
+     OUString aLocalName;
+@@ -898,7 +902,7 @@ void SAL_CALL SvXMLImport::startFastElement (sal_Int32 Element,
+ 
+         maNamespaceHandler->addNSDeclAttributes( maNamespaceAttrList );
+         std::unique_ptr<SvXMLNamespaceMap> pRewindMap(
+-                processNSAttributes( maNamespaceAttrList.get() ));
++            processNSAttributes(mpNamespaceMap, this, maNamespaceAttrList.get()));
+         assert( dynamic_cast<SvXMLImportContext*>( xContext.get() ) != nullptr );
+         SvXMLImportContext *pContext = static_cast<SvXMLImportContext*>( xContext.get() );
+         if (pRewindMap)
+@@ -2251,7 +2255,7 @@ void SAL_CALL SvXMLLegacyToFastDocHandler::endDocument()
+ void SAL_CALL SvXMLLegacyToFastDocHandler::startElement( const OUString& rName,
+                         const uno::Reference< xml::sax::XAttributeList >& xAttrList )
+ {
+-    mrImport->processNSAttributes(xAttrList);
++    SvXMLImport::processNSAttributes(mrImport->mpNamespaceMap, mrImport.get(), xAttrList);
+     OUString aLocalName;
+     sal_uInt16 nPrefix = mrImport->mpNamespaceMap->GetKeyByAttrName( rName, &aLocalName );
+     Sequence< sal_Int8 > aLocalNameSeq( reinterpret_cast<sal_Int8 const *>(
+diff --git a/xmloff/source/core/xmltoken.cxx b/xmloff/source/core/xmltoken.cxx
+index 8d9a70f5e082..91c014f5756f 100644
+--- a/xmloff/source/core/xmltoken.cxx
++++ b/xmloff/source/core/xmltoken.cxx
+@@ -144,6 +144,19 @@ namespace xmloff::token {
+         TOKEN( "grddl",                                 XML_NP_GRDDL ),
+         TOKEN( "http://www.w3.org/2003/g/data-view#",   XML_N_GRDDL ),
+ 
++        // OOo extension digital signatures, used in ODF 1.1
++        TOKEN( "dsigooo", XML_NP_DSIG_OOO ),
++        TOKEN( "http://openoffice.org/2004/documentsignatures", XML_N_DSIG_OOO ),
++        // ODF 1.2 digital signature namespaces
++        TOKEN( "dsig", XML_NP_DSIG ),
++        TOKEN( "urn:oasis:names:tc:opendocument:xmlns:digitalsignature:1.0", XML_N_DSIG ),
++        TOKEN( "ds", XML_NP_DS ),
++        TOKEN( "http://www.w3.org/2000/09/xmldsig#", XML_N_DS ),
++        TOKEN( "xades132", XML_NP_XADES132 ),
++        TOKEN( "http://uri.etsi.org/01903/v1.3.2#", XML_N_XADES132 ),
++        TOKEN( "xades141", XML_NP_XADES141 ),
++        TOKEN( "http://uri.etsi.org/01903/v1.4.1#", XML_N_XADES141 ),
++
+         // ODF Enhanced namespaces
+         TOKEN( "officeooo", XML_NP_OFFICE_EXT ),
+         TOKEN( "http://openoffice.org/2009/office", XML_N_OFFICE_EXT ),
+diff --git a/xmloff/source/token/tokens.txt b/xmloff/source/token/tokens.txt
+index 34b9af91e03c..495e519ffb2d 100644
+--- a/xmloff/source/token/tokens.txt
++++ b/xmloff/source/token/tokens.txt
+@@ -72,6 +72,16 @@ xhtml
+ N_XHTML_DUMMY
+ grddl
+ N_GRDDL_DUMMY
++dsigooo
++N_DSIG_OOO_DUMMY
++dsig
++N_DSIG_DUMMY
++ds
++N_DS_DUMMY
++xades132
++N_XADES132_DUMMY
++xades141
++N_XADES141_DUMMY
+ officeooo
+ N_OFFICE_EXT_DUMMY
+ formx
+diff --git a/xmlsecurity/source/helper/xsecparser.cxx b/xmlsecurity/source/helper/xsecparser.cxx
+index 9f2bbe074a1b..0aecb1854f8c 100644
+--- a/xmlsecurity/source/helper/xsecparser.cxx
++++ b/xmlsecurity/source/helper/xsecparser.cxx
+@@ -21,476 +21,1468 @@
+ #include "xsecparser.hxx"
+ #include <xsecctl.hxx>
+ #include <xmlsignaturehelper.hxx>
++
++#include <xmloff/xmlnmspe.hxx>
++#include <xmloff/xmlimp.hxx>
++
+ #include <com/sun/star/xml/sax/SAXException.hpp>
+ #include <cppuhelper/exc_hlp.hxx>
+ #include <sal/log.hxx>
+ 
++class XSecParser::Context
++{
++    protected:
++        friend class XSecParser;
++        XSecParser & m_rParser;
++    private:
++        std::unique_ptr<SvXMLNamespaceMap> m_pOldNamespaceMap;
+ 
+-XSecParser::XSecParser(XMLSignatureHelper& rXMLSignatureHelper,
+-    XSecController* pXSecController)
+-    : m_bInX509IssuerName(false)
+-    , m_bInX509SerialNumber(false)
+-    , m_bInX509Certificate(false)
+-    , m_bInGpgCertificate(false)
+-    , m_bInGpgKeyID(false)
+-    , m_bInGpgOwner(false)
+-    , m_bInCertDigest(false)
+-    , m_bInEncapsulatedX509Certificate(false)
+-    , m_bInSigningTime(false)
+-    , m_bInDigestValue(false)
+-    , m_bInSignatureValue(false)
+-    , m_bInDate(false)
+-    , m_bInDescription(false)
+-    , m_bInSignatureLineId(false)
+-    , m_bInSignatureLineValidImage(false)
+-    , m_bInSignatureLineInvalidImage(false)
+-    , m_pXSecController(pXSecController)
+-    , m_bReferenceUnresolved(false)
+-    , m_nReferenceDigestID(css::xml::crypto::DigestID::SHA1)
+-    , m_rXMLSignatureHelper(rXMLSignatureHelper)
++    public:
++        Context(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : m_rParser(rParser)
++            , m_pOldNamespaceMap(std::move(pOldNamespaceMap))
++        {
++        }
++
++        virtual ~Context() = default;
++
++        virtual void StartElement(
++            css::uno::Reference<css::xml::sax::XAttributeList> const& /*xAttrs*/)
++        {
++        }
++
++        virtual void EndElement()
++        {
++        }
++
++        virtual std::unique_ptr<Context> CreateChildContext(
++            std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++            sal_uInt16 const /*nNamespace*/, OUString const& /*rName*/);
++
++        virtual void Characters(OUString const& /*rChars*/)
++        {
++        }
++};
++
++// it's possible that an unsupported element has an Id attribute and a
++// ds:Reference digesting it - probably this means XSecController needs to know
++// about it. (For known elements, the Id attribute is only processed according
++// to the schema.)
++class XSecParser::UnknownContext
++    : public XSecParser::Context
+ {
++    public:
++        UnknownContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++        {
++        }
++
++        virtual void StartElement(
++            css::uno::Reference<css::xml::sax::XAttributeList> const& xAttrs) override
++        {
++            m_rParser.HandleIdAttr(xAttrs);
++        }
++};
++
++auto XSecParser::Context::CreateChildContext(
++    std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++    sal_uInt16 const /*nNamespace*/, OUString const& /*rName*/)
++-> std::unique_ptr<Context>
++{
++    // default: create new base context
++    return std::make_unique<UnknownContext>(m_rParser, std::move(pOldNamespaceMap));
+ }
+ 
+-OUString XSecParser::getIdAttr(const css::uno::Reference< css::xml::sax::XAttributeList >& xAttribs )
++class XSecParser::LoPGPOwnerContext
++    : public XSecParser::Context
+ {
+-    OUString ouIdAttr = xAttribs->getValueByName("id");
++    private:
++        OUString m_Value;
+ 
+-    if (ouIdAttr.isEmpty())
+-    {
+-        ouIdAttr = xAttribs->getValueByName("Id");
+-    }
++    public:
++        LoPGPOwnerContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++        {
++        }
+ 
+-    return ouIdAttr;
+-}
++        virtual void EndElement() override
++        {
++            m_rParser.m_pXSecController->setGpgOwner(m_Value);
++        }
+ 
+-/*
+- * XDocumentHandler
+- */
+-void SAL_CALL XSecParser::startDocument(  )
++        virtual void Characters(OUString const& rChars) override
++        {
++            m_Value += rChars;
++        }
++};
++
++class XSecParser::DsPGPKeyPacketContext
++    : public XSecParser::Context
+ {
+-    m_bInX509IssuerName = false;
+-    m_bInX509SerialNumber = false;
+-    m_bInX509Certificate = false;
+-    m_bInGpgCertificate = false;
+-    m_bInGpgKeyID = false;
+-    m_bInGpgOwner = false;
+-    m_bInSignatureValue = false;
+-    m_bInDigestValue = false;
+-    m_bInDate = false;
+-    m_bInDescription = false;
++    private:
++        OUString m_Value;
+ 
+-    if (m_xNextHandler.is())
+-    {
+-        m_xNextHandler->startDocument();
+-    }
+-}
++    public:
++        DsPGPKeyPacketContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++        {
++        }
+ 
+-void SAL_CALL XSecParser::endDocument(  )
++        virtual void EndElement() override
++        {
++            m_rParser.m_pXSecController->setGpgCertificate(m_Value);
++        }
++
++        virtual void Characters(OUString const& rChars) override
++        {
++            m_Value += rChars;
++        }
++};
++
++class XSecParser::DsPGPKeyIDContext
++    : public XSecParser::Context
+ {
+-    if (m_xNextHandler.is())
+-    {
+-        m_xNextHandler->endDocument();
+-    }
+-}
++    private:
++        OUString m_Value;
+ 
+-void SAL_CALL XSecParser::startElement(
+-    const OUString& aName,
+-    const css::uno::Reference< css::xml::sax::XAttributeList >& xAttribs )
++    public:
++        DsPGPKeyIDContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++        {
++        }
++
++        virtual void EndElement() override
++        {
++            m_rParser.m_pXSecController->setGpgKeyID(m_Value);
++        }
++
++        virtual void Characters(OUString const& rChars) override
++        {
++            m_Value += rChars;
++        }
++};
++
++class XSecParser::DsPGPDataContext
++    : public XSecParser::Context
+ {
+-    try
+-    {
+-        OUString ouIdAttr = getIdAttr(xAttribs);
+-        if (!ouIdAttr.isEmpty())
++    public:
++        DsPGPDataContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++        {
++        }
++
++        virtual void StartElement(
++            css::uno::Reference<css::xml::sax::XAttributeList> const& /*xAttrs*/) override
++        {
++            m_rParser.m_pXSecController->switchGpgSignature();
++        }
++
++        virtual std::unique_ptr<Context> CreateChildContext(
++            std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++            sal_uInt16 const nNamespace, OUString const& rName) override
++        {
++            if (nNamespace == XML_NAMESPACE_DS && rName == "PGPKeyID")
++            {
++                return std::make_unique<DsPGPKeyIDContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            if (nNamespace == XML_NAMESPACE_DS && rName == "PGPKeyPacket")
++            {
++                return std::make_unique<DsPGPKeyPacketContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            if (nNamespace == XML_NAMESPACE_LO_EXT && rName == "PGPOwner")
++            {
++                return std::make_unique<LoPGPOwnerContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            return XSecParser::Context::CreateChildContext(std::move(pOldNamespaceMap), nNamespace, rName);
++        }
++};
++
++class XSecParser::DsX509CertificateContext
++    : public XSecParser::Context
++{
++    private:
++        OUString m_Value;
++
++    public:
++        DsX509CertificateContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++        {
++        }
++
++        virtual void EndElement() override
++        {
++            m_rParser.m_pXSecController->setX509Certificate(m_Value);
++        }
++
++        virtual void Characters(OUString const& rChars) override
++        {
++            m_Value += rChars;
++        }
++};
++
++class XSecParser::DsX509SerialNumberContext
++    : public XSecParser::Context
++{
++    private:
++        OUString m_Value;
++
++    public:
++        DsX509SerialNumberContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++        {
++        }
++
++        virtual void EndElement() override
++        {
++            m_rParser.m_pXSecController->setX509SerialNumber(m_Value);
++        }
++
++        virtual void Characters(OUString const& rChars) override
++        {
++            m_Value += rChars;
++        }
++};
++
++class XSecParser::DsX509IssuerNameContext
++    : public XSecParser::Context
++{
++    private:
++        OUString m_Value;
++
++    public:
++        DsX509IssuerNameContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++        {
++        }
++
++        virtual void EndElement() override
++        {
++            m_rParser.m_pXSecController->setX509IssuerName(m_Value);
++        }
++
++        virtual void Characters(OUString const& rChars) override
++        {
++            m_Value += rChars;
++        }
++};
++
++class XSecParser::DsX509IssuerSerialContext
++    : public XSecParser::Context
++{
++    public:
++        DsX509IssuerSerialContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++        {
++        }
++
++        virtual std::unique_ptr<Context> CreateChildContext(
++            std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++            sal_uInt16 const nNamespace, OUString const& rName) override
++        {
++            if (nNamespace == XML_NAMESPACE_DS && rName == "X509IssuerName")
++            {
++                return std::make_unique<DsX509IssuerNameContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            if (nNamespace == XML_NAMESPACE_DS && rName == "X509SerialNumber")
++            {
++                return std::make_unique<DsX509SerialNumberContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            // missing: ds:X509SKI, ds:X509SubjectName, ds:X509CRL
++            return XSecParser::Context::CreateChildContext(std::move(pOldNamespaceMap), nNamespace, rName);
++        }
++};
++
++class XSecParser::DsX509DataContext
++    : public XSecParser::Context
++{
++    public:
++        DsX509DataContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++        {
++        }
++
++        virtual std::unique_ptr<Context> CreateChildContext(
++            std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++            sal_uInt16 const nNamespace, OUString const& rName) override
++        {
++            if (nNamespace == XML_NAMESPACE_DS && rName == "X509IssuerSerial")
++            {
++                return std::make_unique<DsX509IssuerSerialContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            if (nNamespace == XML_NAMESPACE_DS && rName == "X509Certificate")
++            {
++                return std::make_unique<DsX509CertificateContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            // missing: ds:X509SKI, ds:X509SubjectName, ds:X509CRL
++            return XSecParser::Context::CreateChildContext(std::move(pOldNamespaceMap), nNamespace, rName);
++        }
++};
++
++class XSecParser::DsKeyInfoContext
++    : public XSecParser::Context
++{
++    public:
++        DsKeyInfoContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++        {
++        }
++
++        virtual void StartElement(
++            css::uno::Reference<css::xml::sax::XAttributeList> const& xAttrs) override
++        {
++            m_rParser.HandleIdAttr(xAttrs);
++        }
++
++        virtual std::unique_ptr<Context> CreateChildContext(
++            std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++            sal_uInt16 const nNamespace, OUString const& rName) override
++        {
++            if (nNamespace == XML_NAMESPACE_DS && rName == "X509Data")
++            {
++                return std::make_unique<DsX509DataContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            if (nNamespace == XML_NAMESPACE_DS && rName == "PGPData")
++            {
++                return std::make_unique<DsPGPDataContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            // missing: ds:KeyName, ds:KeyValue, ds:RetrievalMethod, ds:SPKIData, ds:MgmtData
++            // (old code would read ds:Transform inside ds:RetrievalMethod but
++            // presumably that was a bug)
++            return XSecParser::Context::CreateChildContext(std::move(pOldNamespaceMap), nNamespace, rName);
++        }
++
++};
++
++class XSecParser::DsSignatureValueContext
++    : public XSecParser::Context
++{
++    private:
++        OUString m_Value;
++
++    public:
++        DsSignatureValueContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++        {
++        }
++
++        virtual void StartElement(
++            css::uno::Reference<css::xml::sax::XAttributeList> const& xAttrs) override
++        {
++            m_rParser.HandleIdAttr(xAttrs);
++        }
++
++        virtual void EndElement() override
++        {
++            m_rParser.m_pXSecController->setSignatureValue(m_Value);
++        }
++
++        virtual void Characters(OUString const& rChars) override
++        {
++            m_Value += rChars;
++        }
++};
++
++class XSecParser::DsDigestValueContext
++    : public XSecParser::Context
++{
++    private:
++        OUString & m_rValue;
++
++    public:
++        DsDigestValueContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++                OUString & rValue)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++            , m_rValue(rValue)
++        {
++        }
++
++        virtual void StartElement(
++            css::uno::Reference<css::xml::sax::XAttributeList> const& /*xAttrs*/) override
++        {
++            m_rValue.clear();
++        }
++
++        virtual void Characters(OUString const& rChars) override
++        {
++            m_rValue += rChars;
++        }
++};
++
++class XSecParser::DsDigestMethodContext
++    : public XSecParser::Context
++{
++    private:
++        sal_Int32 & m_rReferenceDigestID;
++
++    public:
++        DsDigestMethodContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++                sal_Int32 & rReferenceDigestID)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++            , m_rReferenceDigestID(rReferenceDigestID)
++        {
++        }
++
++        virtual void StartElement(
++            css::uno::Reference<css::xml::sax::XAttributeList> const& xAttrs) override
++        {
++            OUString ouAlgorithm = xAttrs->getValueByName("Algorithm");
++
++            SAL_WARN_IF( ouAlgorithm.isEmpty(), "xmlsecurity.helper", "no Algorithm in Reference" );
++            if (!ouAlgorithm.isEmpty())
++            {
++                SAL_WARN_IF( ouAlgorithm != ALGO_XMLDSIGSHA1
++                             && ouAlgorithm != ALGO_XMLDSIGSHA256
++                             && ouAlgorithm != ALGO_XMLDSIGSHA512,
++                             "xmlsecurity.helper", "Algorithm neither SHA1, SHA256 nor SHA512");
++                if (ouAlgorithm == ALGO_XMLDSIGSHA1)
++                    m_rReferenceDigestID = css::xml::crypto::DigestID::SHA1;
++                else if (ouAlgorithm == ALGO_XMLDSIGSHA256)
++                    m_rReferenceDigestID = css::xml::crypto::DigestID::SHA256;
++                else if (ouAlgorithm == ALGO_XMLDSIGSHA512)
++                    m_rReferenceDigestID = css::xml::crypto::DigestID::SHA512;
++                else
++                    m_rReferenceDigestID = 0;
++            }
++        }
++};
++
++class XSecParser::DsTransformContext
++    : public XSecParser::Context
++{
++    private:
++        bool & m_rIsC14N;
++
++    public:
++        DsTransformContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++                bool & rIsC14N)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++            , m_rIsC14N(rIsC14N)
++        {
++        }
++
++        virtual void StartElement(
++            css::uno::Reference<css::xml::sax::XAttributeList> const& xAttrs) override
++        {
++            OUString ouAlgorithm = xAttrs->getValueByName("Algorithm");
++
++            if (ouAlgorithm == ALGO_C14N)
++                /*
++                 * a xml stream
++                 */
++            {
++                m_rIsC14N = true;
++            }
++        }
++};
++
++class XSecParser::DsTransformsContext
++    : public XSecParser::Context
++{
++    private:
++        bool & m_rIsC14N;
++
++    public:
++        DsTransformsContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++                bool & rIsC14N)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++            , m_rIsC14N(rIsC14N)
++        {
++        }
++
++        virtual std::unique_ptr<Context> CreateChildContext(
++            std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++            sal_uInt16 const nNamespace, OUString const& rName) override
++        {
++            if (nNamespace == XML_NAMESPACE_DS && rName == "Transform")
++            {
++                return std::make_unique<DsTransformContext>(m_rParser, std::move(pOldNamespaceMap), m_rIsC14N);
++            }
++            return XSecParser::Context::CreateChildContext(std::move(pOldNamespaceMap), nNamespace, rName);
++        }
++};
++
++class XSecParser::DsReferenceContext
++    : public XSecParser::Context
++{
++    private:
++        OUString m_URI;
++        OUString m_Type;
++        OUString m_DigestValue;
++        bool m_IsC14N = false;
++        // Relevant for ODF. The digest algorithm selected by the DigestMethod
++        // element's Algorithm attribute. @see css::xml::crypto::DigestID.
++        sal_Int32 m_nReferenceDigestID = css::xml::crypto::DigestID::SHA1;
++
++    public:
++        DsReferenceContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++        {
++        }
++
++        virtual void StartElement(
++            css::uno::Reference<css::xml::sax::XAttributeList> const& xAttrs) override
++        {
++            m_rParser.HandleIdAttr(xAttrs);
++
++            m_URI = xAttrs->getValueByName("URI");
++            SAL_WARN_IF(m_URI.isEmpty(), "xmlsecurity.helper", "URI is empty");
++            // Remember the type of this reference.
++            m_Type = xAttrs->getValueByName("Type");
++        }
++
++        virtual void EndElement() override
++        {
++            if (m_URI.startsWith("#"))
++            {
++                /*
++                * remove the first character '#' from the attribute value
++                */
++                m_rParser.m_pXSecController->addReference(m_URI.copy(1), m_nReferenceDigestID, m_Type);
++            }
++            else
++            {
++                if (m_IsC14N) // this is determined by nested ds:Transform
++                {
++                    m_rParser.m_pXSecController->addStreamReference(m_URI, false, m_nReferenceDigestID);
++                }
++                else
++            /*
++            * it must be an octet stream
++            */
++                {
++                    m_rParser.m_pXSecController->addStreamReference(m_URI, true, m_nReferenceDigestID);
++                }
++            }
++
++            m_rParser.m_pXSecController->setDigestValue(m_nReferenceDigestID, m_DigestValue);
++        }
++
++        virtual std::unique_ptr<Context> CreateChildContext(
++            std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++            sal_uInt16 const nNamespace, OUString const& rName) override
++        {
++            if (nNamespace == XML_NAMESPACE_DS && rName == "Transforms")
++            {
++                return std::make_unique<DsTransformsContext>(m_rParser, std::move(pOldNamespaceMap), m_IsC14N);
++            }
++            if (nNamespace == XML_NAMESPACE_DS && rName == "DigestMethod")
++            {
++                return std::make_unique<DsDigestMethodContext>(m_rParser, std::move(pOldNamespaceMap), m_nReferenceDigestID);
++            }
++            if (nNamespace == XML_NAMESPACE_DS && rName == "DigestValue")
++            {
++                return std::make_unique<DsDigestValueContext>(m_rParser, std::move(pOldNamespaceMap), m_DigestValue);
++            }
++            return XSecParser::Context::CreateChildContext(std::move(pOldNamespaceMap), nNamespace, rName);
++        }
++};
++
++class XSecParser::DsSignatureMethodContext
++    : public XSecParser::Context
++{
++    public:
++        DsSignatureMethodContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++        {
++        }
++
++        virtual void StartElement(
++            css::uno::Reference<css::xml::sax::XAttributeList> const& xAttrs) override
++        {
++            OUString ouAlgorithm = xAttrs->getValueByName("Algorithm");
++            if (ouAlgorithm == ALGO_ECDSASHA1 || ouAlgorithm == ALGO_ECDSASHA256
++                || ouAlgorithm == ALGO_ECDSASHA512)
++            {
++                m_rParser.m_pXSecController->setSignatureMethod(svl::crypto::SignatureMethodAlgorithm::ECDSA);
++            }
++        }
++};
++
++class XSecParser::DsSignedInfoContext
++    : public XSecParser::Context
++{
++    public:
++        DsSignedInfoContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++        {
++        }
++
++        virtual void StartElement(
++            css::uno::Reference<css::xml::sax::XAttributeList> const& xAttrs) override
++        {
++            m_rParser.HandleIdAttr(xAttrs);
++        }
++
++        virtual void EndElement() override
++        {
++            m_rParser.m_pXSecController->setReferenceCount();
++        }
++
++        virtual std::unique_ptr<Context> CreateChildContext(
++            std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++            sal_uInt16 const nNamespace, OUString const& rName) override
++        {
++            if (nNamespace == XML_NAMESPACE_DS && rName == "SignatureMethod")
++            {
++                return std::make_unique<DsSignatureMethodContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            if (nNamespace == XML_NAMESPACE_DS && rName == "Reference")
++            {
++                return std::make_unique<DsReferenceContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            // missing: ds:CanonicalizationMethod
++            return XSecParser::Context::CreateChildContext(std::move(pOldNamespaceMap), nNamespace, rName);
++        }
++};
++
++class XSecParser::XadesEncapsulatedX509CertificateContext
++    : public XSecParser::Context
++{
++    private:
++        OUString m_Value;
++
++    public:
++        XadesEncapsulatedX509CertificateContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++        {
++        }
++
++        virtual void StartElement(
++            css::uno::Reference<css::xml::sax::XAttributeList> const& xAttrs) override
++        {
++            m_rParser.HandleIdAttr(xAttrs);
++        }
++
++        virtual void EndElement() override
++        {
++            m_rParser.m_pXSecController->addEncapsulatedX509Certificate(m_Value);
++        }
++
++        virtual void Characters(OUString const& rChars) override
++        {
++            m_Value += rChars;
++        }
++};
++
++class XSecParser::XadesCertificateValuesContext
++    : public XSecParser::Context
++{
++    public:
++        XadesCertificateValuesContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++        {
++        }
++
++        virtual void StartElement(
++            css::uno::Reference<css::xml::sax::XAttributeList> const& xAttrs) override
++        {
++            m_rParser.HandleIdAttr(xAttrs);
++        }
++
++        virtual std::unique_ptr<Context> CreateChildContext(
++            std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++            sal_uInt16 const nNamespace, OUString const& rName) override
++        {
++            if (nNamespace == XML_NAMESPACE_XADES132 && rName == "EncapsulatedX509Certificate")
++            {
++                return std::make_unique<XadesEncapsulatedX509CertificateContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            // missing: xades:OtherCertificate
++            return XSecParser::Context::CreateChildContext(std::move(pOldNamespaceMap), nNamespace, rName);
++        }
++};
++
++class XSecParser::XadesUnsignedSignaturePropertiesContext
++    : public XSecParser::Context
++{
++    public:
++        XadesUnsignedSignaturePropertiesContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++        {
++        }
++
++        virtual void StartElement(
++            css::uno::Reference<css::xml::sax::XAttributeList> const& xAttrs) override
++        {
++            m_rParser.HandleIdAttr(xAttrs);
++        }
++
++        virtual std::unique_ptr<Context> CreateChildContext(
++            std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++            sal_uInt16 const nNamespace, OUString const& rName) override
++        {
++            if (nNamespace == XML_NAMESPACE_XADES132 && rName == "CertificateValues")
++            {
++                return std::make_unique<XadesCertificateValuesContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            // missing:
++            // xades:CounterSignature
++            //  ^ old code would read a ds:Signature inside it?
++            // xades:SignatureTimeStamp
++            // xades:CompleteCertificateRefs
++            // xades:CompleteRevocationRefs
++            // xades:AttributeCertificateRefs
++            // xades:AttributeRevocationRefs
++            // xades:SigAndRefsTimeStamp
++            // xades:RefsOnlyTimeStamp
++            // xades:RevocationValues
++            // xades:AttrAuthoritiesCertValues
++            //  ^ old code: was equivalent to CertificateValues ???
++            // xades:AttributeRevocationValues
++            // xades:ArchiveTimeStamp
++            return XSecParser::Context::CreateChildContext(std::move(pOldNamespaceMap), nNamespace, rName);
++        }
++};
++
++class XSecParser::XadesUnsignedPropertiesContext
++    : public XSecParser::Context
++{
++    public:
++        XadesUnsignedPropertiesContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++        {
++        }
++
++        virtual void StartElement(
++            css::uno::Reference<css::xml::sax::XAttributeList> const& xAttrs) override
++        {
++            m_rParser.HandleIdAttr(xAttrs);
++        }
++
++        virtual std::unique_ptr<Context> CreateChildContext(
++            std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++            sal_uInt16 const nNamespace, OUString const& rName) override
++        {
++            if (nNamespace == XML_NAMESPACE_XADES132 && rName == "UnsignedSignatureProperties")
++            {
++                return std::make_unique<XadesUnsignedSignaturePropertiesContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            // missing: xades:UnsignedDataObjectProperties
++            return XSecParser::Context::CreateChildContext(std::move(pOldNamespaceMap), nNamespace, rName);
++        }
++};
++
++class XSecParser::LoSignatureLineIdContext
++    : public XSecParser::Context
++{
++    private:
++        OUString m_Value;
++
++    public:
++        LoSignatureLineIdContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++        {
++        }
++
++        virtual void EndElement() override
++        {
++            m_rParser.m_pXSecController->setSignatureLineId(m_Value);
++        }
++
++        virtual void Characters(OUString const& rChars) override
++        {
++            m_Value += rChars;
++        }
++};
++
++class XSecParser::LoSignatureLineValidImageContext
++    : public XSecParser::Context
++{
++    private:
++        OUString m_Value;
++
++    public:
++        LoSignatureLineValidImageContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++        {
++        }
++
++        virtual void EndElement() override
++        {
++            m_rParser.m_pXSecController->setValidSignatureImage(m_Value);
++        }
++
++        virtual void Characters(OUString const& rChars) override
+         {
+-            m_pXSecController->collectToVerify( ouIdAttr );
++            m_Value += rChars;
++        }
++};
++
++class XSecParser::LoSignatureLineInvalidImageContext
++    : public XSecParser::Context
++{
++    private:
++        OUString m_Value;
++
++    public:
++        LoSignatureLineInvalidImageContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++        {
++        }
++
++        virtual void EndElement() override
++        {
++            m_rParser.m_pXSecController->setInvalidSignatureImage(m_Value);
++        }
++
++        virtual void Characters(OUString const& rChars) override
++        {
++            m_Value += rChars;
++        }
++};
++
++class XSecParser::LoSignatureLineContext
++    : public XSecParser::Context
++{
++    public:
++        LoSignatureLineContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++        {
++        }
++
++        virtual std::unique_ptr<Context> CreateChildContext(
++            std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++            sal_uInt16 const nNamespace, OUString const& rName) override
++        {
++            if (nNamespace == XML_NAMESPACE_LO_EXT && rName == "SignatureLineId")
++            {
++                return std::make_unique<LoSignatureLineIdContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            if (nNamespace == XML_NAMESPACE_LO_EXT && rName == "SignatureLineValidImage")
++            {
++                return std::make_unique<LoSignatureLineValidImageContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            if (nNamespace == XML_NAMESPACE_LO_EXT && rName == "SignatureLineInvalidImage")
++            {
++                return std::make_unique<LoSignatureLineInvalidImageContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            return XSecParser::Context::CreateChildContext(std::move(pOldNamespaceMap), nNamespace, rName);
+         }
++};
+ 
+-        if ( aName == "Signature" )
++class XSecParser::XadesCertDigestContext
++    : public XSecParser::Context
++{
++    private:
++        OUString m_Value;
++        sal_Int32 m_nReferenceDigestID = css::xml::crypto::DigestID::SHA1;
++
++    public:
++        XadesCertDigestContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
+         {
+-            m_rXMLSignatureHelper.StartVerifySignatureElement();
+-            m_pXSecController->addSignature();
+-            if (!ouIdAttr.isEmpty())
+-            {
+-                m_pXSecController->setId( ouIdAttr );
+-            }
+         }
+-        else if (aName == "SignatureMethod")
++
++        virtual void EndElement() override
+         {
+-            OUString ouAlgorithm = xAttribs->getValueByName("Algorithm");
+-            if (ouAlgorithm == ALGO_ECDSASHA1 || ouAlgorithm == ALGO_ECDSASHA256
+-                || ouAlgorithm == ALGO_ECDSASHA512)
+-                m_pXSecController->setSignatureMethod(svl::crypto::SignatureMethodAlgorithm::ECDSA);
++            m_rParser.m_pXSecController->setCertDigest(m_Value/* FIXME , m_nReferenceDigestID*/);
+         }
+-        else if ( aName == "Reference" )
++
++        virtual std::unique_ptr<Context> CreateChildContext(
++            std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++            sal_uInt16 const nNamespace, OUString const& rName) override
+         {
+-            OUString ouUri = xAttribs->getValueByName("URI");
+-            SAL_WARN_IF( ouUri.isEmpty(), "xmlsecurity.helper", "URI is empty" );
+-            // Remember the type of this reference.
+-            OUString ouType = xAttribs->getValueByName("Type");
+-            if (ouUri.startsWith("#"))
++            if (nNamespace == XML_NAMESPACE_DS && rName == "DigestMethod")
+             {
+-                /*
+-                * remove the first character '#' from the attribute value
+-                */
+-                m_pXSecController->addReference( ouUri.copy(1), m_nReferenceDigestID, ouType );
++                return std::make_unique<DsDigestMethodContext>(m_rParser, std::move(pOldNamespaceMap), m_nReferenceDigestID);
+             }
+-            else
++            if (nNamespace == XML_NAMESPACE_DS && rName == "DigestValue")
+             {
+-                /*
+-                * remember the uri
+-                */
+-                m_currentReferenceURI = ouUri;
+-                m_bReferenceUnresolved = true;
++                return std::make_unique<DsDigestValueContext>(m_rParser, std::move(pOldNamespaceMap), m_Value);
+             }
++            return XSecParser::Context::CreateChildContext(std::move(pOldNamespaceMap), nNamespace, rName);
+         }
+-        else if (aName == "DigestMethod")
++};
++
++class XSecParser::XadesCertContext
++    : public XSecParser::Context
++{
++    public:
++        XadesCertContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
+         {
+-            OUString ouAlgorithm = xAttribs->getValueByName("Algorithm");
++        }
+ 
+-            SAL_WARN_IF( ouAlgorithm.isEmpty(), "xmlsecurity.helper", "no Algorithm in Reference" );
+-            if (!ouAlgorithm.isEmpty())
++        virtual std::unique_ptr<Context> CreateChildContext(
++            std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++            sal_uInt16 const nNamespace, OUString const& rName) override
++        {
++            if (nNamespace == XML_NAMESPACE_XADES132 && rName == "CertDigest")
+             {
+-                SAL_WARN_IF( ouAlgorithm != ALGO_XMLDSIGSHA1
+-                             && ouAlgorithm != ALGO_XMLDSIGSHA256
+-                             && ouAlgorithm != ALGO_XMLDSIGSHA512,
+-                             "xmlsecurity.helper", "Algorithm neither SHA1, SHA256 nor SHA512");
+-                if (ouAlgorithm == ALGO_XMLDSIGSHA1)
+-                    m_nReferenceDigestID = css::xml::crypto::DigestID::SHA1;
+-                else if (ouAlgorithm == ALGO_XMLDSIGSHA256)
+-                    m_nReferenceDigestID = css::xml::crypto::DigestID::SHA256;
+-                else if (ouAlgorithm == ALGO_XMLDSIGSHA512)
+-                    m_nReferenceDigestID = css::xml::crypto::DigestID::SHA512;
+-                else
+-                    m_nReferenceDigestID = 0;
++                return std::make_unique<XadesCertDigestContext>(m_rParser, std::move(pOldNamespaceMap));
+             }
+-        }
+-        else if (aName == "Transform")
+-        {
+-            if ( m_bReferenceUnresolved )
++            if (nNamespace == XML_NAMESPACE_XADES132 && rName == "IssuerSerial")
+             {
+-                OUString ouAlgorithm = xAttribs->getValueByName("Algorithm");
+-
+-                if (ouAlgorithm == ALGO_C14N)
+-                    /*
+-                     * a xml stream
+-                     */
+-                {
+-                    m_pXSecController->addStreamReference( m_currentReferenceURI, false, m_nReferenceDigestID );
+-                    m_bReferenceUnresolved = false;
+-                }
++                return std::make_unique<DsX509IssuerSerialContext>(m_rParser, std::move(pOldNamespaceMap));
+             }
++            return XSecParser::Context::CreateChildContext(std::move(pOldNamespaceMap), nNamespace, rName);
+         }
+-        else if (aName == "X509IssuerName")
+-        {
+-            m_ouX509IssuerName.clear();
+-            m_bInX509IssuerName = true;
+-        }
+-        else if (aName == "X509SerialNumber")
++};
++
++class XSecParser::XadesSigningCertificateContext
++    : public XSecParser::Context
++{
++    public:
++        XadesSigningCertificateContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
+         {
+-            m_ouX509SerialNumber.clear();
+-            m_bInX509SerialNumber = true;
+         }
+-        else if (aName == "X509Certificate")
++
++        virtual std::unique_ptr<Context> CreateChildContext(
++            std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++            sal_uInt16 const nNamespace, OUString const& rName) override
+         {
+-            m_ouX509Certificate.clear();
+-            m_bInX509Certificate = true;
++            if (nNamespace == XML_NAMESPACE_XADES132 && rName == "Cert")
++            {
++                return std::make_unique<XadesCertContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            return XSecParser::Context::CreateChildContext(std::move(pOldNamespaceMap), nNamespace, rName);
+         }
+-        else if (aName == "PGPData")
++};
++
++class XSecParser::XadesSigningTimeContext
++    : public XSecParser::Context
++{
++    public:
++        XadesSigningTimeContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
+         {
+-            m_pXSecController->switchGpgSignature();
+         }
+-        else if (aName == "PGPKeyID")
++
++        virtual void StartElement(
++            css::uno::Reference<css::xml::sax::XAttributeList> const& /*xAttrs*/) override
+         {
+-            m_ouGpgKeyID.clear();
+-            m_bInGpgKeyID = true;
++            m_rParser.m_ouDate.clear();
+         }
+-        else if (aName == "PGPKeyPacket")
++
++        virtual void EndElement() override
+         {
+-            m_ouGpgCertificate.clear();
+-            m_bInGpgCertificate = true;
++            m_rParser.m_pXSecController->setDate( m_rParser.m_ouDate );
+         }
+-        else if (aName == "loext:PGPOwner")
++
++        virtual void Characters(OUString const& rChars) override
+         {
+-            m_ouGpgOwner.clear();
+-            m_bInGpgOwner = true;
++            m_rParser.m_ouDate += rChars;
+         }
+-        else if (aName == "SignatureValue")
++};
++
++class XSecParser::XadesSignedSignaturePropertiesContext
++    : public XSecParser::Context
++{
++    public:
++        XadesSignedSignaturePropertiesContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
+         {
+-            m_ouSignatureValue.clear();
+-            m_bInSignatureValue = true;
+         }
+-        else if (aName == "DigestValue" && !m_bInCertDigest)
++
++        virtual void StartElement(
++            css::uno::Reference<css::xml::sax::XAttributeList> const& xAttrs) override
+         {
+-            m_ouDigestValue.clear();
+-            m_bInDigestValue = true;
++            m_rParser.HandleIdAttr(xAttrs);
+         }
+-        else if (aName == "xd:CertDigest")
++
++        virtual std::unique_ptr<Context> CreateChildContext(
++            std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++            sal_uInt16 const nNamespace, OUString const& rName) override
+         {
+-            m_ouCertDigest.clear();
+-            m_bInCertDigest = true;
++            if (nNamespace == XML_NAMESPACE_XADES132 && rName == "SigningTime")
++            {
++                return std::make_unique<XadesSigningTimeContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            if (nNamespace == XML_NAMESPACE_XADES132 && rName == "SigningCertificate")
++            {
++                return std::make_unique<XadesSigningCertificateContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            if (nNamespace == XML_NAMESPACE_LO_EXT && rName == "SignatureLine")
++            {
++                return std::make_unique<LoSignatureLineContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            // missing: xades:SignaturePolicyIdentifier, xades:SignatureProductionPlace, xades:SignerRole
++            return XSecParser::Context::CreateChildContext(std::move(pOldNamespaceMap), nNamespace, rName);
+         }
+-        // FIXME: Existing code here in xmlsecurity uses "xd" as the namespace prefix for XAdES,
+-        // while the sample document attached to tdf#76142 uses "xades". So accept either here. Of
+-        // course this is idiotic and wrong, the right thing would be to use a proper way to parse
+-        // XML that would handle namespaces correctly. I have no idea how substantial re-plumbing of
+-        // this code that would require.
+-        else if (aName == "xd:EncapsulatedX509Certificate" || aName == "xades:EncapsulatedX509Certificate")
++};
++
++class XSecParser::XadesSignedPropertiesContext
++    : public XSecParser::Context
++{
++    public:
++        XadesSignedPropertiesContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
+         {
+-            m_ouEncapsulatedX509Certificate.clear();
+-            m_bInEncapsulatedX509Certificate = true;
+         }
+-        else if (aName == "xd:SigningTime" || aName == "xades:SigningTime")
++
++        virtual void StartElement(
++            css::uno::Reference<css::xml::sax::XAttributeList> const& xAttrs) override
+         {
+-            m_ouDate.clear();
+-            m_bInSigningTime = true;
++            m_rParser.HandleIdAttr(xAttrs);
+         }
+-        else if ( aName == "SignatureProperty" )
++
++        virtual std::unique_ptr<Context> CreateChildContext(
++            std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++            sal_uInt16 const nNamespace, OUString const& rName) override
+         {
+-            if (!ouIdAttr.isEmpty())
++            if (nNamespace == XML_NAMESPACE_XADES132 && rName == "SignedSignatureProperties")
+             {
+-                m_pXSecController->setPropertyId( ouIdAttr );
++                return std::make_unique<XadesSignedSignaturePropertiesContext>(m_rParser, std::move(pOldNamespaceMap));
+             }
++            // missing: xades:SignedDataObjectProperties
++            return XSecParser::Context::CreateChildContext(std::move(pOldNamespaceMap), nNamespace, rName);
+         }
+-        else if (aName == "dc:date")
+-        {
+-            if (m_ouDate.isEmpty())
+-                m_bInDate = true;
+-        }
+-        else if (aName == "dc:description")
++};
++
++class XSecParser::XadesQualifyingPropertiesContext
++    : public XSecParser::Context
++{
++    public:
++        XadesQualifyingPropertiesContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
+         {
+-            m_ouDescription.clear();
+-            m_bInDescription = true;
+         }
+-        else if (aName == "loext:SignatureLineId")
++
++        virtual void StartElement(
++            css::uno::Reference<css::xml::sax::XAttributeList> const& xAttrs) override
+         {
+-            m_ouSignatureLineId.clear();
+-            m_bInSignatureLineId = true;
++            m_rParser.HandleIdAttr(xAttrs);
+         }
+-        else if (aName == "loext:SignatureLineValidImage")
++
++        virtual std::unique_ptr<Context> CreateChildContext(
++            std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++            sal_uInt16 const nNamespace, OUString const& rName) override
+         {
+-            m_ouSignatureLineValidImage.clear();
+-            m_bInSignatureLineValidImage = true;
++            if (nNamespace == XML_NAMESPACE_XADES132 && rName == "SignedProperties")
++            {
++                return std::make_unique<XadesSignedPropertiesContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            if (nNamespace == XML_NAMESPACE_XADES132 && rName == "UnsignedProperties")
++            {
++                return std::make_unique<XadesUnsignedPropertiesContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            return XSecParser::Context::CreateChildContext(std::move(pOldNamespaceMap), nNamespace, rName);
+         }
+-        else if (aName == "loext:SignatureLineInvalidImage")
++};
++
++class XSecParser::DcDateContext
++    : public XSecParser::Context
++{
++    private:
++        bool m_isIgnore = false;
++
++    public:
++        DcDateContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
+         {
+-            m_ouSignatureLineInvalidImage.clear();
+-            m_bInSignatureLineInvalidImage = true;
+         }
+ 
+-        if (m_xNextHandler.is())
++        virtual void StartElement(
++            css::uno::Reference<css::xml::sax::XAttributeList> const& /*xAttrs*/) override
+         {
+-            m_xNextHandler->startElement(aName, xAttribs);
++            m_isIgnore = !m_rParser.m_ouDate.isEmpty();
+         }
+-    }
+-    catch (css::uno::Exception& )
+-    {//getCaughtException MUST be the first line in the catch block
+-        css::uno::Any exc =  cppu::getCaughtException();
+-        throw css::xml::sax::SAXException(
+-            "xmlsecurity: Exception in XSecParser::startElement",
+-            nullptr, exc);
+-    }
+-    catch (...)
+-    {
+-        throw css::xml::sax::SAXException(
+-            "xmlsecurity: unexpected exception in XSecParser::startElement", nullptr,
+-            css::uno::Any());
+-    }
+-}
+ 
+-void SAL_CALL XSecParser::endElement( const OUString& aName )
+-{
+-    try
+-    {
+-        if (aName == "DigestValue" && !m_bInCertDigest)
++        virtual void EndElement() override
+         {
+-            m_bInDigestValue = false;
++            if (!m_isIgnore)
++            {
++                m_rParser.m_pXSecController->setDate( m_rParser.m_ouDate );
++            }
+         }
+-        else if ( aName == "Reference" )
++
++        virtual void Characters(OUString const& rChars) override
+         {
+-            if ( m_bReferenceUnresolved )
+-            /*
+-            * it must be an octet stream
+-            */
++            if (!m_isIgnore)
+             {
+-                m_pXSecController->addStreamReference( m_currentReferenceURI, true, m_nReferenceDigestID );
+-                m_bReferenceUnresolved = false;
++                m_rParser.m_ouDate += rChars;
+             }
+-
+-            m_pXSecController->setDigestValue( m_nReferenceDigestID, m_ouDigestValue );
+         }
+-        else if ( aName == "SignedInfo" )
++};
++
++class XSecParser::DcDescriptionContext
++    : public XSecParser::Context
++{
++    private:
++        OUString m_Value;
++
++    public:
++        DcDescriptionContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
+         {
+-            m_pXSecController->setReferenceCount();
+         }
+-        else if ( aName == "SignatureValue" )
++
++        virtual void EndElement() override
+         {
+-            m_pXSecController->setSignatureValue( m_ouSignatureValue );
+-            m_bInSignatureValue = false;
++            m_rParser.m_pXSecController->setDescription(m_Value);
+         }
+-        else if (aName == "X509IssuerName")
++
++        virtual void Characters(OUString const& rChars) override
+         {
+-            m_pXSecController->setX509IssuerName( m_ouX509IssuerName );
+-            m_bInX509IssuerName = false;
++            m_Value += rChars;
+         }
+-        else if (aName == "X509SerialNumber")
++};
++
++class XSecParser::DsSignaturePropertyContext
++    : public XSecParser::Context
++{
++    public:
++        DsSignaturePropertyContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
+         {
+-            m_pXSecController->setX509SerialNumber( m_ouX509SerialNumber );
+-            m_bInX509SerialNumber = false;
+         }
+-        else if (aName == "X509Certificate")
++
++        virtual void StartElement(
++            css::uno::Reference<css::xml::sax::XAttributeList> const& xAttrs) override
+         {
+-            m_pXSecController->setX509Certificate( m_ouX509Certificate );
+-            m_bInX509Certificate = false;
++            OUString const ouIdAttr(m_rParser.HandleIdAttr(xAttrs));
++            if (!ouIdAttr.isEmpty())
++            {
++                m_rParser.m_pXSecController->setPropertyId( ouIdAttr );
++            }
+         }
+-        else if (aName == "PGPKeyID")
++
++        virtual std::unique_ptr<Context> CreateChildContext(
++            std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++            sal_uInt16 const nNamespace, OUString const& rName) override
+         {
+-            m_pXSecController->setGpgKeyID( m_ouGpgKeyID );
+-            m_bInGpgKeyID = false;
++            if (nNamespace == XML_NAMESPACE_DC && rName == "date")
++            {
++                return std::make_unique<DcDateContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            if (nNamespace == XML_NAMESPACE_DC && rName == "description")
++            {
++                return std::make_unique<DcDescriptionContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            return XSecParser::Context::CreateChildContext(std::move(pOldNamespaceMap), nNamespace, rName);
+         }
+-        else if (aName == "PGPKeyPacket")
++};
++
++class XSecParser::DsSignaturePropertiesContext
++    : public XSecParser::Context
++{
++    public:
++        DsSignaturePropertiesContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
+         {
+-            m_pXSecController->setGpgCertificate( m_ouGpgCertificate );
+-            m_bInGpgCertificate = false;
+         }
+-        else if (aName == "loext:PGPOwner")
++
++        virtual void StartElement(
++            css::uno::Reference<css::xml::sax::XAttributeList> const& xAttrs) override
+         {
+-            m_pXSecController->setGpgOwner( m_ouGpgOwner );
+-            m_bInGpgOwner = false;
++            m_rParser.HandleIdAttr(xAttrs);
+         }
+-        else if (aName == "xd:CertDigest")
++
++        virtual std::unique_ptr<Context> CreateChildContext(
++            std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++            sal_uInt16 const nNamespace, OUString const& rName) override
+         {
+-            m_pXSecController->setCertDigest( m_ouCertDigest );
+-            m_bInCertDigest = false;
++            if (nNamespace == XML_NAMESPACE_DS && rName == "SignatureProperty")
++            {
++                return std::make_unique<DsSignaturePropertyContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            return XSecParser::Context::CreateChildContext(std::move(pOldNamespaceMap), nNamespace, rName);
+         }
+-        else if (aName == "xd:EncapsulatedX509Certificate" || aName == "xades:EncapsulatedX509Certificate")
++};
++
++class XSecParser::DsObjectContext
++    : public XSecParser::Context
++{
++    public:
++        DsObjectContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
+         {
+-            m_pXSecController->addEncapsulatedX509Certificate( m_ouEncapsulatedX509Certificate );
+-            m_bInEncapsulatedX509Certificate = false;
+         }
+-        else if (aName == "xd:SigningTime" || aName == "xades:SigningTime")
++
++        virtual void StartElement(
++            css::uno::Reference<css::xml::sax::XAttributeList> const& xAttrs) override
+         {
+-            m_pXSecController->setDate( m_ouDate );
+-            m_bInSigningTime = false;
++            m_rParser.HandleIdAttr(xAttrs);
+         }
+-        else if (aName == "dc:date")
++
++        virtual std::unique_ptr<Context> CreateChildContext(
++            std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++            sal_uInt16 const nNamespace, OUString const& rName) override
+         {
+-            if (m_bInDate)
++            if (nNamespace == XML_NAMESPACE_DS && rName == "SignatureProperties")
++            {
++                return std::make_unique<DsSignaturePropertiesContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            if (nNamespace == XML_NAMESPACE_XADES132 && rName == "QualifyingProperties")
+             {
+-                m_pXSecController->setDate( m_ouDate );
+-                m_bInDate = false;
++                return std::make_unique<XadesQualifyingPropertiesContext>(m_rParser, std::move(pOldNamespaceMap));
+             }
++            // missing: ds:Manifest
++            return XSecParser::Context::CreateChildContext(std::move(pOldNamespaceMap), nNamespace, rName);
+         }
+-        else if (aName == "dc:description")
++};
++
++class XSecParser::DsSignatureContext
++    : public XSecParser::Context
++{
++    public:
++        DsSignatureContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
+         {
+-            m_pXSecController->setDescription( m_ouDescription );
+-            m_bInDescription = false;
+         }
+-        else if (aName == "loext:SignatureLineId")
++
++        virtual void StartElement(
++            css::uno::Reference<css::xml::sax::XAttributeList> const& xAttrs) override
+         {
+-            m_pXSecController->setSignatureLineId( m_ouSignatureLineId );
+-            m_bInSignatureLineId = false;
++            OUString const ouIdAttr(m_rParser.HandleIdAttr(xAttrs));
++            m_rParser.m_rXMLSignatureHelper.StartVerifySignatureElement();
++            m_rParser.m_pXSecController->addSignature();
++            if (!ouIdAttr.isEmpty())
++            {
++                m_rParser.m_pXSecController->setId( ouIdAttr );
++            }
+         }
+-        else if (aName == "loext:SignatureLineValidImage")
++
++        virtual std::unique_ptr<Context> CreateChildContext(
++            std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++            sal_uInt16 const nNamespace, OUString const& rName) override
+         {
+-            m_pXSecController->setValidSignatureImage( m_ouSignatureLineValidImage );
+-            m_bInSignatureLineValidImage = false;
++            if (nNamespace == XML_NAMESPACE_DS && rName == "SignedInfo")
++            {
++                return std::make_unique<DsSignedInfoContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            if (nNamespace == XML_NAMESPACE_DS && rName == "SignatureValue")
++            {
++                return std::make_unique<DsSignatureValueContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            if (nNamespace == XML_NAMESPACE_DS && rName == "KeyInfo")
++            {
++                return std::make_unique<DsKeyInfoContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            if (nNamespace == XML_NAMESPACE_DS && rName == "Object")
++            {
++                return std::make_unique<DsObjectContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            return XSecParser::Context::CreateChildContext(std::move(pOldNamespaceMap), nNamespace, rName);
+         }
+-        else if (aName == "loext:SignatureLineInvalidImage")
++};
++
++class XSecParser::DsigSignaturesContext
++    : public XSecParser::Context
++{
++    public:
++        DsigSignaturesContext(XSecParser & rParser,
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
+         {
+-            m_pXSecController->setInvalidSignatureImage( m_ouSignatureLineInvalidImage );
+-            m_bInSignatureLineInvalidImage = false;
+         }
+ 
+-        if (m_xNextHandler.is())
++        virtual std::unique_ptr<Context> CreateChildContext(
++            std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++            sal_uInt16 const nNamespace, OUString const& rName) override
+         {
+-            m_xNextHandler->endElement(aName);
++            if (nNamespace == XML_NAMESPACE_DS && rName == "Signature")
++            {
++                return std::make_unique<DsSignatureContext>(m_rParser, std::move(pOldNamespaceMap));
++            }
++            return XSecParser::Context::CreateChildContext(std::move(pOldNamespaceMap), nNamespace, rName);
+         }
+-    }
+-    catch (css::uno::Exception& )
+-    {//getCaughtException MUST be the first line in the catch block
+-        css::uno::Any exc =  cppu::getCaughtException();
+-        throw css::xml::sax::SAXException(
+-            "xmlsecurity: Exception in XSecParser::endElement",
+-            nullptr, exc);
+-    }
+-    catch (...)
+-    {
+-        throw css::xml::sax::SAXException(
+-            "xmlsecurity: unexpected exception in XSecParser::endElement", nullptr,
+-            css::uno::Any());
+-    }
++};
++
++
++XSecParser::XSecParser(XMLSignatureHelper& rXMLSignatureHelper,
++    XSecController* pXSecController)
++    : m_pNamespaceMap(new SvXMLNamespaceMap)
++    , m_pXSecController(pXSecController)
++    , m_rXMLSignatureHelper(rXMLSignatureHelper)
++{
++    using namespace xmloff::token;
++    m_pNamespaceMap->Add( GetXMLToken(XML_XML), GetXMLToken(XML_N_XML), XML_NAMESPACE_XML );
++    m_pNamespaceMap->Add( "_dsig_ooo", GetXMLToken(XML_N_DSIG_OOO), XML_NAMESPACE_DSIG_OOO );
++    m_pNamespaceMap->Add( "_dsig", GetXMLToken(XML_N_DSIG), XML_NAMESPACE_DSIG );
++    m_pNamespaceMap->Add( "_ds", GetXMLToken(XML_N_DS), XML_NAMESPACE_DS );
++    m_pNamespaceMap->Add( "_xades132", GetXMLToken(XML_N_XADES132), XML_NAMESPACE_XADES132);
++    m_pNamespaceMap->Add( "_xades141", GetXMLToken(XML_N_XADES141), XML_NAMESPACE_XADES141);
++    m_pNamespaceMap->Add( "_dc", GetXMLToken(XML_N_DC), XML_NAMESPACE_DC );
++    m_pNamespaceMap->Add( "_office_libo",
++                         GetXMLToken(XML_N_LO_EXT), XML_NAMESPACE_LO_EXT);
+ }
+ 
+-void SAL_CALL XSecParser::characters( const OUString& aChars )
++OUString XSecParser::HandleIdAttr(css::uno::Reference<css::xml::sax::XAttributeList> const& xAttrs)
+ {
+-    if (m_bInX509IssuerName)
+-    {
+-        m_ouX509IssuerName += aChars;
+-    }
+-    else if (m_bInX509SerialNumber)
+-    {
+-        m_ouX509SerialNumber += aChars;
+-    }
+-    else if (m_bInX509Certificate)
+-    {
+-        m_ouX509Certificate += aChars;
+-    }
+-    else if (m_bInGpgCertificate)
++    OUString ouIdAttr = getIdAttr(xAttrs);
++    if (!ouIdAttr.isEmpty())
+     {
+-        m_ouGpgCertificate += aChars;
++        m_pXSecController->collectToVerify( ouIdAttr );
+     }
+-    else if (m_bInGpgKeyID)
++    return ouIdAttr;
++}
++
++OUString XSecParser::getIdAttr(const css::uno::Reference< css::xml::sax::XAttributeList >& xAttribs )
++{
++    OUString ouIdAttr = xAttribs->getValueByName("id");
++
++    if (ouIdAttr.isEmpty())
+     {
+-        m_ouGpgKeyID += aChars;
++        ouIdAttr = xAttribs->getValueByName("Id");
+     }
+-    else if (m_bInGpgOwner)
++
++    return ouIdAttr;
++}
++
++/*
++ * XDocumentHandler
++ */
++void SAL_CALL XSecParser::startDocument(  )
++{
++    if (m_xNextHandler.is())
+     {
+-        m_ouGpgOwner += aChars;
++        m_xNextHandler->startDocument();
+     }
+-    else if (m_bInSignatureValue)
++}
++
++void SAL_CALL XSecParser::endDocument(  )
++{
++    if (m_xNextHandler.is())
+     {
+-        m_ouSignatureValue += aChars;
++        m_xNextHandler->endDocument();
+     }
+-    else if (m_bInDigestValue && !m_bInCertDigest)
++}
++
++void SAL_CALL XSecParser::startElement(
++    const OUString& rName,
++    const css::uno::Reference< css::xml::sax::XAttributeList >& xAttribs )
++{
++    assert(m_pNamespaceMap);
++    std::unique_ptr<SvXMLNamespaceMap> pRewindMap(
++        SvXMLImport::processNSAttributes(m_pNamespaceMap, nullptr, xAttribs));
++
++    OUString localName;
++    sal_uInt16 const nPrefix(m_pNamespaceMap->GetKeyByAttrName(rName, &localName));
++
++    std::unique_ptr<Context> pContext;
++
++    if (m_ContextStack.empty())
+     {
+-        m_ouDigestValue += aChars;
++        if ((nPrefix == XML_NAMESPACE_DSIG || nPrefix == XML_NAMESPACE_DSIG_OOO)
++            && localName == "document-signatures")
++        {
++            pContext.reset(new DsigSignaturesContext(*this, std::move(pRewindMap)));
++        }
++        else
++        {
++            throw css::xml::sax::SAXException(
++                "xmlsecurity: unexpected root element", nullptr,
++                css::uno::Any());
++        }
+     }
+-    else if (m_bInDate)
++    else
+     {
+-        m_ouDate += aChars;
++        pContext = m_ContextStack.top()->CreateChildContext(
++                std::move(pRewindMap), nPrefix, localName);
+     }
+-    else if (m_bInDescription)
++
++    m_ContextStack.push(std::move(pContext));
++    assert(!pRewindMap);
++
++    try
+     {
+-        m_ouDescription += aChars;
++        m_ContextStack.top()->StartElement(xAttribs);
++
++        if (m_xNextHandler.is())
++        {
++            m_xNextHandler->startElement(rName, xAttribs);
++        }
+     }
+-    else if (m_bInCertDigest)
+-    {
+-        m_ouCertDigest += aChars;
++    catch (css::uno::Exception& )
++    {//getCaughtException MUST be the first line in the catch block
++        css::uno::Any exc =  cppu::getCaughtException();
++        throw css::xml::sax::SAXException(
++            "xmlsecurity: Exception in XSecParser::startElement",
++            nullptr, exc);
+     }
+-    else if (m_bInEncapsulatedX509Certificate)
++    catch (...)
+     {
+-        m_ouEncapsulatedX509Certificate += aChars;
++        throw css::xml::sax::SAXException(
++            "xmlsecurity: unexpected exception in XSecParser::startElement", nullptr,
++            css::uno::Any());
+     }
+-    else if (m_bInSigningTime)
++}
++
++void SAL_CALL XSecParser::endElement(const OUString& rName)
++{
++    assert(!m_ContextStack.empty()); // this should be checked by sax parser?
++
++    try
+     {
+-        m_ouDate += aChars;
++        m_ContextStack.top()->EndElement();
++
++        if (m_xNextHandler.is())
++        {
++            m_xNextHandler->endElement(rName);
++        }
+     }
+-    else if (m_bInSignatureLineId)
+-    {
+-        m_ouSignatureLineId += aChars;
++    catch (css::uno::Exception& )
++    {//getCaughtException MUST be the first line in the catch block
++        css::uno::Any exc =  cppu::getCaughtException();
++        throw css::xml::sax::SAXException(
++            "xmlsecurity: Exception in XSecParser::endElement",
++            nullptr, exc);
+     }
+-    else if (m_bInSignatureLineValidImage)
++    catch (...)
+     {
+-        m_ouSignatureLineValidImage += aChars;
++        throw css::xml::sax::SAXException(
++            "xmlsecurity: unexpected exception in XSecParser::endElement", nullptr,
++            css::uno::Any());
+     }
+-    else if (m_bInSignatureLineInvalidImage)
++
++    if (m_ContextStack.top()->m_pOldNamespaceMap)
+     {
+-        m_ouSignatureLineInvalidImage += aChars;
++        m_pNamespaceMap = std::move(m_ContextStack.top()->m_pOldNamespaceMap);
+     }
++    m_ContextStack.pop();
++}
++
++void SAL_CALL XSecParser::characters(const OUString& rChars)
++{
++    assert(!m_ContextStack.empty()); // this should be checked by sax parser?
++    m_ContextStack.top()->Characters(rChars);
+ 
+     if (m_xNextHandler.is())
+     {
+-        m_xNextHandler->characters(aChars);
++        m_xNextHandler->characters(rChars);
+     }
+ }
+ 
+diff --git a/xmlsecurity/source/helper/xsecparser.hxx b/xmlsecurity/source/helper/xsecparser.hxx
+index d9b079aa3116..93efcb766e3e 100644
+--- a/xmlsecurity/source/helper/xsecparser.hxx
++++ b/xmlsecurity/source/helper/xsecparser.hxx
+@@ -25,6 +25,10 @@
+ 
+ #include <cppuhelper/implbase.hxx>
+ 
++#include <xmloff/nmspmap.hxx>
++
++#include <stack>
++
+ class XMLSignatureHelper;
+ class XSecController;
+ 
+@@ -48,47 +52,59 @@ class XSecParser: public cppu::WeakImplHelper
+  ******************************************************************************/
+ {
+     friend class XSecController;
++public:
++    class Context;
+ private:
++    class UnknownContext;
++    class LoPGPOwnerContext;
++    class DsPGPKeyPacketContext;
++    class DsPGPKeyIDContext;
++    class DsPGPDataContext;
++    class DsX509CertificateContext;
++    class DsX509SerialNumberContext;
++    class DsX509IssuerNameContext;
++    class DsX509IssuerSerialContext;
++    class DsX509DataContext;
++    class DsKeyInfoContext;
++    class DsSignatureValueContext;
++    class DsDigestValueContext;
++    class DsDigestMethodContext;
++    class DsTransformContext;
++    class DsTransformsContext;
++    class DsReferenceContext;
++    class DsSignatureMethodContext;
++    class DsSignedInfoContext;
++    class XadesEncapsulatedX509CertificateContext;
++    class XadesCertificateValuesContext;
++    class XadesUnsignedSignaturePropertiesContext;
++    class XadesUnsignedPropertiesContext;
++    class LoSignatureLineIdContext;
++    class LoSignatureLineValidImageContext;
++    class LoSignatureLineInvalidImageContext;
++    class LoSignatureLineContext;
++    class XadesCertDigestContext;
++    class XadesCertContext;
++    class XadesSigningCertificateContext;
++    class XadesSigningTimeContext;
++    class XadesSignedSignaturePropertiesContext;
++    class XadesSignedPropertiesContext;
++    class XadesQualifyingPropertiesContext;
++    class DcDateContext;
++    class DcDescriptionContext;
++    class DsSignaturePropertyContext;
++    class DsSignaturePropertiesContext;
++    class DsObjectContext;
++    class DsSignatureContext;
++    class DsigSignaturesContext;
++
+     /*
+      * the following members are used to reserve the signature information,
+      * including X509IssuerName, X509SerialNumber, and X509Certificate,etc.
+      */
+-    OUString m_ouX509IssuerName;
+-    OUString m_ouX509SerialNumber;
+-    OUString m_ouX509Certificate;
+-    OUString m_ouGpgCertificate;
+-    OUString m_ouGpgKeyID;
+-    OUString m_ouGpgOwner;
+-    OUString m_ouCertDigest;
+-    OUString m_ouEncapsulatedX509Certificate;
+-    OUString m_ouDigestValue;
+-    OUString m_ouSignatureValue;
+     OUString m_ouDate;
+-    /// Characters of a <dc:description> element, as just read from XML.
+-    OUString m_ouDescription;
+-    OUString m_ouSignatureLineId;
+-    OUString m_ouSignatureLineValidImage;
+-    OUString m_ouSignatureLineInvalidImage;
+ 
+-    /*
+-     * whether inside a particular element
+-     */
+-    bool m_bInX509IssuerName;
+-    bool m_bInX509SerialNumber;
+-    bool m_bInX509Certificate;
+-    bool m_bInGpgCertificate;
+-    bool m_bInGpgKeyID;
+-    bool m_bInGpgOwner;
+-    bool m_bInCertDigest;
+-    bool m_bInEncapsulatedX509Certificate;
+-    bool m_bInSigningTime;
+-    bool m_bInDigestValue;
+-    bool m_bInSignatureValue;
+-    bool m_bInDate;
+-    bool m_bInDescription;
+-    bool m_bInSignatureLineId;
+-    bool m_bInSignatureLineValidImage;
+-    bool m_bInSignatureLineInvalidImage;
++    std::stack<std::unique_ptr<Context>> m_ContextStack;
++    std::unique_ptr<SvXMLNamespaceMap> m_pNamespaceMap;
+ 
+     /*
+      * the XSecController collaborating with XSecParser
+@@ -101,22 +117,9 @@ private:
+     css::uno::Reference<
+         css::xml::sax::XDocumentHandler > m_xNextHandler;
+ 
+-    /*
+-     * this string is used to remember the current handled reference's URI,
+-     *
+-     * because it can be decided whether a stream reference is xml based or binary based
+-     * only after the Transforms element is read in, so we have to reserve the reference's
+-     * URI when the startElement event is met.
+-     */
+-    OUString m_currentReferenceURI;
+-    bool m_bReferenceUnresolved;
+-
+-    // Relevant for ODF. The digest algorithm selected by the current DigestMethod element's
+-    // Algorithm attribute in the current Reference element. From css::xml::crypto::DigestID.
+-    sal_Int32 m_nReferenceDigestID;
+     XMLSignatureHelper& m_rXMLSignatureHelper;
+ 
+-private:
++    OUString HandleIdAttr(css::uno::Reference<css::xml::sax::XAttributeList> const& xAttrs);
+     static OUString getIdAttr(const css::uno::Reference<
+             css::xml::sax::XAttributeList >& xAttribs );
+ 
+-- 
+cgit v1.2.1
+

@@ -1,0 +1,1597 @@
+From a1cf770c2d7ca3e153e0b1f01ddcc313bc2bed7f Mon Sep 17 00:00:00 2001
+From: Michael Stahl <michael.stahl@allotropia.de>
+Date: Thu, 25 Feb 2021 14:17:48 +0100
+Subject: xmlsecurity: improve handling of multiple X509Data elements
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Combine everything related to a certificate in a new struct X509Data.
+
+The CertDigest is not actually written in the X509Data element but in
+xades:Cert, so try to find the matching entry in
+XSecController::setX509CertDigest().
+
+There was a confusing interaction with PGP signatures, where ouGpgKeyID
+was used for import, but export wrote the value from ouCertDigest
+instead - this needed fixing.
+
+The main point of this is enforcing a constraint from xmldsig-core 4.5.4:
+
+  All certificates appearing in an X509Data element MUST relate to the
+  validation key by either containing it or being part of a certification
+  chain that terminates in a certificate containing the validation key.
+
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/111254
+Tested-by: Jenkins
+Reviewed-by: Michael Stahl <michael.stahl@allotropia.de>
+(cherry picked from commit 9e82509b09f5fe2eb77bcdb8fd193c71923abb67)
+
+xmlsecurity: improve handling of multiple certificates per X509Data
+
+It turns out that an X509Data element can contain an arbitrary number of
+each of its child elements.
+
+How exactly certificates of an issuer chain may or should be distributed
+across multiple X509Data elements isn't terribly obvious.
+
+One thing that is clear is that any element that refers to or contains
+one particular certificate has to be a child of the same X509Data
+element, although in no particular order, so try to match the 2 such
+elements that the parser supports in XSecController::setX509Data().
+
+Presumably the only way it makes sense to have multiple signing
+certificates is if they all contain the same key but are signed by
+different CAs. This case isn't handled currently; CheckX509Data() will
+complain there's not a single chain and validation of the certificates
+will fail.
+
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/111500
+Tested-by: Jenkins
+Reviewed-by: Michael Stahl <michael.stahl@allotropia.de>
+(cherry picked from commit 5af5ea893bcb8a8eb472ac11133da10e5a604e66)
+
+xmlsecurity: add EqualDistinguishedNames()
+
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/111545
+Tested-by: Jenkins
+Reviewed-by: Michael Stahl <michael.stahl@allotropia.de>
+(cherry picked from commit 1d3da3486d827dd5e7a3bf1c7a533f5aa9860e42)
+
+xmlsecurity: avoid exception in DigitalSignaturesDialog::getCertificate()
+
+Fallback to PGP if there's no X509 signing certificate because
+CheckX509Data() failed prevents the dialog from popping up.
+
+To avoid confusing the user in this situation, the dialog should
+show no certificate, which is already the case.
+
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/111664
+Tested-by: Jenkins
+Reviewed-by: Michael Stahl <michael.stahl@allotropia.de>
+(cherry picked from commit 90b725675c2964f4a151d802d9afedd8bc2ae1a7)
+
+xmlsecurity: fix crash in DocumentDigitalSignatures::isAuthorTrusted()
+
+If the argument is null.
+
+This function also should use EqualDistinguishedNames().
+
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/111667
+Tested-by: Jenkins
+Reviewed-by: Michael Stahl <michael.stahl@allotropia.de>
+(cherry picked from commit ca98e505cd69bf95d8ddb9387cf3f8e03ae4577d)
+
+Change-Id: I9633a980b0c18d58dfce24fc59396a833498a77d
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/111910
+Tested-by: Jenkins
+Reviewed-by: Caolán McNamara <caolanm@redhat.com>
+---
+ include/svl/sigstruct.hxx                          |  32 +++-
+ svl/source/crypto/cryptosign.cxx                   |  16 +-
+ sw/source/core/edit/edfcol.cxx                     |   3 +-
+ xmlsecurity/inc/biginteger.hxx                     |   3 +
+ xmlsecurity/inc/xmlsignaturehelper.hxx             |  12 ++
+ xmlsecurity/inc/xsecctl.hxx                        |  14 +-
+ .../source/component/documentdigitalsignatures.cxx |  54 ++++---
+ .../source/dialogs/digitalsignaturesdialog.cxx     |  15 +-
+ .../source/helper/documentsignaturehelper.cxx      |  63 +++++---
+ .../source/helper/documentsignaturemanager.cxx     |  12 ++
+ xmlsecurity/source/helper/ooxmlsecexporter.cxx     |  22 ++-
+ xmlsecurity/source/helper/ooxmlsecparser.cxx       |  22 ++-
+ xmlsecurity/source/helper/pdfsignaturehelper.cxx   |   8 +-
+ xmlsecurity/source/helper/xmlsignaturehelper.cxx   | 161 +++++++++++++++++++++
+ xmlsecurity/source/helper/xsecctl.cxx              |  80 ++++++----
+ xmlsecurity/source/helper/xsecparser.cxx           | 144 +++++++++---------
+ xmlsecurity/source/helper/xsecsign.cxx             |  30 ++--
+ xmlsecurity/source/helper/xsecverify.cxx           | 124 +++++++++++++---
+ .../xmlsec/mscrypt/x509certificate_mscryptimpl.cxx |  47 ++++++
+ .../xmlsec/mscrypt/xmlsignature_mscryptimpl.cxx    |   2 +
+ .../source/xmlsec/nss/x509certificate_nssimpl.cxx  |  25 ++++
+ .../source/xmlsec/nss/xmlsignature_nssimpl.cxx     |   3 +
+ 22 files changed, 678 insertions(+), 214 deletions(-)
+
+diff --git a/include/svl/sigstruct.hxx b/include/svl/sigstruct.hxx
+index d62ecb09634c..6d53e048d47b 100644
+--- a/include/svl/sigstruct.hxx
++++ b/include/svl/sigstruct.hxx
+@@ -89,9 +89,30 @@ struct SignatureInformation
+     sal_Int32 nSecurityId;
+     css::xml::crypto::SecurityOperationStatus nStatus;
+     SignatureReferenceInformations  vSignatureReferenceInfors;
+-    OUString ouX509IssuerName;
+-    OUString ouX509SerialNumber;
+-    OUString ouX509Certificate;
++    struct X509CertInfo
++    {
++        OUString X509IssuerName;
++        OUString X509SerialNumber;
++        OUString X509Certificate;
++        /// OOXML certificate SHA-256 digest, empty for ODF except when doing XAdES signature.
++        OUString CertDigest;
++        /// The certificate owner (aka subject).
++        OUString X509Subject;
++    };
++    typedef std::vector<X509CertInfo> X509Data;
++    // note: at parse time, it's unkown which one is the signing certificate;
++    // ImplVerifySignatures() figures it out and puts it at the back
++    std::vector<X509Data> X509Datas;
++
++    X509CertInfo const* GetSigningCertificate() const
++    {
++        if (X509Datas.empty())
++        {
++            return nullptr;
++        }
++        assert(!X509Datas.back().empty());
++        return & X509Datas.back().back();
++    }
+ 
+     OUString ouGpgKeyID;
+     OUString ouGpgCertificate;
+@@ -124,8 +145,6 @@ struct SignatureInformation
+     OUString ouDescription;
+     /// The Id attribute of the <SignatureProperty> element that contains the <dc:description>.
+     OUString ouDescriptionPropertyId;
+-    /// OOXML certificate SHA-256 digest, empty for ODF except when doing XAdES signature.
+-    OUString ouCertDigest;
+     /// Valid and invalid signature line images
+     css::uno::Reference<css::graphic::XGraphic> aValidSignatureImage;
+     css::uno::Reference<css::graphic::XGraphic> aInvalidSignatureImage;
+@@ -140,9 +159,6 @@ struct SignatureInformation
+     /// For PDF: the byte range doesn't cover the whole document.
+     bool bPartialDocumentSignature;
+ 
+-    /// The certificate owner (aka subject).
+-    OUString ouSubject;
+-
+     svl::crypto::SignatureMethodAlgorithm eAlgorithmID;
+ 
+     SignatureInformation( sal_Int32 nId )
+diff --git a/svl/source/crypto/cryptosign.cxx b/svl/source/crypto/cryptosign.cxx
+index 573c06ba5826..a015f00576a4 100644
+--- a/svl/source/crypto/cryptosign.cxx
++++ b/svl/source/crypto/cryptosign.cxx
+@@ -2094,8 +2094,12 @@ bool Signing::Verify(const std::vector<unsigned char>& aData,
+             aDerCert[i] = pCertificate->derCert.data[i];
+         OUStringBuffer aBuffer;
+         comphelper::Base64::encode(aBuffer, aDerCert);
+-        rInformation.ouX509Certificate = aBuffer.makeStringAndClear();
+-        rInformation.ouSubject = OUString(pCertificate->subjectName, PL_strlen(pCertificate->subjectName), RTL_TEXTENCODING_UTF8);
++        SignatureInformation::X509Data temp;
++        temp.emplace_back();
++        temp.back().X509Certificate = aBuffer.makeStringAndClear();
++        temp.back().X509Subject = OUString(pCertificate->subjectName, PL_strlen(pCertificate->subjectName), RTL_TEXTENCODING_UTF8);
++        rInformation.X509Datas.clear();
++        rInformation.X509Datas.emplace_back(temp);
+     }
+ 
+     PRTime nSigningTime;
+@@ -2274,8 +2278,12 @@ bool Signing::Verify(const std::vector<unsigned char>& aData,
+             aDerCert[i] = pSignerCertContext->pbCertEncoded[i];
+         OUStringBuffer aBuffer;
+         comphelper::Base64::encode(aBuffer, aDerCert);
+-        rInformation.ouX509Certificate = aBuffer.makeStringAndClear();
+-        rInformation.ouSubject = GetSubjectName(pSignerCertContext);
++        SignatureInformation::X509Data temp;
++        temp.emplace_back();
++        temp.back().X509Certificate = aBuffer.makeStringAndClear();
++        temp.back().X509Subject = GetSubjectName(pSignerCertContext);
++        rInformation.X509Datas.clear();
++        rInformation.X509Datas.emplace_back(temp);
+     }
+ 
+     if (bNonDetached)
+diff --git a/sw/source/core/edit/edfcol.cxx b/sw/source/core/edit/edfcol.cxx
+index d0154b4886ef..b2299ec42213 100644
+--- a/sw/source/core/edit/edfcol.cxx
++++ b/sw/source/core/edit/edfcol.cxx
+@@ -402,7 +402,8 @@ std::pair<bool, OUString> lcl_MakeParagraphSignatureFieldText(const SignatureDes
+             valid = valid
+                     && aInfo.nStatus == xml::crypto::SecurityOperationStatus_OPERATION_SUCCEEDED;
+ 
+-            msg = SwResId(STR_SIGNED_BY) + ": " + aInfo.ouSubject + ", " +
++            assert(aInfo.GetSigningCertificate()); // it was valid
++            msg = SwResId(STR_SIGNED_BY) + ": " + aInfo.GetSigningCertificate()->X509Subject + ", " +
+                 aDescr.msDate;
+             msg += (!aDescr.msUsage.isEmpty() ? (" (" + aDescr.msUsage + "): ") : OUString(": "));
+             msg += (valid ? SwResId(STR_VALID) : SwResId(STR_INVALID));
+diff --git a/xmlsecurity/inc/biginteger.hxx b/xmlsecurity/inc/biginteger.hxx
+index d07ecf45d8af..8b4d8a9143b5 100644
+--- a/xmlsecurity/inc/biginteger.hxx
++++ b/xmlsecurity/inc/biginteger.hxx
+@@ -31,6 +31,9 @@ namespace xmlsecurity
+ {
+ XSECXMLSEC_DLLPUBLIC OUString bigIntegerToNumericString( const css::uno::Sequence< sal_Int8 >& serial );
+ XSECXMLSEC_DLLPUBLIC css::uno::Sequence< sal_Int8 > numericStringToBigInteger ( const OUString& serialNumber );
++
++XSECXMLSEC_DLLPUBLIC bool EqualDistinguishedNames(OUString const& rName1,
++                                                  OUString const& rName2);
+ }
+ 
+ #endif
+diff --git a/xmlsecurity/inc/xmlsignaturehelper.hxx b/xmlsecurity/inc/xmlsignaturehelper.hxx
+index 2437686ea31b..a12309ef4d0a 100644
+--- a/xmlsecurity/inc/xmlsignaturehelper.hxx
++++ b/xmlsecurity/inc/xmlsignaturehelper.hxx
+@@ -28,6 +28,9 @@
+ #include "xmlsignaturehelper.hxx"
+ #include "xsecctl.hxx"
+ 
++#include <com/sun/star/security/XCertificate.hpp>
++#include <com/sun/star/xml/crypto/XSecurityEnvironment.hpp>
++
+ class DateTime;
+ class UriBindingHelper;
+ 
+@@ -93,6 +96,15 @@ public:
+                 // After signing/verifying, get information about signatures
+     SignatureInformation  GetSignatureInformation( sal_Int32 nSecurityId ) const;
+     SignatureInformations GetSignatureInformations() const;
++    /// ImplVerifySignature calls this to figure out which X509Data is the
++    /// signing certificate and update the internal state with the result.
++    /// @return
++    ///    A sequence with the signing certificate at the back on success.
++    ///    An empty sequence on failure.
++    std::vector<css::uno::Reference<css::security::XCertificate>>
++    CheckAndUpdateSignatureInformation(
++        css::uno::Reference<css::xml::crypto::XSecurityEnvironment> const& xSecEnv,
++        SignatureInformation const& rInfo);
+ 
+                 // See XSecController for documentation
+     void        StartMission(const css::uno::Reference<css::xml::crypto::XXMLSecurityContext>& xSecurityContext);
+diff --git a/xmlsecurity/inc/xsecctl.hxx b/xmlsecurity/inc/xsecctl.hxx
+index ec3669128d24..ca6c169798c2 100644
+--- a/xmlsecurity/inc/xsecctl.hxx
++++ b/xmlsecurity/inc/xsecctl.hxx
+@@ -263,9 +263,13 @@ private:
+         sal_Int32 nDigestID );
+     void setReferenceCount() const;
+ 
+-    void setX509IssuerName( OUString const & ouX509IssuerName );
+-    void setX509SerialNumber( OUString const & ouX509SerialNumber );
+-    void setX509Certificate( OUString const & ouX509Certificate );
++    void setX509Data(
++        std::vector<std::pair<OUString, OUString>> & rX509IssuerSerials,
++        std::vector<OUString> const& rX509Certificates);
++    void setX509CertDigest(
++        OUString const& rCertDigest, sal_Int32 const nReferenceDigestID,
++        OUString const& rX509IssuerName, OUString const& rX509SerialNumber);
++
+     void setSignatureValue( OUString const & ouSignatureValue );
+     void setDigestValue( sal_Int32 nDigestID, OUString const & ouDigestValue );
+     void setGpgKeyID( OUString const & ouKeyID );
+@@ -274,7 +278,6 @@ private:
+ 
+     void setDate(OUString const& rId, OUString const& ouDate);
+     void setDescription(OUString const& rId, OUString const& rDescription);
+-    void setCertDigest(const OUString& rCertDigest);
+     void setValidSignatureImage(const OUString& rValidSigImg);
+     void setInvalidSignatureImage(const OUString& rInvalidSigImg);
+     void setSignatureLineId(const OUString& rSignatureLineId);
+@@ -303,6 +306,9 @@ public:
+ 
+     SignatureInformation    getSignatureInformation( sal_Int32 nSecurityId ) const;
+     SignatureInformations   getSignatureInformations() const;
++    /// only verify can figure out which X509Data is the signing certificate
++    void UpdateSignatureInformation(sal_Int32 nSecurityId,
++            std::vector<SignatureInformation::X509Data> const& rDatas);
+ 
+     static void exportSignature(
+         const css::uno::Reference< css::xml::sax::XDocumentHandler >& xDocumentHandler,
+diff --git a/xmlsecurity/source/component/documentdigitalsignatures.cxx b/xmlsecurity/source/component/documentdigitalsignatures.cxx
+index d149bf5e30b2..8f1fe7c2785d 100644
+--- a/xmlsecurity/source/component/documentdigitalsignatures.cxx
++++ b/xmlsecurity/source/component/documentdigitalsignatures.cxx
+@@ -529,30 +529,36 @@ DocumentDigitalSignatures::ImplVerifySignatures(
+         const SignatureInformation& rInfo = aSignInfos[n];
+         css::security::DocumentSignatureInformation& rSigInfo = arInfos[n];
+ 
+-        if (rInfo.ouGpgCertificate.isEmpty()) // X.509
++        if (!rInfo.X509Datas.empty()) // X.509
+         {
+-            if (!rInfo.ouX509Certificate.isEmpty())
+-                rSigInfo.Signer = xSecEnv->createCertificateFromAscii(rInfo.ouX509Certificate);
+-            if (!rSigInfo.Signer.is())
+-                rSigInfo.Signer = xSecEnv->getCertificate(
+-                    rInfo.ouX509IssuerName,
+-                    xmlsecurity::numericStringToBigInteger(rInfo.ouX509SerialNumber));
+-
+-            // On Windows checking the certificate path is buggy. It does name matching (issuer, subject name)
+-            // to find the parent certificate. It does not take into account that there can be several certificates
+-            // with the same subject name.
+-            try
++            std::vector<uno::Reference<XCertificate>> certs(
++                rSignatureHelper.CheckAndUpdateSignatureInformation(
++                    xSecEnv, rInfo));
++            if (certs.empty())
+             {
+-                rSigInfo.CertificateStatus = xSecEnv->verifyCertificate(
+-                    rSigInfo.Signer, Sequence<Reference<css::security::XCertificate>>());
++                rSigInfo.CertificateStatus = css::security::CertificateValidity::INVALID;
+             }
+-            catch (SecurityException&)
++            else
+             {
+-                OSL_FAIL("Verification of certificate failed");
+-                rSigInfo.CertificateStatus = css::security::CertificateValidity::INVALID;
++                rSigInfo.Signer = certs.back();
++                // get only intermediates
++                certs.pop_back();
++            // On Windows checking the certificate path is buggy. It does name matching (issuer, subject name)
++            // to find the parent certificate. It does not take into account that there can be several certificates
++            // with the same subject name.
++                try
++                {
++                    rSigInfo.CertificateStatus = xSecEnv->verifyCertificate(
++                        rSigInfo.Signer, comphelper::containerToSequence(certs));
++                }
++                catch (SecurityException&)
++                {
++                    SAL_WARN("xmlsecurity.comp", "Verification of certificate failed");
++                    rSigInfo.CertificateStatus = css::security::CertificateValidity::INVALID;
++                }
+             }
+         }
+-        else if (xGpgSecEnv.is()) // GPG
++        else if (!rInfo.ouGpgCertificate.isEmpty() && xGpgSecEnv.is()) // GPG
+         {
+             // TODO not ideal to retrieve cert by keyID, might
+             // collide, or PGPKeyID format might change - can't we
+@@ -638,15 +644,19 @@ void DocumentDigitalSignatures::showCertificate(
+ }
+ 
+ sal_Bool DocumentDigitalSignatures::isAuthorTrusted(
+-    const Reference< css::security::XCertificate >& Author )
++    const Reference<css::security::XCertificate>& xAuthor)
+ {
+-    OUString sSerialNum = xmlsecurity::bigIntegerToNumericString( Author->getSerialNumber() );
++    if (!xAuthor.is())
++    {
++        return false;
++    }
++    OUString sSerialNum = xmlsecurity::bigIntegerToNumericString(xAuthor->getSerialNumber());
+ 
+     Sequence< SvtSecurityOptions::Certificate > aTrustedAuthors = SvtSecurityOptions().GetTrustedAuthors();
+ 
+     return std::any_of(aTrustedAuthors.begin(), aTrustedAuthors.end(),
+-        [&Author, &sSerialNum](const SvtSecurityOptions::Certificate& rAuthor) {
+-            return ( rAuthor[0] == Author->getIssuerName() )
++        [&xAuthor, &sSerialNum](const SvtSecurityOptions::Certificate& rAuthor) {
++            return xmlsecurity::EqualDistinguishedNames(rAuthor[0], xAuthor->getIssuerName())
+                 && ( rAuthor[1] == sSerialNum );
+         });
+ }
+diff --git a/xmlsecurity/source/dialogs/digitalsignaturesdialog.cxx b/xmlsecurity/source/dialogs/digitalsignaturesdialog.cxx
+index ef67c7167c04..18ccaf2d2166 100644
+--- a/xmlsecurity/source/dialogs/digitalsignaturesdialog.cxx
++++ b/xmlsecurity/source/dialogs/digitalsignaturesdialog.cxx
+@@ -588,7 +588,7 @@ void DigitalSignaturesDialog::ImplFillSignaturesBox()
+                 if (!rInfo.ouGpgCertificate.isEmpty())
+                     aType = "OpenPGP";
+                 // XML based: XAdES or not.
+-                else if (!rInfo.ouCertDigest.isEmpty())
++                else if (rInfo.GetSigningCertificate() && !rInfo.GetSigningCertificate()->CertDigest.isEmpty())
+                     aType = "XAdES";
+                 else
+                     aType = "XML-DSig";
+@@ -700,8 +700,8 @@ uno::Reference<security::XCertificate> DigitalSignaturesDialog::getCertificate(c
+     uno::Reference<security::XCertificate> xCert;
+ 
+     //First we try to get the certificate which is embedded in the XML Signature
+-    if (xSecEnv.is() && !rInfo.ouX509Certificate.isEmpty())
+-        xCert = xSecEnv->createCertificateFromAscii(rInfo.ouX509Certificate);
++    if (xSecEnv.is() && rInfo.GetSigningCertificate() && !rInfo.GetSigningCertificate()->X509Certificate.isEmpty())
++        xCert = xSecEnv->createCertificateFromAscii(rInfo.GetSigningCertificate()->X509Certificate);
+     else {
+         //There must be an embedded certificate because we use it to get the
+         //issuer name. We cannot use /Signature/KeyInfo/X509Data/X509IssuerName
+@@ -713,9 +713,12 @@ uno::Reference<security::XCertificate> DigitalSignaturesDialog::getCertificate(c
+     }
+ 
+     //In case there is no embedded certificate we try to get it from a local store
+-    if (!xCert.is() && xSecEnv.is())
+-        xCert = xSecEnv->getCertificate( rInfo.ouX509IssuerName, xmlsecurity::numericStringToBigInteger( rInfo.ouX509SerialNumber ) );
+-    if (!xCert.is() && xGpgSecEnv.is())
++    if (!xCert.is() && xSecEnv.is() && rInfo.GetSigningCertificate())
++    {
++        xCert = xSecEnv->getCertificate(rInfo.GetSigningCertificate()->X509IssuerName,
++            xmlsecurity::numericStringToBigInteger(rInfo.GetSigningCertificate()->X509SerialNumber));
++    }
++    if (!xCert.is() && xGpgSecEnv.is() && !rInfo.ouGpgKeyID.isEmpty())
+         xCert = xGpgSecEnv->getCertificate( rInfo.ouGpgKeyID, xmlsecurity::numericStringToBigInteger("") );
+ 
+     SAL_WARN_IF( !xCert.is(), "xmlsecurity.dialogs", "Certificate not found and can't be created!" );
+diff --git a/xmlsecurity/source/helper/documentsignaturehelper.cxx b/xmlsecurity/source/helper/documentsignaturehelper.cxx
+index 482ae6cc4126..ddff308ee52f 100644
+--- a/xmlsecurity/source/helper/documentsignaturehelper.cxx
++++ b/xmlsecurity/source/helper/documentsignaturehelper.cxx
+@@ -492,6 +492,29 @@ void DocumentSignatureHelper::writeDigestMethod(
+     xDocumentHandler->endElement("DigestMethod");
+ }
+ 
++static void WriteXadesCert(
++    uno::Reference<xml::sax::XDocumentHandler> const& xDocumentHandler,
++    SignatureInformation::X509CertInfo const& rCertInfo)
++{
++    xDocumentHandler->startElement("xd:Cert", uno::Reference<xml::sax::XAttributeList>(new SvXMLAttributeList()));
++    xDocumentHandler->startElement("xd:CertDigest", uno::Reference<xml::sax::XAttributeList>(new SvXMLAttributeList()));
++    DocumentSignatureHelper::writeDigestMethod(xDocumentHandler);
++    xDocumentHandler->startElement("DigestValue", uno::Reference<xml::sax::XAttributeList>(new SvXMLAttributeList()));
++    assert(!rCertInfo.CertDigest.isEmpty());
++    xDocumentHandler->characters(rCertInfo.CertDigest);
++    xDocumentHandler->endElement("DigestValue");
++    xDocumentHandler->endElement("xd:CertDigest");
++    xDocumentHandler->startElement("xd:IssuerSerial", uno::Reference<xml::sax::XAttributeList>(new SvXMLAttributeList()));
++    xDocumentHandler->startElement("X509IssuerName", uno::Reference<xml::sax::XAttributeList>(new SvXMLAttributeList()));
++    xDocumentHandler->characters(rCertInfo.X509IssuerName);
++    xDocumentHandler->endElement("X509IssuerName");
++    xDocumentHandler->startElement("X509SerialNumber", uno::Reference<xml::sax::XAttributeList>(new SvXMLAttributeList()));
++    xDocumentHandler->characters(rCertInfo.X509SerialNumber);
++    xDocumentHandler->endElement("X509SerialNumber");
++    xDocumentHandler->endElement("xd:IssuerSerial");
++    xDocumentHandler->endElement("xd:Cert");
++}
++
+ void DocumentSignatureHelper::writeSignedProperties(
+     const uno::Reference<xml::sax::XDocumentHandler>& xDocumentHandler,
+     const SignatureInformation& signatureInfo,
+@@ -508,26 +531,26 @@ void DocumentSignatureHelper::writeSignedProperties(
+     xDocumentHandler->characters(sDate);
+     xDocumentHandler->endElement("xd:SigningTime");
+     xDocumentHandler->startElement("xd:SigningCertificate", uno::Reference<xml::sax::XAttributeList>(new SvXMLAttributeList()));
+-    xDocumentHandler->startElement("xd:Cert", uno::Reference<xml::sax::XAttributeList>(new SvXMLAttributeList()));
+-    xDocumentHandler->startElement("xd:CertDigest", uno::Reference<xml::sax::XAttributeList>(new SvXMLAttributeList()));
+-    writeDigestMethod(xDocumentHandler);
+-
+-    xDocumentHandler->startElement("DigestValue", uno::Reference<xml::sax::XAttributeList>(new SvXMLAttributeList()));
+-    // TODO: this is empty for gpg signatures currently
+-    //assert(!signatureInfo.ouCertDigest.isEmpty());
+-    xDocumentHandler->characters(signatureInfo.ouCertDigest);
+-    xDocumentHandler->endElement("DigestValue");
+-
+-    xDocumentHandler->endElement("xd:CertDigest");
+-    xDocumentHandler->startElement("xd:IssuerSerial", uno::Reference<xml::sax::XAttributeList>(new SvXMLAttributeList()));
+-    xDocumentHandler->startElement("X509IssuerName", uno::Reference<xml::sax::XAttributeList>(new SvXMLAttributeList()));
+-    xDocumentHandler->characters(signatureInfo.ouX509IssuerName);
+-    xDocumentHandler->endElement("X509IssuerName");
+-    xDocumentHandler->startElement("X509SerialNumber", uno::Reference<xml::sax::XAttributeList>(new SvXMLAttributeList()));
+-    xDocumentHandler->characters(signatureInfo.ouX509SerialNumber);
+-    xDocumentHandler->endElement("X509SerialNumber");
+-    xDocumentHandler->endElement("xd:IssuerSerial");
+-    xDocumentHandler->endElement("xd:Cert");
++    assert(signatureInfo.GetSigningCertificate() || !signatureInfo.ouGpgKeyID.isEmpty());
++    if (signatureInfo.GetSigningCertificate())
++    {
++        // how should this deal with multiple X509Data elements?
++        // for now, let's write all of the certificates ...
++        for (auto const& rData : signatureInfo.X509Datas)
++        {
++            for (auto const& it : rData)
++            {
++                WriteXadesCert(xDocumentHandler, it);
++            }
++        }
++    }
++    else
++    {
++        // for PGP, write empty mandatory X509IssuerName, X509SerialNumber
++        SignatureInformation::X509CertInfo temp;
++        temp.CertDigest = signatureInfo.ouGpgKeyID;
++        WriteXadesCert(xDocumentHandler, temp);
++    }
+     xDocumentHandler->endElement("xd:SigningCertificate");
+     xDocumentHandler->startElement("xd:SignaturePolicyIdentifier", uno::Reference<xml::sax::XAttributeList>(new SvXMLAttributeList()));
+     xDocumentHandler->startElement("xd:SignaturePolicyImplied", uno::Reference<xml::sax::XAttributeList>(new SvXMLAttributeList()));
+diff --git a/xmlsecurity/source/helper/documentsignaturemanager.cxx b/xmlsecurity/source/helper/documentsignaturemanager.cxx
+index 79d2cdf26b61..7252c54e74ab 100644
+--- a/xmlsecurity/source/helper/documentsignaturemanager.cxx
++++ b/xmlsecurity/source/helper/documentsignaturemanager.cxx
+@@ -586,6 +586,18 @@ void DocumentSignatureManager::read(bool bUseTempStream, bool bCacheLastSignatur
+                                                             bCacheLastSignature);
+         maSignatureHelper.EndMission();
+ 
++        // this parses the XML independently from ImplVerifySignatures() - check
++        // certificates here too ...
++        for (auto const& it : maSignatureHelper.GetSignatureInformations())
++        {
++            if (!it.X509Datas.empty())
++            {
++                uno::Reference<xml::crypto::XSecurityEnvironment> const xSecEnv(
++                    getSecurityEnvironment());
++                getSignatureHelper().CheckAndUpdateSignatureInformation(xSecEnv, it);
++            }
++        }
++
+         maCurrentSignatureInformations = maSignatureHelper.GetSignatureInformations();
+     }
+     else
+diff --git a/xmlsecurity/source/helper/ooxmlsecexporter.cxx b/xmlsecurity/source/helper/ooxmlsecexporter.cxx
+index fe4d0df89a5d..d2c29041338f 100644
+--- a/xmlsecurity/source/helper/ooxmlsecexporter.cxx
++++ b/xmlsecurity/source/helper/ooxmlsecexporter.cxx
+@@ -200,13 +200,21 @@ void OOXMLSecExporter::Impl::writeKeyInfo()
+ {
+     m_xDocumentHandler->startElement(
+         "KeyInfo", uno::Reference<xml::sax::XAttributeList>(new SvXMLAttributeList()));
+-    m_xDocumentHandler->startElement(
+-        "X509Data", uno::Reference<xml::sax::XAttributeList>(new SvXMLAttributeList()));
+-    m_xDocumentHandler->startElement(
+-        "X509Certificate", uno::Reference<xml::sax::XAttributeList>(new SvXMLAttributeList()));
+-    m_xDocumentHandler->characters(m_rInformation.ouX509Certificate);
+-    m_xDocumentHandler->endElement("X509Certificate");
+-    m_xDocumentHandler->endElement("X509Data");
++    assert(m_rInformation.GetSigningCertificate());
++    for (auto const& rData : m_rInformation.X509Datas)
++    {
++        m_xDocumentHandler->startElement(
++            "X509Data", uno::Reference<xml::sax::XAttributeList>(new SvXMLAttributeList()));
++        for (auto const& it : rData)
++        {
++            m_xDocumentHandler->startElement(
++                "X509Certificate",
++                uno::Reference<xml::sax::XAttributeList>(new SvXMLAttributeList()));
++            m_xDocumentHandler->characters(it.X509Certificate);
++            m_xDocumentHandler->endElement("X509Certificate");
++        }
++        m_xDocumentHandler->endElement("X509Data");
++    }
+     m_xDocumentHandler->endElement("KeyInfo");
+ }
+ 
+diff --git a/xmlsecurity/source/helper/ooxmlsecparser.cxx b/xmlsecurity/source/helper/ooxmlsecparser.cxx
+index a200de60c07a..a25872fc057d 100644
+--- a/xmlsecurity/source/helper/ooxmlsecparser.cxx
++++ b/xmlsecurity/source/helper/ooxmlsecparser.cxx
+@@ -185,9 +185,22 @@ void SAL_CALL OOXMLSecParser::endElement(const OUString& rName)
+         m_pXSecController->setSignatureValue(m_aSignatureValue);
+         m_bInSignatureValue = false;
+     }
++    else if (rName == "X509Data")
++    {
++        std::vector<std::pair<OUString, OUString>> X509IssuerSerials;
++        std::vector<OUString> X509Certificates;
++        if (!m_aX509Certificate.isEmpty())
++        {
++            X509Certificates.emplace_back(m_aX509Certificate);
++        }
++        if (!m_aX509IssuerName.isEmpty() && !m_aX509SerialNumber.isEmpty())
++        {
++            X509IssuerSerials.emplace_back(m_aX509IssuerName, m_aX509SerialNumber);
++        }
++        m_pXSecController->setX509Data(X509IssuerSerials, X509Certificates);
++    }
+     else if (rName == "X509Certificate")
+     {
+-        m_pXSecController->setX509Certificate(m_aX509Certificate);
+         m_bInX509Certificate = false;
+     }
+     else if (rName == "mdssi:Value")
+@@ -202,17 +215,18 @@ void SAL_CALL OOXMLSecParser::endElement(const OUString& rName)
+     }
+     else if (rName == "X509IssuerName")
+     {
+-        m_pXSecController->setX509IssuerName(m_aX509IssuerName);
+         m_bInX509IssuerName = false;
+     }
+     else if (rName == "X509SerialNumber")
+     {
+-        m_pXSecController->setX509SerialNumber(m_aX509SerialNumber);
+         m_bInX509SerialNumber = false;
+     }
++    else if (rName == "xd:Cert")
++    {
++        m_pXSecController->setX509CertDigest(m_aCertDigest, css::xml::crypto::DigestID::SHA1, m_aX509IssuerName, m_aX509SerialNumber);
++    }
+     else if (rName == "xd:CertDigest")
+     {
+-        m_pXSecController->setCertDigest(m_aCertDigest);
+         m_bInCertDigest = false;
+     }
+     else if (rName == "Object")
+diff --git a/xmlsecurity/source/helper/pdfsignaturehelper.cxx b/xmlsecurity/source/helper/pdfsignaturehelper.cxx
+index b0795cb8f33f..843000a9c326 100644
+--- a/xmlsecurity/source/helper/pdfsignaturehelper.cxx
++++ b/xmlsecurity/source/helper/pdfsignaturehelper.cxx
+@@ -85,8 +85,12 @@ PDFSignatureHelper::GetDocumentSignatureInformations(
+         security::DocumentSignatureInformation& rExternal = aRet[i];
+         rExternal.SignatureIsValid
+             = rInternal.nStatus == xml::crypto::SecurityOperationStatus_OPERATION_SUCCEEDED;
+-        if (!rInternal.ouX509Certificate.isEmpty())
+-            rExternal.Signer = xSecEnv->createCertificateFromAscii(rInternal.ouX509Certificate);
++        if (rInternal.GetSigningCertificate()
++            && !rInternal.GetSigningCertificate()->X509Certificate.isEmpty())
++        {
++            rExternal.Signer = xSecEnv->createCertificateFromAscii(
++                rInternal.GetSigningCertificate()->X509Certificate);
++        }
+         rExternal.PartialDocumentSignature = rInternal.bPartialDocumentSignature;
+ 
+         // Verify certificate.
+diff --git a/xmlsecurity/source/helper/xmlsignaturehelper.cxx b/xmlsecurity/source/helper/xmlsignaturehelper.cxx
+index 22c056e70da1..bcb79039e342 100644
+--- a/xmlsecurity/source/helper/xmlsignaturehelper.cxx
++++ b/xmlsecurity/source/helper/xmlsignaturehelper.cxx
+@@ -21,6 +21,7 @@
+ #include <xmlsignaturehelper.hxx>
+ #include <documentsignaturehelper.hxx>
+ #include <xsecctl.hxx>
++#include <biginteger.hxx>
+ 
+ #include <xmlsignaturehelper2.hxx>
+ 
+@@ -45,6 +46,8 @@
+ #include <tools/diagnose_ex.h>
+ #include <sal/log.hxx>
+ 
++#include <optional>
++
+ #define NS_DOCUMENTSIGNATURES   "http://openoffice.org/2004/documentsignatures"
+ #define NS_DOCUMENTSIGNATURES_ODF_1_2 "urn:oasis:names:tc:opendocument:xmlns:digitalsignature:1.0"
+ #define OOXML_SIGNATURE_ORIGIN "http://schemas.openxmlformats.org/package/2006/relationships/digital-signature/origin"
+@@ -547,4 +550,162 @@ void XMLSignatureHelper::CreateAndWriteOOXMLSignature(const uno::Reference<embed
+     xSaxWriter->endDocument();
+ }
+ 
++/** check this constraint from xmldsig-core 4.5.4:
++
++  All certificates appearing in an X509Data element MUST relate to the
++  validation key by either containing it or being part of a certification
++  chain that terminates in a certificate containing the validation key.
++ */
++static auto CheckX509Data(
++    uno::Reference<xml::crypto::XSecurityEnvironment> const& xSecEnv,
++    std::vector<SignatureInformation::X509CertInfo> const& rX509CertInfos,
++    std::vector<uno::Reference<security::XCertificate>> & rCerts,
++    std::vector<SignatureInformation::X509CertInfo> & rSorted) -> bool
++{
++    assert(rCerts.empty());
++    assert(rSorted.empty());
++    if (rX509CertInfos.empty())
++    {
++        SAL_WARN("xmlsecurity.comp", "no X509Data");
++        return false;
++    }
++    std::vector<uno::Reference<security::XCertificate>> certs;
++    for (SignatureInformation::X509CertInfo const& it : rX509CertInfos)
++    {
++        if (!it.X509Certificate.isEmpty())
++        {
++            certs.emplace_back(xSecEnv->createCertificateFromAscii(it.X509Certificate));
++        }
++        else
++        {
++            certs.emplace_back(xSecEnv->getCertificate(
++                it.X509IssuerName,
++                xmlsecurity::numericStringToBigInteger(it.X509SerialNumber)));
++        }
++        if (!certs.back().is())
++        {
++            SAL_WARN("xmlsecurity.comp", "X509Data cannot be parsed");
++            return false;
++        }
++    }
++
++    // first, search one whose issuer isn't in the list, or a self-signed one
++    std::optional<size_t> start;
++    for (size_t i = 0; i < certs.size(); ++i)
++    {
++        for (size_t j = 0; ; ++j)
++        {
++            if (j == certs.size())
++            {
++                if (start)
++                {
++                    SAL_WARN("xmlsecurity.comp", "X509Data do not form a chain: certificate has no issuer but already have start of chain: " << certs[i]->getSubjectName());
++                    return false;
++                }
++                start = i; // issuer isn't in the list
++                break;
++            }
++            if (xmlsecurity::EqualDistinguishedNames(certs[i]->getIssuerName(), certs[j]->getSubjectName()))
++            {
++                if (i == j) // self signed
++                {
++                    if (start)
++                    {
++                        SAL_WARN("xmlsecurity.comp", "X509Data do not form a chain: certificate is self-signed but already have start of chain: " << certs[i]->getSubjectName());
++                        return false;
++                    }
++                    start = i;
++                }
++                break;
++            }
++        }
++    }
++    std::vector<size_t> chain;
++    if (!start)
++    {
++        // this can only be a cycle?
++        SAL_WARN("xmlsecurity.comp", "X509Data do not form a chain: cycle detected");
++        return false;
++    }
++    chain.emplace_back(*start);
++
++    // second, check that there is a chain, no tree or cycle...
++    for (size_t i = 0; i < certs.size(); ++i)
++    {
++        assert(chain.size() == i + 1);
++        for (size_t j = 0; j < certs.size(); ++j)
++        {
++            if (chain[i] != j)
++            {
++                if (xmlsecurity::EqualDistinguishedNames(
++                        certs[chain[i]]->getSubjectName(), certs[j]->getIssuerName()))
++                {
++                    if (chain.size() != i + 1) // already found issuee?
++                    {
++                        SAL_WARN("xmlsecurity.comp", "X509Data do not form a chain: certificate issued 2 others: " << certs[chain[i]]->getSubjectName());
++                        return false;
++                    }
++                    chain.emplace_back(j);
++                }
++            }
++        }
++        if (i == certs.size() - 1)
++        {   // last one: must be a leaf
++            if (chain.size() != i + 1)
++            {
++                SAL_WARN("xmlsecurity.comp", "X509Data do not form a chain: certificate in cycle: " << certs[chain[i]]->getSubjectName());
++                return false;
++            }
++        }
++        else if (chain.size() != i + 2)
++        {   // not issuer of another?
++            SAL_WARN("xmlsecurity.comp", "X509Data do not form a chain: certificate issued 0 others: " << certs[chain[i]]->getSubjectName());
++            return false;
++        }
++    }
++
++    // success
++    assert(chain.size() == rX509CertInfos.size());
++    for (auto const& it : chain)
++    {
++        rSorted.emplace_back(rX509CertInfos[it]);
++        rCerts.emplace_back(certs[it]);
++    }
++    return true;
++}
++
++std::vector<uno::Reference<security::XCertificate>>
++XMLSignatureHelper::CheckAndUpdateSignatureInformation(
++    uno::Reference<xml::crypto::XSecurityEnvironment> const& xSecEnv,
++    SignatureInformation const& rInfo)
++{
++    // if the check fails, it's not possible to determine which X509Data
++    // contained the signing certificate - the UI cannot display something
++    // useful in this case, so prevent anything misleading by clearing the
++    // X509Datas.
++
++    std::vector<uno::Reference<security::XCertificate>> certs;
++    std::vector<SignatureInformation::X509Data> datas;
++    // TODO: for now, just merge all X509Datas together for checking...
++    // (this will probably break round-trip of signature with multiple X509Data,
++    // no idea if that is a problem)
++    SignatureInformation::X509Data temp;
++    SignatureInformation::X509Data tempResult;
++    for (auto const& rData : rInfo.X509Datas)
++    {
++        for (auto const& it : rData)
++        {
++            temp.emplace_back(it);
++        }
++    }
++    if (CheckX509Data(xSecEnv, temp, certs, tempResult))
++    {
++        datas.emplace_back(tempResult);
++    }
++
++    // rInfo is a copy, update the original
++    mpXSecController->UpdateSignatureInformation(rInfo.nSecurityId, datas);
++    return certs;
++}
++
+ /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/xmlsecurity/source/helper/xsecctl.cxx b/xmlsecurity/source/helper/xsecctl.cxx
+index e3df9a85f6da..6bd88e24f91e 100644
+--- a/xmlsecurity/source/helper/xsecctl.cxx
++++ b/xmlsecurity/source/helper/xsecctl.cxx
+@@ -734,7 +734,7 @@ void XSecController::exportSignature(
+                     xDocumentHandler->startElement(
+                         "PGPKeyID",
+                         css::uno::Reference< css::xml::sax::XAttributeList > (new SvXMLAttributeList()));
+-                    xDocumentHandler->characters( signatureInfo.ouCertDigest );
++                    xDocumentHandler->characters(signatureInfo.ouGpgKeyID);
+                     xDocumentHandler->endElement( "PGPKeyID" );
+ 
+                     /* Write PGPKeyPacket element */
+@@ -758,43 +758,50 @@ void XSecController::exportSignature(
+             }
+             else
+             {
+-                /* Write X509Data element */
+-                xDocumentHandler->startElement(
+-                    "X509Data",
+-                    css::uno::Reference< css::xml::sax::XAttributeList > (new SvXMLAttributeList()));
++                assert(signatureInfo.GetSigningCertificate());
++                for (auto const& rData : signatureInfo.X509Datas)
+                 {
+-                    /* Write X509IssuerSerial element */
++                    /* Write X509Data element */
+                     xDocumentHandler->startElement(
+-                        "X509IssuerSerial",
++                        "X509Data",
+                         css::uno::Reference< css::xml::sax::XAttributeList > (new SvXMLAttributeList()));
+                     {
+-                        /* Write X509IssuerName element */
+-                        xDocumentHandler->startElement(
+-                            "X509IssuerName",
+-                            css::uno::Reference< css::xml::sax::XAttributeList > (new SvXMLAttributeList()));
+-                        xDocumentHandler->characters( signatureInfo.ouX509IssuerName );
+-                        xDocumentHandler->endElement( "X509IssuerName" );
+-
+-                        /* Write X509SerialNumber element */
+-                        xDocumentHandler->startElement(
+-                            "X509SerialNumber",
+-                            css::uno::Reference< css::xml::sax::XAttributeList > (new SvXMLAttributeList()));
+-                        xDocumentHandler->characters( signatureInfo.ouX509SerialNumber );
+-                        xDocumentHandler->endElement( "X509SerialNumber" );
+-                    }
+-                    xDocumentHandler->endElement( "X509IssuerSerial" );
+-
+-                    /* Write X509Certificate element */
+-                    if (!signatureInfo.ouX509Certificate.isEmpty())
+-                    {
+-                        xDocumentHandler->startElement(
+-                            "X509Certificate",
+-                            css::uno::Reference< css::xml::sax::XAttributeList > (new SvXMLAttributeList()));
+-                        xDocumentHandler->characters( signatureInfo.ouX509Certificate );
+-                        xDocumentHandler->endElement( "X509Certificate" );
++                        for (auto const& it : rData)
++                        {
++                            /* Write X509IssuerSerial element */
++                            xDocumentHandler->startElement(
++                                "X509IssuerSerial",
++                                css::uno::Reference< css::xml::sax::XAttributeList > (new SvXMLAttributeList()));
++                            {
++                                /* Write X509IssuerName element */
++                                xDocumentHandler->startElement(
++                                    "X509IssuerName",
++                                    css::uno::Reference< css::xml::sax::XAttributeList > (new SvXMLAttributeList()));
++                                xDocumentHandler->characters(it.X509IssuerName);
++                                xDocumentHandler->endElement( "X509IssuerName" );
++
++                                /* Write X509SerialNumber element */
++                                xDocumentHandler->startElement(
++                                    "X509SerialNumber",
++                                    css::uno::Reference< css::xml::sax::XAttributeList > (new SvXMLAttributeList()));
++                                xDocumentHandler->characters(it.X509SerialNumber);
++                                xDocumentHandler->endElement( "X509SerialNumber" );
++                            }
++                            xDocumentHandler->endElement( "X509IssuerSerial" );
++
++                            /* Write X509Certificate element */
++                            if (!it.X509Certificate.isEmpty())
++                            {
++                                xDocumentHandler->startElement(
++                                    "X509Certificate",
++                                    css::uno::Reference< css::xml::sax::XAttributeList > (new SvXMLAttributeList()));
++                                xDocumentHandler->characters(it.X509Certificate);
++                                xDocumentHandler->endElement( "X509Certificate" );
++                            }
++                        }
+                     }
++                    xDocumentHandler->endElement( "X509Data" );
+                 }
+-                xDocumentHandler->endElement( "X509Data" );
+             }
+         }
+         xDocumentHandler->endElement( "KeyInfo" );
+@@ -913,6 +920,15 @@ void XSecController::exportOOXMLSignature(const uno::Reference<embed::XStorage>&
+     aExporter.writeSignature();
+ }
+ 
++void XSecController::UpdateSignatureInformation(sal_Int32 const nSecurityId,
++    std::vector<SignatureInformation::X509Data> const& rDatas)
++{
++    SignatureInformation aInf( 0 );
++    int const nIndex = findSignatureInfor(nSecurityId);
++    assert(nIndex != -1); // nothing should touch this between parsing and verify
++    m_vInternalSignatureInformations[nIndex].signatureInfor.X509Datas = rDatas;
++}
++
+ SignatureInformation XSecController::getSignatureInformation( sal_Int32 nSecurityId ) const
+ {
+     SignatureInformation aInf( 0 );
+diff --git a/xmlsecurity/source/helper/xsecparser.cxx b/xmlsecurity/source/helper/xsecparser.cxx
+index f46277f96ea1..f2e00fca99c9 100644
+--- a/xmlsecurity/source/helper/xsecparser.cxx
++++ b/xmlsecurity/source/helper/xsecparser.cxx
+@@ -243,98 +243,79 @@ class XSecParser::DsX509CertificateContext
+     : public XSecParser::Context
+ {
+     private:
+-        OUString m_Value;
++        OUString & m_rValue;
+ 
+     public:
+         DsX509CertificateContext(XSecParser & rParser,
+-                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
++                std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
++                OUString & rValue)
+             : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++            , m_rValue(rValue)
+         {
+         }
+ 
+-        virtual void EndElement() override
+-        {
+-            m_rParser.m_pXSecController->setX509Certificate(m_Value);
+-        }
+-
+         virtual void Characters(OUString const& rChars) override
+         {
+-            m_Value += rChars;
++            m_rValue += rChars;
+         }
+ };
+ 
+ class XSecParser::DsX509SerialNumberContext
+-    : public XSecParser::ReferencedContextImpl
++    : public XSecParser::Context
+ {
+     private:
+-        OUString m_Value;
++        OUString & m_rValue;
+ 
+     public:
+         DsX509SerialNumberContext(XSecParser & rParser,
+                 std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
+-                bool const isReferenced)
+-            : ReferencedContextImpl(rParser, std::move(pOldNamespaceMap), isReferenced)
+-        {
+-        }
+-
+-        virtual void EndElement() override
++                OUString & rValue)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++            , m_rValue(rValue)
+         {
+-            if (m_isReferenced)
+-            {
+-                m_rParser.m_pXSecController->setX509SerialNumber(m_Value);
+-            }
+-            else
+-            {
+-                SAL_INFO("xmlsecurity.helper", "ignoring unsigned X509SerialNumber");
+-            }
+         }
+ 
+         virtual void Characters(OUString const& rChars) override
+         {
+-            m_Value += rChars;
++            m_rValue += rChars;
+         }
+ };
+ 
+ class XSecParser::DsX509IssuerNameContext
+-    : public XSecParser::ReferencedContextImpl
++    : public XSecParser::Context
+ {
+     private:
+-        OUString m_Value;
++        OUString & m_rValue;
+ 
+     public:
+         DsX509IssuerNameContext(XSecParser & rParser,
+                 std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
+-                bool const isReferenced)
+-            : ReferencedContextImpl(rParser, std::move(pOldNamespaceMap), isReferenced)
+-        {
+-        }
+-
+-        virtual void EndElement() override
++                OUString & rValue)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++            , m_rValue(rValue)
+         {
+-            if (m_isReferenced)
+-            {
+-                m_rParser.m_pXSecController->setX509IssuerName(m_Value);
+-            }
+-            else
+-            {
+-                SAL_INFO("xmlsecurity.helper", "ignoring unsigned X509IssuerName");
+-            }
+         }
+ 
+         virtual void Characters(OUString const& rChars) override
+         {
+-            m_Value += rChars;
++            m_rValue += rChars;
+         }
+ };
+ 
+ class XSecParser::DsX509IssuerSerialContext
+-    : public XSecParser::ReferencedContextImpl
++    : public XSecParser::Context
+ {
++    private:
++        OUString & m_rX509IssuerName;
++        OUString & m_rX509SerialNumber;
++
+     public:
+         DsX509IssuerSerialContext(XSecParser & rParser,
+                 std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
+-                bool const isReferenced)
+-            : ReferencedContextImpl(rParser, std::move(pOldNamespaceMap), isReferenced)
++                OUString & rIssuerName, OUString & rSerialNumber)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++            , m_rX509IssuerName(rIssuerName)
++            , m_rX509SerialNumber(rSerialNumber)
+         {
+         }
+ 
+@@ -344,20 +325,27 @@ class XSecParser::DsX509IssuerSerialContext
+         {
+             if (nNamespace == XML_NAMESPACE_DS && rName == "X509IssuerName")
+             {
+-                return std::make_unique<DsX509IssuerNameContext>(m_rParser, std::move(pOldNamespaceMap), m_isReferenced);
++                return std::make_unique<DsX509IssuerNameContext>(m_rParser, std::move(pOldNamespaceMap), m_rX509IssuerName);
+             }
+             if (nNamespace == XML_NAMESPACE_DS && rName == "X509SerialNumber")
+             {
+-                return std::make_unique<DsX509SerialNumberContext>(m_rParser, std::move(pOldNamespaceMap), m_isReferenced);
++                return std::make_unique<DsX509SerialNumberContext>(m_rParser, std::move(pOldNamespaceMap), m_rX509SerialNumber);
+             }
+             // missing: ds:X509SKI, ds:X509SubjectName, ds:X509CRL
+             return XSecParser::Context::CreateChildContext(std::move(pOldNamespaceMap), nNamespace, rName);
+         }
+ };
+ 
++/// can't be sure what is supposed to happen here because the spec is clear as mud
+ class XSecParser::DsX509DataContext
+     : public XSecParser::Context
+ {
++    private:
++        // sigh... "No ordering is implied by the above constraints."
++        // so store the ball of mud in vectors and try to figure it out later.
++        std::vector<std::pair<OUString, OUString>> m_X509IssuerSerials;
++        std::vector<OUString> m_X509Certificates;
++
+     public:
+         DsX509DataContext(XSecParser & rParser,
+                 std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap)
+@@ -365,18 +353,24 @@ class XSecParser::DsX509DataContext
+         {
+         }
+ 
++        virtual void EndElement() override
++        {
++            m_rParser.m_pXSecController->setX509Data(m_X509IssuerSerials, m_X509Certificates);
++        }
++
+         virtual std::unique_ptr<Context> CreateChildContext(
+             std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
+             sal_uInt16 const nNamespace, OUString const& rName) override
+         {
+             if (nNamespace == XML_NAMESPACE_DS && rName == "X509IssuerSerial")
+             {
+-                // can't require KeyInfo to be signed so pass in *true*
+-                return std::make_unique<DsX509IssuerSerialContext>(m_rParser, std::move(pOldNamespaceMap), true);
++                m_X509IssuerSerials.emplace_back();
++                return std::make_unique<DsX509IssuerSerialContext>(m_rParser, std::move(pOldNamespaceMap), m_X509IssuerSerials.back().first, m_X509IssuerSerials.back().second);
+             }
+             if (nNamespace == XML_NAMESPACE_DS && rName == "X509Certificate")
+             {
+-                return std::make_unique<DsX509CertificateContext>(m_rParser, std::move(pOldNamespaceMap));
++                m_X509Certificates.emplace_back();
++                return std::make_unique<DsX509CertificateContext>(m_rParser, std::move(pOldNamespaceMap), m_X509Certificates.back());
+             }
+             // missing: ds:X509SKI, ds:X509SubjectName, ds:X509CRL
+             return XSecParser::Context::CreateChildContext(std::move(pOldNamespaceMap), nNamespace, rName);
+@@ -968,30 +962,20 @@ class XSecParser::LoSignatureLineContext
+ };
+ 
+ class XSecParser::XadesCertDigestContext
+-    : public XSecParser::ReferencedContextImpl
++    : public XSecParser::Context
+ {
+     private:
+-        OUString m_Value;
+-        sal_Int32 m_nReferenceDigestID = css::xml::crypto::DigestID::SHA1;
++        OUString & m_rDigestValue;
++        sal_Int32 & m_rReferenceDigestID;
+ 
+     public:
+         XadesCertDigestContext(XSecParser & rParser,
+                 std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
+-                bool const isReferenced)
+-            : ReferencedContextImpl(rParser, std::move(pOldNamespaceMap), isReferenced)
+-        {
+-        }
+-
+-        virtual void EndElement() override
++                OUString & rDigestValue, sal_Int32 & rReferenceDigestID)
++            : XSecParser::Context(rParser, std::move(pOldNamespaceMap))
++            , m_rDigestValue(rDigestValue)
++            , m_rReferenceDigestID(rReferenceDigestID)
+         {
+-            if (m_isReferenced)
+-            {
+-                m_rParser.m_pXSecController->setCertDigest(m_Value/* FIXME , m_nReferenceDigestID*/);
+-            }
+-            else
+-            {
+-                SAL_INFO("xmlsecurity.helper", "ignoring unsigned CertDigest");
+-            }
+         }
+ 
+         virtual std::unique_ptr<Context> CreateChildContext(
+@@ -1000,11 +984,11 @@ class XSecParser::XadesCertDigestContext
+         {
+             if (nNamespace == XML_NAMESPACE_DS && rName == "DigestMethod")
+             {
+-                return std::make_unique<DsDigestMethodContext>(m_rParser, std::move(pOldNamespaceMap), m_nReferenceDigestID);
++                return std::make_unique<DsDigestMethodContext>(m_rParser, std::move(pOldNamespaceMap), m_rReferenceDigestID);
+             }
+             if (nNamespace == XML_NAMESPACE_DS && rName == "DigestValue")
+             {
+-                return std::make_unique<DsDigestValueContext>(m_rParser, std::move(pOldNamespaceMap), m_Value);
++                return std::make_unique<DsDigestValueContext>(m_rParser, std::move(pOldNamespaceMap), m_rDigestValue);
+             }
+             return XSecParser::Context::CreateChildContext(std::move(pOldNamespaceMap), nNamespace, rName);
+         }
+@@ -1013,6 +997,12 @@ class XSecParser::XadesCertDigestContext
+ class XSecParser::XadesCertContext
+     : public XSecParser::ReferencedContextImpl
+ {
++    private:
++        sal_Int32 m_nReferenceDigestID = css::xml::crypto::DigestID::SHA1;
++        OUString m_CertDigest;
++        OUString m_X509IssuerName;
++        OUString m_X509SerialNumber;
++
+     public:
+         XadesCertContext(XSecParser & rParser,
+                 std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
+@@ -1021,17 +1011,29 @@ class XSecParser::XadesCertContext
+         {
+         }
+ 
++        virtual void EndElement() override
++        {
++            if (m_isReferenced)
++            {
++                m_rParser.m_pXSecController->setX509CertDigest(m_CertDigest, m_nReferenceDigestID, m_X509IssuerName, m_X509SerialNumber);
++            }
++            else
++            {
++                SAL_INFO("xmlsecurity.helper", "ignoring unsigned xades:Cert");
++            }
++        }
++
+         virtual std::unique_ptr<Context> CreateChildContext(
+             std::unique_ptr<SvXMLNamespaceMap> pOldNamespaceMap,
+             sal_uInt16 const nNamespace, OUString const& rName) override
+         {
+             if (nNamespace == XML_NAMESPACE_XADES132 && rName == "CertDigest")
+             {
+-                return std::make_unique<XadesCertDigestContext>(m_rParser, std::move(pOldNamespaceMap), m_isReferenced);
++                return std::make_unique<XadesCertDigestContext>(m_rParser, std::move(pOldNamespaceMap), m_CertDigest, m_nReferenceDigestID);
+             }
+             if (nNamespace == XML_NAMESPACE_XADES132 && rName == "IssuerSerial")
+             {
+-                return std::make_unique<DsX509IssuerSerialContext>(m_rParser, std::move(pOldNamespaceMap), m_isReferenced);
++                return std::make_unique<DsX509IssuerSerialContext>(m_rParser, std::move(pOldNamespaceMap), m_X509IssuerName, m_X509SerialNumber);
+             }
+             return XSecParser::Context::CreateChildContext(std::move(pOldNamespaceMap), nNamespace, rName);
+         }
+diff --git a/xmlsecurity/source/helper/xsecsign.cxx b/xmlsecurity/source/helper/xsecsign.cxx
+index 1e1688767f00..fd33a320d9bd 100644
+--- a/xmlsecurity/source/helper/xsecsign.cxx
++++ b/xmlsecurity/source/helper/xsecsign.cxx
+@@ -193,6 +193,7 @@ void XSecController::signAStream( sal_Int32 securityId, const OUString& uri, boo
+     }
+ }
+ 
++// note: this is called when creating a new signature from scratch
+ void XSecController::setX509Certificate(
+     sal_Int32 nSecurityId,
+     const OUString& ouX509IssuerName,
+@@ -206,10 +207,13 @@ void XSecController::setX509Certificate(
+     if ( index == -1 )
+     {
+         InternalSignatureInformation isi(nSecurityId, nullptr);
+-        isi.signatureInfor.ouX509IssuerName = ouX509IssuerName;
+-        isi.signatureInfor.ouX509SerialNumber = ouX509SerialNumber;
+-        isi.signatureInfor.ouX509Certificate = ouX509Cert;
+-        isi.signatureInfor.ouCertDigest = ouX509CertDigest;
++        isi.signatureInfor.X509Datas.clear();
++        isi.signatureInfor.X509Datas.emplace_back();
++        isi.signatureInfor.X509Datas.back().emplace_back();
++        isi.signatureInfor.X509Datas.back().back().X509IssuerName = ouX509IssuerName;
++        isi.signatureInfor.X509Datas.back().back().X509SerialNumber = ouX509SerialNumber;
++        isi.signatureInfor.X509Datas.back().back().X509Certificate = ouX509Cert;
++        isi.signatureInfor.X509Datas.back().back().CertDigest = ouX509CertDigest;
+         isi.signatureInfor.eAlgorithmID = eAlgorithmID;
+         m_vInternalSignatureInformations.push_back( isi );
+     }
+@@ -217,16 +221,19 @@ void XSecController::setX509Certificate(
+     {
+         SignatureInformation &si
+             = m_vInternalSignatureInformations[index].signatureInfor;
+-        si.ouX509IssuerName = ouX509IssuerName;
+-        si.ouX509SerialNumber = ouX509SerialNumber;
+-        si.ouX509Certificate = ouX509Cert;
+-        si.ouCertDigest = ouX509CertDigest;
++        si.X509Datas.clear();
++        si.X509Datas.emplace_back();
++        si.X509Datas.back().emplace_back();
++        si.X509Datas.back().back().X509IssuerName = ouX509IssuerName;
++        si.X509Datas.back().back().X509SerialNumber = ouX509SerialNumber;
++        si.X509Datas.back().back().X509Certificate = ouX509Cert;
++        si.X509Datas.back().back().CertDigest = ouX509CertDigest;
+     }
+ }
+ 
+ void XSecController::setGpgCertificate(
+         sal_Int32 nSecurityId,
+-        const OUString& ouCertDigest,
++        const OUString& ouKeyDigest,
+         const OUString& ouCert,
+         const OUString& ouOwner)
+ {
+@@ -237,16 +244,17 @@ void XSecController::setGpgCertificate(
+         InternalSignatureInformation isi(nSecurityId, nullptr);
+         isi.signatureInfor.ouGpgCertificate = ouCert;
+         isi.signatureInfor.ouGpgOwner = ouOwner;
+-        isi.signatureInfor.ouCertDigest = ouCertDigest;
++        isi.signatureInfor.ouGpgKeyID = ouKeyDigest;
+         m_vInternalSignatureInformations.push_back( isi );
+     }
+     else
+     {
+         SignatureInformation &si
+             = m_vInternalSignatureInformations[index].signatureInfor;
++        si.X509Datas.clear(); // it is a PGP signature now
+         si.ouGpgCertificate = ouCert;
+         si.ouGpgOwner = ouOwner;
+-        si.ouCertDigest = ouCertDigest;
++        si.ouGpgKeyID = ouKeyDigest;
+     }
+ }
+ 
+diff --git a/xmlsecurity/source/helper/xsecverify.cxx b/xmlsecurity/source/helper/xsecverify.cxx
+index 92ebfb6c72e8..89141ed1dfd4 100644
+--- a/xmlsecurity/source/helper/xsecverify.cxx
++++ b/xmlsecurity/source/helper/xsecverify.cxx
+@@ -22,6 +22,7 @@
+ #include <xsecctl.hxx>
+ #include "xsecparser.hxx"
+ #include "ooxmlsecparser.hxx"
++#include <biginteger.hxx>
+ #include <framework/signatureverifierimpl.hxx>
+ #include <framework/saxeventkeeperimpl.hxx>
+ #include <gpg/xmlsignature_gpgimpl.hxx>
+@@ -240,7 +241,9 @@ void XSecController::setReferenceCount() const
+     }
+ }
+ 
+-void XSecController::setX509IssuerName( OUString const & ouX509IssuerName )
++void XSecController::setX509Data(
++        std::vector<std::pair<OUString, OUString>> & rX509IssuerSerials,
++        std::vector<OUString> const& rX509Certificates)
+ {
+     if (m_vInternalSignatureInformations.empty())
+     {
+@@ -248,29 +251,52 @@ void XSecController::setX509IssuerName( OUString const & ouX509IssuerName )
+         return;
+     }
+     InternalSignatureInformation &isi = m_vInternalSignatureInformations.back();
+-    isi.signatureInfor.ouX509IssuerName = ouX509IssuerName;
+-}
+-
+-void XSecController::setX509SerialNumber( OUString const & ouX509SerialNumber )
+-{
+-    if (m_vInternalSignatureInformations.empty())
++    SignatureInformation::X509Data data;
++    // due to the excessive flexibility of the spec it's possible that there
++    // is both a reference to a cert and the cert itself in one X509Data
++    for (OUString const& it : rX509Certificates)
+     {
+-        SAL_INFO("xmlsecurity.helper","XSecController::setX509SerialNumber: no signature");
+-        return;
++        try
++        {
++            data.emplace_back();
++            data.back().X509Certificate = it;
++            uno::Reference<xml::crypto::XSecurityEnvironment> const xSecEnv(m_xSecurityContext->getSecurityEnvironment());
++            uno::Reference<security::XCertificate> const xCert(xSecEnv->createCertificateFromAscii(it));
++            if (!xCert.is())
++            {
++                SAL_INFO("xmlsecurity.helper", "cannot parse X509Certificate");
++                continue; // will be handled in CheckX509Data
++            }
++            OUString const issuerName(xCert->getIssuerName());
++            OUString const serialNumber(xmlsecurity::bigIntegerToNumericString(xCert->getSerialNumber()));
++            auto const iter = std::find_if(rX509IssuerSerials.begin(), rX509IssuerSerials.end(),
++                [&](auto const& rX509IssuerSerial) {
++                    return xmlsecurity::EqualDistinguishedNames(issuerName, rX509IssuerSerial.first)
++                        && serialNumber == rX509IssuerSerial.second;
++                });
++            if (iter != rX509IssuerSerials.end())
++            {
++                data.back().X509IssuerName = iter->first;
++                data.back().X509SerialNumber = iter->second;
++                rX509IssuerSerials.erase(iter);
++            }
++        }
++        catch (uno::Exception const&)
++        {
++            SAL_INFO("xmlsecurity.helper", "cannot parse X509Certificate");
++        }
+     }
+-    InternalSignatureInformation &isi = m_vInternalSignatureInformations.back();
+-    isi.signatureInfor.ouX509SerialNumber = ouX509SerialNumber;
+-}
+-
+-void XSecController::setX509Certificate( OUString const & ouX509Certificate )
+-{
+-    if (m_vInternalSignatureInformations.empty())
++    // now handle any that are left...
++    for (auto const& it : rX509IssuerSerials)
+     {
+-        SAL_INFO("xmlsecurity.helper","XSecController::setX509Certificate: no signature");
+-        return;
++        data.emplace_back();
++        data.back().X509IssuerName = it.first;
++        data.back().X509SerialNumber = it.second;
++    }
++    if (!data.empty())
++    {
++        isi.signatureInfor.X509Datas.push_back(data);
+     }
+-    InternalSignatureInformation &isi = m_vInternalSignatureInformations.back();
+-    isi.signatureInfor.ouX509Certificate = ouX509Certificate;
+ }
+ 
+ void XSecController::setSignatureValue( OUString const & ouSignatureValue )
+@@ -380,13 +406,67 @@ void XSecController::setSignatureBytes(const uno::Sequence<sal_Int8>& rBytes)
+     rInformation.signatureInfor.aSignatureBytes = rBytes;
+ }
+ 
+-void XSecController::setCertDigest(const OUString& rCertDigest)
++void XSecController::setX509CertDigest(
++    OUString const& rCertDigest, sal_Int32 const /*TODO nReferenceDigestID*/,
++    OUString const& rX509IssuerName, OUString const& rX509SerialNumber)
+ {
+     if (m_vInternalSignatureInformations.empty())
+         return;
+ 
+     InternalSignatureInformation& rInformation = m_vInternalSignatureInformations.back();
+-    rInformation.signatureInfor.ouCertDigest = rCertDigest;
++    for (auto & rData : rInformation.signatureInfor.X509Datas)
++    {
++        for (auto & it : rData)
++        {
++            if (xmlsecurity::EqualDistinguishedNames(it.X509IssuerName, rX509IssuerName)
++                && it.X509SerialNumber == rX509SerialNumber)
++            {
++                it.CertDigest = rCertDigest;
++                return;
++            }
++        }
++    }
++    // fall-back: read the actual certificates
++    for (auto & rData : rInformation.signatureInfor.X509Datas)
++    {
++        for (auto & it : rData)
++        {
++            if (!it.X509Certificate.isEmpty())
++            {
++                try
++                {
++                    uno::Reference<xml::crypto::XSecurityEnvironment> const xSecEnv(m_xSecurityContext->getSecurityEnvironment());
++                    uno::Reference<security::XCertificate> const xCert(xSecEnv->createCertificateFromAscii(it.X509Certificate));
++                    if (!xCert.is())
++                    {
++                        SAL_INFO("xmlsecurity.helper", "cannot parse X509Certificate");
++                    }
++                    else if (xmlsecurity::EqualDistinguishedNames(xCert->getIssuerName(),rX509IssuerName)
++                        && xmlsecurity::bigIntegerToNumericString(xCert->getSerialNumber()) == rX509SerialNumber)
++                    {
++                        it.CertDigest = rCertDigest;
++                        // note: testInsertCertificate_PEM_DOCX requires these!
++                        it.X509SerialNumber = rX509SerialNumber;
++                        it.X509IssuerName = rX509IssuerName;
++                        return;
++                    }
++                }
++                catch (uno::Exception const&)
++                {
++                    SAL_INFO("xmlsecurity.helper", "cannot parse X509Certificate");
++                }
++            }
++        }
++    }
++    if (!rInformation.signatureInfor.ouGpgCertificate.isEmpty())
++    {
++        SAL_INFO_IF(rCertDigest != rInformation.signatureInfor.ouGpgKeyID,
++            "xmlsecurity.helper", "PGPKeyID vs CertDigest mismatch");
++    }
++    else
++    {
++        SAL_INFO("xmlsecurity.helper", "cannot find X509Data for CertDigest");
++    }
+ }
+ 
+ namespace {
+diff --git a/xmlsecurity/source/xmlsec/mscrypt/x509certificate_mscryptimpl.cxx b/xmlsecurity/source/xmlsec/mscrypt/x509certificate_mscryptimpl.cxx
+index 0e619b2802f8..244cd46ac564 100644
+--- a/xmlsecurity/source/xmlsec/mscrypt/x509certificate_mscryptimpl.cxx
++++ b/xmlsecurity/source/xmlsec/mscrypt/x509certificate_mscryptimpl.cxx
+@@ -26,6 +26,7 @@
+ #include <cppuhelper/supportsservice.hxx>
+ #include "x509certificate_mscryptimpl.hxx"
+ #include <certificateextension_xmlsecimpl.hxx>
++#include <biginteger.hxx>
+ #include "sanextension_mscryptimpl.hxx"
+ 
+ #include "oid.hxx"
+@@ -649,4 +650,50 @@ Sequence<OUString> SAL_CALL X509Certificate_MSCryptImpl::getSupportedServiceName
+     return { OUString() };
+ }
+ 
++namespace xmlsecurity {
++
++static bool EncodeDistinguishedName(OUString const& rName, CERT_NAME_BLOB & rBlob)
++{
++    LPCWSTR pszError;
++    if (!CertStrToNameW(X509_ASN_ENCODING,
++            reinterpret_cast<LPCWSTR>(rName.getStr()), CERT_X500_NAME_STR,
++            nullptr, nullptr, &rBlob.cbData, &pszError))
++    {
++        SAL_INFO("xmlsecurity.xmlsec", "CertStrToNameW failed: " << WindowsErrorString(GetLastError()) << "; " << reinterpret_cast<char16_t const*>(pszError));
++        return false;
++    }
++    rBlob.pbData = new BYTE[rBlob.cbData];
++    if (!CertStrToNameW(X509_ASN_ENCODING,
++            reinterpret_cast<LPCWSTR>(rName.getStr()), CERT_X500_NAME_STR,
++            nullptr, rBlob.pbData, &rBlob.cbData, &pszError))
++    {
++        SAL_INFO("xmlsecurity.xmlsec", "CertStrToNameW failed: " << WindowsErrorString(GetLastError()) << "; " << reinterpret_cast<char16_t const*>(pszError));
++        return false;
++    }
++    return true;
++}
++
++bool EqualDistinguishedNames(
++        OUString const& rName1, OUString const& rName2)
++{
++    CERT_NAME_BLOB blob1;
++    if (!EncodeDistinguishedName(rName1, blob1))
++    {
++        return false;
++    }
++    CERT_NAME_BLOB blob2;
++    if (!EncodeDistinguishedName(rName2, blob2))
++    {
++        delete[] blob1.pbData;
++        return false;
++    }
++    bool const ret(CertCompareCertificateName(X509_ASN_ENCODING,
++            &blob1, &blob2) == TRUE);
++    delete[] blob2.pbData;
++    delete[] blob1.pbData;
++    return ret;
++}
++
++} // namespace xmlsecurity
++
+ /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/xmlsecurity/source/xmlsec/mscrypt/xmlsignature_mscryptimpl.cxx b/xmlsecurity/source/xmlsec/mscrypt/xmlsignature_mscryptimpl.cxx
+index dcbad0348091..c699c950f351 100644
+--- a/xmlsecurity/source/xmlsec/mscrypt/xmlsignature_mscryptimpl.cxx
++++ b/xmlsecurity/source/xmlsec/mscrypt/xmlsignature_mscryptimpl.cxx
+@@ -18,6 +18,7 @@
+  */
+ 
+ #include <sal/config.h>
++#include <sal/log.hxx>
+ #include <rtl/uuid.h>
+ #include <xmlsec-wrapper.h>
+ 
+@@ -254,6 +255,7 @@ SAL_CALL XMLSignature_MSCryptImpl::validate(
+                  ++nReferenceGood;
+         }
+     }
++    SAL_INFO("xmlsecurity.xmlsec", "xmlSecDSigCtxVerify status " << pDsigCtx->status << ", references good " << nReferenceGood << " of " << nReferenceCount);
+ 
+     if (rs == 0 && nReferenceCount == nReferenceGood)
+     {
+diff --git a/xmlsecurity/source/xmlsec/nss/x509certificate_nssimpl.cxx b/xmlsecurity/source/xmlsec/nss/x509certificate_nssimpl.cxx
+index 1a323d33f32f..d6143a81883c 100644
+--- a/xmlsecurity/source/xmlsec/nss/x509certificate_nssimpl.cxx
++++ b/xmlsecurity/source/xmlsec/nss/x509certificate_nssimpl.cxx
+@@ -31,6 +31,7 @@
+ #include <rtl/ref.hxx>
+ #include "x509certificate_nssimpl.hxx"
+ 
++#include <biginteger.hxx>
+ #include <certificateextension_xmlsecimpl.hxx>
+ 
+ #include "sanextension_nssimpl.hxx"
+@@ -533,4 +534,28 @@ sal_Bool SAL_CALL X509Certificate_NssImpl::supportsService(const OUString& servi
+ /* XServiceInfo */
+ Sequence<OUString> SAL_CALL X509Certificate_NssImpl::getSupportedServiceNames() { return { OUString() }; }
+ 
++namespace xmlsecurity {
++
++bool EqualDistinguishedNames(
++        OUString const& rName1, OUString const& rName2)
++{
++    CERTName *const pName1(CERT_AsciiToName(OUStringToOString(rName1, RTL_TEXTENCODING_UTF8).getStr()));
++    if (pName1 == nullptr)
++    {
++        return false;
++    }
++    CERTName *const pName2(CERT_AsciiToName(OUStringToOString(rName2, RTL_TEXTENCODING_UTF8).getStr()));
++    if (pName2 == nullptr)
++    {
++        CERT_DestroyName(pName1);
++        return false;
++    }
++    bool const ret(CERT_CompareName(pName1, pName2) == SECEqual);
++    CERT_DestroyName(pName2);
++    CERT_DestroyName(pName1);
++    return ret;
++}
++
++} // namespace xmlsecurity
++
+ /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+diff --git a/xmlsecurity/source/xmlsec/nss/xmlsignature_nssimpl.cxx b/xmlsecurity/source/xmlsec/nss/xmlsignature_nssimpl.cxx
+index 32e4335a5207..b41d754f7407 100644
+--- a/xmlsecurity/source/xmlsec/nss/xmlsignature_nssimpl.cxx
++++ b/xmlsecurity/source/xmlsec/nss/xmlsignature_nssimpl.cxx
+@@ -26,6 +26,8 @@
+ 
+ #include "securityenvironment_nssimpl.hxx"
+ 
++#include <sal/log.hxx>
++
+ #include <com/sun/star/xml/crypto/XXMLSignature.hpp>
+ #include <memory>
+ 
+@@ -261,6 +263,7 @@ SAL_CALL XMLSignature_NssImpl::validate(
+                     ++nReferenceGood;
+             }
+         }
++        SAL_INFO("xmlsecurity.xmlsec", "xmlSecDSigCtxVerify status " << pDsigCtx->status << ", references good " << nReferenceGood << " of " << nReferenceCount);
+ 
+         if (rs == 0 && pDsigCtx->status == xmlSecDSigStatusSucceeded && nReferenceCount == nReferenceGood)
+         {
+-- 
+cgit v1.2.1
+
