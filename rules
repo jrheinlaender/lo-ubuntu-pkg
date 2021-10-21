@@ -1889,6 +1889,7 @@ debian/tests/control: debian/tests/control.in debian/rules
 	    sed -e "s|%OOO_JAVA_ARCHS%|$(OOO_JAVA_ARCHS)|g" \
 		    -e "s|%OOO_JUNIT_ARCHS%|$(OOO_JUNIT_ARCHS)|g" \
 		    -e "s|%OOO_NOGUI_ARCHS%|$(OOO_NOGUI_ARCHS)|g" \
+		    -e "s|%OOO_CHECK_FATAL_ARCHS%|$(OOO_CHECK_FATAL_ARCHS)|g" \
 	        > debian/tests/control < debian/tests/control.in
 
 .DELETE_ON_ERROR: debian/tests/control
@@ -2052,16 +2053,16 @@ ifeq "$(BUILD_TEST_PACKAGES)" "y"
   endif
 endif
 
-ifeq "$(BUILD_TEST_PACKAGES)" "y"
-	# doesn't necessarily exist unless you also ran check...
-	if [ -d workdir/Zip ]; then \
-		find workdir/Zip -name "smoketestdoc*" | xargs rm; \
-		patch -p0 < $(CURDIR)/debian/tests/patches/smoketest-disable-extension-tests.diff; \
-		cd smoketest && $(MAKE) Zip_smoketestdoc; cd ..; \
-		patch -p0 -R < $(CURDIR)/debian/tests/patches/smoketest-disable-extension-tests.diff; \
-		cp workdir/Zip/smoketestdoc.zip workdir/Zip/smoketestdoc.sxw; \
-	fi
-endif
+#ifeq "$(BUILD_TEST_PACKAGES)" "y"
+#	# doesn't necessarily exist unless you also ran check...
+#	if [ -d workdir/Zip ]; then \
+#		find workdir/Zip -name "smoketestdoc*" | xargs rm; \
+#		patch -p0 < $(CURDIR)/debian/tests/patches/smoketest-disable-extension-tests.diff; \
+#		cd smoketest && $(MAKE) Zip_smoketestdoc; cd ..; \
+#		patch -p0 -R < $(CURDIR)/debian/tests/patches/smoketest-disable-extension-tests.diff; \
+#		cp workdir/Zip/smoketestdoc.zip workdir/Zip/smoketestdoc.sxw; \
+#	fi
+#endif
 
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 	$(CURDIR)/debian/rules check-indep
@@ -2095,10 +2096,11 @@ endif
 	mkdir -p $(CURDIR)/debian/locales
 	USE_CPUS=$(NUM_CPUS) debian/scripts/locale-gen
 
-	# build the tests first
+	# build the tests (first)
 	export gb_SUPPRESS_TESTS=true; \
 		$(MAKE) check
 
+ifeq ($(AUTOPKGTEST_TMP),)
         # and now run them
 	$(IGNORE_MAKE_CHECK_FAILURES)t=`mktemp -q -d`; \
 	cd $(SOURCE_TREE) && \
@@ -2113,6 +2115,8 @@ endif
 		if [ -x /usr/bin/gdb ]; then ulimit -c unlimited; fi && \
 		$(TEST_TIMEOUT) $(MAKE) -k check || $(TEST_TIMEOUT) $(MAKE) check && \
 	rm -rf $$t
+endif
+
 ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
 	patch -p1 -R < $(CURDIR)/debian/tests/patches/disable-db-tests.diff
 endif
@@ -2123,18 +2127,20 @@ endif
 endif
 
 check-indep:
-ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
-  ifeq "$(ENABLE_JAVA)" "y"
+ifeq ($(AUTOPKGTEST_TMP),)
+  ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
+    ifeq "$(ENABLE_JAVA)" "y"
 	# since the gb_SUPPRESS_CHECK stuff in build this isn't checked.
 	# probably should, so do it here manually.
 	$(IGNORE_MAKE_CHECK_FAILURES)cd odk && \
 		$(MAKE) CustomTarget_odk/check
-    ifneq (,$(findstring -indep,$(MAKECMDGOALS)))
+      ifneq (,$(findstring -indep,$(MAKECMDGOALS)))
 	# was already checked in check
 	$(IGNORE_MAKE_CHECK_FAILURES)if [ ! -e $(STAMP_DIR)/build-arch ]; then \
 		cd odk && $(MAKE) CustomTarget_odk/build-examples && \
 			$(MAKE) CustomTarget_odk/build-examples_java; \
 	fi
+      endif
     endif
   endif
 endif
@@ -3126,12 +3132,14 @@ ifeq "$(BUILD_TEST_PACKAGES)" "y"
   endif
 
 	rm -rf $(PKGDIR)-smoketest-data
-	mkdir -p $(PKGDIR)-smoketest-data/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes
-	mkdir -p $(PKGDIR)-smoketest-data/$(OODIR)/program/classes
-	mv $(PKGDIR)-java-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes/smoketest.jar \
-		$(PKGDIR)-smoketest-data/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes
-	mv $(PKGDIR)-java-common/$(OODIR)/program/classes/smoketest.jar \
-		$(PKGDIR)-smoketest-data/$(OODIR)/program/classes
+#	mkdir -p $(PKGDIR)-smoketest-data/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes
+#	mkdir -p $(PKGDIR)-smoketest-data/$(OODIR)/program/classes
+#	mv $(PKGDIR)-java-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes/smoketest.jar \
+#		$(PKGDIR)-smoketest-data/$(shell echo $(OODIR) | sed -e s/lib/share/)/program/classes
+#	mv $(PKGDIR)-java-common/$(OODIR)/program/classes/smoketest.jar \
+#		$(PKGDIR)-smoketest-data/$(OODIR)/program/classes
+	rm -f $(PKGDIR)-java-common/$(OODIR)/program/classes/smoketest.jar
+
 	mkdir -p $(PKGDIR)-smoketest-data/usr/share/libreoffice
 	cp workdir/Extension/TestExtension.oxt \
 		$(PKGDIR)-smoketest-data/usr/share/libreoffice
