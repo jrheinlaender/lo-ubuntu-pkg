@@ -631,6 +631,15 @@ ALLOW_CLANG=y
 
 CLANG_VERSION=default
 
+# /usr/bin/ld: /usr/lib/llvm-11/bin/../lib/LLVMgold.so: error loading plugin: /usr/lib/llvm-11/bin/../lib/LLVMgold.so: cannot open shared object file: No such file or directory
+# llvm-11-linker-tools does not contain this on ppc64el...
+ifeq "$(ENABLE_LTO)" "y"
+  ifeq "$(DEB_HOST_ARCH)" "ppc64el"
+	CLANG_VERSION := 12
+  endif
+	BUILD_DEPS += , clang-12 [ppc64el] | clang (>= 1:12) [ppc64el]
+endif
+
 ifeq "$(USE_CLANG)" "y"
   ENABLE_COMPILER_PLUGINS=n
 endif
@@ -676,7 +685,7 @@ endif
       ifeq "$(CLANG_VERSION)" "default"
 	export LO_CLANG_CC=clang
 	export LO_CLANG_CXX=clang++
-	BUILD_DEPS += , clang (>= 1:5.0.2) [$(filter-out armel,$(OOO_LE_ARCHS))]
+	BUILD_DEPS += , clang (>= 1:5.0.2) [$(filter-out armel ppc64el,$(OOO_LE_ARCHS))]
 	# see #963162, #963167 which apparently don't exist on 11
 	BUILD_DEPS += , clang (>= 1:11) [armel]
       else
