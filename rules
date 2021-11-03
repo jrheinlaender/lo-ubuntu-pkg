@@ -252,17 +252,26 @@ ENABLE_AVAHI=y
 ifeq "$(ENABLE_GUI)" "y"
 USE_GSTREAMER=y
 endif
+ENABLE_CURL=y
+CURL_SECTYPE=gnutls
 ENABLE_WEBDAV=y
 ifeq "$(ENABLE_WEBDAV)" "y"
-WEBDAV_LIB=neon
+WEBDAV_LIB=curl
   ifeq "$(WEBDAV_LIB)" "neon"
     SYSTEM_STUFF += neon
     NEON_SECTYPE=gnutls
     NEONSONR=27
   else
-   SYSTEM_STUFF += apr
-   SYSTEM_STUFF += serf
+    ifeq "$(WEBDAV_LIB)" "serf"
+      SYSTEM_STUFF += apr
+      SYSTEM_STUFF += serf
+    else # curl
+      ENABLE_CURL=y
+    endif
   endif
+endif
+ifeq "$(ENABLE_CURL)" "y"
+SYSTEM_STUFF += curl
 endif
 SYSTEM_STUFF += redland
 PACKAGE_SDK=y
@@ -278,7 +287,6 @@ ifeq "$(USE_SOURCE_TARBALLS)" "y"
 ENABLE_EXPORT_VALIDATION_TESTS=n
 endif
 JUNIT_MIN_VER= (>= 4.8.2-2)
-CURL_SECTYPE=gnutls
 USE_LIBSUITESPARSE=y
 SUITESPARSE_MIN_VERSION= (>= 1:3.4.0)
 PARALLEL_BUILD=y
@@ -340,10 +348,6 @@ SYSTEM_STUFF += jpeg
 SYSTEM_STUFF += libxml
 SYSTEM_STUFF += expat
 SYSTEM_STUFF += odbc
-ENABLE_CURL=y
-ifeq "$(ENABLE_CURL)" "y"
-SYSTEM_STUFF += curl
-endif
 SYSTEM_STUFF += sane
 ENABLE_PDFIMPORT=y
 ENABLE_POPPLER=y
@@ -616,7 +620,7 @@ endif
 # Debian Buster
 ifeq "$(DEB_DISTRIBUTION)" "bullseye-backports"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out cuckoo,$(SYSTEM_STUFF))
+  SYSTEM_STUFF := $(filter-out cuckoo zxing,$(SYSTEM_STUFF))
   BULLSEYE_BACKPORT=y
   ENABLE_LTO=n
 endif
@@ -1195,7 +1199,8 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
   endif
   ifeq "$(ENABLE_ZXING)" "y"
     ifneq (,$(filter zxing, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libzxingcore-dev
+	# https://cgit.freedesktop.org/libreoffice/core/commit/?id=d53340b2253537104abe6f95c8c63cc74487c3ec
+	BUILD_DEPS += , libzxingcore-dev (>= 1.2.0)
     endif
   else
 	CONFIGURE_FLAGS += --disable-zxing
@@ -1449,11 +1454,18 @@ ifeq "$(ENABLE_WEBDAV)" "y"
       endif
     endif
   else
-    ifneq (,$(filter apr, $(SYSTEM_STUFF)))
+    ifeq "$(WEBDAV_LIB)" "serf"
+      ifneq (,$(filter apr, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libaprutil1-dev
-    endif
-    ifneq (,$(filter serf, $(SYSTEM_STUFF)))
+      endif
+      ifneq (,$(filter serf, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libserf-dev
+      endif
+    else # curl
+      ifneq (,$(filter curl, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libcurl4-$(CURL_SECTYPE)-dev (>= 7.63)
+      endif
+      ENABLE_CURL=y
     endif
   endif
   CONFIGURE_FLAGS += --with-webdav=$(WEBDAV_LIB)
