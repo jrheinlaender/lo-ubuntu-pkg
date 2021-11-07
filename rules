@@ -30,6 +30,12 @@ ARCH_INDEP_PACKAGES := $(shell dh_listpackages -i)
 ARCH_DEP_PACKAGES := $(shell dh_listpackages -a)
 PACKAGES := $(ARCH_INDEP_PACKAGES) $(ARCH_DEP_PACKAGES)
 
+ifneq (,$(shell pwd | grep autopkgtest))
+AUTOPKGTEST_BUILD=y
+$(warning Build for autopkgtest)
+endif
+AUTOPKGTEST_CPPUNIT_PACKAGES := $(shell dh_listpackages | grep -v help | grep -v l10n | grep -v dev-doc | grep -v "nogui$$")
+
 include /usr/share/dpkg/architecture.mk
 include /usr/share/dpkg/vendor.mk
 SHELL:=/bin/bash
@@ -419,7 +425,9 @@ BUILD_ARM64=y
 SYSTEM_STUFF += gpgmepp
 INSTALL_APPARMOR_PROFILES=y
 ENABLE_APPARMOR_PROFILES=y
-CHECK_APPARMOR_PROFILES=true
+ifneq "$(AUTOPKGTEST_BUILD)" "y"
+  CHECK_APPARMOR_PROFILES=true
+endif
 SYSTEM_STUFF += libnumbertext
 SYSTEM_STUFF += box2d
 
@@ -509,6 +517,11 @@ $(eval $(call gen_no_archs,OOO_JUNIT_ARCHS))
 #OOO_CHECK_FATAL_ARCHS := i386 amd64 armhf arm64
 OOO_CHECK_FATAL_ARCHS := amd64 arm64
 
+BUILD_TESTS=y
+ifeq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
+  BUILD_TESTS=n
+endif
+
 RUN_MAKE_CHECK=n
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
   ifeq ($(DEB_HOST_ARCH),$(filter $(DEB_HOST_ARCH),$(OOO_CHECK_ARCHS)))
@@ -524,6 +537,11 @@ ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
   ifeq ($(DEB_HOST_ARCH),$(filter $(DEB_HOST_ARCH),$(OOO_CHECK_FATAL_ARCHS)))
        IGNORE_MAKE_CHECK_FAILURES:=
   endif
+endif
+ifeq "$(RUN_MAKE_CHECK)" "y"
+  BUILD_TESTS=y
+else
+  BUILD_TESTS=n
 endif
 
 # Java...
@@ -598,16 +616,14 @@ ifneq "$(BUILD_NOGUI_PACKAGES)" "y"
 DEBHELPER_OPTIONS += -Nlibreoffice-core-nogui -Nlibreoffice-calc-nogui -Nlibreoffice-writer-nogui -Nlibreoffice-draw-nogui -Nlibreoffice-report-builder-bin-nogui -Nlibreoffice-base-nogui -Nlibreoffice-impress-nogui -Nlibreoffice-math-nogui
 endif
 
-ifneq ($(AUTOPKGTEST_TMP),)
-	# speed up autopkgtest builds
-	ENABLE_LTO=n
-	USE_DWZ=n
-	BUILD_ONLY_EN_US=y
-	BUILD_NOGUI_PACKAGES=n
-	PACKAGE_SDK=n
-	PACKAGE_SDK_DOCS=n
-	# go sure
-	BUILD_TEST_PACKAGES=y
+ifeq "$(AUTOPKGTEST_BUILD)" "y"
+# as above (for build-indep), no need to do two builds here...
+# needs to be here since there is arch-specific rules before
+BUILD_NOGUI_PACKAGES=n
+# go sure
+BUILD_TESTS=y
+BUILD_TEST_PACKAGES=y
+ENABLE_JUNIT4=y
 endif
 
 #############
@@ -826,7 +842,9 @@ else
 endif
 
 ifneq (,$(filter amd64,$(DEB_HOST_ARCH)))
+  ifneq "$(AUTOPKGTEST_BUILD)" "y"
 	SMALL_SYMBOLS = n
+  endif
 endif
 
 # silence long-obsolete warnings. Should probably be in
@@ -913,8 +931,12 @@ endif
 	BUILD_DEPS_ARCH += , ghostscript$(OOO_NO_CHECK_ARCHS) <!nocheck>
 	BUILD_DEPS_ARCH += , hunspell-en-us$(OOO_NO_CHECK_ARCHS) <!nocheck>
 	BUILD_DEPS_ARCH += , hyphen-en-us$(OOO_NO_CHECK_ARCHS) <!nocheck>
-	# we don't run any cppunit check in all builds
+    # we don't run any cppunit check in all builds
+    ifneq "$(AUTOPKGTEST_BUILD)" "y"
+      ifeq ($(MAKECMDGOALS),build-indep)
 	CONFIGURE_FLAGS_INDEP += --without-cppunit
+      endif
+    endif
   else
 	CONFIGURE_FLAGS += --without-cppunit
   endif
@@ -2046,6 +2068,7 @@ endif
 		--with-galleries=no --with-theme="$(DEFAULT_IMAGE)"
 
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) ARCH_FLAGS=$(ARCH_FLAGS) TMP=`mktemp -q -d` $(MAKE) build-non-l10n-only
+
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 	$(CURDIR)/debian/rules check
 endif
@@ -2093,22 +2116,23 @@ ifeq "$(BUILD_TEST_PACKAGES)" "y"
 	fi
 endif
 
-ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
+ifneq "$(AUTOPKGTEST_BUILD)" "y"
+  ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 	$(CURDIR)/debian/rules check-indep
+  endif
 endif
 
 	touch $@
 
-
-check: 
-ifeq "$(RUN_MAKE_CHECK)" "y"
-ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
+check:
+ifeq "$(BUILD_TESTS)" "y"
+  ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
 	patch -p1 < $(CURDIR)/debian/tests/patches/disable-db-tests.diff
-endif
-ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
+  endif
+  ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
 	cd $(SOURCE_TREE)/smoketest && \
 		patch -p1 < $(CURDIR)/debian/tests/patches/smoketest-disable-extension-tests.diff
-endif
+  endif
 
 	# enable cppunit etc.
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
@@ -2121,15 +2145,17 @@ endif
 		--without-doxygen --without-javadoc \
 		--with-galleries=no --with-theme="$(DEFAULT_IMAGE)"
 
+	# build the tests (first)
+	export gb_SUPPRESS_TESTS=true; \
+		$(MAKE) check
+endif
+
+ifneq "$(AUTOPKGTEST_BUILD)" "y"
+ifeq "$(RUN_MAKE_CHECK)" "y"
 	# generate the needed en_US.UTF-8 locale
 	mkdir -p $(CURDIR)/debian/locales
 	USE_CPUS=$(NUM_CPUS) debian/scripts/locale-gen
 
-	# build the tests (first)
-	export gb_SUPPRESS_TESTS=true; \
-		$(MAKE) check
-
-ifeq ($(AUTOPKGTEST_TMP),)
         # and now run them
 	$(IGNORE_MAKE_CHECK_FAILURES)t=`mktemp -q -d`; \
 	cd $(SOURCE_TREE) && \
@@ -2145,31 +2171,31 @@ ifeq ($(AUTOPKGTEST_TMP),)
 		$(TEST_TIMEOUT) $(MAKE) -k check || $(TEST_TIMEOUT) $(MAKE) check && \
 	rm -rf $$t
 endif
-
-ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
-	patch -p1 -R < $(CURDIR)/debian/tests/patches/disable-db-tests.diff
 endif
-ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
+
+ifeq "$(BUILD_TESTS)" "y"
+  ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
+	patch -p1 -R < $(CURDIR)/debian/tests/patches/disable-db-tests.diff
+  endif
+  ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
 	cd $(SOURCE_TREE)/smoketest && \
 		patch -p1 -R < $(CURDIR)/debian/tests/patches/smoketest-disable-extension-tests.diff
-endif
+  endif
 endif
 
 check-indep:
-ifeq ($(AUTOPKGTEST_TMP),)
-  ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
-    ifeq "$(ENABLE_JAVA)" "y"
+ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
+  ifeq "$(ENABLE_JAVA)" "y"
 	# since the gb_SUPPRESS_CHECK stuff in build this isn't checked.
 	# probably should, so do it here manually.
 	$(IGNORE_MAKE_CHECK_FAILURES)cd odk && \
 		$(MAKE) CustomTarget_odk/check
-      ifneq (,$(findstring -indep,$(MAKECMDGOALS)))
+    ifneq (,$(findstring -indep,$(MAKECMDGOALS)))
 	# was already checked in check
 	$(IGNORE_MAKE_CHECK_FAILURES)if [ ! -e $(STAMP_DIR)/build-arch ]; then \
 		cd odk && $(MAKE) CustomTarget_odk/build-examples && \
 			$(MAKE) CustomTarget_odk/build-examples_java; \
 	fi
-      endif
     endif
   endif
 endif
