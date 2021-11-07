@@ -137,7 +137,7 @@ for l in `echo $OOO_LANGS_LIST`; do
                 pkg/libreoffice-help-$l/$OOINSTBASE/help/$d && \
         rmdir pkg/libreoffice-l10n-$l/$OOINSTBASE/help/$d
 done
-	
+
 # Move all libraries and binaries from -common to -core
 if [ ! -d $OODESTDIR/pkg/libreoffice-core/$OOINSTBASE/program ]; then \
 mkdir -p $OODESTDIR/pkg/libreoffice-core/$OOINSTBASE/program; \
