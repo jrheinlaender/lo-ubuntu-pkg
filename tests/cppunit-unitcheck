@@ -23,6 +23,12 @@ function unapply() {
 
 trap "unapply" ERR
 
+# skip if building as root:
+# fails with permission errors (seems to assume it runs as user)
+if [ `id -u` = "0" ]; then
+        exit 77
+fi
+
 echo
 echo "====== Patching the tree to only build the unittests against an existing installation ======"
 patch -p1 < ./debian/tests/patches/cppunit-standalone.diff
@@ -46,9 +52,11 @@ mkdir -p $SRCDIR/instdir/share/filter/.dir
 export PARALLELISM=$CHECK_PARALLELISM
 # helpcontent2
 # idlc - tries to *write* /usr/lib/libreoffice/sdk/bin/idlc...
+# unoidl - tries to *write* /usr/lib/libreoffice/sdk/bin/unoidl-check (and  more?)...
 # odk - tries to *write* to the SDK dirs and we do test _using_ the ODK
 #       in odk-build-examples anyway
-for i in `grep check */*.mk | grep -v helpcontent2 | grep -v idlc | grep -v odk | cut -d"/" -f1 | sort | uniq | xargs`; do
+# testtools - already tested in the "uno" test
+for i in `grep check */*.mk | grep -v helpcontent2 | grep -E -v '(idlc|unoidl)' | grep -v odk | grep -v testtools | cut -d"/" -f1 | sort | uniq | xargs`; do
 	echo
 	echo "====== Running unitcheck in module $i ======"; \
 	cd $i && \
