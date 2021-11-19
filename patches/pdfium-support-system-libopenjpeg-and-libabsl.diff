@@ -1,0 +1,157 @@
+diff --git a/config_host.mk.in b/config_host.mk.in
+index a03ac19747bc..138644ae4646 100644
+--- a/config_host.mk.in
++++ b/config_host.mk.in
+@@ -576,6 +581,9 @@ export STAROFFICE_LIBS=$(gb_SPACE)@STAROFFICE_LIBS@
+ export STRIP=@STRIP@
+ export STRIP_COMPONENTS=@STRIP_COMPONENTS@
+ export SYSBASE=@SYSBASE@
++export SYSTEM_ABSEIL=@SYSTEM_ABSEIL@
++export ABSEIL_CFLAGS=@ABSEIL_CFLAGS@
++export ABSEIL_LIBS=@ABSEIL_LIBS@
+ export SYSTEM_ABW=@SYSTEM_ABW@
+ export SYSTEM_APR=@SYSTEM_APR@
+ export SYSTEM_BLUEZ=@SYSTEM_BLUEZ@
+@@ -638,6 +646,9 @@ export SYSTEM_NEON=@SYSTEM_NEON@
+ export SYSTEM_NSS=@SYSTEM_NSS@
+ export SYSTEM_ODBC_HEADERS=@SYSTEM_ODBC_HEADERS@
+ export SYSTEM_ODFGEN=@SYSTEM_ODFGEN@
++export SYSTEM_OPENJPEG2=@SYSTEM_OPENJPEG2@
++export OPENJPEG2_CFLAGS=@OPENJPEG2_CFLAGS@
++export OPENJPEG2_LIBS=@OPENJPEG2_LIBS@
+ export SYSTEM_OPENLDAP=@SYSTEM_OPENLDAP@
+ export SYSTEM_OPENSSL=@SYSTEM_OPENSSL@
+ export SYSTEM_PAGEMAKER=@SYSTEM_PAGEMAKER@
+diff --git a/configure.ac b/configure.ac
+index 0ee46bed9c74..327e3d3ffc89 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -2175,6 +2175,16 @@ AC_ARG_WITH(system-poppler,
+         [Use system poppler (only needed for PDF import).]),,
+     [with_system_poppler="$with_system_libs"])
+ 
++AC_ARG_WITH(system-abseil,
++    AS_HELP_STRING([--with-system-abseil],
++        [Use the abseil libraries already on system.]),,
++    [with_system_abseil="$with_system_libs"])
++
++AC_ARG_WITH(system-openjpeg,
++    AS_HELP_STRING([--with-system-openjpeg],
++        [Use the OpenJPEG library already on system.]),,
++    [with_system_openjpeg="$with_system_libs"])
++
+ libo_FUZZ_ARG_ENABLE(gpgmepp,
+     AS_HELP_STRING([--disable-gpgmepp],
+         [Disable building gpgmepp. Do not use in normal cases unless you want to fix potential problems it causes.])
+@@ -11944,6 +12004,42 @@ else
+ fi
+ AC_SUBST(ENABLE_PDFIUM)
+ 
++if test "$ENABLE_PDFIUM" = "TRUE"; then
++    	AC_MSG_CHECKING([which OpenJPEG library to use])
++    	if test "$with_system_openjpeg" = "yes"; then
++		SYSTEM_OPENJPEG2=TRUE
++		AC_MSG_RESULT([external])
++        	PKG_CHECK_MODULES( OPENJPEG2, libopenjp2 )
++        	OPENJPEG2_CFLAGS=$(printf '%s' "$OPENJPEG2_CFLAGS" | sed -e "s/-I/${ISYSTEM?}/g")
++        	FilterLibs "${OPENJPEG2_LIBS}"
++        	OPENJPEG2_LIBS="${filteredlibs}"
++	else
++		SYSTEM_OPENJPEG2=FALSE
++		AC_MSG_RESULT([internal])
++	fi
++    	AC_MSG_CHECKING([which Abseil library to use])
++	if test "$with_system_abseil" = "yes"; then
++		AC_MSG_RESULT([external])
++        	SYSTEM_ABSEIL=TRUE
++        	AC_LANG_PUSH([C++])
++        	AC_CHECK_HEADER(absl/types/bad_optional_access.h, [],
++            		[AC_MSG_ERROR(abseil headers not found.)], [])
++        	#ABSEIL_CFLAGS=-I/usr/include
++        	AC_CHECK_LIB([absl_bad_optional_access], [main], [ABSEIL_LIBS=-labsl_bad_optional_access],
++                      	[ AC_MSG_ERROR([libabsl_bad_optional_access library not found.]) ])
++        	AC_LANG_POP([C++])
++        	ABSEIL_CFLAGS=$(printf '%s' "$ABSEIL_CFLAGS" | sed -e "s/-I/${ISYSTEM?}/g")
++        	FilterLibs "${ABSEIL_LIBS}"
++        	ABSEIL_LIBS="${filteredlibs}"
++	else
++		AC_MSG_RESULT([internal])
++	fi
++fi
++AC_SUBST(SYSTEM_OPENJPEG2)
++AC_SUBST(SYSTEM_ABSEIL)
++AC_SUBST(ABSEIL_CFLAGS)
++AC_SUBST(ABSEIL_LIBS)
++
+ dnl ===================================================================
+ dnl Check for poppler
+ dnl ===================================================================
+diff --git a/external/pdfium/Library_pdfium.mk b/external/pdfium/Library_pdfium.mk
+index ee2917fbfd5d..03dcf59e6a45 100644
+--- a/external/pdfium/Library_pdfium.mk
++++ b/external/pdfium/Library_pdfium.mk
+@@ -19,7 +19,8 @@ $(eval $(call gb_Library_set_include,pdfium,\
+     -I$(call gb_UnpackedTarball_get_dir,pdfium) \
+     -I$(call gb_UnpackedTarball_get_dir,pdfium)/third_party \
+     -I$(call gb_UnpackedTarball_get_dir,pdfium)/third_party/agg23 \
+-    -I$(call gb_UnpackedTarball_get_dir,pdfium)/third_party/abseil-cpp \
++    $(if $(filter TRUE,$(SYSTEM_ABSEIL)),$(ABSEIL_CFLAGS),-I$(call gb_UnpackedTarball_get_dir,pdfium)/third_party/abseil-cpp) \
++    $(if $(filter TRUE,$(SYSTEM_OPENJPEG2)),$(OPENJPEG2_CFLAGS)) \
+     $$(INCLUDE) \
+ ))
+ 
+@@ -34,6 +36,12 @@ $(eval $(call gb_Library_add_defs,pdfium,\
+     -DWIN32_LEAN_AND_MEAN \
+     -DCOMPONENT_BUILD \
+ ))
++ifeq ($(SYSTEM_OPENJPEG2),TRUE)
++$(eval $(call gb_Library_add_defs,pdfium,\
++    -DUSE_SYSTEM_LIBOPENJPEG2 \
++))
++endif
++
+ 
+ $(eval $(call gb_Library_set_generated_cxx_suffix,pdfium,cpp))
+ 
+@@ -518,11 +526,14 @@ $(eval $(call gb_Library_add_generated_exception_objects,pdfium,\
+     UnpackedTarball/pdfium/third_party/agg23/agg_vcgen_stroke \
+ ))
+ 
++ifneq ($(SYSTEM_ABSEIL),TRUE)
+ # third_party/abseil-cpp
+ $(eval $(call gb_Library_add_generated_exception_objects,pdfium,\
+     UnpackedTarball/pdfium/third_party/abseil-cpp/absl/types/bad_optional_access \
+ ))
++endif
+ 
++ifneq ($(SYSTEM_OPENJPEG2),TRUE)
+ # third_party/fx_libopenjpeg
+ $(eval $(call gb_Library_add_generated_cobjects,pdfium,\
+     UnpackedTarball/pdfium/third_party/libopenjpeg20/bio \
+@@ -550,6 +561,7 @@ $(eval $(call gb_Library_add_generated_cobjects,pdfium,\
+ $(eval $(call gb_Library_add_generated_exception_objects,pdfium,\
+     UnpackedTarball/pdfium/third_party/libopenjpeg20/opj_malloc \
+ ))
++endif
+ 
+ # pdfium_base
+ $(eval $(call gb_Library_add_generated_exception_objects,pdfium,\
+@@ -586,6 +598,18 @@ $(eval $(call gb_Library_add_libs,pdfium,\
+     -lrt \
+ ))
+ 
++ifeq ($(SYSTEM_OPENJPEG2),TRUE)
++$(eval $(call gb_Library_add_libs,pdfium,\
++    $(OPENJPEG2_LIBS) \
++))
++endif
++
++ifeq ($(SYSTEM_ABSEIL),TRUE)
++$(eval $(call gb_Library_add_libs,pdfium,\
++    $(ABSEIL_LIBS) \
++))
++endif
++
+ $(eval $(call gb_Library_use_external,pdfium,freetype))
+ $(eval $(call gb_Library_add_defs,pdfium,\
+     -DDEFINE_PS_TABLES_DATA \
