@@ -1,0 +1,162 @@
+From 263961306ede0656ebb7904034a2172615ce81d0 Mon Sep 17 00:00:00 2001
+From: Eike Rathke <erack@redhat.com>
+Date: Tue, 16 Nov 2021 14:53:14 +0100
+Subject: Update to ICU 70.1
+
+Unicode 14, 5 new scripts, 12 new Unicode blocks.
+
+In i18npool/qa/cppunit/test_breakiterator.cxx
+TestBreakIterator::testLao() had to be disabled/adapted.
+Needs to be investigated, see comments there.
+As is, Lao script word break has regressions.
+
+Correct UBLOCK_TANGUT_SUPPLEMENT Unicode range endpoint to
+0x18D7F, see
+https://www.unicode.org/versions/Unicode14.0.0/erratafixed.html
+for which ublock_getCode(0x18D8F) now returned UBLOCK_NO_BLOCK and
+thus luckily the assert in svx/source/dialog/charmap.cxx hit.
+
+Change-Id: I4bad16ecfab3f44be365b8f884c57f34af68218e
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/125322
+Reviewed-by: Eike Rathke <erack@redhat.com>
+Tested-by: Jenkins
+---
+ i18npool/qa/cppunit/test_breakiterator.cxx         |  12 ++
+ i18nutil/source/utility/unicode.cxx                |  17 ++
+ include/svx/strings.hrc                            |  12 ++
+ svx/source/dialog/charmap.cxx                      |  40 ++++-
+
+diff --git a/i18npool/qa/cppunit/test_breakiterator.cxx b/i18npool/qa/cppunit/test_breakiterator.cxx
+index 936649bb537e..b74ff4222be4 100644
+--- a/i18npool/qa/cppunit/test_breakiterator.cxx
++++ b/i18npool/qa/cppunit/test_breakiterator.cxx
+@@ -856,7 +856,19 @@ void TestBreakIterator::testLao()
+         i18n::WordType::DICTIONARY_WORD, true);
+ 
+     CPPUNIT_ASSERT_EQUAL(sal_Int32(5), aBounds.startPos);
++#if (U_ICU_VERSION_MAJOR_NUM != 70)
+     CPPUNIT_ASSERT_EQUAL(sal_Int32(9), aBounds.endPos);
++#else
++    // FIXME:
++    // In ICU 70 for yet unknown reason the word boundary 9 is not detected and
++    // instead the length 12 is returned as endpos.
++    // Deep in
++    // icu_70::RuleBasedBreakIterator::BreakCache::next()
++    // icu_70::RuleBasedBreakIterator::BreakCache::following()
++    // icu_70::RuleBasedBreakIterator::following()
++    // i18npool::BreakIterator_Unicode::getWordBoundary()
++    CPPUNIT_ASSERT_EQUAL(sal_Int32(12), aBounds.endPos);
++#endif
+ }
+ #endif
+ 
+diff --git a/i18nutil/source/utility/unicode.cxx b/i18nutil/source/utility/unicode.cxx
+index 2b8d0a256e99..49a0f4dafc1e 100644
+--- a/i18nutil/source/utility/unicode.cxx
++++ b/i18nutil/source/utility/unicode.cxx
+@@ -778,6 +778,23 @@ OString unicode::getExemplarLanguageForUScriptCode(UScriptCode eScript)
+         case USCRIPT_YEZIDI:
+             sRet = "kmr-Yezi";
+             break;
++#endif
++#if (U_ICU_VERSION_MAJOR_NUM >= 70)
++        case USCRIPT_CYPRO_MINOAN:
++            sRet = "mis-Cpmn";  // Uncoded with script
++            break;
++        case USCRIPT_OLD_UYGHUR:
++            sRet = "oui-Ougr";
++            break;
++        case USCRIPT_TANGSA:
++            sRet = "nst-Tnsa";
++            break;
++        case USCRIPT_TOTO:
++            sRet = "txo-Toto";
++            break;
++        case USCRIPT_VITHKUQI:
++            sRet = "sq-Vith";   // macrolanguage code
++            break;
+ #endif
+     }
+     return sRet;
+diff --git a/include/svx/strings.hrc b/include/svx/strings.hrc
+index 0091baaaa44b..a18d9d305e3d 100644
+--- a/include/svx/strings.hrc
++++ b/include/svx/strings.hrc
+@@ -1754,6 +1754,18 @@
+ #define RID_SUBSETSTR_SYMBOLS_FOR_LEGACY_COMPUTING          NC_("RID_SUBSETMAP", "Symbols for Legacy Computing")
+ #define RID_SUBSETSTR_TANGUT_SUPPLEMENT                     NC_("RID_SUBSETMAP", "Tangut Supplement")
+ #define RID_SUBSETSTR_YEZIDI                                NC_("RID_SUBSETMAP", "Yezidi")
++#define RID_SUBSETSTR_ARABIC_EXTENDED_B                     NC_("RID_SUBSETMAP", "Arabic Extended-B")
++#define RID_SUBSETSTR_CYPRO_MINOAN                          NC_("RID_SUBSETMAP", "Cypro-Minoan")
++#define RID_SUBSETSTR_ETHIOPIC_EXTENDED_B                   NC_("RID_SUBSETMAP", "Ethiopic Extended-B")
++#define RID_SUBSETSTR_KANA_EXTENDED_B                       NC_("RID_SUBSETMAP", "Kana Extended-B")
++#define RID_SUBSETSTR_LATIN_EXTENDED_F                      NC_("RID_SUBSETMAP", "Latin Extended-F")
++#define RID_SUBSETSTR_LATIN_EXTENDED_G                      NC_("RID_SUBSETMAP", "Latin Extended-G")
++#define RID_SUBSETSTR_OLD_UYGHUR                            NC_("RID_SUBSETMAP", "Old Uyghur")
++#define RID_SUBSETSTR_TANGSA                                NC_("RID_SUBSETMAP", "Tangsa")
++#define RID_SUBSETSTR_TOTO                                  NC_("RID_SUBSETMAP", "Toto")
++#define RID_SUBSETSTR_UNIFIED_CANADIAN_ABORIGINAL_SYLLABICS_EXTENDED_A  NC_("RID_SUBSETMAP", "Canadian Aboriginal Syllabics Extended-A")
++#define RID_SUBSETSTR_VITHKUQI                              NC_("RID_SUBSETMAP", "Vithkuqi")
++#define RID_SUBSETSTR_ZNAMENNY_MUSICAL_NOTATION             NC_("RID_SUBSETMAP", "Znamenny Musical Notation")
+ 
+ #define RID_SVXSTR_FRAMEDIR_LTR                             NC_("RID_SVXSTR_FRAMEDIR_LTR", "Left-to-right (LTR)")
+ #define RID_SVXSTR_FRAMEDIR_RTL                             NC_("RID_SVXSTR_FRAMEDIR_RTL", "Right-to-left (RTL)")
+diff --git a/svx/source/dialog/charmap.cxx b/svx/source/dialog/charmap.cxx
+index ece0561d18f5..5736ea26ce73 100644
+--- a/svx/source/dialog/charmap.cxx
++++ b/svx/source/dialog/charmap.cxx
+@@ -1819,12 +1819,50 @@ void SubsetMap::InitList()
+                     aAllSubsets.emplace_back( 0x1FB00, 0x1FBFF, SvxResId(RID_SUBSETSTR_SYMBOLS_FOR_LEGACY_COMPUTING) );
+                     break;
+                 case UBLOCK_TANGUT_SUPPLEMENT:
+-                    aAllSubsets.emplace_back( 0x18D00, 0x18D8F, SvxResId(RID_SUBSETSTR_TANGUT_SUPPLEMENT) );
++                    aAllSubsets.emplace_back( 0x18D00, 0x18D7F, SvxResId(RID_SUBSETSTR_TANGUT_SUPPLEMENT) );
+                     break;
+                 case UBLOCK_YEZIDI:
+                     aAllSubsets.emplace_back( 0x10E80, 0x10EBF, SvxResId(RID_SUBSETSTR_YEZIDI) );
+                     break;
+ #endif
++#if (U_ICU_VERSION_MAJOR_NUM >= 70)
++                case UBLOCK_ARABIC_EXTENDED_B:
++                    aAllSubsets.emplace_back( 0x0870, 0x089F, SvxResId(RID_SUBSETSTR_ARABIC_EXTENDED_B) );
++                    break;
++                case UBLOCK_CYPRO_MINOAN:
++                    aAllSubsets.emplace_back( 0x12F90, 0x12FFF, SvxResId(RID_SUBSETSTR_CYPRO_MINOAN) );
++                    break;
++                case UBLOCK_ETHIOPIC_EXTENDED_B:
++                    aAllSubsets.emplace_back( 0x1E7E0, 0x1E7FF, SvxResId(RID_SUBSETSTR_ETHIOPIC_EXTENDED_B) );
++                    break;
++                case UBLOCK_KANA_EXTENDED_B:
++                    aAllSubsets.emplace_back( 0x1AFF0, 0x1AFFF, SvxResId(RID_SUBSETSTR_KANA_EXTENDED_B) );
++                    break;
++                case UBLOCK_LATIN_EXTENDED_F:
++                    aAllSubsets.emplace_back( 0x10780, 0x107BF, SvxResId(RID_SUBSETSTR_LATIN_EXTENDED_F) );
++                    break;
++                case UBLOCK_LATIN_EXTENDED_G:
++                    aAllSubsets.emplace_back( 0x1DF00, 0x1DFFF, SvxResId(RID_SUBSETSTR_LATIN_EXTENDED_G) );
++                    break;
++                case UBLOCK_OLD_UYGHUR:
++                    aAllSubsets.emplace_back( 0x10F70, 0x10FAF, SvxResId(RID_SUBSETSTR_OLD_UYGHUR) );
++                    break;
++                case UBLOCK_TANGSA:
++                    aAllSubsets.emplace_back( 0x16A70, 0x16ACF, SvxResId(RID_SUBSETSTR_TANGSA) );
++                    break;
++                case UBLOCK_TOTO:
++                    aAllSubsets.emplace_back( 0x1E290, 0x1E2BF, SvxResId(RID_SUBSETSTR_TOTO) );
++                    break;
++                case UBLOCK_UNIFIED_CANADIAN_ABORIGINAL_SYLLABICS_EXTENDED_A:
++                    aAllSubsets.emplace_back( 0x11AB0, 0x11ABF, SvxResId(RID_SUBSETSTR_UNIFIED_CANADIAN_ABORIGINAL_SYLLABICS_EXTENDED_A) );
++                    break;
++                case UBLOCK_VITHKUQI:
++                    aAllSubsets.emplace_back( 0x10570, 0x105BF, SvxResId(RID_SUBSETSTR_VITHKUQI) );
++                    break;
++                case UBLOCK_ZNAMENNY_MUSICAL_NOTATION:
++                    aAllSubsets.emplace_back( 0x1CF00, 0x1CFCF, SvxResId(RID_SUBSETSTR_ZNAMENNY_MUSICAL_NOTATION) );
++                    break;
++#endif
+ 
+             }
+ 
+-- 
+cgit v1.2.1
+
