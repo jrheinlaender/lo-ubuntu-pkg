@@ -20,6 +20,7 @@ function unapply() {
 	cd $SRCDIR
 	echo
 	echo "====== Unapplying the patches ======"
+	patch -p1 -R < ./debian/tests/patches/cppunit-standalone.diff
 	patch -p1 -R < ./debian/tests/patches/smoketest-standalone.diff
 	patch -p0 -R < ./debian/tests/patches/smoketest-disable-extension-tests.diff
 }
@@ -28,6 +29,7 @@ trap "unapply" ERR
 
 echo
 echo "====== Patching the tree to only build the smoketest unittest against an existing installation ======"
+patch -p1 < ./debian/tests/patches/cppunit-standalone.diff
 patch -p1 < ./debian/tests/patches/smoketest-standalone.diff
 patch -p0 < ./debian/tests/patches/smoketest-disable-extension-tests.diff
 
@@ -35,39 +37,6 @@ echo
 echo "====== Enabling core dumps ======"
 # yes, we want core dumps and stack traces
 ulimit -c unlimited
-
-# FIXME: GROSS HACK.
-echo
-echo "====== Building needed parts of LibreOffice ======"
-./debian/rules config_host.mk ENABLE_PDFIUM=n ENABLE_MERGELIBS=n BUILD_GTK=n BUILD_GTK3=n BUILD_KDE=n
-cat << EOF >> $TMP
-export gb_SUPPRESS_TESTS=true
-make test.all verbose=t
-make bridges.all verbose=t
-make javaunohelper.all verbose=t
-make unoil.all verbose=t
-make unotest.all verbose=t
-make ure.all verbose=t
-make i18npool.all verbose=t
-EOF
-chmod 755 $TMP
-#TIMEOUT OPTIONS
-#       --timeout-which=seconds
-#              Use a different timeout for operations on or with  the  testbed.
-#              There are five timeouts affected by five values of which: short:
-#              supposedly short operations like setting up  the  testbed's  apt
-#              and checking the state (default: 100s); install: installation of
-#              packages including dependencies (default:  3,000s);  test:  test
-#              runs  (default:  10,000s);  copy: copy files/directories between
-#              host and testbed (default: 300s); and  build:  builds  (default:
-#              100,000s).   The value must be specified as an integer number of
-#              seconds.
-# 10000s = 160 min. so we have enough time to actually run the test :)
-timeout 150m $TMP || \
-	if test "$?" = "124"; then rm -f $TMP; exit 77; \
-		else exit $?; fi
-
-rm -f $TMP
 
 OOO_TEST_SOFFICE="${1:-path:/usr/lib/libreoffice/program/soffice}"
 

@@ -25,14 +25,23 @@ function unapply() {
 
 trap "unapply" ERR
 
+# skip if building as root:
+# unopkg errors out with "ERROR: Cannot run unopkg as root without --shared or --bundled option."
+# if ran as root
+if [ `id -u` = "0" ]; then
+        exit 77
+fi
+
 echo
 echo "====== Patching the tree to build the odk build-examples test against an existing installation ======"
 patch -p1 < ./debian/tests/patches/odk-build-examples-standalone.diff
 
-echo
-echo "====== Generating configuration ======="
-rm -f config_host.mk
-./debian/rules config_host.mk
+if [ ! -f config_host.mk ]; then
+	echo
+	echo "====== Generating configuration ======="
+	rm -f config_host.mk
+	./debian/rules config_host.mk
+fi
 
 echo
 echo "====== Starting build with ${CHECK_PARALLELISM} job against /usr/lib/libreoffice/sdk ======"
