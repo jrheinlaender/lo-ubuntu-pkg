@@ -661,15 +661,16 @@ ALLOW_CLANG=y
 
 CLANG_VERSION=default
 
-# /usr/bin/ld: /usr/lib/llvm-11/bin/../lib/LLVMgold.so: error loading plugin: /usr/lib/llvm-11/bin/../lib/LLVMgold.so: cannot open shared object file: No such file or directory
-# llvm-11-linker-tools does not contain this on ppc64el...
-# for mips64el that doesn't exist so disable LTO there...
-ifeq "$(ENABLE_LTO)" "y"
-  # see https://lists.debian.org/debian-devel-changes/2021/11/msg02548.html
-  BUILD_DEPS += , binutils (>= 2.37-9) [ppc64]
-  ifeq "$(DEB_HOST_ARCH)" "mips64el"
+ifneq "$(shell echo $(USE_CLANG)$(ALLOW_CLANG) | grep y)" ""
+  # /usr/bin/ld: /usr/lib/llvm-11/bin/../lib/LLVMgold.so: error loading plugin: /usr/lib/llvm-11/bin/../lib/LLVMgold.so: cannot open shared object file: No such file or directory
+  # llvm-11-linker-tools does not contain this on ppc64el...
+  # for mips64el that doesn't exist so disable LTO there...
+  ifeq "$(ENABLE_LTO)" "y"
+    # see https://lists.debian.org/debian-devel-changes/2021/11/msg02548.html
+    BUILD_DEPS += , binutils (>= 2.37-9) [ppc64]
+    ifeq "$(DEB_HOST_ARCH)" "mips64el"
 	ENABLE_LTO=n
-  endif
+    endif
 	BUILD_DEPS += , clang (>= 1:12) [ppc64el]
 	# since the llvm-defaults packages pointing to llvm 13(?) it apparently doesn't
 	# automatically pull in llvm-xx-linker-tools anymore which contains the needed LLVMgold.so
@@ -677,10 +678,21 @@ ifeq "$(ENABLE_LTO)" "y"
 	# So build-depend on llvm, too.
 	# We shouldn't depend on llvm-xx-linker-tools since this probably should be
 	# version-agnostic when the default changes (unless explicitely specified of course).
-  ifeq "$(CLANG_VERSION)" "default"
+    ifeq "$(USE_CLANG)" "y"
+      ifeq "$(CLANG_VERSION)" "default"
 	BUILD_DEPS += , llvm
-  else
+      else
 	BUILD_DEPS += , llvm-$(CLANG_VERSION)-linker-tools
+      endif
+    else
+      ifeq "$(ALLOW_CLANG)" "y"
+        ifeq "$(CLANG_VERSION)" "default"
+	  BUILD_DEPS += , llvm [$(OOO_LE_ARCHS)]
+        else
+	  BUILD_DEPS += , llvm-$(CLANG_VERSION)-linker-tools [$(OOO_LE_ARCHS)]
+        endif
+      endif
+    endif
   endif
 endif
 
