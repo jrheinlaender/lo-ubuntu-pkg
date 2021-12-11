@@ -347,7 +347,17 @@ IMAGES:=$(DEFAULT_IMAGE) sifr sifr_dark sifr_dark_svg breeze breeze_dark breeze_
 IMAGES_PACKAGES=$(subst _,-,$(filter-out sukapura_svg,$(filter-out sifr_dark_svg,$(filter-out breeze_dark_svg,$(filter-out sifr_dark,$(filter-out breeze_dark,$(filter-out breeze_svg,$(filter-out elementary_svg,$(IMAGES)))))))))
 CONFIGURE_FLAGS_INDEP += --with-theme="$(IMAGES)"
 ENABLE_MARIADB=y
-MYSQL_FLAVOUR=mariadb
+ifeq "$(ENABLE_MARIADB)" "y"
+# FIXME: the mysql test doesn't get really tested since it is only ran/built
+# with CONNECTIVITY_TEST_MYSQL_DRIVER set - and doesn't build on 32bit... The
+# test is run in autopkgtest on OOO_CHECK_FATAL_ARCHS (aka 64bit archs!) only for
+# now anyway so let's just hack around here for now and disable the build of it
+# alltogether and just set CONNECTIVITY_TEST_MYSQL_DRIVER on 64bit archs.
+  ifeq "$(DEB_HOST_ARCH_BITS)" "64"
+export CONNECTIVITY_TEST_MYSQL_DRIVER=dummy
+  endif
+endif
+  MYSQL_FLAVOUR=mariadb
 # set this also to y for system-mysql..
 SYSTEM_STUFF += mariadb
 SYSTEM_STUFF += postgresql
@@ -2203,7 +2213,7 @@ ifeq "$(BUILD_TESTS)" "y"
 
 	# build the tests (first)
 	export gb_SUPPRESS_TESTS=true; \
-		$(MAKE) check CONNECTIVITY_TEST_MYSQL_DRIVER=dummy
+		$(MAKE) check
 endif
 
 ifneq "$(AUTOPKGTEST_BUILD)" "y"
