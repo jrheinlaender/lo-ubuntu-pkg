@@ -14,6 +14,14 @@
 # Licensed under the GNU General Public License, version 2.  See the file
 # /usr/share/common-licenses/GPL or <http://www.gnu.org/copyleft/gpl.txt>.
 ################################################################################
+# Adjusted for imath branch: Jan Rheinländer <jrheinlaender@users.sourceforge.net>
+################################################################################
+
+# Setup to use our git repository instead of LibreOficce's
+override GIT_BASEURL:=https://github.com/jrheinlaender/lo-core.git
+override GIT_BRANCH:=libreoffice-7-2-3-imath
+override SOURCE_TARBALLS:=n
+override USE_GIT_TARBALLS:=y
 
 vafilt = $(subst $(2)=,,$(filter $(2)=%,$(1)))
 
@@ -3889,15 +3897,15 @@ GIT_INSTALLED:=$(shell which git >/dev/null 2>/dev/null && echo "y")
 
 get_orig_tarball=$(CURDIR)/../libreoffice_$(DEB_VERSION_UPSTREAM).orig$(1).tar.xz
 
+TMPD=`mktemp -d $(if $(TMP),-p $(TMP))`
+
 define pack_gittarball
 $(if $(GIT_INSTALLED),,$(error You need git.))
 dh_testdir
-TMPD=`mktemp -d $(if $(TMP),-p $(TMP))` && \
-mkdir $${TMPD}/archive && \
-git clone --bare $(GIT_BASEURL)/$(1) $${TMPD}/repo -b $(GIT_BRANCH) && \
-git archive --remote $${TMPD}/repo --format=tar --prefix libreoffice-$(DEB_VERSION_UPSTREAM)/ $(GIT_TAG) |tar x -C $${TMPD}/archive && \
-tar cvJf $(2) -C $${TMPD}/archive/$(3) --transform 's,./,,' . && \
-rm -rf $${TMPD}
+mkdir -p $(TMPD)/archive && \
+git archive --remote $(TMPD)/repo --format=tar --prefix libreoffice-$(DEB_VERSION_UPSTREAM)/ $(GIT_BRANCH)|tar x -C $(TMPD)/archive && \
+tar cvJf $(2) -C $(TMPD)/archive/$(3) --transform 's,./,,' . && \
+rm -rf $(TMPD)/archive
 endef
 
 # Get ubuntu yaru icon theme sources
@@ -3912,6 +3920,11 @@ tar cvJf $(2) -C $${TMPD}/archive/$(3) --transform 's,./,,' . && \
 rm -rf $${TMPD}
 endef
 
+$(TMPD)/repo/.gitignore:
+	$(if $(GIT_INSTALLED),,$(error You need git.))
+	dh_testdir
+	git clone $(GIT_BASEURL) $${TMPD}/repo -b $(GIT_BRANCH)
+
 define unpack_gittarball
 dh_testdir
 mkdir -p $(CURDIR)/$(1)
@@ -3919,7 +3932,10 @@ test -f $(CURDIR)/$(1)/.gitignore || tar xvJf $(2) -C $(CURDIR)/$(1) $(3)
 endef
 
 ifneq ($(filter get-orig-source unpack,$(MAKECMDGOALS)),)
-$(call get_orig_tarball):
+$(call get_orig_tarball): $(TMPD)/repo/.gitignore
+	git -C $(TMPD)/repo fetch
+	git -C $(TMPD)/repo checkout $(GIT_BRANCH)
+	(cd $(TMPD)/repo && ./g pull -r)
 	$(call pack_gittarball,core,$@,)
 
 $(call get_orig_tarball,-helpcontent2):
@@ -3936,7 +3952,7 @@ $(call get_orig_tarball,-tarballs): yaru/CONTRIBUTING.md helpcontent2/makefile.p
 	dh_testdir
 	rm -rf tarballs
 	mkdir -p tarballs
-	quilt push -a
+	quilt push -a || if [ $$? -ne 2 ]; then exit 1; fi # Ignore exit status 2 which means that there was nothing to do
 	./autogen.sh $(filter-out --disable-fetch-external,$(CONFIGURE_FLAGS)) --with-all-tarballs --disable-build-opensymbol
 	$(MAKE) download gb_LO_VER=$(DEB_VERSION_UPSTREAM)
 	# removing the biggest internal tarballs to keep the source tree size
