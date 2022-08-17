@@ -1,0 +1,73 @@
+From 81b5088a61b4202e8e8ce69c5bca5474482ed98b Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Caol=C3=A1n=20McNamara?= <caolanm@redhat.com>
+Date: Wed, 27 Jul 2022 11:04:34 +0100
+Subject: [PATCH] tdf#108560 horribly slow to paste many lines into editeng
+ with a11y active
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+looks to me that once the bound rect (and visible children) are synced
+that they won't change again so continued recalculation of bounds
+doesn't achieve anything except super expensive calc for no effect.
+
+Change-Id: I1684e3724bca28d03f7c255c2d7a40eee1b70eae
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/137497
+Tested-by: Jenkins
+Reviewed-by: Michael Weghorn <m.weghorn@posteo.de>
+Reviewed-by: Caolán McNamara <caolanm@redhat.com>
+(cherry picked from commit 8e5c1982c41c234027245fe2da6bf9bc3f5fe238)
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/137521
+Reviewed-by: Michael Stahl <michael.stahl@allotropia.de>
+(cherry picked from commit 85a1e6d32f7b7b2143162d78ed99b3dac686434e)
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/137597
+Reviewed-by: Thorsten Behrens <thorsten.behrens@allotropia.de>
+Reviewed-by: Xisco Fauli <xiscofauli@libreoffice.org>
+Tested-by: Xisco Fauli <xiscofauli@libreoffice.org>
+---
+ .../accessibility/AccessibleTextHelper.cxx     | 18 ++++++++++++++----
+ 1 file changed, 14 insertions(+), 4 deletions(-)
+
+diff --git a/svx/source/accessibility/AccessibleTextHelper.cxx b/svx/source/accessibility/AccessibleTextHelper.cxx
+index 2fa4c0a9b5eb..809bd25d3927 100644
+--- a/svx/source/accessibility/AccessibleTextHelper.cxx
++++ b/svx/source/accessibility/AccessibleTextHelper.cxx
+@@ -1118,6 +1118,8 @@ namespace accessibility
+             bEverythingUpdated = true;
+         }
+ 
++        bool bUpdatedBoundRectAndVisibleChildren(false);
++
+         while( !maEventQueue.IsEmpty() )
+         {
+             ::std::unique_ptr< SfxHint > pHint( maEventQueue.PopFront() );
+@@ -1252,14 +1254,22 @@ namespace accessibility
+                         }
+ 
+                         // in all cases, check visibility afterwards.
+-                        UpdateVisibleChildren();
+-                        UpdateBoundRect();
++                        if (!bUpdatedBoundRectAndVisibleChildren)
++                        {
++                            UpdateVisibleChildren();
++                            UpdateBoundRect();
++                            bUpdatedBoundRectAndVisibleChildren = true;
++                        }
+                     }
+                     else if ( dynamic_cast<const SvxViewChangedHint*>( &rHint ) )
+                     {
+                         // just check visibility
+-                        UpdateVisibleChildren();
+-                        UpdateBoundRect();
++                        if (!bUpdatedBoundRectAndVisibleChildren)
++                        {
++                            UpdateVisibleChildren();
++                            UpdateBoundRect();
++                            bUpdatedBoundRectAndVisibleChildren = true;
++                        }
+                     }
+                     // it's VITAL to keep the SfxSimpleHint last! It's the base of some classes above!
+                     else if( rHint.GetId() == SfxHintId::Dying)
+-- 
+2.37.2
+
