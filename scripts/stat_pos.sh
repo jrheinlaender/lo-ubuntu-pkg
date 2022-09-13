@@ -9,7 +9,7 @@ set -e
 # (C) 2017 Software in the Public Interest, Inc.
 
 cd translations/source
- 
+
 for l in `ls -1`; do
 	# 23:36 <@cloph> no - but you can do a brute-force method of just counting msgid and comparing that with »msgstr ""« matches.
 	# 23:37 <@cloph> While that ignores multiline strings, there aren't too many and should work as a rough estimate
