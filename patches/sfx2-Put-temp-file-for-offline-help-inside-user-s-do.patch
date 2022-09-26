@@ -34,8 +34,8 @@ index d5c7cb76c917..10e186682a8c 100644
 --- a/configure.ac
 +++ b/configure.ac
 @@ -11680,6 +11680,13 @@ fi
- AC_SUBST(GTK3_LIBS)
  AC_SUBST(GTK3_CFLAGS)
+ AC_SUBST(ENABLE_GTKTILEDVIEWER)
  
 +PKG_CHECK_MODULES(GLIB, [glib-2.0])
 +GLIB_CFLAGS=$(printf '%s' "$GLIB_CFLAGS" | sed -e "s/-I/${ISYSTEM?}/g")
@@ -84,9 +84,9 @@ index 14411dafc5d0..d5e0155b6329 100644
      static auto const flatpak = [] { return std::getenv("LIBO_FLATPAK") != nullptr; }();
      return flatpak;
 @@ -43,7 +45,7 @@ bool flatpak::createTemporaryHtmlDirectory(OUString ** url) {
-     assert(url != nullptr);
      DBG_TESTSOLARMUTEX();
      if (!temporaryHtmlDirectoryStatus.created) {
+         // coverity[tainted_return_value] - we trust the contents of this variable
 -        auto const env = std::getenv("XDG_CACHE_HOME");
 +        auto const env = g_get_user_special_dir(G_USER_DIRECTORY_DOWNLOAD);
          if (env == nullptr) {
@@ -104,7 +104,7 @@ index 73d86cba8266..864412edc0b0 100644
 +    if (!flatpak::createTemporaryHtmlDirectory(&parent)) {
          return false;
      }
-     ::utl::TempFile aTempFile(u"NewHelp", true, &aExtension, parent, false );
+     ::utl::TempFileNamed aTempFile(u"NewHelp", true, aExtension, parent, false );
 diff --git a/sfx2/source/view/viewsh.cxx b/sfx2/source/view/viewsh.cxx
 index f4ec9b29b0a1..421775f5d7d9 100644
 --- a/sfx2/source/view/viewsh.cxx
