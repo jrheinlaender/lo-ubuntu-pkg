@@ -22,8 +22,8 @@ CURDIR ?= $(realpath $(dir $(firstword $(MAKEFILE_LIST)))/..)
 BASE_VERSION:=$(shell echo $(DEB_VERSION) | cut -d: -f1):$(DEB_VERSION_UPSTREAM)
 BINARY_VERSION=$(DEB_VERSION)
 #HELP_L10N_VIRTUAL_VERSION:=$(shell echo $(DEB_VERSION_UPSTREAM) | cut -d: -f2 | tr [~] [\\-])
-HELP_L10N_VIRTUAL_VERSION:=7.4
-OOVER:=7.4
+HELP_L10N_VIRTUAL_VERSION:=7.5
+OOVER:=7.5
 NEXT_OOVER:=$(shell echo "$(OOVER) + 0.1" | bc)
 
 ARCH_INDEP_PACKAGES := $(shell dh_listpackages -i)
@@ -74,11 +74,11 @@ ifeq "$(USE_GIT_TARBALLS)" "y"
 GIT_BASEURL:=git://anongit.freedesktop.org/libreoffice
 # bootstraping this from the source tree is breaking get-orig-source
 #lo_sources_ver=$(shell grep AC_INIT $(SOURCE_TREE)/configure.ac | grep documentfoundation | cut -d, -f2 | sed -e 's,\[,,' -e 's,\],,')
-lo_sources_ver=7.4.3.2
+lo_sources_ver=7.5.0.1
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
 GIT_TAG=libreoffice-$(lo_sources_ver)
-GIT_BRANCH=libreoffice-7-4-3
+GIT_BRANCH=libreoffice-7-5
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
 lo_sources_ver=$(shell cat $(CURDIR)/sources.ver | cut -d= -f2)
@@ -91,7 +91,7 @@ endif
 #########
 # Default package configuration
 #
-OOO_ARCHS = amd64 arm64 armhf ppc64el s390x
+OOO_ARCHS = amd64 arm64 armhf ppc64el riscv64 s390x
 PATCHSET=$(DEB_VENDOR)
 BUILD_DEPS=\
     autoconf,\
@@ -208,7 +208,7 @@ ifeq "$(BUILD_PLASMA)" "y"
     KF5_QT5_DEPENDS := libreoffice-qt5 (= $${binary:Version})
   endif
 endif
-ENABLE_QT6=n
+ENABLE_QT6=y
 # for moc move to /usr/lib/qt6/libxexec
 QT6_MINVER= (>= 6.2.1+dfsg-2)
 # https://www.debian.org/doc/debian-policy/ says this is not defined and must
@@ -406,12 +406,6 @@ endif
 SYSTEM_STUFF += lcms2
 SYSTEM_STUFF += liblangtag
 SYSTEM_STUFF += orcus
-USE_UCPP=n
-ifeq "$(USE_UCPP)" "y"
-  SYSTEM_STUFF += ucpp
-else
-  CONFIGURE_FLAGS += --with-idlc-cpp=cpp
-endif
 # kfreebsd runs into SIZE_MAX problems, and the rest might
 # get OOM (mips(el)...) so enable mergelibs only for 64bit
 # archs
@@ -525,7 +519,7 @@ PLATFORMID := $(shell grep PLATFORMID debian/vars.$(DEB_HOST_ARCH) | cut -d"=" -
 RTL_OS := $(shell grep RTL_OS debian/vars.$(DEB_HOST_ARCH) | cut -d"=" -f2)
 RTL_ARCH := $(shell grep RTL_ARCH debian/vars.$(DEB_HOST_ARCH) | cut -d"=" -f2)
 
-OOO_64BIT_ARCHS = $(filter alpha amd64 arm64 ia64 kfreebsd-amd64 mips64 mips64el ppc64 ppc64el s390x sparc64, $(OOO_ARCHS))
+OOO_64BIT_ARCHS = $(filter alpha amd64 arm64 ia64 kfreebsd-amd64 loong64 mips64 mips64el ppc64 ppc64el riscv64 s390x sparc64, $(OOO_ARCHS))
 $(eval $(call gen_no_archs,OOO_64BIT_ARCHS))
 OOO_BE_ARCHS = $(filter hppa m68k mips mips64 powerpc powerpcspe ppc64 s390 s390x sparc sparc64,$(OOO_ARCHS))
 OOO_LE_ARCHS = $(filter-out $(OOO_BE_ARCHS),$(OOO_ARCHS))
@@ -588,6 +582,8 @@ OOO_FIREBIRD_ARCHS := $(OOO_BASE_ARCHS)
 $(eval $(call gen_no_archs,OOO_FIREBIRD_ARCHS))
 OOO_NOGUI_ARCHS := $(filter amd64 i386 arm64 armhf s390x ppc64 ppc64el,$(OOO_ARCHS))
 $(eval $(call gen_no_archs,OOO_NOGUI_ARCHS))
+OOO_PDFIUM_ARCHS := $(OOO_ARCHS)
+$(eval $(call gen_no_archs,OOO_PDFIUM_ARCHS))
 
 ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
   ifneq ($(DEB_HOST_ARCH),$(filter $(DEB_HOST_ARCH),$(OOO_BASE_ARCHS)))
@@ -650,12 +646,10 @@ endif
 #############
 # Distro-specific overrides
 
-# Debian Bullseye
-ifeq "$(DEB_DISTRIBUTION)" "bullseye-backports"
+# Debian Bookworm
+ifeq "$(DEB_DISTRIBUTION)" "bookworm-backports"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out zxing mdds orcus libnumbertext dragonbox libfixmath libmwaw,$(SYSTEM_STUFF))
-  BULLSEYE_BACKPORT=y
-  ENABLE_LTO=n
+  BOOKWORM_BACKPORT=y
 endif
 
 ifeq "$(DEB_VENDOR)" "Ubuntu"
@@ -714,9 +708,12 @@ CLANG_VERSION=default
 
 ifneq "$(shell echo $(USE_CLANG)$(ALLOW_CLANG) | grep y)" ""
   # /usr/bin/ld: /usr/lib/llvm-11/bin/../lib/LLVMgold.so: error loading plugin: /usr/lib/llvm-11/bin/../lib/LLVMgold.so: cannot open shared object file: No such file or directory
-  # for mips64el that doesn't exist so disable LTO there...
+  # for mips64el and riscv64 that doesn't exist so disable LTO there...
   ifeq "$(ENABLE_LTO)" "y"
     ifeq "$(DEB_HOST_ARCH)" "mips64el"
+	ENABLE_LTO=n
+    endif
+    ifeq "$(DEB_HOST_ARCH)" "riscv64"
 	ENABLE_LTO=n
     endif
 	BUILD_DEPS += , clang (>= 1:12) [ppc64el]
@@ -874,10 +871,10 @@ ifeq "$(ENABLE_PDFIMPORT)" "y"
 	SYSTEM_STUFF += abseil
 	SYSTEM_STUFF += openjpeg
     ifneq (,$(filter openjpeg, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libopenjp2-7-dev (>= 2.3)
+	BUILD_DEPS += , libopenjp2-7-dev [$(OOO_PDFIUM_ARCHS)]
     endif
     ifneq (,$(filter abseil, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libabsl-dev
+	BUILD_DEPS += , libabsl-dev [$(OOO_PDFIUM_ARCHS)]
     endif
   endif
 endif
@@ -887,7 +884,7 @@ ifneq (,$(filter graphite, $(SYSTEM_STUFF)))
 endif
 
 ifneq (,$(filter harfbuzz, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libharfbuzz-dev (>= 2.1.0)
+	BUILD_DEPS += , libharfbuzz-dev (>= 2.6.0)
 endif
 
 ifneq (,$(filter libexttextcat, $(SYSTEM_STUFF)))
@@ -902,7 +899,7 @@ endif
 ifneq (,$(filter libnumbertext, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libnumbertext-dev (>= 1.0.6)
 	# https://cgit.freedesktop.org/libreoffice/core/commit/?h=libreoffice-7-3&id=09dfe214a30f58ddcd7a857db8f5eee68d4cef2a
-	BUILD_DEPS_ARCH += , libnumbertext-data (>= 1.0.9) <!nocheck>
+	BUILD_DEPS_ARCH += , libnumbertext-data (>= 1.0.11) <!nocheck>
 	NUMBERTEXT_DATA_RECOMMENDS := libnumbertext-data
 endif
 
@@ -916,7 +913,7 @@ else
        CONFIGURE_FLAGS += --without-system-libxml
 endif
 ifneq (,$(filter xmlsec, $(SYSTEM_STUFF)))
-       BUILD_DEPS += , libxmlsec1-dev (>= 1.2.28)
+       BUILD_DEPS += , libxmlsec1-dev (>= 1.2.35)
 endif
 ifneq (,$(filter expat, $(SYSTEM_STUFF)))
        BUILD_DEPS += , libexpat1-dev
@@ -1038,10 +1035,12 @@ endif
 	# https://lists.freedesktop.org/archives/libreoffice/2017-May/077764.html
 	BUILD_DEPS_ARCH += , fonts-dejavu$(OOO_NO_CHECK_ARCHS) <!nocheck>
 	# used in vcl/qa/cppunit/text.cxx:void VclTextTest::testImplLayoutArgs_PrepareFallback_precalculatedglyphs()
-	BUILD_DEPS_ARCH += , fonts-kacst$(OOO_NO_CHECK_ARCHS) <!nocheck>
+	BUILD_DEPS_ARCH += , fonts-hosny-amiri$(OOO_NO_CHECK_ARCHS) <!nocheck>
 	# sdext/source/pdfimport/test/tests.cxx (the test PDF uses NaskhArabic) and the result of the import is
-	# checked which fails without the font.
+	# checked which fails without the font. Also used in /vcl/qa/cppunit/complextext.cxx (VclComplexTextTest::testCaching())
 	BUILD_DEPS_ARCH += , fonts-noto-core$(OOO_NO_CHECK_ARCHS) <!nocheck>
+	# SdOOXMLExportTest3::testTdf125573_FontWorkScaleX uses Cambria
+	BUILD_DEPS_ARCH += , fonts-crosextra-caladea$(OOO_NO_CHECK_ARCHS) <!nocheck>
 	# FIXME: Linux Libertine G (does fonts-linuxlibertine even contain it?, I don't see the _G files?)
 	# now is used in test documents.
 	# now we get a abort if fonts is not found and replaced in layout tests (even though
@@ -1213,16 +1212,6 @@ ifeq "$(ENABLE_NSS)" "y"
 else
 	CONFIGURE_FLAGS += --disable-nss
 endif
-
-ifeq "$(USE_UCPP)" "y"
-  ifneq (,$(filter ucpp, $(SYSTEM_STUFF)))
-	IDLC_CPP_DEPENDS := ucpp
-  endif
-else
-	IDLC_CPP_DEPENDS := cpp
-	CONFIGURE_FLAGS += --with-idlc-cpp=cpp
-endif
-	BUILD_DEPS += , $(IDLC_CPP_DEPENDS)
 
 ifneq (,$(filter hunspell, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libhunspell-dev (>= 1.1.5-2)
@@ -1543,7 +1532,7 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
   ifeq "$(ENABLE_SCRIPT_PROVIDER_BSH)" "y"
     ifneq (,$(filter beanshell, $(SYSTEM_STUFF)))
-	BUILD_DEPS_INDEP += , libbsh-java <!nojava>
+	BUILD_DEPS += , libbsh-java <!nojava>
     endif
 	CONFIGURE_FLAGS += --enable-scripting-beanshell
   else
@@ -1928,7 +1917,7 @@ debian/control: $(wildcard debian/control*in) $(SOURCE_TREE)/bin/lo-xlate-lang  
 			FONT_RECOMMENDS=", fonts-khmeros"; \
 			;; \
 		ar) \
-			FONT_RECOMMENDS=", fonts-kacst, fonts-hosny-amiri, fonts-sil-scheherazade"; \
+			FONT_RECOMMENDS=", fonts-hosny-amiri, fonts-sil-scheherazade"; \
 			;; \
 		fa) \
 			FONT_RECOMMENDS=", fonts-farsiweb"; \
@@ -2136,7 +2125,8 @@ $(STAMP_DIR)/prepare:
 
 	mkdir -p $(STAMP_DIR)
 
-	# Make sure we have /proc mounted - otherwise idlc will fail later.
+	# Make sure we have /proc mounted.
+	# Otherwise configure will fail since java -version fails without /proc...
 	test -r /proc/version
 
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
@@ -2191,7 +2181,6 @@ ifeq "$(BUILD_NOGUI_PACKAGES)" "y"
 	./autogen.sh $(CONFIGURE_FLAGS) \
 		--without-junit --without-cppunit \
 		--disable-ext-wiki-publisher \
-		--disable-scripting-javascript --disable-scripting-beanshell \
 		--without-doxygen --without-javadoc \
 		--with-galleries=no --with-theme="$(DEFAULT_IMAGE)" \
 		--disable-gui --disable-introspection --disable-qt5 --disable-kf5
@@ -2216,7 +2205,6 @@ endif
 	./autogen.sh $(CONFIGURE_FLAGS) \
 		--without-junit --without-cppunit \
 		--disable-ext-wiki-publisher \
-		--disable-scripting-javascript --disable-scripting-beanshell \
 		--without-doxygen --without-javadoc \
 		--with-galleries=no --with-theme="$(DEFAULT_IMAGE)"
 
@@ -2678,9 +2666,6 @@ ifeq "$(PACKAGE_SDK)" "y"
 		$(PKGDIR)-dev/usr/include/$(DEB_HOST_MULTIARCH)/libreoffice/sal
 	cd $(PKGDIR)-dev/usr/include/libreoffice/sal/ && \
 		ln -s /usr/include/$(DEB_HOST_MULTIARCH)/libreoffice/sal/typesizes.h
-	mkdir -p $(PKGDIR)-dev-common/usr/share/idl
-	mv $(PKGDIR)-dev/usr/share/idl/libreoffice \
-		$(PKGDIR)-dev-common/usr/share/idl
 	mkdir -p $(PKGDIR)-dev-common/$(OOSDKDIR)
 	mv $(PKGDIR)-dev/$(OOSDKDIR)/classes \
 		$(PKGDIR)-dev-common/$(OOSDKDIR)
@@ -2735,9 +2720,6 @@ ifeq "$(PACKAGE_SDK)" "y"
   endif
 	chmod 644 $(PKGDIR)-dev-common/$(OOSDKDIR)/configure.pl
 	chmod 755 $(PKGDIR)-dev-common/$(OOSDKDIR)/setsdkenv_unix
-
-	# fix permissions
-	find $(PKGDIR)-dev-common/usr/share/idl/$(OODIRNAME) -type f -exec chmod 644 {} \;
 endif
 
 ifeq "$(ENABLE_EVO2)" "y"
@@ -3991,7 +3973,6 @@ endif
 		-V'lpsolve-dep=$(LPSOLVE_DEP)' \
 		-V'gstreamer-plugins-suggests=$(GSTREAMER_PLUGINS_SUGGESTS)' \
 		-V'libebook-dep=$(LIBEBOOK_DEP)' \
-		-V'idlc-cpp-depends=$(IDLC_CPP_DEPENDS)' \
 		-V'pyuno-depends=$(PYUNO_DEPENDS)' \
 		-V'gnome-gtk-recommends=$(GNOME_GTK_RECOMMENDS)' \
 		-V'firebird-engine-depends=$(FIREBIRD_ENGINE_DEPENDS)' \
