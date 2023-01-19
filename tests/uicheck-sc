@@ -55,9 +55,27 @@ export PARALLELISM=$CHECK_PARALLELISM
 export LOCPATH=$WORKDIR/debian/locales
 export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
-make -rk \
+
+set -e
+echo "setting up the test"
+set +e
+# Give it 60 min tops to finish
+timeout 3600s make -rk \
     OOO_TEST_SOFFICE=${OOO_TEST_SOFFICE} \
     sc.uicheck verbose=t
+
+RET=$?
+set -e
+if [ "${RET}" -eq 124 ]; then
+        echo "timed out"
+        exit 77
+elif [ "${RET}" -ne 0 ]; then
+        echo "it failed"
+        exit "${RET}"
+else
+        echo "it passed"
+fi
+echo "cleaning up"
 
 unapply
 
