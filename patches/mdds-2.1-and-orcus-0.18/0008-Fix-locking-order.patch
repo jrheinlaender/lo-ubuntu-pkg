@@ -1,0 +1,90 @@
+From 061d3bc359b6b94a874c10e96ad9cc8189494e21 Mon Sep 17 00:00:00 2001
+From: Stephan Bergmann <sbergman@redhat.com>
+Date: Mon, 30 Jan 2023 21:45:46 +0100
+Subject: [PATCH] Fix locking order
+
+JunitTest_sfx2_complex occasionally deadlocked when the main thread at
+
+> framework::UndoManagerHelper::isUndoPossible
+> chart::UndoCommandDispatch::fireStatusEvent
+> chart::CommandDispatch::addStatusListener
+> svt::ToolboxController::bindListener
+> framework::ToolBarManager::UpdateControllers
+> framework::ToolBarManager::AsyncUpdateControllersHdl
+> Scheduler::CallbackTaskScheduling
+> SalTimer::CallCallback
+> SvpSalInstance::CheckTimeout
+> SvpSalInstance::ImplYield
+> SvpSalInstance::DoYield
+> ImplYield
+> Application::Execute
+> desktop::Desktop::Main
+
+has acquired the SolarMutex in
+framework::ToolBarManager::AsyncUpdateControllersHdl and is now trying to
+acquire framework::UndoManagerHelper_Impl::m_aMutex, while a cppu_threadpool at
+
+> framework::UndoManagerHelper_Impl::impl_clear
+> std::function<void ()>::operator()
+> framework::(anonymous namespace)::UndoManagerRequest::execute
+> framework::UndoManagerHelper_Impl::impl_processRequest
+> framework::UndoManagerHelper_Impl::clear
+> framework::UndoManagerHelper::clear
+> gcc3::callVirtualMethod
+
+first acquired framework::UndoManagerHelper_Impl::m_aMutex and then tries to
+acquire the SolarMutex.  That additional acquiring of the SolarMutex had been
+added to framework::UndoManagerHelper_Impl::impl_clear in
+8611f6e259b807b4f19c8dc0eab86ca648891ce3 "ref-count SdrObject".
+
+Change-Id: Ifcb8765b29b65f773be6bbe54092346c5ae3a33b
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/146371
+Tested-by: Jenkins
+Reviewed-by: Stephan Bergmann <sbergman@redhat.com>
+---
+ .../source/fwe/helper/undomanagerhelper.cxx   | 26 +++++++++----------
+ 1 file changed, 13 insertions(+), 13 deletions(-)
+
+diff --git a/framework/source/fwe/helper/undomanagerhelper.cxx b/framework/source/fwe/helper/undomanagerhelper.cxx
+index 27780dc2719e..eef1f9f452b4 100644
+--- a/framework/source/fwe/helper/undomanagerhelper.cxx
++++ b/framework/source/fwe/helper/undomanagerhelper.cxx
+@@ -681,22 +681,22 @@ namespace framework
+ 
+     void UndoManagerHelper_Impl::impl_clear()
+     {
+-        // SYNCHRONIZED --->
+-        ::osl::ClearableMutexGuard aGuard( m_aMutex );
++        EventObject aEvent;
++        {
++            SolarMutexGuard aGuard;
++            ::osl::MutexGuard aGuard2( m_aMutex );
+ 
+-        SfxUndoManager& rUndoManager = getUndoManager();
+-        if ( rUndoManager.IsInListAction() )
+-            throw UndoContextNotClosedException( OUString(), getXUndoManager() );
++            SfxUndoManager& rUndoManager = getUndoManager();
++            if ( rUndoManager.IsInListAction() )
++                throw UndoContextNotClosedException( OUString(), getXUndoManager() );
+ 
+-        {
+-            ::comphelper::FlagGuard aNotificationGuard( m_bAPIActionRunning );
+-            SolarMutexGuard aGuard2;
+-            rUndoManager.Clear();
+-        }
++            {
++                ::comphelper::FlagGuard aNotificationGuard( m_bAPIActionRunning );
++                rUndoManager.Clear();
++            }
+ 
+-        const EventObject aEvent( getXUndoManager() );
+-        aGuard.clear();
+-        // <--- SYNCHRONIZED
++            aEvent = EventObject( getXUndoManager() );
++        }
+ 
+         m_aUndoListeners.notifyEach( &XUndoManagerListener::allActionsCleared, aEvent );
+         impl_notifyModified();
+-- 
+2.39.2
+

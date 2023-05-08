@@ -1,0 +1,60 @@
+From 5c355dbae859d2ac0b0e8fedca86b64797aec081 Mon Sep 17 00:00:00 2001
+From: Tor Lillqvist <tml@collabora.com>
+Date: Fri, 13 Jan 2023 12:07:27 +0200
+Subject: [PATCH] Don't bother building the liborcus benchmark
+
+It causes a problem when building with Emscripten and
+--enable-wasm-exceptions. Instead of fixing that problem, just don't
+bother building executables we won't run anyway. (Ideally liborcus
+should have some --disable-benchmark configure options, ping Kohei.)
+
+Change-Id: Ic8c1d51513793bba85dc2833cc8fd9ec5b97ce76
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/145645
+Tested-by: Jenkins
+Reviewed-by: Tor Lillqvist <tml@collabora.com>
+---
+ external/liborcus/UnpackedTarball_liborcus.mk |  1 +
+ .../liborcus/liborcus-no-benchmark.patch.1    | 19 +++++++++++++++++++
+ 2 files changed, 20 insertions(+)
+ create mode 100644 external/liborcus/liborcus-no-benchmark.patch.1
+
+diff --git a/external/liborcus/UnpackedTarball_liborcus.mk b/external/liborcus/UnpackedTarball_liborcus.mk
+index 30d3f0d78d1c..47d05e82c612 100644
+--- a/external/liborcus/UnpackedTarball_liborcus.mk
++++ b/external/liborcus/UnpackedTarball_liborcus.mk
+@@ -42,6 +42,7 @@ $(eval $(call gb_UnpackedTarball_add_patches,liborcus,\
+ 	external/liborcus/forcepoint-95.patch.1 \
+ 	external/liborcus/include.patch.0 \
+ 	external/liborcus/overrun.patch.0 \
++	external/liborcus/liborcus-no-benchmark.patch.1 \
+ ))
+ 
+ ifeq ($(OS),WNT)
+diff --git a/external/liborcus/liborcus-no-benchmark.patch.1 b/external/liborcus/liborcus-no-benchmark.patch.1
+new file mode 100644
+index 000000000000..a19cea836601
+--- /dev/null
++++ b/external/liborcus/liborcus-no-benchmark.patch.1
+@@ -0,0 +1,19 @@
++-*- Mode: Diff -*-
++
++Don't build the benchmark directory.
++
++We won't run those anyway, and on some platforms building executables
++here and there for random externals can be problematic. While at it,
++skip the doc_example subdirectory too.
++
++--- liborcus/Makefile.in
+++++ liborcus/Makefile.in
++@@ -408,7 +408,7 @@
++ top_build_prefix = @top_build_prefix@
++ top_builddir = @top_builddir@
++ top_srcdir = @top_srcdir@
++-SUBDIRS = src include benchmark	doc_example
+++SUBDIRS = src include
++ ACLOCAL_AMFLAGS = -I m4
++ pcfiles = liborcus-@ORCUS_API_VERSION@.pc $(am__append_1)
++ pkgconfig_DATA = $(pcfiles)
+-- 
+2.39.2
+
