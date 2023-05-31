@@ -320,13 +320,6 @@ BUILD_GTK3=y
     ENABLE_INTROSPECTION=y
   endif
 endif
-# DO NOT ENABLE. WILL NOT WORK.
-# as of 2021-11-29:
-# 14:41 < _rene_> caolanm: just wondering after I did a testbuild lately on (then) master: what is the state of gtk4? enable-able (even
-#                though there's no desktop actually using it ttbomk) or better wait?
-#[...]
-#14:45 <@caolanm> _rene_, I wouldn't enable it yet. There's too much basic stuff not working well enough yet, e.g.
-#                 https://gitlab.gnome.org/GNOME/gtk/-/merge_requests/4124
 BUILD_GTK4=y
 ENABLE_EVO2=y
 ENABLE_GIO=y
@@ -375,15 +368,20 @@ ENABLE_PDFIMPORT=y
 ENABLE_POPPLER=y
 SYSTEM_STUFF += poppler
 ENABLE_PDFIUM=y
-ifneq (big,$(DEB_HOST_ARCH_ENDIAN))
-ENABLE_SKIA=y
+PACKAGE_GEN=y
+ifeq "$(PACKAGE_GEN)" "y"
+  # keep packaging gen (s390x is a release arch...), just disable skia. In contrast for
+  # alpha and ia64 (ports-only) where skia also is disabled we set PACKAGE_GEN=n later in
+  # the architecture specific settings
+  ifneq (big,$(DEB_HOST_ARCH_ENDIAN))
+  ENABLE_SKIA=y
+  endif
+else
+  ENABLE_SKIA=n
 endif
 # see https://cgit.freedesktop.org/libreoffice/core/commit/?id=a0edcc68f94915a78fcc08e70d2cdd752abd9ebb
-ifeq "$(ENABLE_SKIA)" "y"
-    BUILD_DEPS += , libfreetype-dev (>= 2.8.1)
-else
-    BUILD_DEPS += , libfreetype-dev (>= 2.2.0)
-endif
+BUILD_DEPS += , libfreetype-dev (>= 2.8.1) [$(filter-out alpha ia64,$(OOO_LE_ARCHS))]
+BUILD_DEPS += , libfreetype-dev (>= 2.2.0) [$(OOO_BE_ARCHS) alpha ia64] # see architecture-specific stuff below
 SYSTEM_STUFF += libpng
 ENABLE_NSS=y
 ifeq "$(ENABLE_NSS)" "y"
@@ -523,8 +521,11 @@ RTL_ARCH := $(shell grep RTL_ARCH debian/vars.$(DEB_HOST_ARCH) | cut -d"=" -f2)
 OOO_64BIT_ARCHS = $(filter alpha amd64 arm64 ia64 kfreebsd-amd64 loong64 mips64 mips64el ppc64 ppc64el riscv64 s390x sparc64, $(OOO_ARCHS))
 $(eval $(call gen_no_archs,OOO_64BIT_ARCHS))
 OOO_BE_ARCHS = $(filter hppa m68k mips mips64 powerpc powerpcspe ppc64 s390 s390x sparc sparc64,$(OOO_ARCHS))
+$(eval $(call gen_no_archs,OOO_BE_ARCHS))
 OOO_LE_ARCHS = $(filter-out $(OOO_BE_ARCHS),$(OOO_ARCHS))
 $(eval $(call gen_no_archs,OOO_LE_ARCHS))
+OOO_CLANG_ARCHS := $(filter-out alpha ia64,$(OOO_LE_ARCHS))
+$(eval $(call gen_no_archs,OOO_CLANG_ARCHS))
 
 OOO_CHECK_ARCHS := $(filter-out kfreebsd-i386 kfreebsd-amd64 mips mipsel mips64el armel s390x,$(OOO_ARCHS))
 $(eval $(call gen_no_archs,OOO_CHECK_ARCHS))
@@ -533,6 +534,13 @@ OOO_JUNIT_ARCHS := amd64 arm64
 $(eval $(call gen_no_archs,OOO_JUNIT_ARCHS))
 #OOO_CHECK_FATAL_ARCHS := i386 amd64 armhf arm64
 OOO_CHECK_FATAL_ARCHS := amd64 arm64
+
+ifeq (alpha,$(findstring $(DEB_HOST_ARCH),$(OOO_ARCHS)))
+PACKAGE_GEN=n
+endif
+ifeq (ia64,$(findstring $(DEB_HOST_ARCH),$(OOO_ARCHS)))
+PACKAGE_GEN=n
+endif
 
 BUILD_TESTS=y
 ifeq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
@@ -739,9 +747,9 @@ ifneq "$(shell echo $(USE_CLANG)$(ALLOW_CLANG) | grep y)" ""
     else
       ifeq "$(ALLOW_CLANG)" "y"
         ifeq "$(CLANG_VERSION)" "default"
-	  BUILD_DEPS += , llvm [$(OOO_LE_ARCHS)]
+	  BUILD_DEPS += , llvm$(OOO_NO_CLANG_ARCHS)
         else
-	  BUILD_DEPS += , llvm-$(CLANG_VERSION)-linker-tools [$(OOO_LE_ARCHS)]
+	  BUILD_DEPS += , llvm-$(CLANG_VERSION)-linker-tools$(OOO_NO_CLANG_ARCHS)
         endif
       endif
     endif
@@ -816,7 +824,7 @@ endif
       ifeq "$(CLANG_VERSION)" "default"
 	export LO_CLANG_CC=clang
 	export LO_CLANG_CXX=clang++
-	BUILD_DEPS += , clang (>= 1:8.0.1) [$(filter-out armel ppc64el,$(OOO_LE_ARCHS))]
+	BUILD_DEPS += , clang (>= 1:8.0.1)$(OOO_NO_CLANG_ARCHS)
 	# see #963162, #963167 which apparently don't exist on 11
 	BUILD_DEPS += , clang (>= 1:11) [armel]
       else
@@ -3052,6 +3060,10 @@ ifeq "$(ENABLE_EVO2)" "y"
 endif
 
 ifeq "$(ENABLE_GUI)" "y"
+  ifneq "$(PACKAGE_GEN)" "y"
+	rm -f $(PKGDIR)-core/$(OODIR)/program/libvclplug_genlo.so
+  endif
+
   ifeq "$(BUILD_GTK3)" "y"
 	# split out gtk stuff
 	mkdir -p $(PKGDIR)-gtk3/$(OODIR)/program/
@@ -3237,8 +3249,9 @@ ifeq "$(BUILD_NOGUI_PACKAGES)" "y"
 		-exec rm {} \;
 	rm -f debian/libreoffice-base-nogui/$(OODIR)/program/libdbulo.so
 	# and (no UI, so not needed) not needed .desktop and .ui files
+	# tabviewbar.ui is needed to make --convert-to work in impress... (#1028290)
 	find debian/libreoffice-*-nogui/usr/share/applications/*.desktop -exec rm {} \;
-	find debian/libreoffice-*-nogui/$(OODIR)/share/config/soffice.cfg -name "*.ui" -exec rm {} \;
+	find debian/libreoffice-*-nogui/$(OODIR)/share/config/soffice.cfg -name "*.ui" -a ! -name "tabviewbar.ui" -exec rm {} \;
 	# unneeded launchers
 	find debian/libreoffice-*-nogui/usr/bin/lo* -exec rm {} \;
 	# otherwise we get errors since the launchers are missing
