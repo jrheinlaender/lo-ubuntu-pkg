@@ -78,7 +78,7 @@ ifeq "$(USE_GIT_TARBALLS)" "y"
 GIT_BASEURL:=git://anongit.freedesktop.org/libreoffice
 # bootstraping this from the source tree is breaking get-orig-source
 #lo_sources_ver=$(shell grep AC_INIT $(SOURCE_TREE)/configure.ac | grep documentfoundation | cut -d, -f2 | sed -e 's,\[,,' -e 's,\],,')
-lo_sources_ver=7.6.0.0.beta1
+lo_sources_ver=7.6.0.1
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
 GIT_TAG=libreoffice-$(lo_sources_ver)
@@ -109,6 +109,7 @@ BUILD_DEPS=\
     flex, \
     fontforge-nox | fontforge, \
     gperf,\
+    libfreetype-dev,\
     libfontconfig-dev,\
     pkg-config,\
     unzip,\
@@ -167,9 +168,6 @@ SYSTEM_STUFF += hunspell
 SYSTEM_STUFF += altlinuxhyph
 SYSTEM_STUFF += boost
 BOOST_VERSION=default
-ifeq "$(BOOST_VERSION)" "default"
-  BOOST_MINVER= (>= 1.71)
-endif
 # libmdds-dev depends on libboost-dev, which will be removed
 # when you install a non-default libboostX.Y-dev
 ifeq "$(BOOST_VERSION)" "default"
@@ -215,8 +213,6 @@ ifeq "$(BUILD_PLASMA)" "y"
   endif
 endif
 ENABLE_QT6=y
-# for moc move to /usr/lib/qt6/libxexec
-QT6_MINVER= (>= 6.2.1+dfsg-2)
 # https://www.debian.org/doc/debian-policy/ says this is not defined and must
 # be ignored, but dh_strip mentions (and honours) it, so...
 ifneq (noautodbgsym,$(findstring noautodbgsym,$(DEB_BUILD_OPTIONS)))
@@ -384,9 +380,6 @@ ifeq "$(PACKAGE_GEN)" "y"
 else
   ENABLE_SKIA=n
 endif
-# see https://cgit.freedesktop.org/libreoffice/core/commit/?id=a0edcc68f94915a78fcc08e70d2cdd752abd9ebb
-BUILD_DEPS += , libfreetype-dev (>= 2.8.1) [$(filter-out alpha ia64,$(OOO_LE_ARCHS))]
-BUILD_DEPS += , libfreetype-dev (>= 2.2.0) [$(filter $(OOO_ARCHS),$(OOO_BE_ARCHS) alpha ia64)] # see architecture-specific stuff below
 SYSTEM_STUFF += libpng
 ENABLE_NSS=y
 ifeq "$(ENABLE_NSS)" "y"
@@ -449,6 +442,7 @@ SYSTEM_STUFF += libnumbertext
 SYSTEM_STUFF += box2d
 SYSTEM_STUFF += libwebp
 SYSTEM_STUFF += libtiff
+SYSTEM_STUFF += frozen
 
 # Default flags to pass to configure
 CONFIGURE_FLAGS+= \
@@ -532,13 +526,29 @@ $(eval $(call gen_no_archs,OOO_LE_ARCHS))
 OOO_CLANG_ARCHS := $(filter-out alpha ia64,$(OOO_LE_ARCHS))
 $(eval $(call gen_no_archs,OOO_CLANG_ARCHS))
 
-OOO_CHECK_ARCHS := $(filter-out kfreebsd-i386 kfreebsd-amd64 mips mipsel mips64el armel s390x,$(OOO_ARCHS))
+# supported upstream (upstream does aarch64 flatpak builds)
+OOO_CHECK_ARCHS := amd64 arm64
 $(eval $(call gen_no_archs,OOO_CHECK_ARCHS))
-#OOO_JUNIT_ARCHS := i386 amd64 armhf arm64
 OOO_JUNIT_ARCHS := amd64 arm64
 $(eval $(call gen_no_archs,OOO_JUNIT_ARCHS))
-#OOO_CHECK_FATAL_ARCHS := i386 amd64 armhf arm64
 OOO_CHECK_FATAL_ARCHS := amd64 arm64
+
+# riscv64 is a new architecture. be more strict here. Especially since it doesn't seem that
+# the bridges' code actually works and all uittests using python fail.. We don't want to have
+# a broken build in there (as it might become a release arch) which we then need to work around again...
+OOO_CHECK_ARCHS += riscv64
+OOO_JUNIT_ARCHS += riscv64
+OOO_CHECK_FATAL_ARCHS += riscv64
+# original idea was without armhf, but since --disable-cve-tests for 32bit archs (see below)
+# this now also passes. and the autopkgtests also pass (also the junit ones).
+# So let's include armhf in the above
+OOO_CHECK_ARCHS += armhf
+OOO_JUNIT_ARCHS += armhf
+OOO_CHECK_FATAL_ARCHS += armhf
+
+# if bridgetest and smoketest fail this is surely not working in a way
+# we would want in the archive
+OOO_SMOKETEST_FATAL_ARCHS := $(OOO_ARCHS)
 
 ifeq (alpha,$(findstring $(DEB_HOST_ARCH),$(OOO_ARCHS)))
 PACKAGE_GEN=n
@@ -552,20 +562,35 @@ ifeq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
   BUILD_TESTS=n
 endif
 
+ifeq "$(DEB_HOST_ARCH_BITS)" "32"
+       # consistently crash in vcl_filters_test when
+       # Testing load file:///<<PKGBUILDDIR>>//vcl/qa/cppunit/graphicfilter/data/tiff/fail/CVE-2017-9936-1.tiff:
+       # CVE-2017-9936 is a memory leak and even a expected failure.
+       # And we are not supposed to test for others' packages CVEs anyway, especially since this is fixed in libtiff
+       # in 4.0.8-3(see https://security-tracker.debian.org/tracker/CVE-2017-9936) so ages ago
+       CONFIGURE_FLAGS += --disable-cve-tests
+endif
+
 RUN_MAKE_CHECK=n
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
   ifeq ($(DEB_HOST_ARCH),$(filter $(DEB_HOST_ARCH),$(OOO_CHECK_ARCHS)))
         RUN_MAKE_CHECK=y
   endif
-  ifeq "$(ENABLE_JAVA)" "y"
-    ifeq ($(DEB_HOST_ARCH),$(filter $(DEB_HOST_ARCH),$(OOO_JUNIT_ARCHS)))
+  ifeq "$(RUN_MAKE_CHECK)" "y"
+    ifeq "$(ENABLE_JAVA)" "y"
+      ifeq ($(DEB_HOST_ARCH),$(filter $(DEB_HOST_ARCH),$(OOO_JUNIT_ARCHS)))
         ENABLE_JUNIT4=y
+      endif
     endif
   endif
-  IGNORE_MAKE_CHECK_FAILURES=-
+  IGNORE_MAKE_FAILURES=-
   TEST_TIMEOUT := timeout --foreground --preserve-status -v -k 250m 200m
   ifeq ($(DEB_HOST_ARCH),$(filter $(DEB_HOST_ARCH),$(OOO_CHECK_FATAL_ARCHS)))
-       IGNORE_MAKE_CHECK_FAILURES:=
+       IGNORE_MAKE_FAILURES:=
+       TEST_TIMEOUT:=
+  endif
+  ifeq ($(DEB_HOST_ARCH),$(filter $(DEB_HOST_ARCH),$(OOO_SMOKETEST_FATAL_ARCHS)))
+       IGNORE_MAKE_FAILURES:=
        TEST_TIMEOUT:=
   endif
 endif
@@ -691,6 +716,7 @@ ifeq "$(DEB_VENDOR)" "Ubuntu"
   SYSTEM_STUFF := $(filter-out zxing, $(SYSTEM_STUFF))
   SYSTEM_STUFF := $(filter-out dragonbox, $(SYSTEM_STUFF))
   SYSTEM_STUFF := $(filter-out libfixmath, $(SYSTEM_STUFF))
+  SYSTEM_STUFF := $(filter-out frozen, $(SYSTEM_STUFF))
 
   BUGS=mailto:libreoffice@lists.launchpad.net
 
@@ -833,9 +859,7 @@ endif
       ifeq "$(CLANG_VERSION)" "default"
 	export LO_CLANG_CC=clang
 	export LO_CLANG_CXX=clang++
-	BUILD_DEPS += , clang (>= 1:8.0.1)$(OOO_NO_CLANG_ARCHS)
-	# see #963162, #963167 which apparently don't exist on 11
-	BUILD_DEPS += , clang (>= 1:11) [armel]
+	BUILD_DEPS += , clang$(OOO_NO_CLANG_ARCHS)
       else
 	export LO_CLANG_CC=clang-$(CLANG_VERSION)
 	export LO_CLANG_CXX=clang++-$(CLANG_VERSION)
@@ -845,7 +869,7 @@ endif
   endif
 else
   ifeq "$(CLANG_VERSION)" "default"
-	BUILD_DEPS += , clang (>= 1:8.0.1)
+	BUILD_DEPS += , clang
 	CONFIGURE_FLAGS+= CC=clang CXX=clang++
   else
 	BUILD_DEPS += , clang-$(CLANG_VERSION)
@@ -878,7 +902,9 @@ endif
 ifeq "$(ENABLE_PDFIMPORT)" "y"
   ifeq "$(ENABLE_POPPLER)" "y"
 	BUILD_DEPS += , libpoppler-dev, libpoppler-private-dev, libpoppler-cpp-dev
+    ifeq "$(RUN_MAKE_CHECK)" "y"
 	BUILD_DEPS_ARCH += , poppler-data$(OOO_NO_CHECK_ARCHS) <!nocheck>
+    endif
   else
 	CONFIGURE_FLAGS += --disable-poppler
   endif
@@ -914,9 +940,11 @@ ifneq "$(ENABLE_LDAP)" "y"
 endif
 
 ifneq (,$(filter libnumbertext, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libnumbertext-dev (>= 1.0.6)
+	BUILD_DEPS += , libnumbertext-dev
+    ifeq "$(RUN_MAKE_CHECK)" "y"
 	# https://cgit.freedesktop.org/libreoffice/core/commit/?h=libreoffice-7-3&id=09dfe214a30f58ddcd7a857db8f5eee68d4cef2a
 	BUILD_DEPS_ARCH += , libnumbertext-data (>= 1.0.11) <!nocheck>
+    endif
 	NUMBERTEXT_DATA_RECOMMENDS := libnumbertext-data
 endif
 
@@ -947,7 +975,7 @@ endif
 
 ifeq "$(ENABLE_CURL)" "y"
   ifneq (,$(filter curl, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libcurl4-$(CURL_SECTYPE)-dev (>= 7.68)
+	BUILD_DEPS += , libcurl4-$(CURL_SECTYPE)-dev
   endif
 else
 	CONFIGURE_FLAGS += --disable-curl
@@ -965,9 +993,6 @@ ifneq (,$(filter libtiff, $(SYSTEM_STUFF)))
        BUILD_DEPS += , libtiff-dev
 endif
 
-	# go sure given #873362
-	COINMP_MINVER=(>= 1.8.3-3)
-	#COINUTILS_MINVER=
 ifneq ($(ENABLE_COINMP),y)
 	CONFIGURE_FLAGS += --disable-coinmp
 else
@@ -1040,7 +1065,6 @@ ifeq "$(ENABLE_PYTHON)" "y"
 endif
 
 	BUILD_DEPS += , debhelper-compat (= 12)
-	BUILD_DEPS += , dpkg-dev (>= 1.20.1)
 
   ifeq "$(RUN_MAKE_CHECK)" "y"
 	BUILD_DEPS_ARCH += , locales$(OOO_NO_CHECK_ARCHS) <!nocheck>
@@ -1049,8 +1073,16 @@ endif
 	BUILD_DEPS_ARCH += , systemd$(OOO_NO_CHECK_ARCHS) <!nocheck>, systemd-coredump$(OOO_NO_CHECK_ARCHS) <!nocheck>, jq$(OOO_NO_CHECK_ARCHS) <!nocheck>
     endif
 	BUILD_DEPS_ARCH += , fontconfig$(OOO_NO_CHECK_ARCHS) <!nocheck>
+ifeq ($(BOOKWORM_BACKPORT),y)
 	BUILD_DEPS_ARCH += , fonts-liberation2$(OOO_NO_CHECK_ARCHS) <!nocheck>
-	BUILD_DEPS_ARCH += , fonts-crosextra-carlito$(OOO_NO_CHECK_ARCHS) <!nocheck>
+else
+	BUILD_DEPS_ARCH += , fonts-liberation (>= 1:2)$(OOO_NO_CHECK_ARCHS) <!nocheck>
+endif
+    ifneq "$(BOOKWORM_BACKPORT)" "y"
+	BUILD_DEPS_ARCH += , fonts-crosextra-carlito (>= 20230309)$(OOO_NO_CHECK_ARCHS) <!nocheck>
+    else
+	BUILD_DEPS_ARCH += , fonts-crosextra-carlito (<< 20230309)$(OOO_NO_CHECK_ARCHS) <!nocheck>
+    endif
 	# https://lists.freedesktop.org/archives/libreoffice/2017-May/077764.html
 	BUILD_DEPS_ARCH += , fonts-dejavu$(OOO_NO_CHECK_ARCHS) <!nocheck>
 	# used in vcl/qa/cppunit/text.cxx:void VclTextTest::testImplLayoutArgs_PrepareFallback_precalculatedglyphs()
@@ -1065,14 +1097,6 @@ endif
 	# it isn't the case in --without-fonts) but... And while we disable that abort via patch having this
 	# to be sure there is no other failure mode makes sense (as with the other fonts above)
 	BUILD_DEPS_ARCH += , fonts-linuxlibertine$(OOO_NO_CHECK_ARCHS) <!nocheck>
-    ifneq (,$(filter cppunit, $(SYSTEM_STUFF)))
-	BUILD_DEPS_ARCH += , libcppunit-dev$(OOO_NO_CHECK_ARCHS) <!nocheck>
-      # without the deterministic order patch the xmlsecurity_signing test fails. See
-      # https://cgit.freedesktop.org/libreoffice/core/commit/external/cppunit/order.patch.0?id=2f2246d22e2a8ccbc1dc3e6f5243734a61edf270
-      ifeq "$(ENABLE_LTO)" "y"
-        BUILD_DEPS_ARCH += , libcppunit-dev (>= 1.15.1-4) [$(filter $(OOO_CHECK_ARCHS),$(OOO_64BIT_ARCHS))] <!nocheck>
-      endif
-    endif
 	# 17:35 <@sberg_> vmiklos, oh, what kind of poor test is that? "warn:sal.osl:3785:2:sal/osl/unx/process.cxx:344: ChildStatusProc : starting 'pstoedit' failed" etc. is what I see in workdir/CppunitTest/filter_eps_test.test.log...
 	BUILD_DEPS_ARCH += , pstoedit$(OOO_NO_CHECK_ARCHS) <!nocheck>
 	BUILD_DEPS_ARCH += , imagemagick$(OOO_NO_CHECK_ARCHS) <!nocheck>
@@ -1080,14 +1104,20 @@ endif
 
 	BUILD_DEPS_ARCH += , hunspell-en-us$(OOO_NO_CHECK_ARCHS) <!nocheck>
 	BUILD_DEPS_ARCH += , hyphen-en-us$(OOO_NO_CHECK_ARCHS) <!nocheck>
-    # we don't run any cppunit check in all builds
-    ifneq "$(AUTOPKGTEST_BUILD)" "y"
-      ifeq ($(MAKECMDGOALS),build-indep)
-	CONFIGURE_FLAGS_INDEP += --without-cppunit
+  endif
+  # we don't run any cppunit check in all builds
+  ifneq "$(AUTOPKGTEST_BUILD)" "y"
+    ifneq (,$(filter cppunit, $(SYSTEM_STUFF)))
+	BUILD_DEPS_ARCH += , libcppunit-dev <!nocheck>
+      # without the deterministic order patch the xmlsecurity_signing test fails. See
+      # https://cgit.freedesktop.org/libreoffice/core/commit/external/cppunit/order.patch.0?id=2f2246d22e2a8ccbc1dc3e6f5243734a61edf270
+      ifeq "$(ENABLE_LTO)" "y"
+        BUILD_DEPS_ARCH += , libcppunit-dev (>= 1.15.1-4) [$(filter $(OOO_CHECK_ARCHS),$(OOO_64BIT_ARCHS))] <!nocheck>
       endif
     endif
-  else
-	CONFIGURE_FLAGS += --without-cppunit
+    ifeq ($(MAKECMDGOALS),build-indep)
+	CONFIGURE_FLAGS_INDEP += --without-cppunit
+    endif
   endif
   ifeq "$(ENABLE_JUNIT4)" "y"
 	BUILD_DEPS += , junit4 $(JUNIT_MIN_VER) [$(OOO_JUNIT_ARCHS)] <!nocheck !nojava>
@@ -1259,7 +1289,7 @@ ifneq (,$(filter boost, $(SYSTEM_STUFF)))
   	CONFIGURE_FLAGS += --with-boost-libdir=/usr/lib/$(DEB_HOST_MULTIARCH)
   endif
   ifneq (,$(filter dragonbox, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libdragonbox-dev (>= 1.1.3)
+	BUILD_DEPS += , libdragonbox-dev
   endif
   ifneq (,$(filter libfixmath, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libfixmath-dev
@@ -1295,13 +1325,10 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
 	BUILD_DEPS += , libwpd-dev (>= 0.10), libwpd-dev (<< 0.11~)
   endif
   ifneq (,$(filter mythes, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libmythes-dev (>= 2:1.2)
+	BUILD_DEPS += , libmythes-dev
   endif
   ifneq (,$(filter libwps, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libwps-dev (>= 0.4), libwps-dev (<< 0.5~)
-    ifeq "$(RUN_MAKE_CHECK)" "y"
-	BUILD_DEPS_ARCH += , libwps-dev (>= 0.4.12)$(OOO_NO_CHECK_ARCHS) <!nocheck>
-    endif
   endif
   ifneq (,$(filter libwpg, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libwpg-dev (>= 0.3), libwpg-dev (<< 0.4~)
@@ -1316,10 +1343,11 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
 	BUILD_DEPS += , libmspub-dev (>= 0.1), libmspub-dev (<< 0.2~)
   endif
   ifneq (,$(filter libmwaw, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libmwaw-dev (>= 0.3.1), libmwaw-dev (<< 0.4~)
+#	BUILD_DEPS += , libmwaw-dev (>= 0.3.1), libmwaw-dev (<< 0.4~)
+# configure.ac checks for >= 0.3.21
+	BUILD_DEPS += , libmwaw-dev (>= 0.3.21), libmwaw-dev (<< 0.4~)
 #    ifeq "$(RUN_MAKE_CHECK)" "y"
 #	BUILD_DEPS_ARCH += , libmwaw-dev (>= 0.3.21)$(OOO_NO_CHECK_ARCHS) <!nocheck>
-	BUILD_DEPS_ARCH += , libmwaw-dev (>= 0.3.21)
 #    endif
   endif
   ifneq (,$(filter libodfgen, $(SYSTEM_STUFF)))
@@ -1330,9 +1358,6 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
   endif
   ifneq (,$(filter libetonyek, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libetonyek-dev, libetonyek-dev (<< 0.2~)
-    ifeq "$(RUN_MAKE_CHECK)" "y"
-	BUILD_DEPS_ARCH += , libetonyek-dev (>= 0.1.8)$(OOO_NO_CHECK_ARCHS) <!nocheck>
-    endif
   endif
   ifneq (,$(filter libfreehand, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libfreehand-dev (>= 0.1), libfreehand-dev (<< 0.2~)
@@ -1348,18 +1373,12 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
   endif
   ifneq (,$(filter libstaroffice, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libstaroffice-dev, libstaroffice-dev (<< 0.1~)
-    ifeq "$(RUN_MAKE_CHECK)" "y"
-	BUILD_DEPS_ARCH += , libstaroffice-dev (>= 0.0.3)$(OOO_NO_CHECK_ARCHS) <!nocheck>
-    endif
   endif
   ifneq (,$(filter libqxp, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libqxp-dev, libqxp-dev (<< 0.1~)
   endif
   ifneq (,$(filter libebook, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libe-book-dev (>= 0.1), libe-book-dev (<< 0.2~)
-    ifeq "$(RUN_MAKE_CHECK)" "y"
-	BUILD_DEPS_ARCH += , libe-book-dev (>= 0.1.2)$(OOO_NO_CHECK_ARCHS) <!nocheck>
-    endif
   endif
   ifeq "$(ENABLE_LIBCMIS)" "y"
     ifneq (,$(filter libcmis, $(SYSTEM_STUFF)))
@@ -1370,8 +1389,7 @@ ifeq "$(USE_EXTERNAL_CXXLIBS)" "y"
   endif
   ifeq "$(ENABLE_ZXING)" "y"
     ifneq (,$(filter zxing, $(SYSTEM_STUFF)))
-	# https://cgit.freedesktop.org/libreoffice/core/commit/?id=d53340b2253537104abe6f95c8c63cc74487c3ec
-	BUILD_DEPS += , libzxing-dev (>= 1.2.0)
+	BUILD_DEPS += , libzxing-dev
     endif
   else
 	CONFIGURE_FLAGS += --disable-zxing
@@ -1614,7 +1632,7 @@ endif
 
 ifeq "$(ENABLE_WEBDAV)" "y"
     ifneq (,$(filter curl, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libcurl4-$(CURL_SECTYPE)-dev (>= 7.68)
+	BUILD_DEPS += , libcurl4-$(CURL_SECTYPE)-dev
     endif
     ENABLE_CURL=y
 else
@@ -1639,6 +1657,10 @@ ifneq (,$(filter lockfile, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , liblockfile-bin
 endif
 
+ifneq (,$(filter frozen, $(SYSTEM_STUFF)))
+	BUILD_DEPS += , libfrozen-dev 
+endif
+
 ifneq (,$(filter redland, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , librdf0-dev 
 endif
@@ -1655,7 +1677,7 @@ ifneq (,$(filter glm, $(SYSTEM_STUFF)))
 endif
 
 ifneq (,$(filter gpgmepp, $(SYSTEM_STUFF)))
-	BUILD_DEPS+= , libgpgmepp-dev (>= 1.14), libgpgme-dev, libgpg-error-dev
+	BUILD_DEPS+= , libgpgmepp-dev, libgpgme-dev, libgpg-error-dev
 endif
 ifeq "$(RUN_MAKE_CHECK)" "y"
 	BUILD_DEPS_ARCH += , gpg$(OOO_NO_CHECK_ARCHS) <!nocheck>
@@ -1686,6 +1708,16 @@ ifeq ($(ENABLE_LTO),y)
 	# see https://lists.debian.org/debian-devel-changes/2021/11/msg02548.html
 	BUILD_DEPS += , binutils (>= 2.37-9) [ppc64]
 endif
+
+ifeq ($(BOOKWORM_BACKPORT),y)
+	LIBERATION_FONT_RECOMMENDS += fonts-liberation
+	LIBERATION2_FONT_RECOMMENDS += , fonts-liberation2
+else
+	LIBERATION_FONT_RECOMMENDS += , fonts-liberation-sans-narrow
+	LIBERATION2_FONT_RECOMMENDS += , fonts-liberation (>= 1:2)
+endif
+LIBERATION_FONTS_RECOMMENDS += $(LIBERATION2_FONT_RECOMMENDS) $(LIBERATION_FONT_RECOMMENDS)
+
 # go sure. if we explicitely disable LTO when it is enabled we don't want it to sneak in
 # (and vice-versa). See https://lists.debian.org/debian-devel/2022/06/msg00092.html
 ifeq ($(ENABLE_LTO),y)
@@ -2267,14 +2299,11 @@ ifeq "$(BUILD_TEST_PACKAGES)" "y"
 endif
 
 ifeq "$(BUILD_TEST_PACKAGES)" "y"
-	# doesn't necessarily exist unless you also ran check...
-	if [ -d workdir/Zip ]; then \
-		find workdir/Zip -name "smoketestdoc*" | xargs rm; \
-		patch -p0 < $(CURDIR)/debian/tests/patches/smoketest-disable-extension-tests.diff; \
-		cd smoketest && $(MAKE) Zip_smoketestdoc; cd ..; \
-		patch -p0 -R < $(CURDIR)/debian/tests/patches/smoketest-disable-extension-tests.diff; \
-		cp workdir/Zip/smoketestdoc.zip workdir/Zip/smoketestdoc.sxw; \
-	fi
+	find workdir/Zip -name "smoketestdoc*" | xargs rm; \
+	patch -p0 < $(CURDIR)/debian/tests/patches/smoketest-disable-extension-tests.diff; \
+	cd smoketest && $(MAKE) Zip_smoketestdoc; cd ..; \
+	patch -p0 -R < $(CURDIR)/debian/tests/patches/smoketest-disable-extension-tests.diff; \
+	cp workdir/Zip/smoketestdoc.zip workdir/Zip/smoketestdoc.sxw
 endif
 
 ifneq "$(AUTOPKGTEST_BUILD)" "y"
@@ -2286,10 +2315,9 @@ endif
 	touch $@
 
 check:
-ifeq "$(BUILD_TESTS)" "y"
-  ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
+ifneq (,$(filter $(DEB_HOST_ARCH),$(OOO_NO_BASE_ARCHS)))
 	patch -p1 < $(CURDIR)/debian/tests/patches/disable-db-tests.diff
-  endif
+endif
   ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
 	cd $(SOURCE_TREE)/smoketest && \
 		patch -p1 < $(CURDIR)/debian/tests/patches/smoketest-disable-extension-tests.diff
@@ -2302,6 +2330,9 @@ ifeq "$(BUILD_TESTS)" "y"
 	patch -p1 < $(CURDIR)/debian/tests/patches/fontconfig-2.14.1-no-RGB-stripes-layout-for-sub-pixel-rendering.diff
 	cd $(SOURCE_TREE)/postprocess && $(MAKE) verbose=t
 
+  ifeq "$(BOOKWORM_BACKPORT)" "y"
+	patch -p1 -R < debian/patches/adapt-for-new-carlito.diff
+  endif
 	# enable cppunit etc.
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
 	CLANGDIR=$(CLANGDIR) \
@@ -2314,6 +2345,7 @@ ifeq "$(BUILD_TESTS)" "y"
 		--without-doxygen --without-javadoc \
 		--with-galleries=no --with-theme="$(DEFAULT_IMAGE)"
 
+ifeq "$(BUILD_TESTS)" "y"
 	# build the tests (first)
 	export gb_SUPPRESS_TESTS=true; \
 		$(MAKE) check
@@ -2326,7 +2358,7 @@ ifeq "$(RUN_MAKE_CHECK)" "y"
 	USE_CPUS=$(NUM_CPUS) debian/scripts/locale-gen
 
         # and now run them
-	$(IGNORE_MAKE_CHECK_FAILURES)t=`mktemp -q -d`; \
+	$(IGNORE_MAKE_FAILURES)t=`mktemp -q -d`; \
 	cd $(SOURCE_TREE) && \
 		export PATH=$(BUILD_PATH); \
 		export TMPDIR=$$t; \
@@ -2340,6 +2372,36 @@ ifeq "$(RUN_MAKE_CHECK)" "y"
 		if [ -x /usr/bin/gdb ]; then ulimit -c unlimited || true; fi && \
 		$(TEST_TIMEOUT) $(MAKE) -k check || $(TEST_TIMEOUT) $(MAKE) check && \
 	rm -rf $$t
+else
+	# don't run make check but *do* run selected tests here which are deemed too important
+	# to fail
+	# - "bridgetest"
+	# - "smoketest" as a smoketest
+	# - pyuno (as we shiup python3-uno..)
+	$(IGNORE_MAKE_FAILURES)\
+	cd $(SOURCE_TREE) && \
+		$(TEST_TIMEOUT) make testtools.allcheck
+	# build smoketest prerequisites
+	# and it only builds unotest but not test so build that manually...
+	# sal only builds cppunittester on make check due to cppunit-optional.diff
+	# smoketest.allcheck actually does NOT run it... Do it manually later..
+	# allcheck actually does NOT run it... Do it manually later..
+	cd $(SOURCE_TREE) && \
+		$(TEST_TIMEOUT) ( \
+			make unotest.allbuild && \
+			make test.allbuild && \
+			gb_SUPPRESS_TESTS=true make sal.allcheck && \
+			make smoketest.allcheck \
+		)
+	# run the smoketest
+	cd $(SOURCE_TREE)/smoketest && \
+		$(TEST_TIMEOUT) make subsequentcheck
+
+  ifeq "$(ENABLE_PYTHON)" "y"
+	# does pyuno work?
+	cd $(SOURCE_TREE)/pyuno && \
+		$(TEST_TIMEOUT) make check subsequentcheck 
+  endif
 endif
 endif
 
@@ -2356,6 +2418,9 @@ ifeq "$(BUILD_TESTS)" "y"
   endif
 	patch -p1 -R < $(CURDIR)/debian/tests/patches/fontconfig-2.14.1-no-RGB-stripes-layout-for-sub-pixel-rendering.diff
 	cd $(SOURCE_TREE)/postprocess && $(MAKE) verbose=t
+  ifeq "$(BOOKWORM_BACKPORT)" "y"
+	patch -p1 < debian/patches/adapt-for-new-carlito.diff
+  endif
 endif
 
 check-indep:
@@ -2363,11 +2428,11 @@ ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
   ifeq "$(ENABLE_JAVA)" "y"
 	# since the gb_SUPPRESS_CHECK stuff in build this isn't checked.
 	# probably should, so do it here manually.
-	$(IGNORE_MAKE_CHECK_FAILURES)cd odk && \
+	$(IGNORE_MAKE_FAILURES)cd odk && \
 		$(MAKE) CustomTarget_odk/check
     ifneq (,$(findstring -indep,$(MAKECMDGOALS)))
 	# was already checked in check
-	$(IGNORE_MAKE_CHECK_FAILURES)if [ ! -e $(STAMP_DIR)/build-arch ]; then \
+	$(IGNORE_MAKE_FAILURES)if [ ! -e $(STAMP_DIR)/build-arch ]; then \
 		cd odk && $(MAKE) CustomTarget_odk/build-examples && \
 			$(MAKE) CustomTarget_odk/build-examples_java; \
 	fi
@@ -2858,6 +2923,9 @@ endif
 	mkdir -p $(PKGDIR)-uiconfig-common/$(OODIR)/share/config/
 	mv $(PKGDIR)-common/$(OODIR)/share/config/soffice.cfg \
 		$(PKGDIR)-uiconfig-common/$(OODIR)/share/config
+	mkdir -p $(PKGDIR)-uiconfig-impress/$(OODIR)/share/config
+	mv $(PKGDIR)-impress/$(OODIR)/share/config/soffice.cfg \
+		$(PKGDIR)-uiconfig-impress/$(OODIR)/share/config/soffice.cfg
 
 	find debian/tmp ! -perm -200 | xargs -r chmod u+w
 
@@ -4020,6 +4088,7 @@ endif
 		-V'gnome-gtk-recommends=$(GNOME_GTK_RECOMMENDS)' \
 		-V'firebird-engine-depends=$(FIREBIRD_ENGINE_DEPENDS)' \
 		-V'libsane-suggests=$(shell dpkg -S /usr/lib/$(DEB_HOST_MULTIARCH)/libsane.so.1 | cut -d: -f1)' \
+		-V'liberation-fonts-recommends=$(LIBERATION_FONTS_RECOMMENDS)' \
 		-v$(BINARY_VERSION)
 ifeq "$(BUILD_DBGSYM_PACKAGES)" "y"
 	for i in libuno-sal3 libuno-cppu3 libuno-salhelpergcc3-3 libuno-cppuhelpergcc3-3 libuno-purpenvhelpergcc3-3 \
@@ -4149,6 +4218,7 @@ endif
 		-V'help-depends=$(HELP_DEPENDS)' \
 		-V'help-recommends=$(HELP_RECOMMENDS)' \
 		-V'report-builder-jar-depends=$(REPORT_BUILDER_JAR_DEPENDS)' \
+		-V'liberation2-font-recommends=$(LIBERATION2_FONT_RECOMMENDS)' \
 		-V'Binary-Version=$(BINARY_VERSION)' \
 		-v$(BINARY_VERSION)
 	dh_gencontrol -pfonts-opensymbol -- \
