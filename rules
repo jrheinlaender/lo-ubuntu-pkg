@@ -277,7 +277,6 @@ ifeq "$(ENABLE_GUI)" "y"
 USE_GSTREAMER=y
 endif
 ENABLE_CURL=y
-CURL_SECTYPE=openssl
 ENABLE_WEBDAV=y
 ifeq "$(ENABLE_WEBDAV)" "y"
   ENABLE_CURL=y
@@ -855,18 +854,6 @@ ifeq "$(DEB_HOST_ARCH)" "s390x"
   ifneq (noopt,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
 	DEB_BUILD_OPTIONS += noopt
   endif
-  ifeq (,$(shell gcc -v 2>&1 | grep disable-s390-excess-float-precision))
-	$(error gcc isn't built with disable-s390-excess-float-precision, bridgetest will fail.)
-  endif
-endif
-# see above
-ifeq "$(SYSTEM_GCC_VERSION)" "13"
-	BUILD_DEPS += , gcc-13 (>= 13.2.0-6) [s390x], g++-13 (>= 13.2.0-6) [s390x]
-endif
-ifneq "$(BOOKWORM_BACKPORT)" "y"
-  ifeq "$(SYSTEM_GCC_VERSION)" "12"
-	BUILD_DEPS += , gcc-12 (>= 12.3.0-11) [s390x], g++-12 (>= 12.3.0-11) [s390x]
-  endif
 endif
 # bridgetest fails when built with gcc 13, works with 12
 ifneq "$(BOOKWORM_BACKPORT)" "y"
@@ -1013,6 +1000,13 @@ ifneq (,$(filter libpng, $(SYSTEM_STUFF)))
        BUILD_DEPS += , libpng-dev
 endif
 
+# otherwise librdf0-dev (which we also need)  is uninstallable... 
+ifeq ($(BOOKWORM_BACKPORT),y)
+CURL_SECTYPE=gnutls
+else
+# ... from trixie onwards it seems it has an alternative which allows openssl
+CURL_SECTYPE=openssl
+endif
 ifeq "$(ENABLE_CURL)" "y"
   ifneq (,$(filter curl, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libcurl4-$(CURL_SECTYPE)-dev
@@ -1060,6 +1054,16 @@ endif
 ifneq (,$(filter ppc64el s390x,$(DEB_HOST_ARCH)))
 	DEB_CFLAGS_MAINT_APPEND = -ffp-contract=off
 	DEB_CXXFLAGS_MAINT_APPEND = -ffp-contract=off
+endif
+
+ifneq (,$(filter s390x,$(DEB_HOST_ARCH)))
+  ifeq (,$(shell gcc -v 2>&1 | grep disable-s390-excess-float-precision))
+	DEB_CFLAGS_MAINT_APPEND = -fexcess-precision=fast
+	# the gcc manpage says
+	# "-fexcess-precision=standard is not implemented for languages other than C"
+	# but it works with this and fails without, so probably has some effect after all
+	DEB_CXXFLAGS_MAINT_APPEND = -fexcess-precision=fast
+  endif
 endif
 
 ifeq "$(ENABLE_SYMBOLS)" "y"
@@ -1631,7 +1635,7 @@ ifeq "$(ENABLE_JAVA)" "y"
     endif
 	CONFIGURE_FLAGS += --enable-scripting-beanshell
   else
-	CONFIGURE_FLAGS += --disble-scripting-beanshell
+	CONFIGURE_FLAGS += --disable-scripting-beanshell
  	DEBHELPER_OPTIONS += -Nlibreoffice-script-provider-bsh
   endif
   ifeq "$(ENABLE_SCRIPT_PROVIDER_JS)" "y"
@@ -2433,7 +2437,7 @@ else
 	# - "bridgetest"
 	# - the public libraries (sal, cppu(helper), comphelper)
 	# - "smoketest" as a smoketest
-	# - pyuno (as we shiup python3-uno..)
+	# - pyuno (as we ship python3-uno..)
 	# - unoidl for the SDK
 	$(IGNORE_MAKE_FAILURES)\
 	cd $(SOURCE_TREE) && \
