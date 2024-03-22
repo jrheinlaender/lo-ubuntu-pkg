@@ -81,7 +81,7 @@ ifeq "$(USE_GIT_TARBALLS)" "y"
 GIT_BASEURL:=git://anongit.freedesktop.org/libreoffice
 # bootstraping this from the source tree is breaking get-orig-source
 #lo_sources_ver=$(shell grep AC_INIT $(SOURCE_TREE)/configure.ac | grep documentfoundation | cut -d, -f2 | sed -e 's,\[,,' -e 's,\],,')
-lo_sources_ver=24.2.2.1
+lo_sources_ver=24.2.2.2
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
 GIT_TAG=libreoffice-$(lo_sources_ver)
@@ -112,7 +112,6 @@ BUILD_DEPS=\
     bison,\
     bzip2,\
     flex, \
-    fontforge-nox | fontforge, \
     gperf,\
     libfreetype-dev,\
     libfontconfig-dev,\
@@ -210,6 +209,7 @@ ENABLE_ZXING=y
 SYSTEM_STUFF += zxing
 BUILD_CAIROCANVAS=y
 SYSTEM_STUFF += cairo
+ENABLE_GPGMEPP=y
 ifeq "$(ENABLE_GUI)" "y"
 BUILD_PLASMA=y
 # let's assume we won't ship two plasmas parallel..
@@ -467,6 +467,33 @@ SYSTEM_STUFF += libtiff
 SYSTEM_STUFF += frozen
 SYSTEM_STUFF += argon2
 
+# override stuff for build-indep to save build dependencies
+ifeq ($(MAKECMDGOALS),build-indep)
+ENABLE_EVOAB=n
+BUILD_GTK3=n
+ENABLE_INTROSPECTION=n
+ENABLE_GIO=n
+BUILD_GTK4=n
+ENABLE_QT5=n
+ENABLE_QT6=n
+# libgpgmepp-dev depends on Qt, too, see https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=863149
+ENABLE_GPGMEPP=n
+ENABLE_KF5=n
+ENABLE_KF6=n
+BUILD_PLASMA=n
+ENABLE_MARIADB=n
+ENABLE_FIREBIRD=n
+ENABLE_SDBC_POSTGRESQL=n
+ENABLE_SKIA=n
+ENABLE_COINMP=n
+ENABLE_LPSOLVE=n
+USE_GSTREAMER=n
+ENABLE_LDAP=n
+ENABLE_PDFIUM=n
+ENABLE_DBUS=n
+ENABLE_AVAHI=n
+endif
+
 # Default flags to pass to configure
 CONFIGURE_FLAGS+= \
 		--with-vendor='$(OOO_VENDOR)' \
@@ -478,10 +505,33 @@ CONFIGURE_FLAGS+= \
 		--host=$(DEB_HOST_GNU_TYPE) --build=$(DEB_BUILD_GNU_TYPE) \
 		--disable-online-update \
 		--disable-fetch-external \
-		--without-fonts --enable-build-opensymbol \
+		--without-fonts \
 		--without-myspell-dicts \
 		--with-branding=$(CURDIR)/debian/branding \
 		--without-coredumpctl
+
+# don't rebuild the font anywhere, we just really need it in indep builds.
+# please put https://dev-www.libreoffice.org/extern/f543e6e2d7275557a839a164941c0a86e5f2c3f2a0042bfc434c88c6dde9e140-opens___.ttf
+# into $(SOURCE_TREE)/tarballs if you don't rebuild the font.
+BUILD_DEPS_INDEP += , fontforge-nox | fontforge <!pkg.libreoffice.noopensymbolbuild>
+ifeq ($(filter pkg.libreoffice.noopensymbolbuild,$(DEB_BUILD_PROFILES)),)
+ENABLE_OPENSYMBOL_BUILD=y
+endif
+
+# we get a fonts-opensymbol build-dep -b builds (_ARCH also affects -b), too anyway but it's still lesser
+# dependencies than fontforge-nox | fontforge...
+# But this can get a problem for bootstrapping if we ever needed a newer fonts-opensymbol for
+# tests to pass...
+# Allow building it nevertheless if wanted
+BUILD_DEPS_ARCH += , fonts-opensymbol <!pkg.libreoffice.opensymbolbuild>
+ifneq ($(MAKECMDGOALS),build-arch)
+ifneq ($(filter pkg.libreoffice.opensymbolbuild,$(DEB_BUILD_PROFILES)),)
+ENABLE_OPENSYMBOL_BUILD=y
+endif
+ifeq "$(ENABLE_OPENSYMBOL_BUILD)" "y"
+CONFIGURE_FLAGS_INDEP += --enable-build-opensymbol 
+endif
+endif
 
 ifeq "$(ENABLE_GUI)" "y"
 BUILD_DEPS += ,\
@@ -654,7 +704,7 @@ OOO_BASE_ARCHS := $(OOO_ARCHS)
 $(eval $(call gen_no_archs,OOO_BASE_ARCHS))
 OOO_REPORTBUILDER_ARCHS := $(OOO_JAVA_ARCHS)
 $(eval $(call gen_no_archs,OOO_REPORTBUILDER_ARCHS))
-OOO_FIREBIRD_ARCHS := $(OOO_BASE_ARCHS)
+OOO_FIREBIRD_ARCHS := $(filter-out m68k,$(OOO_BASE_ARCHS))
 $(eval $(call gen_no_archs,OOO_FIREBIRD_ARCHS))
 OOO_NOGUI_ARCHS := $(filter amd64 i386 arm64 armhf s390x ppc64 ppc64el,$(OOO_ARCHS))
 $(eval $(call gen_no_archs,OOO_NOGUI_ARCHS))
@@ -831,9 +881,9 @@ ifneq "$(shell echo $(USE_CLANG)$(ALLOW_CLANG) | grep y)" ""
     else
       ifeq "$(ALLOW_CLANG)" "y"
         ifeq "$(CLANG_VERSION)" "default"
-	  BUILD_DEPS += , llvm$(OOO_NO_CLANG_ARCHS)
+	  BUILD_DEPS_ARCH += , llvm$(OOO_NO_CLANG_ARCHS)
         else
-	  BUILD_DEPS += , llvm-$(CLANG_VERSION)-linker-tools$(OOO_NO_CLANG_ARCHS)
+	  BUILD_DEPS_ARCH += , llvm-$(CLANG_VERSION)-linker-tools$(OOO_NO_CLANG_ARCHS)
         endif
       endif
     endif
@@ -932,11 +982,11 @@ endif
       ifeq "$(CLANG_VERSION)" "default"
 	export LO_CLANG_CC=clang
 	export LO_CLANG_CXX=clang++
-	BUILD_DEPS += , clang$(OOO_NO_CLANG_ARCHS)
+	BUILD_DEPS_ARCH += , clang$(OOO_NO_CLANG_ARCHS)
       else
 	export LO_CLANG_CC=clang-$(CLANG_VERSION)
 	export LO_CLANG_CXX=clang++-$(CLANG_VERSION)
-	BUILD_DEPS += , clang-$(CLANG_VERSION) [$(OOO_LE_ARCHS)]
+	BUILD_DEPS_ARCH += , clang-$(CLANG_VERSION) [$(OOO_LE_ARCHS)]
       endif
     endif
   endif
@@ -987,10 +1037,10 @@ ifeq "$(ENABLE_PDFIMPORT)" "y"
 	SYSTEM_STUFF += abseil
 	SYSTEM_STUFF += openjpeg
     ifneq (,$(filter openjpeg, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libopenjp2-7-dev [$(OOO_PDFIUM_ARCHS)]
+	BUILD_DEPS_ARCH += , libopenjp2-7-dev [$(OOO_PDFIUM_ARCHS)]
     endif
     ifneq (,$(filter abseil, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libabsl-dev [$(OOO_PDFIUM_ARCHS)]
+	BUILD_DEPS_ARCH += , libabsl-dev [$(OOO_PDFIUM_ARCHS)]
     endif
   endif
 endif
@@ -1080,7 +1130,7 @@ ifneq ($(ENABLE_COINMP),y)
 	CONFIGURE_FLAGS += --disable-coinmp
 else
   ifneq (,$(filter coinmp, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , coinor-libcoinmp-dev $(COINMP_MINVER), coinor-libcoinutils-dev $(COINUTILS_MINVER)
+	BUILD_DEPS_ARCH += , coinor-libcoinmp-dev $(COINMP_MINVER), coinor-libcoinutils-dev $(COINUTILS_MINVER)
   endif
 endif
 
@@ -1146,13 +1196,13 @@ ifeq "$(ENABLE_PYTHON)" "y"
 PYMAJOR:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[0])")
 PYMINOR:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[1])")
 PYMINORPLUS1:=$(shell $(PYTHON) -c "import sys; print (sys.version_info[1]+1)")
-PYTHON_SITE:=debian/python3-uno/$(shell $(PYTHON) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
+PYTHON_SITE:=$(shell $(PYTHON) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
 endif
 
 	BUILD_DEPS += , $(PYTHON)
 ifeq "$(ENABLE_PYTHON)" "y"
 	BUILD_DEPS += , $(PYTHON)-dev <!nopython>
-	BUILD_DEPS += , $(PYTHON)-distutils <!nopython>
+	BUILD_DEPS += , $(PYTHON)-setuptools <!nopython>
 	BUILD_DEPS += , dh-python <!nopython>
   ifeq "$(RUN_MAKE_CHECK)" "y"
     ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
@@ -1528,7 +1578,7 @@ ifneq (,$(filter lcms2, $(SYSTEM_STUFF)))
 endif
 
 ifneq (,$(filter openldap, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libldap-dev
+	BUILD_DEPS_ARCH += , libldap-dev
 endif
 
 ifneq (,$(filter liblangtag, $(SYSTEM_STUFF)))
@@ -1550,39 +1600,39 @@ endif
 
 ifeq "$(ENABLE_KF5)" "y"
 	CONFIGURE_FLAGS += --enable-kf5
-	BUILD_DEPS += , libkf5coreaddons-dev, libkf5i18n-dev, libkf5config-dev, libkf5windowsystem-dev, libkf5kio-dev
+	BUILD_DEPS_ARCH += , libkf5coreaddons-dev, libkf5i18n-dev, libkf5config-dev, libkf5windowsystem-dev, libkf5kio-dev
 endif
 ifeq "$(ENABLE_KF6)" "y"
 	CONFIGURE_FLAGS += --enable-kf6
-	BUILD_DEPS += , libkf6coreaddons-dev, libkf6i18n-dev, libkf6config-dev, libkf6windowsystem-dev, libkf6kio-dev
+	BUILD_DEPS_ARCH += , libkf6coreaddons-dev, libkf6i18n-dev, libkf6config-dev, libkf6windowsystem-dev, libkf6kio-dev
 endif
 	PLASMA_ICONSET_DEP=libreoffice-style-breeze
 ifeq "$(ENABLE_QT5)" "y"
 	CONFIGURE_FLAGS += --enable-qt5
-	BUILD_DEPS += , qtbase5-dev $(QT5_MINVER), qt5-qmake $(QT5_MINVER), qtbase5-dev-tools $(QT5_MINVER)
-	BUILD_DEPS += , libqt5x11extras5-dev $(QT5_MINVER)
-	BUILD_DEPS += , libglib2.0-dev
-	BUILD_DEPS += , libxcb1-dev
+	BUILD_DEPS_ARCH += , qtbase5-dev $(QT5_MINVER), qt5-qmake $(QT5_MINVER), qtbase5-dev-tools $(QT5_MINVER)
+	BUILD_DEPS_ARCH += , libqt5x11extras5-dev $(QT5_MINVER)
+	BUILD_DEPS_ARCH += , libglib2.0-dev
+	BUILD_DEPS_ARCH += , libxcb1-dev
 endif
 ifeq "$(ENABLE_QT6)" "y"
 	CONFIGURE_FLAGS += --enable-qt6
-	BUILD_DEPS += , qt6-base-dev $(QT6_MINVER), qmake6 $(QT6_MINVER), qt6-base-dev-tools $(QT6_MINVER)
-	BUILD_DEPS += , libxcb1-dev
+	BUILD_DEPS_ARCH += , qt6-base-dev $(QT6_MINVER), qmake6 $(QT6_MINVER), qt6-base-dev-tools $(QT6_MINVER)
+	BUILD_DEPS_ARCH += , libxcb1-dev
 endif
 
 ifeq "$(ENABLE_MARIADB)" "y"
   ifeq "$(MYSQL_FLAVOUR)" "default"
-	BUILD_DEPS += , default-libmysqlclient-dev
+	BUILD_DEPS_ARCH += , default-libmysqlclient-dev
   else
     ifeq "$(MYSQL_FLAVOUR)" "mysql"
         ifneq (,$(filter mariadb, $(SYSTEM_STUFF)))
-        BUILD_DEPS += , libmysqlclient-dev
+        BUILD_DEPS_ARCH += , libmysqlclient-dev
         endif
       MARIADBCONFIG=/usr/bin/mysql_config
     endif
     ifeq "$(MYSQL_FLAVOUR)" "mariadb"
       ifneq (,$(filter mariadb, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libmariadb-dev
+	BUILD_DEPS_ARCH += , libmariadb-dev
       endif
     MARIADBCONFIG=/usr/bin/mariadb_config
     endif
@@ -1595,13 +1645,13 @@ endif
 ifeq "$(ENABLE_FIREBIRD)" "y"
 	BASE_FIREBIRD_RECOMMENDS = libreoffice-sdbc-firebird [$(OOO_FIREBIRD_ARCHS)]
   ifneq (,$(filter libatomic-ops, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libatomic-ops-dev$(OOO_NO_FIREBIRD_ARCHS)
+	BUILD_DEPS_ARCH += , libatomic-ops-dev$(OOO_NO_FIREBIRD_ARCHS)
   endif
   ifneq (,$(filter libtommath, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libtommath-dev$(OOO_NO_FIREBIRD_ARCHS)
+	BUILD_DEPS_ARCH += , libtommath-dev$(OOO_NO_FIREBIRD_ARCHS)
   endif
   ifneq (,$(filter firebird, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , firebird-dev$(OOO_NO_FIREBIRD_ARCHS)
+	BUILD_DEPS_ARCH += , firebird-dev$(OOO_NO_FIREBIRD_ARCHS)
 	# we need libEngine12.so
   ifeq "$(RUN_MAKE_CHECK)" "y"
 	BUILD_DEPS_ARCH += , firebird3.0-server-core $(OOO_NO_FIREBIRD_ARCHS) <!nocheck>
@@ -1614,7 +1664,7 @@ else
 endif
 
 ifeq "$(BUILD_GTK3)" "y"
-	BUILD_DEPS += , libgtk-3-dev, libglib2.0-dev
+	BUILD_DEPS_ARCH += , libgtk-3-dev, libglib2.0-dev
   ifneq (cairo,$(findstring cairo,$(SYSTEM_STUFF)))
   $(error GTK3 build fails without system-cairo!!)
   endif
@@ -1623,7 +1673,7 @@ ifeq "$(BUILD_GTK3)" "y"
   endif
 	GNOME_GTK_RECOMMENDS += libreoffice-gtk3
   ifeq "$(ENABLE_INTROSPECTION)" "y"
-	BUILD_DEPS += , gobject-introspection <!nogir>, libgirepository1.0-dev <!nogir>
+	BUILD_DEPS_ARCH += , gobject-introspection <!nogir>, libgirepository1.0-dev <!nogir>
 	CONFIGURE_FLAGS += --enable-introspection
   else
 	DEBHELPER_OPTIONS+= -Ngir1.2-lokdocview-0.1
@@ -1640,7 +1690,7 @@ ifeq "$(BUILD_GTK3)" "y"
 endif
 
 ifeq "$(BUILD_GTK4)" "y"
-	BUILD_DEPS += , libgtk-4-dev, libglib2.0-dev, libcairo2-dev, libatk1.0-dev
+	BUILD_DEPS_ARCH += , libgtk-4-dev, libglib2.0-dev, libcairo2-dev, libatk1.0-dev
 	CONFIGURE_FLAGS += --enable-gtk4
 endif
 
@@ -1649,13 +1699,14 @@ ifeq "$(ENABLE_EVO2)" "n"
 	#DEBHELPER_OPTIONS += -Nlibreoffice-evolution
 else
 	CONFIGURE_FLAGS += --enable-evolution2
-	BUILD_DEPS += , libebook1.2-dev
+	BUILD_DEPS_ARCH += , libebook1.2-dev
 	LIBEBOOK_DEP = $(shell debian/scripts/get_libebook_dep.sh)
 endif
 
 ifeq "$(ENABLE_SDBC_POSTGRESQL)" "y"
   ifneq (,$(filter postgresql, $(SYSTEM_STUFF)))
-	BUILD_DEPS += , libpq-dev
+	BUILD_DEPS += , libkrb5-dev
+	BUILD_DEPS_ARCH += , libpq-dev
   else
 	BUILD_DEPS += , libkrb5-dev
   endif
@@ -1713,7 +1764,7 @@ endif
 ifeq ($(ENABLE_LPSOLVE),y)
   ifneq (,$(filter lpsolve, $(SYSTEM_STUFF)))
     ifeq "$(USE_SHARED_LPSOLVE)" "y"
-	BUILD_DEPS += , liblpsolve55-dev $(LPSOLVE_MIN_VERSION), lp-solve $(LPSOLVE_MIN_VERSION)
+	BUILD_DEPS_ARCH += , liblpsolve55-dev $(LPSOLVE_MIN_VERSION), lp-solve $(LPSOLVE_MIN_VERSION)
 	LPSOLVE_DEP = lp-solve $(LPSOLVE_MIN_VERSION)
     else
 	BUILD_DEPS += , liblpsolve55-dev $(LPSOLVE_MIN_VERSION)
@@ -1725,7 +1776,7 @@ else
 endif
 
 ifeq "$(USE_DBUS)" "y"
-	BUILD_DEPS += , libdbus-1-dev
+	BUILD_DEPS_ARCH += , libdbus-1-dev
 	CONFIGURE_FLAGS += --enable-dbus
   ifeq "$(ENABLE_BLUETOOTH)" "y"
 	BUILD_DEPS += , libglib2.0-dev
@@ -1741,14 +1792,14 @@ ifeq "$(USE_DBUS)" "y"
 endif
 
 ifeq "$(ENABLE_AVAHI)" "y"
-	BUILD_DEPS += , libavahi-client-dev
+	BUILD_DEPS_ARCH += , libavahi-client-dev
 	CONFIGURE_FLAGS += --enable-avahi
 endif
 
 ifeq "$(USE_GSTREAMER)" "y"
-	BUILD_DEPS += , libgstreamer1.0-dev
+	BUILD_DEPS_ARCH += , libgstreamer1.0-dev
 	CONFIGURE_FLAGS += --enable-gstreamer-1-0
-	BUILD_DEPS += , libgstreamer-plugins-base1.0-dev
+	BUILD_DEPS_ARCH += , libgstreamer-plugins-base1.0-dev
 	GSTREAMER_PLUGINS_SUGGESTS += , gstreamer1.0-plugins-base, gstreamer1.0-plugins-good, gstreamer1.0-plugins-ugly, gstreamer1.0-plugins-bad, gstreamer1.0-libav
 else
 	CONFIGURE_FLAGS += --disable-gstreamer-1-0
@@ -1804,18 +1855,20 @@ ifneq (,$(filter glm, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libglm-dev
 endif
 
+ifeq "$(ENABLE_GPGMEPP)" "y"
 ifneq (,$(filter gpgmepp, $(SYSTEM_STUFF)))
-	BUILD_DEPS+= , libgpgmepp-dev, libgpgme-dev, libgpg-error-dev
+	BUILD_DEPS_ARCH+= , libgpgmepp-dev, libgpgme-dev, libgpg-error-dev
 endif
 ifeq "$(RUN_MAKE_CHECK)" "y"
 	BUILD_DEPS_ARCH += , gpg$(OOO_NO_CHECK_ARCHS) <!nocheck>
 	BUILD_DEPS_ARCH += , gpgconf$(OOO_NO_CHECK_ARCHS) <!nocheck>
 	BUILD_DEPS_ARCH += , gpg-agent$(OOO_NO_CHECK_ARCHS) <!nocheck>
 endif
+endif
 
 ifeq "$(ENABLE_GIO)" "y"
   ifneq "$(BUILD_GTK3)" "y"
-	BUILD_DEPS += , libglib2.0-dev
+	BUILD_DEPS_ARCH += , libglib2.0-dev
   endif
 else
 	CONFIGURE_FLAGS += --disable-gio
@@ -2030,10 +2083,15 @@ endif
 
 	rm -f download.list
 
-	rm -f extras/source/truetype/symbol/opens___.ttf
-
 	# obsolete lock file not cleaned up....
 	rm -f dbaccess/qa/extras/testdocuments/fdo84315.odb.lck
+
+	# remove only if we linked it over. otherwise we remove the one
+	# intentionally added there if so
+	cd $(SOURCE_TREE)/tarballs && \
+		if [ -L f543e6e2d7275557a839a164941c0a86e5f2c3f2a0042bfc434c88c6dde9e140-opens___.ttf ]; then \
+			rm f543e6e2d7275557a839a164941c0a86e5f2c3f2a0042bfc434c88c6dde9e140-opens___.ttf; \
+		fi
 
 	# Files created in debian directory
 	$(MAKE) -f debian/rules clean-debdir
@@ -2222,10 +2280,6 @@ endif
 ifeq "$(MYSQL_FLAVOUR)" "mysql"
 	perl -pi -e "s/(Build-Conflicts: .*)/\1,libmariadbclient-dev,/" debian/control.new
 endif
-ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
-	# be sure to use our rebuilt font
-	perl -pi -e "s/(Build-Conflicts: .*)/\1,fonts-opensymbol <!nocheck>,/" debian/control.new
-endif
 
 ifneq "$(ALLOW_CLANG)" "y"
 	perl -pi -e "s/(Build-Conflicts: .*)/\1,clang,/" debian/control.new
@@ -2352,6 +2406,14 @@ endif
 		ln -srf yaru/build/$$a/svg icon-themes/yaru_$$a\_svg; \
 	done
 
+ifeq ($(filter pkg.libreoffice.opensymbolbuild,$(DEB_BUILD_PROFILES)),)
+	# link to already-rebuilt opens___.ttf (fonts-opensymbol) form the arch indep build.
+	# Thankfully the sha256sum is only checked in Makefile.fetch (which we don't do)
+	cd $(SOURCE_TREE)/tarballs && \
+		ln -sf /usr/share/fonts/truetype/libreoffice/opens___.ttf \
+			f543e6e2d7275557a839a164941c0a86e5f2c3f2a0042bfc434c88c6dde9e140-opens___.ttf
+endif
+
 	touch $@
 
 .PHONY: config_host.mk
@@ -2363,9 +2425,7 @@ config_host.mk:
 	FIREBIRD_CFLAGS=$(FIREBIRD_CFLAGS) FIREBIRD_LIBS=$(FIREBIRD_LIBS) \
 	./autogen.sh $(CONFIGURE_FLAGS)
 
-build:
-	$(CURDIR)/debian/rules build-arch
-	$(CURDIR)/debian/rules build-indep
+build: $(STAMP_DIR)/prepare $(STAMP_DIR)/build-arch $(STAMP_DIR)/build-indep
 	touch $(STAMP_DIR)/$@
 
 build-arch: $(STAMP_DIR)/prepare $(STAMP_DIR)/build-arch
@@ -2670,37 +2730,47 @@ endif
 	# FIXME
 	cd $(CURDIR)/debian/tmp/pkg && rm -rf \*
 
-ifeq "$(ENABLE_QT5)" "y"
 	# we need to do it here. If -kf5 isn't built
 	# there's no -kf5.install generated, so dh_missing complains later
-	mkdir -p debian/tmp/pkg/libreoffice-qt5/$(OODIR)/program
-	mv debian/tmp/pkg/libreoffice-kde/$(OODIR)/program/libvclplug_qt5lo.so\
-		debian/tmp/pkg/libreoffice-qt5/$(OODIR)/program
+ifeq "$(ENABLE_QT5)" "y"
+	if [ -f debian/tmp/pkg/libreoffice-kde/$(OODIR)/program/libvclplug_qt5lo.so ]; then \
+		mkdir -p debian/tmp/pkg/libreoffice-qt5/$(OODIR)/program; \
+		mv debian/tmp/pkg/libreoffice-kde/$(OODIR)/program/libvclplug_qt5lo.so\
+			debian/tmp/pkg/libreoffice-qt5/$(OODIR)/program; \
+	fi
 endif
 ifeq "$(ENABLE_QT6)" "y"
-	mkdir -p debian/tmp/pkg/libreoffice-qt6/$(OODIR)/program
-	mv debian/tmp/pkg/libreoffice-kde/$(OODIR)/program/libvclplug_qt6lo.so\
-		debian/tmp/pkg/libreoffice-qt6/$(OODIR)/program
+	if [ -f debian/tmp/pkg/libreoffice-kde/$(OODIR)/program/libvclplug_qt6lo.so ]; then \
+		mkdir -p debian/tmp/pkg/libreoffice-qt6/$(OODIR)/program; \
+		mv debian/tmp/pkg/libreoffice-kde/$(OODIR)/program/libvclplug_qt6lo.so\
+			debian/tmp/pkg/libreoffice-qt6/$(OODIR)/program; \
+	fi
 endif
 ifeq "$(shell echo $(ENABLE_KF5)$(ENABLE_KF6) | grep -q y && echo true)" "true"
 ifeq "$(BUILD_PLASMA)" "y"
-	mkdir -p debian/tmp/pkg/libreoffice-plasma/$(OODIR)/program
-	mv debian/tmp/pkg/libreoffice-kde/$(OODIR)/program/libkf$(PLASMA_VERSION)be1lo.so \
-		debian/tmp/pkg/libreoffice-plasma/$(OODIR)/program
+	if [ -f debian/tmp/pkg/libreoffice-kde/$(OODIR)/program/libkf$(PLASMA_VERSION)be1lo.so ]; then \
+		mkdir -p debian/tmp/pkg/libreoffice-plasma/$(OODIR)/program; \
+		mv debian/tmp/pkg/libreoffice-kde/$(OODIR)/program/libkf$(PLASMA_VERSION)be1lo.so \
+			debian/tmp/pkg/libreoffice-plasma/$(OODIR)/program; \
+	fi
 	# remove other ones maybe built by --enable-kfX
-	rm -f debian/tmp/pkg/libreoffice-kf5/$(OODIR)/libkf*be1lo.so 
+	rm -f debian/tmp/pkg/libreoffice-kde/$(OODIR)/libkf*be1lo.so 
 else
-	rm -f debian/tmp/pkg/libreoffice-kf5/$(OODIR)/libkf*be1lo.so
+	rm -f debian/tmp/pkg/libreoffice-kde/$(OODIR)/libkf*be1lo.so
 endif
 ifeq "$(ENABLE_KF5)" "y"
-	mkdir -p debian/tmp/pkg/libreoffice-kf5/$(OODIR)/program
-	mv debian/tmp/pkg/libreoffice-kde/$(OODIR)/program/libvclplug_kf5lo.so \
-		debian/tmp/pkg/libreoffice-kf5/$(OODIR)/program
+	if [ -f debian/tmp/pkg/libreoffice-kde/$(OODIR)/program/libvclplug_kf5lo.so ]; then \
+		mkdir -p debian/tmp/pkg/libreoffice-kf5/$(OODIR)/program; \
+		mv debian/tmp/pkg/libreoffice-kde/$(OODIR)/program/libvclplug_kf5lo.so \
+			debian/tmp/pkg/libreoffice-kf5/$(OODIR)/program; \
+	fi
 endif
 ifeq "$(ENABLE_KF6)" "y"
-	mkdir -p debian/tmp/pkg/libreoffice-kf6/$(OODIR)/program
-	mv debian/tmp/pkg/libreoffice-kde/$(OODIR)/program/libvclplug_kf6lo.so \
-		debian/tmp/pkg/libreoffice-kf6/$(OODIR)/program
+	if [ -f debian/tmp/pkg/libreoffice-kde/$(OODIR)/program/libvclplug_kf6lo.so ]; then \
+		mkdir -p debian/tmp/pkg/libreoffice-kf6/$(OODIR)/program; \
+		mv debian/tmp/pkg/libreoffice-kde/$(OODIR)/program/libvclplug_kf6lo.so \
+			debian/tmp/pkg/libreoffice-kf6/$(OODIR)/program; \
+	fi
 endif
 endif
 
@@ -2843,14 +2913,6 @@ endif
 
 ifeq "$(BUILD_PLASMA)" "y"
 	echo "../usr/share/metainfo/org.libreoffice.kde.metainfo.xml /usr/share/metainfo/" >> $(PKGDIR)-plasma.install
-endif
-
-ifeq "$(PACKAGE_LOKIT)" "y"
-	echo "../../../include/LibreOfficeKit usr/include" > debian/libreofficekit-dev.install
-endif
-ifeq "$(ENABLE_INTROSPECTION)" "y"
-	echo "../../../workdir/CustomTarget/sysui/share/libreoffice/LOKDocView-0.1.gir /usr/share/gir-1.0/" >> debian/libreofficekit-dev.install
-	echo "../../../workdir/CustomTarget/sysui/share/libreoffice/LOKDocView-0.1.typelib /usr/lib/$(DEB_HOST_MULTIARCH)/girepository-1.0" >> debian/gir1.2-lokdocview-0.1.install
 endif
 
 ifneq "$(ENABLE_GUI)" "y"
@@ -3030,9 +3092,9 @@ else
 endif
 
 ifeq "$(PACKAGE_BASE)" "y"
-	mkdir -p debian/python3-access2base/$(shell $(PYTHON) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
+	mkdir -p debian/python3-access2base/$(PYTHON_SITE)
 	mv $(PKGDIR)-common/$(OODIR)/program/access2base.py \
-		debian/python3-access2base/$(shell $(PYTHON) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
+		debian/python3-access2base/$(PYTHON_SITE)
 else
 	rm -rf $(PKGDIR)-common/$(OODIR)/share/basic/Access2Base
 	t=`mktemp -q`; grep -v Access2Base $(PKGDIR)-common/$(OODIR)/share/basic/dialog.xlc > \
@@ -3043,9 +3105,9 @@ else
 endif
 
 	# ScriptForge
-	mkdir -p debian/python3-scriptforge/$(shell $(PYTHON) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
+	mkdir -p debian/python3-scriptforge/$(PYTHON_SITE)
 	mv $(PKGDIR)-common/$(OODIR)/program/scriptforge.py \
-		debian/python3-scriptforge/$(shell $(PYTHON) -c 'from distutils import sysconfig; print(sysconfig.get_python_lib())')
+		debian/python3-scriptforge/$(PYTHON_SITE)
 
 ifeq "$(PACKAGE_SDK)" "y"
 	# move gengal stuff into -dev-gui
@@ -3379,6 +3441,18 @@ ifeq "$(ENABLE_GUI)" "y"
   endif
 endif
 
+ifeq "$(ENABLE_INTROSPECTION)" "y"
+	echo "workdir/CustomTarget/sysui/share/libreoffice/LOKDocView-0.1.typelib /usr/lib/$(DEB_HOST_MULTIARCH)/girepository-1.0" >> debian/gir1.2-lokdocview-0.1.install
+	dh_install -pgir1.2-lokdocview-0.1
+endif
+ifeq "$(PACKAGE_LOKIT)" "y"
+	echo "include/LibreOfficeKit usr/include" > debian/libreofficekit-dev.install
+ifeq "$(ENABLE_INTROSPECTION)" "y"
+	echo "workdir/CustomTarget/sysui/share/libreoffice/LOKDocView-0.1.gir /usr/share/gir-1.0/" >> debian/libreofficekit-dev.install
+endif
+	dh_install -plibreofficekit-dev
+endif
+
 ifeq "$(PACKAGE_BASE)" "y"
 	mkdir -p $(PKGDIR)-base-core/$(OODIR)/program
 	mv $(PKGDIR)-base/$(OODIR)/program/libdbalo.so \
@@ -3431,16 +3505,16 @@ endif
 
 ifeq "$(ENABLE_PYTHON)" "y"
 	# PyUNO packaging
-	install -d $(PYTHON_SITE)
+	install -d debian/python3-uno/$(PYTHON_SITE)
 	# prepend stuff so that it works when the module is not in LOs
 	# directories but in $(PYTHON_SITE). Can't be a patch (anymore)
 	# as otherwise the python-based unittests fail miserably.
-	echo "import sys, os" > $(PYTHON_SITE)/uno.py
-	echo "sys.path.append('/$(OODIR)/program')" >> $(PYTHON_SITE)/uno.py
-	echo "os.putenv('URE_BOOTSTRAP', 'vnd.sun.star.pathname:/$(OODIR)/program/fundamentalrc')" >> $(PYTHON_SITE)/uno.py
-	cat debian/python3-uno/$(OODIR)/program/uno.py >> $(PYTHON_SITE)/uno.py
+	echo "import sys, os" > debian/python3-uno/$(PYTHON_SITE)/uno.py
+	echo "sys.path.append('/$(OODIR)/program')" >> debian/python3-uno/$(PYTHON_SITE)/uno.py
+	echo "os.putenv('URE_BOOTSTRAP', 'vnd.sun.star.pathname:/$(OODIR)/program/fundamentalrc')" >> debian/python3-uno/$(PYTHON_SITE)/uno.py
+	cat debian/python3-uno/$(OODIR)/program/uno.py >> debian/python3-uno/$(PYTHON_SITE)/uno.py
 	rm -f debian/python3-uno/$(OODIR)/program/uno.py
-	mv debian/python3-uno/$(OODIR)/program/unohelper.py $(PYTHON_SITE)
+	mv debian/python3-uno/$(OODIR)/program/unohelper.py debian/python3-uno/$(PYTHON_SITE)
 	touch debian/python3-uno/$(OODIR)/program/pythonloader.unorc
 	chmod u+w debian/python3-uno/$(OODIR)/program/pythonloader.unorc
 	( echo 'PYTHONHOME=file:///usr/lib/python$(PYMAJOR).$(PYMINOR)' ;\
@@ -3820,12 +3894,12 @@ endif
 		ln -s /$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config/$$z \
 			$(PKGDIR)-style-$$p/$(OODIR)/share/config/$$z; \
 	done
-	mkdir -p $(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config; \
+	mkdir -p $(PKGDIR)-help-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config; \
 	mv $(PKGDIR)-common/$(OODIR)/share/config/images_helpimg.zip \
-		$(PKGDIR)-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config/; \
-	mkdir -p $(PKGDIR)-common/$(OODIR)/share/config; \
+		$(PKGDIR)-help-common/$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config/; \
+	mkdir -p $(PKGDIR)-help-common/$(OODIR)/share/config; \
 	ln -s /$(shell echo $(OODIR) | sed -e s/lib/share/)/share/config/images_helpimg.zip \
-		$(PKGDIR)-common/$(OODIR)/share/config/images_helpimg.zip; \
+		$(PKGDIR)-help-common/$(OODIR)/share/config/images_helpimg.zip; \
 
 ifeq "$(DEB_VENDOR)" "Debian"
 	# install Debian presentation template
@@ -4023,6 +4097,15 @@ ifeq "$(INSTALL_APPARMOR_PROFILES)" "y"
 			usr.lib.libreoffice.program.$$i; \
 	done
   endif
+endif
+
+	# not installed if skia is disabled. Arch-indep builds disable skia for build-dep and
+	# speed reasons and it is supposed to end up in an arch-indep package (libreoffice-common)
+	# So install this manually if skia is disabled
+ifneq "$(ENABLE_SKIA)" "y"
+	mkdir -p $(PKGDIR)-common/$(OODIR)/share/skia
+	install -m644 $(SOURCE_TREE)/vcl/skia/skia_denylist_vulkan.xml \
+		$(PKGDIR)-common/$(OODIR)/share/skia/skia_denylist_vulkan.xml
 endif
 
 	# fix fundamentalrc to not cause
@@ -4270,9 +4353,6 @@ ifeq "$(ENABLE_JAVA)" "y"
 	perl -pi -e 's/^(java:Depends.*$$)/\1, ure/' \
 		debian/libofficebean-java.substvars
 endif
-# This switch to dh_shlibdeps reduces the 'libXXX not found' warnings but
-# causes ldd crashes sometimes when used with fakeroot:
-#          -l $(PKGDIR)-core/$(OPENOFFICEDIR)/program
 	dh_gencontrol -a $(DEBHELPER_OPTIONS) \
 		-- \
 		-V'base-version=$(BASE_VERSION)' \
