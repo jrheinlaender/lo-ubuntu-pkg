@@ -468,6 +468,11 @@ SYSTEM_STUFF += frozen
 SYSTEM_STUFF += argon2
 
 # override stuff for build-indep to save build dependencies
+# This is a hack. dpkg calls build-indep for -A so this is in effect.
+# but for the binary target it calls binary-indep which calls install etc
+# apparently without these. so those guards do not work if stuff is moved
+# in install-common. e.g. qt/kf5, firebird_sdbc.xcd. Those need to be guarded
+# with an if [ -f or similar
 ifeq ($(MAKECMDGOALS),build-indep)
 ENABLE_EVOAB=n
 BUILD_GTK3=n
@@ -490,7 +495,7 @@ ENABLE_LPSOLVE=n
 USE_GSTREAMER=n
 ENABLE_LDAP=n
 ENABLE_PDFIUM=n
-ENABLE_DBUS=n
+USE_DBUS=n
 ENABLE_AVAHI=n
 endif
 
@@ -1467,6 +1472,9 @@ endif
 
 ifneq (,$(filter orcus, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , liborcus-dev (>= 0.19.1), liborcus-dev (<< 0.20~)
+  ifneq ($(BOOKWORM_BACKPORT),y)
+	BUILD_DEPS += , liborcus-dev (>> 0.19.2-3build2) [$(filter $(OOO_CHECK_ARCHS),$(filter-out i386,$(OOO_32BIT_ARCHS)))] <!nocheck>
+  endif
 endif
 
 ifeq "$(ENABLE_XMLHELP)" "y"
@@ -1687,6 +1695,8 @@ ifeq "$(BUILD_GTK3)" "y"
 	# explicitely disable it if not wanted as t is auto-enabled if the above is there
 	CONFIGURE_FLAGS += --disable-atspi-tests
   endif
+else
+	CONFIGURE_FLAGS += --disable-gtk3
 endif
 
 ifeq "$(BUILD_GTK4)" "y"
@@ -1777,7 +1787,6 @@ endif
 
 ifeq "$(USE_DBUS)" "y"
 	BUILD_DEPS_ARCH += , libdbus-1-dev
-	CONFIGURE_FLAGS += --enable-dbus
   ifeq "$(ENABLE_BLUETOOTH)" "y"
 	BUILD_DEPS += , libglib2.0-dev
     ifneq (,$(filter bluez, $(SYSTEM_STUFF)))
@@ -1789,6 +1798,8 @@ ifeq "$(USE_DBUS)" "y"
   ifeq "$(ENABLE_PACKAGEKIT)" "y"
 	CONFIGURE_FLAGS += --enable-packagekit
   endif
+else
+	CONFIGURE_FLAGS += --disable-dbus
 endif
 
 ifeq "$(ENABLE_AVAHI)" "y"
@@ -1864,6 +1875,8 @@ ifeq "$(RUN_MAKE_CHECK)" "y"
 	BUILD_DEPS_ARCH += , gpgconf$(OOO_NO_CHECK_ARCHS) <!nocheck>
 	BUILD_DEPS_ARCH += , gpg-agent$(OOO_NO_CHECK_ARCHS) <!nocheck>
 endif
+else
+	CONFIGURE_FLAGS += --disable-gpgmepp
 endif
 
 ifeq "$(ENABLE_GIO)" "y"
@@ -2243,7 +2256,9 @@ endif
 ifeq "$(PACKAGE_LIBRELOGO)" "y"
 	cat debian/control.librelogo.in >> debian/control.new
 endif
+ifeq "$(ENABLE_FIREBIRD)" "y"
 	cat debian/control.firebird.in >> debian/control.new
+endif
 
 	cat debian/control.transitionals.in >> debian/control.new
 
@@ -3014,6 +3029,14 @@ ifeq "$(ENABLE_JAVA)" "y"
   endif
 endif
 
+ifeq "$(ENABLE_FIREBIRD)" "y"
+	if [ -f $(PKGDIR)-common/$(OODIR)/share/registry/firebird_sdbc.xcd ]; then \
+		mkdir -p $(PKGDIR)-sdbc-firebird/$(OODIR)/share/registry; \
+		mv $(PKGDIR)-common/$(OODIR)/share/registry/firebird_sdbc.xcd \
+			$(PKGDIR)-sdbc-firebird/$(OODIR)/share/registry; \
+	fi
+endif
+
 ifeq "$(PACKAGE_SDK)" "y"
 	# move arch-indep stuff into a libreoffice-dev-common
 	mkdir -p $(PKGDIR)-dev-common/usr/include
@@ -3589,9 +3612,15 @@ ifeq "$(ENABLE_FIREBIRD)" "y"
 	done
   endif
 endif
+ifeq "$(ENABLE_MARIADB)" "y"
 	mkdir -p $(PKGDIR)-sdbc-mysql/$(OODIR)/program
 	mv $(PKGDIR)-base/$(OODIR)/program/libmysqlclo.so \
 		$(PKGDIR)-sdbc-mysql/$(OODIR)/program
+	# FIXME. Do in scp2
+	mkdir -p $(PKGDIR)-sdbc-mysql/$(OODIR)/share/registry
+	install -m644 instdir/share/registry/mysqlc.xcd \
+		$(PKGDIR)-sdbc-mysql/$(OODIR)/share/registry
+endif
 
 	mkdir -p $(PKGDIR)-base-drivers/$(OODIR)/program
 	for i in `find $(PKGDIR)-base/$(OODIR)/program/ -name "*.so" \
