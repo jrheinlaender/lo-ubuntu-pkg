@@ -1190,8 +1190,9 @@ ifeq "$(ENABLE_PYTHON)" "y"
 endif
 
 ifeq "$(ENABLE_DOTNET)" "y"
+	BUILD_DEPS_INDEP += , cli-common-dev [$(OOO_CLI_ARCHS)] <!nocil>
 	# both for Microsofts and Ubuntus packages
-	BUILD_DEPS += , dotnet-sdk-8.0 [$(OOO_CLI_ARCHS)] <!nocil>
+	BUILD_DEPS_INDEP += , dotnet-sdk-8.0 [$(OOO_CLI_ARCHS)] <!nocil>
 else
 	CONFIGURE_FLAGS += --disable-dotnet
 endif
@@ -2254,6 +2255,9 @@ endif
 ifeq "$(ENABLE_FIREBIRD)" "y"
 	cat debian/control.firebird.in >> debian/control.new
 endif
+ifeq "$(ENABLE_DOTNET)" "y"
+	cat debian/control.cil.in >> debian/control.new
+endif
 
 	perl -pi -e "s,%OOO_ARCHS%,$(OOO_ARCHS),g" debian/control.new
 	perl -pi -e "s,%OOO_NOGUI_ARCHS%,$(OOO_NOGUI_ARCHS),g" debian/control.new
@@ -2263,6 +2267,7 @@ endif
 	perl -pi -e "s,%OOO_BASE_ARCHS%,$(OOO_BASE_ARCHS),g" debian/control.new
 	perl -pi -e "s,%OOO_NO_BASE_ARCHS%,$(OOO_NO_BASE_ARCHS),"g debian/control.new
 	perl -pi -e "s,%OOO_JAVA_ARCHS%,$(OOO_JAVA_ARCHS),g" debian/control.new
+	perl -pi -e "s,%OOO_CLI_ARCHS%,$(OOO_CLI_ARCHS),g" debian/control.new
 	perl -pi -e "s,%OOO_ARCH_DEP_EXTENSIONS_ARCHS%,$(OOO_ARCH_DEP_EXTENSIONS_ARCHS),g" debian/control.new
 	perl -pi -e "s,%OOO_REPORTBUILDER_ARCHS%,$(OOO_REPORTBUILDER_ARCHS),g" debian/control.new
 	perl -pi -e "s,%OOO_NO_REPORTBUILDER_ARCHS%,$(OOO_NO_REPORTBUILDER_ARCHS),g" debian/control.new
@@ -2917,6 +2922,10 @@ endif
 
 ifeq "$(BUILD_PLASMA)" "y"
 	echo "../usr/share/metainfo/org.libreoffice.kde.metainfo.xml /usr/share/metainfo/" >> $(PKGDIR)-plasma.install
+endif
+
+ifeq "$(ENABLE_DOTNET)" "y"
+	echo "../../../workdir/DotnetLibrary/net_basetypes/net_basetypes.dll $(OODIR)/program" >> debian/libuno-net-basetypes-cil.install
 endif
 
 ifneq "$(ENABLE_GUI)" "y"
@@ -4437,6 +4446,11 @@ ifneq ($(DEB_HOST_ARCH),$(filter $(DEB_HOST_ARCH),$(OOO_JAVA_ARCHS)))
 	echo "For uploads with binary-all packages, please use arches where Java is enabled"
 	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 endif
+#ifneq ($(DEB_HOST_ARCH),$(filter $(DEB_HOST_ARCH),$(OOO_CLI_ARCHS)))
+#	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+#	echo "For uploads with binary-all packages, please use arches where CLI/.NET is enabled"
+#	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+#endif
 	dh_testdir
 ifneq ($(PACKAGE_SDK_DOCS),y)
 	echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
@@ -4519,6 +4533,13 @@ ifeq "$(BUILD_TEST_PACKAGES)" "y"
 	perl -pi -e 's/junit4/junit4 $(JUNIT_MIN_VER)/' \
 		debian/libreoffice-subsequentcheckbase.substvars
 endif
+ifeq "$(ENABLE_DOTNET)" "y"
+	# noop, since not signed
+	dh_makeclilibs -i
+	# nothing to depend on, dotnet-sdk-8.0 has no clideps and so no dep info
+	# for net
+	dh_clideps -i
+endif
 	dh_gencontrol -i $(DEBHELPER_OPTIONS) \
 		-Nfonts-opensymbol -- \
 		-V'base-version=$(BASE_VERSION)' \
@@ -4539,6 +4560,10 @@ endif
 		-v$(BINARY_VERSION)
 	dh_gencontrol -pfonts-opensymbol -- \
 		-v`echo $(BINARY_VERSION) | cut -d: -f1`:$(shell fontforge -lang=ff -c 'Open($$1); Print ($$fontversion); Quit(0);' debian/fonts-opensymbol/usr/share/fonts/truetype/libreoffice/opens___.ttf)+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
+ifeq "$(ENABLE_DOTNET)" "y"
+	dh_gencontrol -plibuno-net-basetypes-cil -- \
+		-v$(shell grep Version net_ure/DotnetLibrary_net_basetypes.mk | sed -e 's,.*<Version>\(.*\)</Version>.*,\1,')+LibO`echo $(BINARY_VERSION) | cut -d: -f2`
+endif
 ifeq "$(ENABLE_MEDIAWIKI)" "y"
 	dh_gencontrol -plibreoffice-wiki-publisher -- \
 		-V'java-common-depends=$(JAVA_COMMON_DEPENDS)' \
