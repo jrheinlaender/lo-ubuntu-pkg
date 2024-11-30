@@ -206,11 +206,12 @@ ENABLE_GPGMEPP=y
 ifeq "$(ENABLE_GUI)" "y"
 BUILD_PLASMA=y
 # let's assume we won't ship two plasmas parallel..
-PLASMA_VERSION=5
+PLASMA_VERSION=6
 PLASMA_KF_VERSION=$(PLASMA_VERSION)
-ENABLE_QT5=n
+PLASMA_ARCHITECTURE=all
+ENABLE_QT5=y
 #QT5_MINVER=
-ENABLE_KF5=y
+ENABLE_KF5=n
 ENABLE_QT6=y
 ENABLE_QT6_MULTIMEDIA=y
 ENABLE_KF6=y
@@ -483,7 +484,9 @@ ENABLE_QT6=n
 ENABLE_GPGMEPP=n
 ENABLE_KF5=n
 ENABLE_KF6=n
+ifneq "$(PLASMA_ARCHITECTURE)" "all"
 BUILD_PLASMA=n
+endif
 ENABLE_MARIADB=n
 ENABLE_FIREBIRD=n
 ENABLE_SDBC_POSTGRESQL=n
@@ -785,6 +788,9 @@ ifeq "$(DEB_DISTRIBUTION)" "bookworm-backports"
   SYSTEM_STUFF := $(filter-out frozen mdds orcus libcmis,$(SYSTEM_STUFF))
   BOOKWORM_BACKPORT=y
   ENABLE_KF6=n
+  PLASMA_VERSION=5
+  ENABLE_KF5=y
+  PLASMA_ARCHITECTURE=%OOO_ARCHS%
 endif
 
 ifeq "$(BOOKWORM_BACKPORT)" "y"
@@ -2228,9 +2234,10 @@ endif
 ifeq "$(BUILD_PLASMA)" "y"
 	sed -e "s|@PLASMA_VERSION@|$(PLASMA_VERSION)|g" \
 		-e "s|@PLASMA_KF_VERSION@|$(PLASMA_KF_VERSION)|g" \
-	        >> debian/control.new < debian/control.plasma.in
-	# no kf6be here
+	        -e "s|@PLASMA_ARCHITECTURE@|$(PLASMA_ARCHITECTURE)|g" \
+		>> debian/control.new < debian/control.plasma.in
 ifeq "$(PLASMA_VERSION)" "6"
+	# no kf6be here
 	sed -i "s/and a KDE\/KF$(PLASMA_KF_VERSION) configuration backend//" \
 		debian/control.new
 endif
@@ -2909,6 +2916,31 @@ endif
 
 ifeq "$(BUILD_PLASMA)" "y"
 	echo "../usr/share/metainfo/org.libreoffice.kde.metainfo.xml /usr/share/metainfo/" >> $(PKGDIR)-plasma.install
+	# install files for "create new" ...
+	mkdir -p $(PKGDIR)-plasma/usr/share/templates/.source
+	for i in $(SOURCE_TREE)/extras/source/shellnew/*; do \
+		cp $$i $(PKGDIR)-plasma/usr/share/templates/.source/`basename $$i`; \
+	done
+	cat debian/templates/soffice-template.desktop.in \
+		| sed -e "s/@APP@/Writer/" \
+		| sed -e "s/@EXT@/odt/" \
+		| sed -e "s/@TYPE@/text/" \
+		> $(PKGDIR)-plasma/usr/share/templates/soffice.odt.desktop
+	cat debian/templates/soffice-template.desktop.in \
+		| sed -e "s/@APP@/Calc/" \
+		| sed -e "s/@EXT@/ods/" \
+		| sed -e "s/@TYPE@/spreadsheet/" \
+		> $(PKGDIR)-plasma/usr/share/templates/soffice.ods.desktop
+	cat debian/templates/soffice-template.desktop.in \
+		| sed -e "s/@APP@/Impress/" \
+		| sed -e "s/@EXT@/odp/" \
+		| sed -e "s/@TYPE@/presentation/" \
+		> $(PKGDIR)-plasma/usr/share/templates/soffice.odp.desktop
+	cat debian/templates/soffice-template.desktop.in \
+		| sed -e "s/@APP@/Draw/" \
+		| sed -e "s/@EXT@/odg/" \
+		| sed -e "s/@TYPE@/drawing/" \
+		> $(PKGDIR)-plasma/usr/share/templates/soffice.odg.desktop
 endif
 
 ifneq "$(ENABLE_GUI)" "y"
@@ -3397,35 +3429,6 @@ endif
 		mv debian/ure/$(OODIR)/program/$$i \
 			debian/uno-libs-private/$(OODIR)/program; \
 	done
-
-
-ifeq "$(BUILD_PLASMA)" "y"
-	# install files for "create new" ...
-	mkdir -p $(PKGDIR)-plasma/usr/share/templates/.source
-	for i in $(SOURCE_TREE)/extras/source/shellnew/*; do \
-		cp $$i $(PKGDIR)-plasma/usr/share/templates/.source/`basename $$i`; \
-	done
-	cat debian/templates/soffice-template.desktop.in \
-		| sed -e "s/@APP@/Writer/" \
-		| sed -e "s/@EXT@/odt/" \
-		| sed -e "s/@TYPE@/text/" \
-		> $(PKGDIR)-plasma/usr/share/templates/soffice.odt.desktop
-	cat debian/templates/soffice-template.desktop.in \
-		| sed -e "s/@APP@/Calc/" \
-		| sed -e "s/@EXT@/ods/" \
-		| sed -e "s/@TYPE@/spreadsheet/" \
-		> $(PKGDIR)-plasma/usr/share/templates/soffice.ods.desktop
-	cat debian/templates/soffice-template.desktop.in \
-		| sed -e "s/@APP@/Impress/" \
-		| sed -e "s/@EXT@/odp/" \
-		| sed -e "s/@TYPE@/presentation/" \
-		> $(PKGDIR)-plasma/usr/share/templates/soffice.odp.desktop
-	cat debian/templates/soffice-template.desktop.in \
-		| sed -e "s/@APP@/Draw/" \
-		| sed -e "s/@EXT@/odg/" \
-		| sed -e "s/@TYPE@/drawing/" \
-		> $(PKGDIR)-plasma/usr/share/templates/soffice.odg.desktop
-endif
 
 ifeq "$(ENABLE_EVO2)" "y"
 	mkdir -p -m755 $(PKGDIR)-evolution/$(OODIR)/program
@@ -4382,6 +4385,16 @@ ifeq "$(ENABLE_JAVA)" "y"
 	# above, readd here  unversioned
 	perl -pi -e 's/^(java:Depends.*$$)/\1, ure/' \
 		debian/libofficebean-java.substvars
+endif
+ifneq "$(PLASMA_ARCHITECTURE)" "all"
+	# hack in a libreoffice-core dependency
+	if grep -q misc\:Depends debian/libreoffice-plasma.substvars; then \
+		sed -i 's/misc:Depends=\(.*\)/misc:Depends=$1, libreoffice-core (= ${binary:Version})' \
+			debian/libreoffice-plasma.substvars; \
+	else \
+		echo 'misc:Depends=libreoffice-core (= ${binary:Version})' \
+			>> debian/libreoffice-plasma.substvars'; \
+	fi
 endif
 	dh_gencontrol -a $(DEBHELPER_OPTIONS) \
 		-- \
