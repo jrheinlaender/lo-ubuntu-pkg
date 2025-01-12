@@ -605,11 +605,10 @@ OOO_BE_ARCHS = $(filter hppa m68k mips mips64 powerpc powerpcspe ppc64 s390 s390
 $(eval $(call gen_no_archs,OOO_BE_ARCHS))
 OOO_LE_ARCHS = $(filter-out $(OOO_BE_ARCHS),$(OOO_ARCHS))
 $(eval $(call gen_no_archs,OOO_LE_ARCHS))
-# s390x: bigendian, so no skia at all
 # ppc64el: see https://git.launchpad.net/~libreoffice/ubuntu/+source/libreoffice/patch/?id=be47aa72aad414537d27f0a18af7d067f1398666 and
 #          https://github.com/llvm/llvm-project/issues/63214
-OOO_CLANG_ARCHS := $(filter-out alpha ia64 ppc64el mipsel mips64el,$(OOO_LE_ARCHS))
-$(eval $(call gen_no_archs,OOO_CLANG_ARCHS))
+OOO_CLANG_SUPPORTED_ARCHS := $(filter-out alpha ia64 ppc64el mipsel mips64el,$(OOO_LE_ARCHS))
+$(eval $(call gen_no_archs,OOO_CLANG_SUPPORTED_ARCHS))
 
 # supported upstream (upstream does aarch64 flatpak builds)
 OOO_CHECK_ARCHS := amd64 arm64
@@ -844,9 +843,9 @@ ifneq "$(shell echo $(USE_CLANG)$(ALLOW_CLANG) | grep y)" ""
     else
       ifeq "$(ALLOW_CLANG)" "y"
         ifeq "$(CLANG_VERSION)" "default"
-	  BUILD_DEPS_ARCH += , llvm$(OOO_NO_CLANG_ARCHS)
+	  BUILD_DEPS_ARCH += , llvm$(OOO_NO_CLANG_SUPPORTED_ARCHS)
         else
-	  BUILD_DEPS_ARCH += , llvm-$(CLANG_VERSION)-linker-tools$(OOO_NO_CLANG_ARCHS)
+	  BUILD_DEPS_ARCH += , llvm-$(CLANG_VERSION)-linker-tools$(OOO_NO_CLANG_SUPPORTED_ARCHS)
         endif
       endif
     endif
@@ -872,6 +871,15 @@ ifeq "$(USE_CLANG)" "y"
   ENABLE_COMPILER_PLUGINS=n
 endif
 
+# bridgetest fails when built with gcc 13, works with 12
+# or works with clang, so instead of build-depending on an obsolete
+# gcc we take this route
+ifneq "$(BOOKWORM_BACKPORT)" "y"
+ifeq "$(DEB_HOST_ARCH)" "i386"
+  USE_CLANG=y
+endif
+  BUILD_DEPS += , clang [i386]
+endif
 ifneq "$(USE_CLANG)" "y"
   ifneq "$(GCC_VERSION)" ""
   ifneq "$(SYSTEM_GCC_VERSION)" "$(GCC_VERSION)"
@@ -909,17 +917,6 @@ ifeq "$(DEB_HOST_ARCH)" "s390x"
 	DEB_BUILD_OPTIONS += noopt
   endif
 endif
-# bridgetest fails when built with gcc 13, works with 12
-ifneq "$(BOOKWORM_BACKPORT)" "y"
-  BUILD_DEPS += , gcc-12 [i386], g++-12 [i386]
-endif
-ifeq "$(DEB_HOST_ARCH)" "i386"
-  ifneq "$(BOOKWORM_BACKPORT)" "y"
-    CONFIGURE_FLAGS+= \
-      CC=$(CC_PREFIX)gcc-12 \
-      CXX=$(CC_PREFIX)g++-12
-  endif
-endif
 ifeq "$(DEB_HOST_ARCH)" "riscv64"
   # see https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=1039906#26 (fixed)
   # and it seems it the payloadNaN test actually passes with -O2 where it's
@@ -945,7 +942,7 @@ endif
       ifeq "$(CLANG_VERSION)" "default"
 	export LO_CLANG_CC=clang
 	export LO_CLANG_CXX=clang++
-	BUILD_DEPS_ARCH += , clang$(OOO_NO_CLANG_ARCHS)
+	BUILD_DEPS_ARCH += , clang$(OOO_NO_CLANG_SUPPORTED_ARCHS)
       else
 	export LO_CLANG_CC=clang-$(CLANG_VERSION)
 	export LO_CLANG_CXX=clang++-$(CLANG_VERSION)
@@ -2291,7 +2288,7 @@ endif
 ifneq "$(ALLOW_CLANG)" "y"
 	perl -pi -e "s/(Build-Conflicts: .*)/\1,clang,/" debian/control.new
 else
-	perl -pi -e "s/(Build-Conflicts: .*)/\1,clang [$(filter-out $(OOO_CLANG_ARCHS),$(OOO_ARCHS))],/" debian/control.new
+	perl -pi -e "s/(Build-Conflicts: .*)/\1,clang [$(filter-out $(OOO_CLANG_SUPPORTED_ARCHS),$(OOO_ARCHS))],/" debian/control.new
 endif
 
 	$(PYTHON) debian/scripts/joinctrl.py < debian/control.new > debian/control.tmp
