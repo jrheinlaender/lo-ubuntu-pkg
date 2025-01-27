@@ -902,7 +902,11 @@ ifneq "$(USE_CLANG)" "y"
       CXX=$(CC_PREFIX)g++-$(GCC_VERSION)
     endif
   else
+    ifneq "$(BOOKWORM_BACKPORT)" "y"
+	BUILD_DEPS += , gcc (>= 4:12) [!i386], g++ (>= 4:12) [!i386]
+    else
 	BUILD_DEPS += , gcc (>= 4:12), g++ (>= 4:12)
+    endif
   endif
   # Use -O0 for gcc 10 on armhf to avoid build/test failure with gcc 10
   # https://bugs.launchpad.net/ubuntu/+bug/1891623
@@ -4423,10 +4427,12 @@ ifeq (,$(filter liblangtag, $(SYSTEM_STUFF)))
 endif
 ifeq "$(ENABLE_FIREBIRD)" "y"
 ifneq (,$(filter firebird, $(SYSTEM_STUFF)))
-	# force the values of .shlibs which  gives us a (wanted) (>= 3.0.0~)
-	# instead of .symbols which gives os only a (>= 2.5.0.25784~ReleaseCandidate1.ds2)...
-	cat /var/lib/dpkg/info/libfbclient2*.shlibs >> debian/shlibs.local
-
+	# force the values of .shlibs which  gives us a stricter dependency
+	# - e.g. (wanted) (>= 3.0.0~) - instead of .symbols which gives os only a
+	# (>= 2.5.0.25784~ReleaseCandidate1.ds2)...
+	# Also go sure on libfbclient2s upper version (see e.g. #1094284)
+	cat /var/lib/dpkg/info/libfbclient2*.shlibs \
+		| sed -e "s/$$/, libfbclient2 (<< $(shell echo "$(FIREBIRD_VERSION) + 1" | bc)~)/" >> debian/shlibs.local
 endif
 endif
 
