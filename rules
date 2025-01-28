@@ -2927,8 +2927,16 @@ ifneq "$(ENABLE_HELP)" "n"
 endif
 
 	# not installed, do manually
-	echo "../usr/lib/libreoffice/share/wordbook/en-US.dic" >> debian/libreoffice-common.install
-	echo "../usr/lib/libreoffice/share/wordbook/en-GB.dic" >> debian/libreoffice-l10n-en-gb.install
+	echo "../usr/lib/libreoffice/share/wordbook/en-US.dic usr/lib/libreoffice/share/wordbook" >> debian/libreoffice-common.install
+ifeq (en-GB,$(findstring en-GB,$(LANGPACKISOS)))
+	echo "../usr/lib/libreoffice/share/wordbook/en-GB.dic usr/lib/libreoffice/share/wordbook" >> debian/libreoffice-l10n-en-gb.install
+endif
+ifeq (hu,$(findstring hu,$(LANGPACKISOS)))
+	echo "../usr/lib/libreoffice/share/wordbook/hu_AkH11.dic usr/lib/libreoffice/share/wordbook" >> debian/libreoffice-l10n-hu.install
+endif
+ifeq (sl,$(findstring sl,$(LANGPACKISOS)))
+	echo "../usr/lib/libreoffice/share/wordbook/sl.dic usr/lib/libreoffice/share/wordbook" >> debian/libreoffice-l10n-sl.install
+endif
 
 ifneq "$(PACKAGE_LIBRELOGO)" "y"
 	rm -rf debian/tmp/pkg/libreoffice-librelogo
@@ -3413,20 +3421,6 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/build-indep $(STAMP_DIR)/install-indep $(SO
 	for iso in `echo $(LANGPACKISOS) | tr A-Z a-z`; do \
 		rm -rf $(PKGDIR)-l10n-$$iso/$(shell echo $(OODIR) | sed -e s/lib/share/)/help; \
 		rm -rf $(PKGDIR)-l10n-$$iso/$(OODIR)/help; \
-	done
-
-	# install technical.dic
-	for iso in $(LANGPACKISOS); do \
-		if [ "$$iso" = "en-US" ]; then pkg=common; \
-		elif [ "$$iso" = "bn-IN" ]; then pkg=l10n-bn; \
-		elif [ "$$iso" = "ca-valencia" ]; then pkg=l10n-ca; \
-		elif [ "$$iso" = "sr-Latn" ]; then pkg=l10n-sr; \
-		elif [ "$$iso" = "kmr-Latn" ]; then pkg=l10n-kmr; \
-		else pkg=l10n-`echo $$iso | tr A-Z a-z`; \
-		fi; \
-		mkdir -p $(PKGDIR)-$$pkg/$(OODIR)/share/wordbook/$$iso; \
-		install -m644 $(SOURCE_TREE)/extras/source/wordbook/technical.dic \
-			$(PKGDIR)-$$pkg/$(OODIR)/share/wordbook/$$iso/technical.dic; \
 	done
 
 ifeq "$(DEB_VENDOR)" "Debian"
@@ -4138,9 +4132,6 @@ endif
 			$(PKGDIR)-common/usr/share/doc/libreoffice-common/examples; \
 		ln -s /usr/share/doc/libreoffice-common/examples/$$i $(PKGDIR)-common/etc/libreoffice/registry/$$i; \
 	done
-
-	# register technical.dic
-	perl -pi -e 's/standard.dic;/standard.dic;technical.dic;/' $(PKGDIR)-common/$(OODIR)/share/registry/main.xcd
 
 #ifeq "$(PACKAGE_SDK)" "y"
 #	# install gengal stuff into -dev-gui
