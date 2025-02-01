@@ -444,6 +444,7 @@ else
 endif
 USE_OPENCL=y
 ENABLE_FIREBIRD=y
+FIREBIRD_VERSION=$(shell fb_config --version | cut -d. -f1,2)
 ifeq "$(ENABLE_FIREBIRD)" "y"
   SYSTEM_STUFF += firebird
   ifeq (,$(filter firebird, $(SYSTEM_STUFF)))
@@ -901,7 +902,11 @@ ifneq "$(USE_CLANG)" "y"
       CXX=$(CC_PREFIX)g++-$(GCC_VERSION)
     endif
   else
+    ifneq "$(BOOKWORM_BACKPORT)" "y"
+	BUILD_DEPS += , gcc (>= 4:12) [!i386], g++ (>= 4:12) [!i386]
+    else
 	BUILD_DEPS += , gcc (>= 4:12), g++ (>= 4:12)
+    endif
   endif
   # Use -O0 for gcc 10 on armhf to avoid build/test failure with gcc 10
   # https://bugs.launchpad.net/ubuntu/+bug/1891623
@@ -1668,9 +1673,9 @@ ifeq "$(ENABLE_FIREBIRD)" "y"
 	BUILD_DEPS_ARCH += , firebird-dev$(OOO_NO_FIREBIRD_ARCHS)
 	# we need libEngine12.so
   ifeq "$(RUN_MAKE_CHECK)" "y"
-	BUILD_DEPS_ARCH += , firebird3.0-server-core $(OOO_NO_FIREBIRD_ARCHS) <!nocheck>
+	BUILD_DEPS_ARCH += , firebird$(FIREBIRD_VERSION)-server-core $(OOO_NO_FIREBIRD_ARCHS) <!nocheck>
   endif
-	FIREBIRD_ENGINE_DEPENDS += firebird3.0-server-core
+	FIREBIRD_ENGINE_DEPENDS += firebird$(FIREBIRD_VERSION)-server-core
   endif
 else
 	CONFIGURE_FLAGS += --disable-firebird-sdbc
@@ -2923,6 +2928,18 @@ ifneq "$(ENABLE_HELP)" "n"
 	done
 endif
 
+	# not installed, do manually
+	echo "../usr/lib/libreoffice/share/wordbook/en-US.dic usr/lib/libreoffice/share/wordbook" >> debian/libreoffice-common.install
+ifeq (en-GB,$(findstring en-GB,$(LANGPACKISOS)))
+	echo "../usr/lib/libreoffice/share/wordbook/en-GB.dic usr/lib/libreoffice/share/wordbook" >> debian/libreoffice-l10n-en-gb.install
+endif
+ifeq (hu,$(findstring hu,$(LANGPACKISOS)))
+	echo "../usr/lib/libreoffice/share/wordbook/hu_AkH11.dic usr/lib/libreoffice/share/wordbook" >> debian/libreoffice-l10n-hu.install
+endif
+ifeq (sl,$(findstring sl,$(LANGPACKISOS)))
+	echo "../usr/lib/libreoffice/share/wordbook/sl.dic usr/lib/libreoffice/share/wordbook" >> debian/libreoffice-l10n-sl.install
+endif
+
 ifneq "$(PACKAGE_LIBRELOGO)" "y"
 	rm -rf debian/tmp/pkg/libreoffice-librelogo
 endif
@@ -3406,20 +3423,6 @@ $(STAMP_DIR)/langpacks: $(STAMP_DIR)/build-indep $(STAMP_DIR)/install-indep $(SO
 	for iso in `echo $(LANGPACKISOS) | tr A-Z a-z`; do \
 		rm -rf $(PKGDIR)-l10n-$$iso/$(shell echo $(OODIR) | sed -e s/lib/share/)/help; \
 		rm -rf $(PKGDIR)-l10n-$$iso/$(OODIR)/help; \
-	done
-
-	# install technical.dic
-	for iso in $(LANGPACKISOS); do \
-		if [ "$$iso" = "en-US" ]; then pkg=common; \
-		elif [ "$$iso" = "bn-IN" ]; then pkg=l10n-bn; \
-		elif [ "$$iso" = "ca-valencia" ]; then pkg=l10n-ca; \
-		elif [ "$$iso" = "sr-Latn" ]; then pkg=l10n-sr; \
-		elif [ "$$iso" = "kmr-Latn" ]; then pkg=l10n-kmr; \
-		else pkg=l10n-`echo $$iso | tr A-Z a-z`; \
-		fi; \
-		mkdir -p $(PKGDIR)-$$pkg/$(OODIR)/share/wordbook/$$iso; \
-		install -m644 $(SOURCE_TREE)/extras/source/wordbook/technical.dic \
-			$(PKGDIR)-$$pkg/$(OODIR)/share/wordbook/$$iso/technical.dic; \
 	done
 
 ifeq "$(DEB_VENDOR)" "Debian"
@@ -4132,9 +4135,6 @@ endif
 		ln -s /usr/share/doc/libreoffice-common/examples/$$i $(PKGDIR)-common/etc/libreoffice/registry/$$i; \
 	done
 
-	# register technical.dic
-	perl -pi -e 's/standard.dic;/standard.dic;technical.dic;/' $(PKGDIR)-common/$(OODIR)/share/registry/main.xcd
-
 #ifeq "$(PACKAGE_SDK)" "y"
 #	# install gengal stuff into -dev-gui
 #	mkdir -p $(PKGDIR)-dev-gui/$(OODIR)/program
@@ -4236,6 +4236,11 @@ endif
 
 	# make sure we have a share/extensions dir owned by -common
 	mkdir -p $(PKGDIR)-common/$(OODIR)/share/extensions
+
+	# we need a common dir here otherwise the junit tests fail. See
+	# https://lists.freedesktop.org/archives/libreoffice/2025-January/092950.html.
+	# FIXME: The question is why it doesn't end up in the install without this, though...
+	mkdir -p $(PKGDIR)-common/$(OODIR)/share/wordbook/common
 
 	touch $@
 
@@ -4415,10 +4420,12 @@ ifeq (,$(filter liblangtag, $(SYSTEM_STUFF)))
 endif
 ifeq "$(ENABLE_FIREBIRD)" "y"
 ifneq (,$(filter firebird, $(SYSTEM_STUFF)))
-	# force the values of .shlibs which  gives us a (wanted) (>= 3.0.0~)
-	# instead of .symbols which gives os only a (>= 2.5.0.25784~ReleaseCandidate1.ds2)...
-	cat /var/lib/dpkg/info/libfbclient2*.shlibs >> debian/shlibs.local
-
+	# force the values of .shlibs which  gives us a stricter dependency
+	# - e.g. (wanted) (>= 3.0.0~) - instead of .symbols which gives os only a
+	# (>= 2.5.0.25784~ReleaseCandidate1.ds2)...
+	# Also go sure on libfbclient2s upper version (see e.g. #1094284)
+	cat /var/lib/dpkg/info/libfbclient2*.shlibs \
+		| sed -e "s/$$/, libfbclient2 (<< $(shell echo "$(FIREBIRD_VERSION) + 1" | bc)~)/" >> debian/shlibs.local
 endif
 endif
 
@@ -4455,11 +4462,11 @@ endif
 ifneq "$(PLASMA_ARCHITECTURE)" "all"
 	# hack in a libreoffice-core dependency
 	if grep -q misc\:Depends debian/libreoffice-plasma.substvars; then \
-		sed -i 's/misc:Depends=\(.*\)/misc:Depends=$1, libreoffice-core (= ${binary:Version})' \
+		sed -i 's/misc:Depends=\(.*\)/misc:Depends=$1, libreoffice-core (= $${binary:Version})' \
 			debian/libreoffice-plasma.substvars; \
 	else \
-		echo 'misc:Depends=libreoffice-core (= ${binary:Version})' \
-			>> debian/libreoffice-plasma.substvars'; \
+		echo 'misc:Depends=libreoffice-core (= $${binary:Version})' \
+			>> debian/libreoffice-plasma.substvars; \
 	fi
 endif
 	dh_gencontrol -a $(DEBHELPER_OPTIONS) \
