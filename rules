@@ -150,13 +150,9 @@ endif
 BUILD_ONLY_EN_US=n
 ifeq ($(filter nojava,$(DEB_BUILD_PROFILES)),)
   include /usr/share/java/java_defaults.mk
-  ifneq "$(BOOKWORM_BACKPORT)" "y"
-    ifneq ($(DEB_HOST_ARCH),$(filter-out $(DEB_HOST_ARCH),$(java_unsupported_architectures)))
+  ifneq ($(DEB_HOST_ARCH),$(filter-out $(DEB_HOST_ARCH),$(java_unsupported_architectures)))
       ENABLE_JAVA=y
-    endif
-   else
-      ENABLE_JAVA=y
-   endif
+  endif
   ifeq "$(ENABLE_JAVA)" "y"
     JDK=default
     ifneq "$(JDK)" "default"
@@ -793,25 +789,15 @@ endif
 #############
 # Distro-specific overrides
 
-# Debian Bookworm
-ifeq "$(DEB_DISTRIBUTION)" "bookworm-backports"
+# Debian Trixie
+ifeq "$(DEB_DISTRIBUTION)" "trixie-backports"
   BUGS=mailto:debian-backports@lists.debian.org
-  SYSTEM_STUFF := $(filter-out frozen mdds orcus libcmis,$(SYSTEM_STUFF))
-  BOOKWORM_BACKPORT=y
-  ENABLE_KF6=n
-  BUILD_GTK4=n
-  PLASMA_VERSION=5
-  ENABLE_KF5=y
-  PLASMA_ARCHITECTURE=%OOO_ARCHS%
+  #SYSTEM_STUFF := $(filter-out ,$(SYSTEM_STUFF))
+  TRIXIE_BACKPORT=y
 endif
 
-ifeq "$(BOOKWORM_BACKPORT)" "y"
-  ifneq (,$(shell grep t64 debian/control))
-$(error Revert t64 rename 6f794ba67d113395d7662c2ebf5f67b37eddff09 for bookworm-backports!)
-  endif
-else
-  BUILD_DEPS += , dpkg-dev (>= 1.22.5) [$(filter-out i386,$(OOO_32BIT_ARCHS))]
-endif
+# for t64
+BUILD_DEPS += , dpkg-dev (>= 1.22.5) [$(filter-out i386,$(OOO_32BIT_ARCHS))]
 
 CONFIGURE_FLAGS += $(foreach i, $(SYSTEM_STUFF),--with-system-$(i))
 
@@ -887,12 +873,10 @@ endif
 # bridgetest fails when built with gcc 13, works with 12
 # or works with clang, so instead of build-depending on an obsolete
 # gcc we take this route
-ifneq "$(BOOKWORM_BACKPORT)" "y"
 ifeq "$(DEB_HOST_ARCH)" "i386"
   USE_CLANG=y
 endif
   BUILD_DEPS += , clang [i386]
-endif
 ifneq "$(USE_CLANG)" "y"
   ifneq "$(GCC_VERSION)" ""
   ifneq "$(SYSTEM_GCC_VERSION)" "$(GCC_VERSION)"
@@ -902,11 +886,7 @@ ifneq "$(USE_CLANG)" "y"
       CXX=$(CC_PREFIX)g++-$(GCC_VERSION)
     endif
   else
-    ifneq "$(BOOKWORM_BACKPORT)" "y"
-	BUILD_DEPS += , gcc (>= 4:12) [!i386], g++ (>= 4:12) [!i386]
-    else
-	BUILD_DEPS += , gcc (>= 4:12), g++ (>= 4:12)
-    endif
+    BUILD_DEPS += , gcc (>= 4:12) [!i386], g++ (>= 4:12) [!i386]
   endif
   # Use -O0 for gcc 10 on armhf to avoid build/test failure with gcc 10
   # https://bugs.launchpad.net/ubuntu/+bug/1891623
@@ -1072,10 +1052,9 @@ else
 endif
 ifneq (,$(filter xmlsec, $(SYSTEM_STUFF)))
        BUILD_DEPS += , libxmlsec1-dev (>= 1.2.35)
-  ifneq ($(BOOKWORM_BACKPORT),y)
-    ifneq (,$(filter $(OOO_CHECK_ARCHS),$(filter-out i386,$(OOO_32BIT_ARCHS))))
+  # for t64
+  ifneq (,$(filter $(OOO_CHECK_ARCHS),$(filter-out i386,$(OOO_32BIT_ARCHS))))
 	BUILD_DEPS_ARCH += , libxmlsec1-dev (>= 1.2.39-5) [$(filter $(OOO_CHECK_ARCHS),$(filter-out i386,$(OOO_32BIT_ARCHS)))] <!nocheck>
-    endif
   endif
 endif
 ifneq (,$(filter expat, $(SYSTEM_STUFF)))
@@ -1091,13 +1070,7 @@ ifneq (,$(filter libpng, $(SYSTEM_STUFF)))
        BUILD_DEPS += , libpng-dev
 endif
 
-# otherwise librdf0-dev (which we also need)  is uninstallable... 
-ifeq ($(BOOKWORM_BACKPORT),y)
-CURL_SECTYPE=gnutls
-else
-# ... from trixie onwards it seems it has an alternative which allows openssl
 CURL_SECTYPE=openssl
-endif
 ifeq "$(ENABLE_CURL)" "y"
   ifneq (,$(filter curl, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libcurl4-$(CURL_SECTYPE)-dev
@@ -1221,16 +1194,8 @@ endif
 	BUILD_DEPS_ARCH += , locales <!nocheck> | locales-all <!nocheck>
 	BUILD_DEPS_ARCH += , gdb$(OOO_NO_CHECK_ARCHS) <!nocheck>
 	BUILD_DEPS_ARCH += , fontconfig [$(OOO_AUTOPKGTEST_ARCHS)] <!nocheck>
-ifeq ($(BOOKWORM_BACKPORT),y)
-	BUILD_DEPS_ARCH += , fonts-liberation2 [$(OOO_AUTOPKGTEST_ARCHS)] <!nocheck>
-else
 	BUILD_DEPS_ARCH += , fonts-liberation (>= 1:2) [$(OOO_AUTOPKGTEST_ARCHS)] <!nocheck>
-endif
-    ifneq "$(BOOKWORM_BACKPORT)" "y"
 	BUILD_DEPS_ARCH += , fonts-crosextra-carlito (>= 20230309) [$(OOO_AUTOPKGTEST_ARCHS)] <!nocheck>
-    else
-	BUILD_DEPS_ARCH += , fonts-crosextra-carlito (<< 20230309) [$(OOO_AUTOPKGTEST_ARCHS)] <!nocheck>
-    endif
 	# porrst.cxx:85:Assertion
 	#Test name: (anonymous namespace)::testFloattableAnchorHeight::TestBody
 	#equality assertion failed
@@ -1346,11 +1311,7 @@ ifneq "$(BUILD_ONLY_EN_US)" "y"
 endif
 
 ifeq "$(ENABLE_JAVA)" "y"
-  ifeq ($(BOOKWORM_BACKPORT),y)
-	BUILD_DEPS += , java-common <!nojava>
-  else
-	BUILD_DEPS += , java-common (>= 0.75) <!nojava>
-  endif
+  BUILD_DEPS += , java-common (>= 0.75) <!nojava>
   BUILD_DEPS += , maven-repo-helper$(OOO_NO_JAVA_ARCHS) <!nojava>
   ifeq "$(JDK)" "default"
 	JAVA_HOME=/usr/lib/jvm/default-java
@@ -1468,10 +1429,9 @@ endif
 
 ifneq (,$(filter orcus, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , liborcus-dev (>= 0.19.1), liborcus-dev (<< 0.20~)
-  ifneq ($(BOOKWORM_BACKPORT),y)
-    ifneq (,$(filter $(OOO_CHECK_ARCHS),$(filter-out i386,$(OOO_32BIT_ARCHS))))
+  # for t64
+  ifneq (,$(filter $(OOO_CHECK_ARCHS),$(filter-out i386,$(OOO_32BIT_ARCHS))))
 	BUILD_DEPS_ARCH += , liborcus-dev (>> 0.19.2-3+b1) [$(filter $(OOO_CHECK_ARCHS),$(filter-out i386,$(OOO_32BIT_ARCHS)))] <!nocheck>
-    endif
   endif
 endif
 
@@ -1629,10 +1589,8 @@ ifneq "$(shell echo $(ENABLE_QT6)$(ENABLE_KF6) | grep -q y && echo true)" "true"
 	CONFIGURE_FLAGS += --disable-qt6-multimedia
 else
   ifeq "$(ENABLE_QT6_MULTIMEDIA)" "y"
-    ifneq "$(BOOKWORM_BACKPORT)" "y"
 	# go sure. the avmediaqt6 code has stuff enabled only if >= 6.5.0
 	QT6_MINVER := (>= 6.5.0)
-    endif
 	BUILD_DEPS_ARCH += , qt6-multimedia-dev $(QT6_MINVER)
     else
 	CONFIGURE_FLAGS += --disable-qt6-multimedia
@@ -1918,13 +1876,8 @@ ifeq ($(ENABLE_LTO),y)
 	BUILD_DEPS += , binutils (>= 2.37-9) [ppc64]
 endif
 
-ifeq ($(BOOKWORM_BACKPORT),y)
-	LIBERATION_FONT_RECOMMENDS += , fonts-liberation
-	LIBERATION2_FONT_RECOMMENDS += , fonts-liberation2
-else
 	LIBERATION_FONT_RECOMMENDS += , fonts-liberation-sans-narrow
 	LIBERATION2_FONT_RECOMMENDS += , fonts-liberation (>= 1:2)
-endif
 LIBERATION_FONTS_RECOMMENDS += $(LIBERATION2_FONT_RECOMMENDS) $(LIBERATION_FONT_RECOMMENDS)
 
 # go sure. if we explicitely disable LTO when it is enabled we don't want it to sneak in
@@ -2254,11 +2207,7 @@ ifeq "$(BUILD_GTK4)" "y"
 endif
 ifeq "$(ENABLE_KF5)" "y"
 	cat debian/control.kf5.in >> debian/control.new
-  ifneq "$(BOOKWORM_BACKPORT)" "y"
 	perl -pi -e 's/plasma-iconset-dep}/plasma-iconset-dep}, kio (>> 5.115.0-5)/' debian/control.new
-  else
-	perl -pi -e 's/plasma-iconset-dep}/plasma-iconset-dep}, kio (>> 5.103.0-1)/' debian/control.new
-  endif
 endif
 ifeq "$(ENABLE_KF6)" "y"
 	cat debian/control.kf6.in >> debian/control.new
@@ -2596,9 +2545,6 @@ endif
 	cd $(SOURCE_TREE)/smoketest && \
 		patch -p1 < $(CURDIR)/debian/tests/patches/smoketest-disable-extension-tests.diff
   endif
-  ifeq "$(BOOKWORM_BACKPORT)" "y"
-	patch -p1 -R < debian/patches/adapt-for-new-carlito.diff
-  endif
 	# enable cppunit etc.
 	PATH=$(BUILD_PATH) LD_LIBRARY_PATH=$(BUILD_LD_LIBRARY_PATH) \
 	CLANGDIR=$(CLANGDIR) \
@@ -2712,9 +2658,6 @@ ifeq "$(BUILD_TESTS)" "y"
   ifeq (,$(filter $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
 	cd $(SOURCE_TREE)/smoketest && \
 		patch -p1 -R < $(CURDIR)/debian/tests/patches/smoketest-disable-extension-tests.diff
-  endif
-  ifeq "$(BOOKWORM_BACKPORT)" "y"
-	patch -p1 < debian/patches/adapt-for-new-carlito.diff
   endif
 endif
 
