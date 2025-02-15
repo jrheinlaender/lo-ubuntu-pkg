@@ -1,0 +1,110 @@
+diff --git a/postprocess/CustomTarget_registry.mk b/postprocess/CustomTarget_registry.mk
+index 4be442c49ae4..c5f5c7166fdd 100644
+--- a/postprocess/CustomTarget_registry.mk
++++ b/postprocess/CustomTarget_registry.mk
+@@ -464,20 +464,27 @@ endif
+ 
+ ifeq ($(ENABLE_JAVA),TRUE)
+ postprocess_FILES_main += \
+-	$(call gb_XcuModuleTarget_get_target,connectivity/registry/hsqldb)/org/openoffice/Office/DataAccess/Drivers-hsqldb.xcu \
+ 	$(call gb_XcuModuleTarget_get_target,connectivity/registry/jdbc)/org/openoffice/Office/DataAccess/Drivers-jdbc.xcu \
+ 	$(call gb_XcuModuleTarget_get_target,connectivity/registry/mysql_jdbc)/org/openoffice/Office/DataAccess/Drivers-mysql_jdbc.xcu
++postprocess_FILES_hsqldb += \
++	$(call gb_XcuModuleTarget_get_target,connectivity/registry/hsqldb)/org/openoffice/Office/DataAccess/Drivers-hsqldb.xcu
++postprocess_XCDS += hsqldb.xcd
++postprocess_DEPS_hsqldb := main
+ postprocess_DRIVERS += hsqldb jdbc mysql_jdbc
+ endif
+ 
+ ifeq ($(ENABLE_FIREBIRD_SDBC),TRUE)
+-postprocess_FILES_main += \
++postprocess_XCDS += firebird_sdbc.xcd
++postprocess_DEPS_firebird_sdbc := main
++postprocess_FILES_firebird_sdbc += \
+ 	$(call gb_XcuModuleTarget_get_target,connectivity/registry/firebird)/org/openoffice/Office/DataAccess/Drivers-firebird.xcu
+ postprocess_DRIVERS += firebird_sdbc
+ endif
+ 
+ ifeq ($(ENABLE_MARIADBC),TRUE)
+-postprocess_FILES_main += \
++postprocess_XCDS += mysqlc.xcd
++postprocess_DEPS_mysqlc := main
++postprocess_FILES_mysqlc += \
+ 	$(call gb_XcuModuleTarget_get_target,connectivity/registry/mysqlc)/org/openoffice/Office/DataAccess/Drivers-mysqlc.xcu
+ postprocess_DRIVERS += mysqlc
+ endif
+diff --git a/scp2/source/base/firebird.scp b/scp2/source/base/firebird.scp
+index 61cfff9cc496..0fdb2ffc6e66 100644
+--- a/scp2/source/base/firebird.scp
++++ b/scp2/source/base/firebird.scp
+@@ -20,15 +20,27 @@
+ 
+ #include "AutoInstall/firebirdsdbc"
+ 
+-#if defined( ENABLE_FIREBIRD_SDBC ) && !defined( SYSTEM_FIREBIRD )
++#if defined( ENABLE_FIREBIRD_SDBC )
++
++#if !defined( SYSTEM_FIREBIRD )
+ 
+ Module gid_Module_Optional_Firebird
+     Name = "Firebird";
+     Description = "Firebird embedded database";
+     PackageInfo = "packinfo_office.txt";
+     ParentID = gid_Module_Root_Brand;
+-    Files = (auto_firebirdsdbc_ALL);
++    Files = (auto_firebirdsdbc_ALL,
++             gid_File_FirebirdSdbc_Xcd);
+     Styles = (HIDDEN_ROOT);
+ End
+ 
+ #endif
++
++File gid_File_FirebirdSdbc_Xcd
++    TXT_FILE_BODY;
++    Dir = gid_Brand_Dir_Share_Registry;
++    Name = "firebird_sdbc.xcd";
++    Styles = (PACKED);
++End
++
++#endif
+diff --git a/scp2/InstallModule_base.mk b/scp2/InstallModule_base.mk
+index 709d1493e0d8..52318117cd49 100644
+--- a/scp2/InstallModule_base.mk
++++ b/scp2/InstallModule_base.mk
+@@ -29,6 +29,7 @@ $(eval $(call gb_InstallModule_add_templates,scp2/base,\
+ $(eval $(call gb_InstallModule_add_scpfiles,scp2/base,\
+     scp2/source/base/file_base \
+     scp2/source/base/firebird \
++    scp2/source/base/hsqldb \
+ ))
+ 
+ $(eval $(call gb_InstallModule_add_localized_scpfiles,scp2/base,\
+--- a/scp2/source/base/hsqldb.scp	2025-02-15 08:57:11.237759355 +0100
++++ b/scp2/source/base/hsqldb.scp	2025-02-15 17:45:20.400734156 +0100
+@@ -0,0 +1,26 @@
++/*
++ * This file is part of the LibreOffice project.
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
++ *
++ * This file incorporates work covered by the following license notice:
++ *
++ *   Licensed to the Apache Software Foundation (ASF) under one or more
++ *   contributor license agreements. See the NOTICE file distributed
++ *   with this work for additional information regarding copyright
++ *   ownership. The ASF licenses this file to you under the Apache
++ *   License, Version 2.0 (the "License"); you may not use this file
++ *   except in compliance with the License. You may obtain a copy of
++ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
++ */
++
++#include "macros.inc"
++
++File gid_File_Hsqldb_Xcd
++    TXT_FILE_BODY;
++    Dir = gid_Brand_Dir_Share_Registry;
++    Name = "hsqldb.xcd";
++    Styles = (PACKED);
++End
