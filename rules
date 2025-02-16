@@ -622,12 +622,12 @@ $(eval $(call gen_no_archs,OOO_JUNIT_ARCHS))
 
 OOO_CHECK_FATAL_ARCHS := amd64 arm64
 
-# original idea was without armhf, but since --disable-cve-tests for 32bit archs (see below)
-# this now also passes. and the autopkgtests also pass (also the junit ones).
-# So let's include armhf in the above
-OOO_CHECK_ARCHS += armhf
-#OOO_JUNIT_ARCHS += armhf
-OOO_CHECK_FATAL_ARCHS += armhf
+## original idea was without armhf, but since --disable-cve-tests for 32bit archs (see below)
+## this now also passes. and the autopkgtests also pass (also the junit ones).
+## So let's include armhf in the above
+#OOO_CHECK_ARCHS += armhf
+##OOO_JUNIT_ARCHS += armhf
+#OOO_CHECK_FATAL_ARCHS += armhf
 
 # if bridgetest and smoketest fail this is surely not working in a way
 # we would want in the archive
@@ -1616,7 +1616,6 @@ ifeq "$(ENABLE_MARIADB)" "y"
   endif
 else
   CONFIGURE_FLAGS += --disable-mariadb-sdbc
-  DEBHELPER_OPTIONS += -Nlibreoffice-sdbc-mysql
 endif
 
 ifeq "$(ENABLE_FIREBIRD)" "y"
@@ -1637,7 +1636,6 @@ ifeq "$(ENABLE_FIREBIRD)" "y"
   endif
 else
 	CONFIGURE_FLAGS += --disable-firebird-sdbc
-	DEBHELPER_OPTIONS += -Nlibreoffice-sdbc-firebird
 endif
 
 ifeq "$(BUILD_GTK3)" "y"
@@ -1692,7 +1690,6 @@ ifeq "$(ENABLE_SDBC_POSTGRESQL)" "y"
   endif
 else
 	CONFIGURE_FLAGS += --disable-postgresql-sdbc
-	DEBHELPER_OPTIONS += -Nlibreoffice-sdbc-postgresql
 endif
 
 ifeq "$(ENABLE_RANDR)" "y"
@@ -2229,7 +2226,9 @@ ifeq "$(PLASMA_VERSION)" "6"
 		debian/control.new
 endif
 endif
+ifeq "$(ENABLE_SDBC_POSTGRESQL)" "y"
 	cat debian/control.postgresql.in >> debian/control.new
+endif
 ifeq "$(ENABLE_EVO2)" "y"
 	cat debian/control.evolution.in >> debian/control.new
 endif
@@ -2776,7 +2775,6 @@ endif
 		(cd debian/tmp/pkg/$$i; find . -type d | sed -e "s,\./,,") \
 			> debian/$$i.dirs; \
 	done
-	echo "/etc/libreoffice/registry/res" >> debian/libreoffice-common.dirs
 
 	# the english resources should be in -common
 	cat debian/libreoffice-l10n-en-US.dirs >> debian/libreoffice-common.dirs
@@ -3312,10 +3310,6 @@ $(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*.sh) $(wildcard debian/*.
 	    fi; \
 	  done; \
 	done
-	# create .ucf files for libreoffice-l10n-*. First generic ones
-	# libreoffice-l10n.ucf.in, but there also are CJK/CTL specific
-	# files, too...
-	rm -f debian/libreoffice-l10n-*.ucf
 	for iso in $(filter-out en-US,$(LANGPACKISOS)); do \
 	    if [ "$$iso" = "bn-IN" ]; then pkgiso=bn; \
 	    elif [ "$$iso" = "ca-valencia" ]; then pkgiso=ca; \
@@ -3323,21 +3317,10 @@ $(STAMP_DIR)/maintscripts: $(wildcard debian/shell-lib*.sh) $(wildcard debian/*.
 	    elif [ "$$iso" = "kmr-Latn" ]; then pkgiso=kmr; \
 	    else pkgiso=`echo $$iso | tr \[:upper:\] \[:lower:\]`; \
 	    fi; \
-	    cat debian/libreoffice-l10n.ucf.in \
-		| sed -e "s/\@ISO\@/$$iso/g" \
-		>> debian/libreoffice-l10n-$$pkgiso.ucf; \
-	    if [ -f instdir/share/registry/ctl_$$iso.xcd ]; then \
-		echo "/usr/lib/libreoffice/share/.registry/ctl_$$iso.xcd /etc/libreoffice/registry/ctl_$$iso.xcd" \
-			>> debian/libreoffice-l10n-$$pkgiso.ucf; \
-	    fi; \
-	    if [ -f instdir/share/registry/ctlseqcheck_$$iso.xcd ]; then \
-		echo "/usr/lib/libreoffice/share/.registry/ctlseqcheck_$$iso.xcd /etc/libreoffice/registry/ctlseqcheck_$$iso.xcd" \
-			>> debian/libreoffice-l10n-$$pkgiso.ucf; \
-	    fi; \
-	    if [ -f instdir/share/registry/cjk_$$iso.xcd ]; then \
-		echo "/usr/lib/libreoffice/share/.registry/cjk_$$iso.xcd /etc/libreoffice/registry/cjk_$$iso.xcd" \
-			>> debian/libreoffice-l10n-$$pkgiso.ucf; \
-	    fi; \
+	    cat debian/libreoffice-l10n.preinst.in \
+	        | sed -e "s/\@PKGISO\@/$$pkgiso/g" \
+	        | sed -e "s/\@ISO\@/$$iso/g" \
+	        >> debian/libreoffice-l10n-$$pkgiso.preinst; \
 	done
 
 	touch $@
@@ -3607,9 +3590,9 @@ endif
 	done
 
 ifeq "$(ENABLE_JAVA)" "y"
-	mkdir -p $(PKGDIR)-sdbc-hsqldb/$(OODIR)/program
-	mkdir -p $(PKGDIR)-sdbc-hsqldb/usr/lib/libreoffice/program/classes
+	mkdir -p $(PKGDIR)-sdbc-hsqldb/$(OODIR)/program/classes
 	mkdir -p $(PKGDIR)-sdbc-hsqldb/usr/share/libreoffice/program/classes
+	mkdir -p $(PKGDIR)-sdbc-hsqldb/$(OODIR)/share/registry
 	mv $(PKGDIR)-base/$(OODIR)/program/libhsqldb.so \
 		$(PKGDIR)-sdbc-hsqldb/$(OODIR)/program
   ifneq (,$(filter hsqldb, $(SYSTEM_STUFF)))
@@ -3620,6 +3603,8 @@ ifeq "$(ENABLE_JAVA)" "y"
 		mv $(PKGDIR)-base/usr/$$i/libreoffice/program/classes/sdbc_hsqldb.jar \
 			$(PKGDIR)-sdbc-hsqldb/usr/$$i/libreoffice/program/classes; \
 	done
+	mv $(PKGDIR)-common/$(OODIR)/share/registry/hsqldb.xcd \
+		$(PKGDIR)-sdbc-hsqldb/$(OODIR)/share/registry
 endif
 ifeq "$(ENABLE_FIREBIRD)" "y"
 	mkdir -p $(PKGDIR)-sdbc-firebird/$(OODIR)/program
@@ -3723,22 +3708,6 @@ endif
 	    sed -e "s#\@OODIR\@#$(OODIR)#g" \
 		< $$LINKS.in > $$LINKS ; \
 	  fi; \
-	done
-
-	# make config xml "pretty" to make ucf --three-way work.
-	for p in $(ARCH_DEP_PACKAGES); do \
-		for i in `find debian/$$p/$(OODIR)/share/registry -name "*.xcd"`; do \
-			t=`mktemp -q`; \
-			xmllint --pretty 1 $$i > $$t; \
-			mv $$t $$i; \
-		done; \
-	done
-	# and "hide" the ucf source registry; makes it less confusing for
-	# people who do know /usr/lib/libreoffice/share/registry.
-	for p in $(ARCH_DEP_PACKAGES); do \
-		for i in `find debian/$$p -type d -wholename "*$(OODIR)/share/registry"`; do \
-			mv $$i `echo $$i | sed -e s/registry/.registry/`; \
-		done; \
 	done
 
 ifeq (,$(findstring $(DEB_HOST_ARCH),$(OOO_EXTENSIONS_ARCHS)))
@@ -4081,6 +4050,7 @@ endif
 	for i in oo-ldap.xcd.sample oo-ad-ldap.xcd.sample; do \
 		mv $(PKGDIR)-common/$(OODIR)/share/registry/$$i \
 			$(PKGDIR)-common/usr/share/doc/libreoffice-common/examples; \
+		mkdir -p $(PKGDIR)-common/etc/libreoffice/registry; \
 		ln -s /usr/share/doc/libreoffice-common/examples/$$i $(PKGDIR)-common/etc/libreoffice/registry/$$i; \
 	done
 
@@ -4162,26 +4132,23 @@ endif
 	sed -i "s,^BRAND_BASE_DIR=.*,BRAND_BASE_DIR=file:///$(OODIR)," \
 		$(PKGDIR)-common/$(OODIR)/program/fundamentalrc
 
-	# make LO look for its "registry" in /etc (ucf-managed)
-	sed -i "s,^CONFIGURATION_LAYERS=.*\(dconf.*\)$$,CONFIGURATION_LAYERS=xcsxcu:file:///etc/libreoffice/registry res:file:///etc/libreoffice/registry \1," \
+	# make LO look (also) for its "registry" in /etc
+ifeq "$(ENABLE_DCONF)" "y"
+	sed -i "s,dconf:,xcsxcu:file:///etc/libreoffice/registry res:file:///etc/libreoffice/registry dconf:," \
 		$(PKGDIR)-common/$(OODIR)/program/fundamentalrc
+else
+	sed -i "s,bundledext:,xcsxcu:file:///etc/libreoffice/registry res:file:///etc/libreoffice/registry bundledext:," \
+		$(PKGDIR)-common/$(OODIR)/program/fundamentalrc
+endif
 
 	# make config xml "pretty" to make ucf --three-way work
-	for p in $(ARCH_INDEP_PACKAGES); do \
-		for i in `find debian/$$p/$(OODIR)/share/registry -name "*.xcd"`; do \
-			t=`mktemp -q`; \
-			xmllint --pretty 1 $$i > $$t; \
-			mv $$t $$i; \
-		done; \
-	done
-	# and "hide" the ucf source registry; makes it less confusing for
-	# people who do know /usr/lib/libreoffice/share/registry. Said path
-	# is a symlink set by libreoffice-common.links
-	for p in $(ARCH_INDEP_PACKAGES); do \
-		for i in `find debian/$$p -type d -wholename "*$(OODIR)/share/registry"`; do \
-			mv $$i `echo $$i | sed -e s/registry/.registry/`; \
-		done; \
-	done
+	t=`mktemp -q`; \
+	xmllint --pretty 1 debian/libreoffice-common/$(OODIR)/share/registry/main.xcd > $$t; \
+	mv $$t debian/libreoffice-common/$(OODIR)/share/registry/main.xcd
+
+	mkdir -p debian/libreoffice-common/$(OODIR)/share/.registry
+	mv debian/libreoffice-common/$(OODIR)/share/registry/main.xcd \
+		debian/libreoffice-common/$(OODIR)/share/.registry/main.xcd
 
 	# make sure we have a share/extensions dir owned by -common
 	mkdir -p $(PKGDIR)-common/$(OODIR)/share/extensions
@@ -4372,7 +4339,8 @@ ifneq (,$(filter firebird, $(SYSTEM_STUFF)))
 	# force the values of .shlibs which  gives us a stricter dependency
 	# - e.g. (wanted) (>= 3.0.0~) - instead of .symbols which gives os only a
 	# (>= 2.5.0.25784~ReleaseCandidate1.ds2)...
-	# Also go sure on libfbclient2s upper version (see e.g. #1094284)
+	# Also go sure on libfbclient2s upper version (see e.g. #1094284 and
+	# https://lists.debian.org/debian-release/2025/01/msg00708.html)
 	cat /var/lib/dpkg/info/libfbclient2*.shlibs \
 		| sed -e "s/$$/, libfbclient2 (<< $(shell echo "$(FIREBIRD_VERSION) + 1" | bc)~)/" >> debian/shlibs.local
 endif
