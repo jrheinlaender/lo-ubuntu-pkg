@@ -1,4 +1,4 @@
-From e8a24e992d34cf1eb01b002a1f676c92cfb26da1 Mon Sep 17 00:00:00 2001
+From ea8cd33bc395497fbbe8a3a98e59fd2fecacfd16 Mon Sep 17 00:00:00 2001
 From: Rene Engelhard <rene@rene-engelhard.de>
 Date: Mon, 3 Mar 2025 21:48:18 +0100
 Subject: [PATCH] implement --with-system-colamd (for internal lpsolve)
@@ -11,9 +11,9 @@ Change-Id: I6e0d014455ea2dec111aa3380bd49bd586dfad0a
  config_host.mk.in                           |  3 ++
  configure.ac                                | 35 +++++++++++++++++-
  external/lpsolve/UnpackedTarball_lpsolve.mk |  1 +
- external/lpsolve/ccc.static                 |  8 +++-
+ external/lpsolve/ccc.static                 | 13 ++++++-
  external/lpsolve/system-colamd.diff         | 41 +++++++++++++++++++++
- 5 files changed, 84 insertions(+), 4 deletions(-)
+ 5 files changed, 89 insertions(+), 4 deletions(-)
  create mode 100644 external/lpsolve/system-colamd.diff
 
 diff --git a/config_host.mk.in b/config_host.mk.in
@@ -103,10 +103,10 @@ index bcb885fb9186..c1e6be8e3c09 100644
  
  $(eval $(call gb_UnpackedTarball_add_file,lpsolve,lpsolve55/ccc.static,external/lpsolve/ccc.static))
 diff --git a/external/lpsolve/ccc.static b/external/lpsolve/ccc.static
-index 6911c4b2c892..3b05d8ea5643 100644
+index 6911c4b2c892..c78a9583089a 100644
 --- a/external/lpsolve/ccc.static
 +++ b/external/lpsolve/ccc.static
-@@ -1,11 +1,15 @@
+@@ -1,11 +1,20 @@
 -src='../lp_MDO.c ../shared/commonlib.c ../shared/mmio.c ../shared/myblas.c ../ini.c ../fortify.c ../colamd/colamd.c ../lp_rlp.c ../lp_crash.c ../bfp/bfp_LUSOL/lp_LUSOL.c ../bfp/bfp_LUSOL/LUSOL/lusol.c ../lp_Hash.c ../lp_lib.c ../lp_wlp.c ../lp_matrix.c ../lp_mipbb.c ../lp_MPS.c ../lp_params.c ../lp_presolve.c ../lp_price.c ../lp_pricePSE.c ../lp_report.c ../lp_scale.c ../lp_simplex.c ../lp_SOS.c ../lp_utils.c ../yacc_read.c'
 +if [ "$SYSTEM_COLAMD" != "TRUE" ]; then
 +    colamd_c=../colamd/colamd.c
@@ -120,7 +120,12 @@ index 6911c4b2c892..3b05d8ea5643 100644
  
 -$CC -I.. -I../bfp -I../bfp/bfp_LUSOL -I../bfp/bfp_LUSOL/LUSOL -I../colamd -I../shared $opts $def -DYY_NEVER_INTERACTIVE -DPARSER_LP -DINVERSE_ACTIVE=INVERSE_LUSOL -DRoleIsExternalInvEngine -c $src
 +# FIMXE: Link statically with colamd?
-+$CC -I.. -I../bfp -I../bfp/bfp_LUSOL -I../bfp/bfp_LUSOL/LUSOL $COLAMD_CFLAGS -I../shared $opts $def -DYY_NEVER_INTERACTIVE -DPARSER_LP -DINVERSE_ACTIVE=INVERSE_LUSOL -DRoleIsExternalInvEngine -c $src
++if test "$SYSTEM_COLAMD" = "TRUE"; then
++    colamd_i=$COLAMD_CFLAGS
++else
++    colamd_i=-I../colamd
++fi
++$CC -I.. -I../bfp -I../bfp/bfp_LUSOL -I../bfp/bfp_LUSOL/LUSOL $colamd_i -I../shared $opts $def -DYY_NEVER_INTERACTIVE -DPARSER_LP -DINVERSE_ACTIVE=INVERSE_LUSOL -DRoleIsExternalInvEngine -c $src
  
  $AR -r liblpsolve55.a $obj
  rm $obj
