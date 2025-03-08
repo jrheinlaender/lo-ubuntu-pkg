@@ -272,9 +272,21 @@ ifeq "$(ENABLE_JAVA)" "y"
   SYSTEM_STUFF += hsqldb
 endif
 ENABLE_LPSOLVE=y
+# disabled. system-lpsolve somehow now causes
+#scsolverobj.cxx:119:Assertion
+#Test name: sc_apitest::ScSolverSettingsObj::testXSolverSettings
+#equality assertion failed
+#- Expected: 6981
+#- Actual  : 6987
+#
+#Failures !!!
+#Run: 1   Failure total: 1   Failures: 1   Errors: 0
 #SYSTEM_STUFF += lpsolve
 #USE_SHARED_LPSOLVE=y
 #LPSOLVE_MIN_VERSION=
+ifeq (,$(filter lpsolve, $(SYSTEM_STUFF)))
+  SYSTEM_STUFF += colamd
+endif
 ENABLE_COINMP=y
 SYSTEM_STUFF += coinmp
 USE_DBUS=y
@@ -1749,6 +1761,8 @@ ifeq ($(ENABLE_LPSOLVE),y)
     else
 	BUILD_DEPS += , liblpsolve55-dev $(LPSOLVE_MIN_VERSION)
     endif
+  endif
+  ifneq (,$(filter colamd, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libsuitesparse-dev $(SUITESPARSE_MIN_VERSION)
   endif
 else
@@ -3640,6 +3654,13 @@ endif
 		mv $$i \
 			$(PKGDIR)-base-drivers/$(OODIR)/program; \
 	done
+
+ifeq ($(ENABLE_LPSOLVE),y)
+  ifeq (,$(filter lpsolve, $(SYSTEM_STUFF)))
+	mv $(PKGDIR)-core/$(OODIR)/program/liblpsolve55.so \
+		$(PKGDIR)-calc/$(OODIR)/program
+  endif
+endif
 
 ifeq "$(BUILD_NOGUI_PACKAGES)" "y"
 	# create no-GUI packages
