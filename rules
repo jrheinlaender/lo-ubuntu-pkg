@@ -81,11 +81,11 @@ ifeq "$(USE_GIT_TARBALLS)" "y"
 GIT_BASEURL:=git://anongit.freedesktop.org/libreoffice
 # bootstraping this from the source tree is breaking get-orig-source
 #lo_sources_ver=$(shell grep AC_INIT $(SOURCE_TREE)/configure.ac | grep documentfoundation | cut -d, -f2 | sed -e 's,\[,,' -e 's,\],,')
-lo_sources_ver=25.2.1.2
+lo_sources_ver=25.2.2.1
 # NOT in proper libreoffice-3-6 branch
 # use ./g checkout -b tag-libreoffice-3.6.2.1 libreoffice-3.6.2.1
 GIT_TAG=libreoffice-$(lo_sources_ver)
-GIT_BRANCH=libreoffice-25-2-1
+GIT_BRANCH=libreoffice-25-2-2
 endif
 ifeq "$(USE_SOURCE_TARBALLS)" "y"
 lo_sources_ver=$(shell cat $(CURDIR)/sources.ver | cut -d= -f2)
@@ -284,9 +284,21 @@ ifeq "$(ENABLE_JAVA)" "y"
   SYSTEM_STUFF += hsqldb
 endif
 ENABLE_LPSOLVE=y
+# disabled. system-lpsolve somehow now causes
+#scsolverobj.cxx:119:Assertion
+#Test name: sc_apitest::ScSolverSettingsObj::testXSolverSettings
+#equality assertion failed
+#- Expected: 6981
+#- Actual  : 6987
+#
+#Failures !!!
+#Run: 1   Failure total: 1   Failures: 1   Errors: 0
 #SYSTEM_STUFF += lpsolve
 #USE_SHARED_LPSOLVE=y
 #LPSOLVE_MIN_VERSION=
+ifeq (,$(filter lpsolve, $(SYSTEM_STUFF)))
+  SYSTEM_STUFF += colamd
+endif
 ENABLE_COINMP=y
 SYSTEM_STUFF += coinmp
 USE_DBUS=y
@@ -1852,6 +1864,8 @@ ifeq ($(ENABLE_LPSOLVE),y)
     else
 	BUILD_DEPS += , liblpsolve55-dev $(LPSOLVE_MIN_VERSION)
     endif
+  endif
+  ifneq (,$(filter colamd, $(SYSTEM_STUFF)))
 	BUILD_DEPS += , libsuitesparse-dev $(SUITESPARSE_MIN_VERSION)
   endif
 else
@@ -3776,6 +3790,13 @@ endif
 			$(PKGDIR)-base-drivers/$(OODIR)/program; \
 	done
 
+ifeq ($(ENABLE_LPSOLVE),y)
+  ifeq (,$(filter lpsolve, $(SYSTEM_STUFF)))
+	mv $(PKGDIR)-core/$(OODIR)/program/liblpsolve55.so \
+		$(PKGDIR)-calc/$(OODIR)/program
+  endif
+endif
+
 ifeq "$(BUILD_NOGUI_PACKAGES)" "y"
 	# create no-GUI packages
 	for p in $(shell dh_listpackages -a | grep nogui | grep -v libreoffice-nogui | cut -d- -f2- | sed -e s/-nogui// | xargs); do \
@@ -4194,7 +4215,7 @@ endif
 		mv $(PKGDIR)-common/$(OODIR)/share/registry/$$i \
 			$(PKGDIR)-common/usr/share/doc/libreoffice-common/examples; \
 		mkdir -p $(PKGDIR)-common/etc/libreoffice/registry; \
-		ln -s /usr/share/doc/libreoffice-common/examples/$$i $(PKGDIR)-common/etc/libreoffice/registry/$$i; \
+		ln -s /usr/share/doc/libreoffice-common/examples/$$i $(PKGDIR)-common/$(OODIR)/share/registry/$$i; \
 	done
 
 #ifeq "$(PACKAGE_SDK)" "y"
@@ -4274,15 +4295,6 @@ endif
 	# we know the path and the apparmor profiles disallow this...
 	sed -i "s,^BRAND_BASE_DIR=.*,BRAND_BASE_DIR=file:///$(OODIR)," \
 		$(PKGDIR)-common/$(OODIR)/program/fundamentalrc
-
-	# make LO look (also) for its "registry" in /etc
-ifeq "$(ENABLE_DCONF)" "y"
-	sed -i "s,dconf:,xcsxcu:file:///etc/libreoffice/registry res:file:///etc/libreoffice/registry dconf:," \
-		$(PKGDIR)-common/$(OODIR)/program/fundamentalrc
-else
-	sed -i "s,bundledext:,xcsxcu:file:///etc/libreoffice/registry res:file:///etc/libreoffice/registry bundledext:," \
-		$(PKGDIR)-common/$(OODIR)/program/fundamentalrc
-endif
 
 	# make config xml "pretty" to make ucf --three-way work
 	t=`mktemp -q`; \
