@@ -2034,6 +2034,7 @@ clean-debdir:
 	if [ -d "$(STAMP_DIR)" ]; then rm -rf "$(STAMP_DIR)"; fi
 	rm -f debian/*.bug-script
 
+	rm -f debian/libuno-sal3t64.symbols
 	rm -f debian/shlibs.local
 
 	rm -f debian/libreoffice-help-*.lintian-overrides
@@ -4307,6 +4308,9 @@ ifeq "$(ENABLE_INTROSPECTION)" "y"
 	dh_girepository -a -ldebian/libreofficekit-dev-gtk/usr/share/gir-1.0 -pdebian/liblibreofficekitgtk/$(OODIR)/program
 endif
 	dh_strip_nondeterminism -a
+	cat debian/libuno-sal3t64.symbols.in \
+		| sed -e "s/@UREPACKAGEVERSION@/$(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }' | cut -d. -f1-3)/" \
+		> debian/libuno-sal3t64.symbols
 	for i in sal3 cppu3 salhelpergcc3-3 cppuhelpergcc3-3 purpenvhelpergcc3-3; do \
 		dh_makeshlibs -plibuno-$${i}t64 -V"libuno-$${i}t64 (>= 4:$(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }' | cut -d. -f1-3)~)" -- -c2 -V -v$(BINARY_VERSION); \
 	done
@@ -4405,6 +4409,8 @@ ifneq "$(PLASMA_ARCHITECTURE)" "all"
 			>> debian/libreoffice-plasma.substvars; \
 	fi
 endif
+	echo "sal-private-abi:Provides=libreoffice-sal-private-abi-$(shell grep UREPACKAGEVERSION $(SOURCE_TREE)/instsetoo_native/util/openoffice.lst | awk '{ print $$2 }' | cut -d. -f1-3)" \
+		>> debian/libuno-sal3t64.substvars
 	dh_gencontrol -a $(DEBHELPER_OPTIONS) \
 		-- \
 		-V'base-version=$(BASE_VERSION)' \
