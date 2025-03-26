@@ -1,0 +1,81 @@
+From 4cebd9308658f094d4738710e9f8427f0f6f8aea Mon Sep 17 00:00:00 2001
+From: Michael Weghorn <m.weghorn@posteo.de>
+Date: Sat, 22 Mar 2025 16:15:41 -0700
+Subject: tdf#165870 qt avmedia: Handle null media player
+
+QtPlayer::m_xMediaPlayer can be null, e.g. in a PPTX file
+created in PowerPoint that contains an external video link to
+Youtube, so handle that case gracefully instead of asserting/crashing.
+
+Backtrace of assert getting triggered without this change in place:
+
+    1 __pthread_kill_implementation pthread_kill.c 44 0x7ffff789e95c
+    2 __pthread_kill_internal pthread_kill.c 89 0x7ffff789e9ff
+    3 __GI_raise raise.c 26 0x7ffff7849cc2
+    4 __GI_abort abort.c 73 0x7ffff78324ac
+    5 __assert_fail_base assert.c 118 0x7ffff7832420
+    6 avmedia::qt::QtPlayer::stop QtPlayer.cxx 75 0x7fff980b1675
+    7 avmedia::qt::QtPlayer::disposing QtPlayer.cxx 281 0x7fff980b34f7
+    8 cppu::WeakComponentImplHelperBase::dispose implbase.cxx 104 0x7ffff5b3de60
+    9 cppu::PartialWeakComponentImplHelper<com::sun::star::media::XPlayer, com::sun::star::media::XPlayerNotifier, com::sun::star::lang::XServiceInfo>::dispose compbase.hxx 90 0x7fff980b0455
+    10 avmedia::qt::QtManager::createPlayer QtManager.cxx 32 0x7fff980afc7e
+    11 non-virtual thunk to avmedia::qt::QtManager::createPlayer(rtl::OUString const&) 0x7fff980afdbc
+    12 avmedia::priv::MediaWindowImpl::createPlayer mediawindow_impl.cxx 212 0x7ffff0bf0d40
+    13 avmedia::priv::MediaWindowImpl::createPlayer mediawindow_impl.cxx 193 0x7ffff0bf0a7e
+    14 avmedia::MediaWindow::createPlayer mediawindow.cxx 364 0x7ffff0be5860
+    15 slideshow::internal::ViewMediaShape::implInitializeMediaPlayer viewmediashape.cxx 391 0x7fff65284f52
+    16 slideshow::internal::ViewMediaShape::implInitialize viewmediashape.cxx 309 0x7fff652839ab
+    17 slideshow::internal::ViewMediaShape::startMedia viewmediashape.cxx 107 0x7fff652832b1
+    18 slideshow::internal::(anonymous namespace)::MediaShape::implStartIntrinsicAnimation mediashape.cxx 212 0x7fff6526578e
+    19 slideshow::internal::ExternalShapeBase::ExternalShapeBaseListener::enableAnimations externalshapebase.cxx 68 0x7fff65259ccd
+    [...]
+
+Change-Id: I6978f27d9b756a0fa8492d06bed57e805ca23a0c
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/183228
+Tested-by: Jenkins
+Reviewed-by: Michael Weghorn <m.weghorn@posteo.de>
+(cherry picked from commit b1576ba17a4111f02fc6f8e27c09c78dbd7fd963)
+Reviewed-on: https://gerrit.libreoffice.org/c/core/+/183230
+Reviewed-by: Michael Stahl <michael.stahl@allotropia.de>
+---
+ avmedia/source/qt6/QtPlayer.cxx | 18 ++++++++++++------
+ 1 file changed, 12 insertions(+), 6 deletions(-)
+
+diff --git a/avmedia/source/qt6/QtPlayer.cxx b/avmedia/source/qt6/QtPlayer.cxx
+index 23460c92d675..b1d5fbb85370 100644
+--- a/avmedia/source/qt6/QtPlayer.cxx
++++ b/avmedia/source/qt6/QtPlayer.cxx
+@@ -72,9 +72,11 @@ void SAL_CALL QtPlayer::stop()
+ {
+     osl::MutexGuard aGuard(m_aMutex);
+ 
+-    assert(m_xMediaPlayer);
+-    // don't use QMediaPlayer::stop because XPlayer::stop should leave the position unchanged
+-    m_xMediaPlayer->pause();
++    if (m_xMediaPlayer)
++    {
++        // don't use QMediaPlayer::stop because XPlayer::stop should leave the position unchanged
++        m_xMediaPlayer->pause();
++    }
+ }
+ 
+ sal_Bool SAL_CALL QtPlayer::isPlaying()
+@@ -284,9 +286,13 @@ void SAL_CALL QtPlayer::disposing()
+ 
+ QtPlayer::~QtPlayer()
+ {
+-    // ensure output objects get deleted as QMediaPlayer doesn't take ownership of them
+-    std::unique_ptr<QObject> xVideoWidget(m_xMediaPlayer->videoOutput());
+-    std::unique_ptr<QAudioOutput> xAudioOutput(m_xMediaPlayer->audioOutput());
++    if (m_xMediaPlayer)
++    {
++        // ensure output objects get deleted as QMediaPlayer doesn't take ownership of them
++        std::unique_ptr<QObject> xVideoWidget(m_xMediaPlayer->videoOutput());
++        std::unique_ptr<QAudioOutput> xAudioOutput(m_xMediaPlayer->audioOutput());
++    }
++
+     m_xMediaPlayer.reset();
+ }
+ 
+-- 
+cgit v1.2.3
