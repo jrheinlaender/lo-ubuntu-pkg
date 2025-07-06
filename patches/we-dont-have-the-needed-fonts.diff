@@ -168,3 +168,57 @@ index 2c314d6b886f..b50e7dd4d82f 100644
  
  // tdf#101686 - Verifies that drawinglayer clears RTL flags while drawing Writer text boxes
  CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf101686)
+diff --git a/vcl/qa/cppunit/complextext.cxx b/vcl/qa/cppunit/complextext.cxx
+index 9be428b59128..a833314bd23d 100644
+--- a/vcl/qa/cppunit/complextext.cxx
++++ b/vcl/qa/cppunit/complextext.cxx
+@@ -792,49 +792,6 @@ CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testTdf165510)
+     }
+ }
+ 
+-CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testTdf154104)
+-{
+-    ScopedVclPtrInstance<VirtualDevice> pOutDev;
+-
+-    vcl::Font aBaseFont{ u"David Libre"_ustr, u"Regular"_ustr, Size{ 0, 72 } };
+-    pOutDev->SetFont(aBaseFont);
+-
+-    vcl::Font aFallbackFont{ u"Noto Sans Arabic"_ustr, u"Regular"_ustr, Size{ 0, 72 } };
+-    pOutDev->ForceFallbackFont(aFallbackFont);
+-
+-    pOutDev->SetLayoutMode(vcl::text::ComplexTextLayoutFlags::BiDiRtl
+-                           | vcl::text::ComplexTextLayoutFlags::BiDiStrong);
+-
+-    auto aText = u"\u05D0\u05D0\u05D0\u0644\u0627"_ustr;
+-    KernArray aKernArray = { 100, 200, 300, 350, 400 };
+-    auto pLayout = pOutDev->ImplLayout(aText, /*nIndex*/ 0, /*nLen*/ aText.getLength(),
+-                                       /*rLogicPos*/ Point(0, 0), /*nLogicWidth*/ 0, aKernArray);
+-
+-    // Fallback must have happened for this test to be meaningful
+-    auto pMultiLayout = dynamic_cast<MultiSalLayout*>(pLayout.get());
+-    CPPUNIT_ASSERT(pMultiLayout);
+-
+-    std::vector<double> aCharX;
+-
+-    const GlyphItem* pGlyph = nullptr;
+-    basegfx::B2DPoint stPos;
+-    int nCurrPos = 0;
+-    while (pLayout->GetNextGlyph(&pGlyph, stPos, nCurrPos))
+-    {
+-        aCharX.push_back(stPos.getX());
+-    }
+-
+-    // tdf#154104 caused overlapping glyphs in fallback runs:
+-    //                           { -295.0, -195.0, -95.0, -341.0 }
+-    std::vector<double> aRefCharX{ -245.0, -145.0, -45.0, -341.0 };
+-
+-    CPPUNIT_ASSERT_EQUAL(aRefCharX.size(), aCharX.size());
+-    for (size_t i = 0; i < aRefCharX.size(); ++i)
+-    {
+-        CPPUNIT_ASSERT_DOUBLES_EQUAL(aRefCharX.at(i), aCharX.at(i), /*delta*/ 0.2);
+-    }
+-}
+-
+ CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testTdf163761)
+ {
+     ScopedVclPtrInstance<VirtualDevice> pOutDev;
