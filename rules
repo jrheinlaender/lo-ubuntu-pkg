@@ -19,6 +19,7 @@ vafilt = $(subst $(2)=,,$(filter $(2)=%,$(1)))
 
 include /usr/share/dpkg/pkg-info.mk
 CURDIR ?= $(realpath $(dir $(firstword $(MAKEFILE_LIST)))/..)
+DEB_VERSION:=$(DEB_VERSION)
 BASE_VERSION:=$(shell echo $(DEB_VERSION) | cut -d: -f1):$(DEB_VERSION_UPSTREAM)
 BINARY_VERSION=$(DEB_VERSION)
 OOVER:=25.2
@@ -32,6 +33,32 @@ else
 # which is supposed to be the schedule.
 NEXT_OOVER=$(shell echo "$(OOVER) + .4" | bc)
 endif
+
+# Setup to use our git repository instead of LibreOffice's
+override GIT_BASEURL:=https://github.com/jrheinlaender/lo-core.git
+override GIT_BRANCH:=libreoffice-25-2-3-imath
+override GIT_TAG:=libreoffice-25-2-3-imath-deb
+override SOURCE_TARBALLS:=n
+override USE_GIT_TARBALLS:=y
+
+# Overrides for faster imath build
+override ENABLE_HELP:=n
+override BUILD_ONLY_EN_US:=y
+# Note: There is a single case where lower down something is assigned to DEB_BUILD_OPTIONS (for ARM only)
+override DEB_BUILD_OPTIONS:=nocheck noautodbgsym
+# Note: Removed to reduce build size
+override PACKAGE_SDK:=n
+override PACKAGE_SDK_DOCS:=n
+override BUILD_NOGUI_PACKAGES:=n
+override DEB_BUILD_PROFILES:=noinsttest nojava nogir nocil nodoc
+override PACKAGE_LOKIT:=n
+override ENABLE_INTROSPECTION:=n
+override BUILD_GTK4:=n
+override ENABLE_QT5:=n
+override ENABLE_KF5:=n
+override ENABLE_QT6:=n
+override ENABLE_QT6_MULTIMEDIA:=n
+override ENABLE_KF6:=n
 
 ARCH_INDEP_PACKAGES := $(shell dh_listpackages -i)
 ARCH_DEP_PACKAGES := $(shell dh_listpackages -a)
@@ -122,7 +149,7 @@ BUILD_DEPS=\
     zip,\
     zlib1g-dev\
 
-BUILD_DEPS_INDEP += rdfind, symlinks
+BUILD_DEPS_INDEP += rdfind, symlinks, libfl-dev, libginac-dev, libcln-dev
 
 # These are components which can be built from internal copies, or used from the
 # distribution. See configure --help for valid values (--with-system-<value>).
@@ -795,7 +822,7 @@ CONFIGURE_FLAGS += --disable-gui
 DEBHELPER_OPTIONS += -Nlibreoffice-core -Nlibreoffice-calc -Nlibreoffice-writer -Nlibreoffice-draw -Nlibreoffice-report-builder-bin -Nlibreoffice-base -Nlibreoffice-impress -Nlibreoffice-math
 endif
 ifneq "$(BUILD_NOGUI_PACKAGES)" "y"
-DEBHELPER_OPTIONS += -Nlibreoffice-core-nogui -Nlibreoffice-calc-nogui -Nlibreoffice-writer-nogui -Nlibreoffice-draw-nogui -Nlibreoffice-report-builder-bin-nogui -Nlibreoffice-base-nogui -Nlibreoffice-impress-nogui -Nlibreoffice-math-nogui
+DEBHELPER_OPTIONS += -Nlibreoffice-core-nogui -Nlibreoffice-calc-nogui -Nlibreoffice-writer-nogui -Nlibreoffice-draw-nogui -Nlibreoffice-base-nogui -Nlibreoffice-impress-nogui -Nlibreoffice-math-nogui
 endif
 
 # this assumes autopkgtest -B. Without -B it tries to use the built packages
@@ -2183,9 +2210,6 @@ ifeq "$(HELPISOS)" ""
 	rm -rf images*
 endif
 
-	# Ubuntu yaru icon theme links
-	rm -f $(foreach y,$(YARU_IMAGES),icon-themes/$(y))
-
 	rm -f download.list
 
 	# obsolete lock file not cleaned up....
@@ -2533,19 +2557,11 @@ ifeq "$(ENABLE_PCH)" "y"
 	bin/update_pch.sh
 endif
 
-	# Ubuntu yaru icon theme links
-	ln -srf yaru/build/default/png icon-themes/yaru
-	ln -srf yaru/build/default/svg icon-themes/yaru_svg
-	for a in $(YARU_ACCENTS) ; do \
-		ln -srf yaru/build/$$a/png icon-themes/yaru_$$a; \
-		ln -srf yaru/build/$$a/svg icon-themes/yaru_$$a\_svg; \
-	done
-
 ifeq ($(filter pkg.libreoffice.opensymbolbuild,$(DEB_BUILD_PROFILES)),)
 	# link to already-rebuilt opens___.ttf (fonts-opensymbol) form the arch indep build.
 	# Thankfully the sha256sum is only checked in Makefile.fetch (which we don't do)
 	cd $(SOURCE_TREE)/tarballs && \
-		ln -sf /usr/share/fonts/truetype/libreoffice/opens___.ttf \
+		cp /usr/share/fonts/truetype/libreoffice/opens___.ttf \
 			f543e6e2d7275557a839a164941c0a86e5f2c3f2a0042bfc434c88c6dde9e140-opens___.ttf
 endif
 
@@ -4812,7 +4828,7 @@ endef
 
 ifneq ($(filter get-orig-source unpack,$(MAKECMDGOALS)),)
 $(call get_orig_tarball):
-	$(call pack_gittarball,core,$@,)
+	$(call pack_gittarball,,$@,)
 
 $(call get_orig_tarball,-helpcontent2):
 	$(call pack_gittarball,help,$@,libreoffice-$(DEB_VERSION_UPSTREAM)/)
@@ -4824,7 +4840,7 @@ $(call get_orig_tarball,-yaru):
 	$(call pack_yaru_gittarball,yaru,$@,libreoffice-$(DEB_VERSION_UPSTREAM)/)
 
 # Get upstream external sources
-$(call get_orig_tarball,-tarballs): yaru/CONTRIBUTING.md helpcontent2/makefile.pmk translations/makefile.mk .gitignore
+$(call get_orig_tarball,-tarballs): yaru/CONTRIBUTING.md .gitignore
 	dh_testdir
 	if [ -f $@ ]; then \
 		echo 'Replacing `basename $@`...'; \
